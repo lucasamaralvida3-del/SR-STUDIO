@@ -16,21 +16,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Reconstruir pacote
+      - name: Reconstruir e validar pacote
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p dist
-          cat staging/beta/chunks/*.b64 | base64 --decode > dist/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip
-          EXPECTED=$(python - <<'PY'
-          import json
-          print(json.load(open('staging/beta/READY.json', encoding='utf-8'))['sha256'])
+          python - <<'PY'
+          import base64, glob, hashlib, json, pathlib
+          ready=json.load(open('staging/beta/READY.json',encoding='utf-8'))
+          chunks=sorted(glob.glob('staging/beta/chunks/*.b64'))
+          if not chunks:
+              raise SystemExit('Nenhum chunk encontrado.')
+          out=pathlib.Path('dist')/ready['file_name']
+          with out.open('wb') as dst:
+              for name in chunks:
+                  dst.write(base64.b64decode(pathlib.Path(name).read_text(encoding='ascii')))
+          raw=out.read_bytes()
+          got=hashlib.sha256(raw).hexdigest()
+          if got.lower()!=str(ready['sha256']).lower():
+              raise SystemExit(f'SHA256 invalido: {got}')
+          if len(raw)!=int(ready['size']):
+              raise SystemExit(f'Tamanho invalido: {len(raw)}')
+          print(f'Pacote validado: {out} | {len(raw)} bytes | {got}')
           PY
-          )
-          GOT=$(sha256sum dist/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip | awk '{print $1}')
-          echo "Esperado: $EXPECTED"
-          echo "Obtido:   $GOT"
-          test "$EXPECTED" = "$GOT"
 
       - name: Publicar Release Beta
         env:
@@ -38,11 +46,62 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          TAG="v4.0.0-hybrid.beta1"
-          TITLE="SR Studio 4.0 Hybrid Beta 1"
-          FILE="dist/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip"
+          eval "$(python - <<'PY'
+          import json,shlex
+          r=json.load(open('staging/beta/READY.json',encoding='utf-8'))
+          for k in ('tag','title','file_name','notes'):
+              print(k.upper()+'='+shlex.quote(str(r.get(k,''))))
+          PY
+          )"
+          FILE="dist/$FILE_NAME"
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "$FILE" --clobber
           else
-            gh release create "$TAG" "$FILE" --prerelease --title "$TITLE" --notes "Primeiro Beta publico do Desktop Core do SR Studio 4.0 Hybrid. Dados locais, bancos e planilhas operacionais foram excluidos do pacote."
+            gh release create "$TAG" "$FILE" --prerelease --title "$TITLE" --notes "$NOTES"
+          fi
+
+      - name: Ativar manifest Beta somente apos Release valida
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib
+          r=json.load(open('staging/beta/READY.json',encoding='utf-8'))
+          repo='${{ github.repository }}'
+          url=f"https://github.com/{repo}/releases/download/{r['tag']}/{r['file_name']}"
+          manifest={
+            'format':'SRSTUDIO_HYBRID_BUNDLE_1',
+            'product':'SR Studio Desktop Core',
+            'channel':'beta',
+            'version':r['distribution_version'],
+            'created_at':r['created_at'],
+            'min_launcher_version':r.get('min_launcher_version','4.0.0-hybrid.pro1'),
+            'bundle':{
+              'url':url,
+              'sha256':r['sha256'],
+              'size':int(r['size']),
+              'member_prefix':'files/'
+            },
+            'repair':{'mode':'local_hash_catalog','full_check_every_days':7},
+            'delete':r.get('delete',[]),
+            'notes':r.get('notes','')
+          }
+          pathlib.Path('beta/manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name "SR Studio Update Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add beta/manifest.json
+          git commit -m "Ativa SR Studio Beta $(python -c \"import json;print(json.load(open('staging/beta/READY.json'))['distribution_version'])\")"
+          git push
+
+      - name: Limpar staging publicado
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --rebase
+          git rm -r -f staging/beta/chunks staging/beta/READY.json || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Limpa staging da publicacao Beta"
+            git push
           fi
