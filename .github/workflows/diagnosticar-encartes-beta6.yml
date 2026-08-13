@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - 'diagnostic/encartes-beta6.json'
+      - '.github/workflows/diagnosticar-encartes-beta6.yml'
 
 permissions:
   contents: read
