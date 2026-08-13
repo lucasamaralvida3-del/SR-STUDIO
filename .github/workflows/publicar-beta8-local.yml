@@ -1,0 +1,65 @@
+name: Publicar SR Studio Beta 8 Local
+
+on:
+  push:
+    paths:
+      - 'staging/beta8/READY.json'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Montar pacote Beta 8
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work dist && mkdir -p work dist
+          gh release download v4.0.6-hybrid.beta7 -p 'SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip -d work
+          python staging/beta8/build_beta8.py
+          python -m compileall -q work/files
+          node --check work/files/Encartes3_app.js
+          node --check work/files/Encartes4_beta6.js
+          python staging/beta8/validate_beta8.py
+          find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,shutil
+          out=Path('dist/SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip')
+          shutil.make_archive(str(out.with_suffix('')),'zip','work')
+          raw=out.read_bytes()
+          Path('dist/result.json').write_text(json.dumps({'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)}),encoding='utf-8')
+          PY
+
+      - name: Publicar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release create v4.0.7-hybrid.beta8 dist/SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip --prerelease --title 'SR Studio 4.0.7 Beta 8 - Encartes Local' --notes 'Beta 8: corrige a aba vazia causada pelo pad inválido do Tkinter e substitui o antigo Encartes Cloud pelo editor local-first servido apenas em 127.0.0.1.'
+
+      - name: Ativar canal Beta
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          z=json.loads(Path('dist/result.json').read_text())
+          repo='${{ github.repository }}'
+          m={'format':'SRSTUDIO_HYBRID_BUNDLE_1','product':'SR Studio Desktop Core','channel':'beta','version':'4.0.7-hybrid.beta8','created_at':'2026-08-13T16:34:00-03:00','min_launcher_version':'4.0.0-hybrid.pro1.1','bundle':{'url':f'https://github.com/{repo}/releases/download/v4.0.7-hybrid.beta8/SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip','sha256':z['sha256'],'size':z['size'],'member_prefix':'files/'},'repair':{'mode':'local_hash_catalog','full_check_every_days':7},'delete':[],'notes':'Beta 8: corrige a aba vazia do Encartes e ativa o editor local-first. Banco de Imagens permanece manual/oficial.'}
+          Path('beta/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add beta/manifest.json
+          git commit -m 'Ativa SR Studio 4.0.7 Beta 8'
+          git push
