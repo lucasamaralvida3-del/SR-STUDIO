@@ -1,0 +1,8 @@
+{
+  "distribution_version": "4.0.5-hybrid.beta6.1",
+  "created_at": "2026-08-13T16:12:00-03:00",
+  "tag": "v4.0.5-hybrid.beta6.1",
+  "title": "SR Studio 4.0.5 Beta 6.1",
+  "file_name": "SR_STUDIO_4.0.5_BETA6.1.zip",
+  "notes": "Corrige o carregamento da aba Studio de Encartes e valida referencias locais antes de ativar o canal Beta."
+}
