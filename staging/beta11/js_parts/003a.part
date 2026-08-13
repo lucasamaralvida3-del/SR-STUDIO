@@ -1,0 +1,12 @@
+ss="sr11-row"><button class="sr11-btn" data-a="manual">+ Produto</button><button class="sr11-btn" data-a="clear">Limpar</button></div><input id="search" class="sr11-input" placeholder="Buscar produto..."><select id="category" class="sr11-input"></select><div id="products" class="sr11-products"></div></aside>
+<main id="center" class="sr11-center"><div id="zoomWrap" class="sr11-zoom"><div id="page" class="sr11-page"></div></div></main>
+<aside class="sr11-side right"><div class="sr11-title">Validação</div><div id="kpis" class="kpis"></div><div id="inspector"></div><div id="issuesMini" class="issue-list"></div></aside></div>
+<div id="pages" class="sr11-pages"></div></div><div id="toast" class="toast"></div>`;
+const $=q=>document.querySelector(q),pageEl=$('#page'),productsEl=$('#products'),inspector=$('#inspector'),statusEl=$('#status'),toastEl=$('#toast');
+function page(){return state.pages[state.pageIndex]||state.pages[0]}
+function toast(msg){toastEl.textContent=msg;toastEl.classList.add('show');clearTimeout(toastEl._t);toastEl._t=setTimeout(()=>toastEl.classList.remove('show'),1800)}
+function setStatus(s){statusEl.textContent=s}
+function persist(){clearTimeout(saveTimer);saveTimer=setTimeout(()=>{try{localStorage.setItem(STORE,JSON.stringify(state));setStatus('Salvo automaticamente')}catch{}},250)}
+function snap(){past.push(JSON.stringify(state));if(past.length>HISTORY)past.shift();future=[];persist()}
+function undo(){if(!past.length)return;future.push(JSON.stringify(state));state=JSON.parse(past.pop());renderAll();persist()}
+function redo(){if(!future.length)return;past.push
