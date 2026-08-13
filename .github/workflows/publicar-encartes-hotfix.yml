@@ -1,0 +1,110 @@
+name: Publicar Hotfix Encartes Beta 6.1
+
+on:
+  push:
+    paths:
+      - 'staging/encartes-hotfix/READY.json'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Baixar Beta 6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p work dist
+          gh release download v4.0.5-hybrid.beta6 -p 'SR_STUDIO_4.0.5_BETA6_NOVO_EDITOR_ENCARTES.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.5_BETA6_NOVO_EDITOR_ENCARTES.zip -d work
+      - name: Corrigir integração do Encartes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib
+          r=json.load(open('staging/encartes-hotfix/READY.json',encoding='utf-8'))
+          p=pathlib.Path('work/files')
+          html=p/'Encartes3_index.html'
+          text=html.read_text(encoding='utf-8')
+          text=text.replace('href="style.css"','href="Encartes3_style.css"')
+          text=text.replace('src="app.js"','src="Encartes3_app.js"')
+          text=text.replace('SR Studio 4.0.4 — Encartes Intelligence','SR Studio 4.0.5 — Encartes Intelligence')
+          text=text.replace('SR Studio 4.0.4 • Beta 5','SR Studio 4.0.5 • Beta 6.1')
+          text=text.replace('Encartes Intelligence 4.0.4 pronto','Encartes Intelligence 4.0.5 pronto')
+          html.write_text(text,encoding='utf-8')
+          v=json.load(open(p/'version.json',encoding='utf-8'))
+          v['distribution_version']=r['distribution_version']
+          v['product_version']='4.0.5'
+          v['release_label']='Beta 6.1'
+          v['updated_at']=r['created_at']
+          (p/'version.json').write_text(json.dumps(v,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          (p/'VERSAO.txt').write_text('SR Studio 4.0.5 • Beta 6.1\nHotfix do Studio de Encartes: corrige carregamento do CSS e JavaScript da aba e mantém o novo editor Beta 6.\n',encoding='utf-8')
+          PY
+      - name: Validar aba Encartes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q work/files
+          node --check work/files/Encartes3_app.js
+          node --check work/files/Encartes4_beta6.js
+          python - <<'PY'
+          from pathlib import Path
+          import re,json
+          p=Path('work/files')
+          h=(p/'Encartes3_index.html').read_text(encoding='utf-8')
+          assert 'href="Encartes3_style.css"' in h
+          assert 'src="Encartes3_app.js"' in h
+          assert 'src="Encartes4_beta6.js"' in h
+          refs=re.findall(r'(?:href|src)="([^"]+)"',h)
+          local=[x for x in refs if not x.startswith(('http:','https:','data:','#'))]
+          missing=[x for x in local if not (p/x).exists()]
+          assert not missing, f'Referencias locais ausentes: {missing}'
+          print('Referencias locais OK:',local)
+          v=json.load(open(p/'version.json',encoding='utf-8'))
+          assert v['distribution_version']=='4.0.5-hybrid.beta6.1'
+          PY
+      - name: Empacotar e publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
+          python - <<'PY'
+          import json,pathlib,shutil,hashlib
+          r=json.load(open('staging/encartes-hotfix/READY.json',encoding='utf-8'))
+          out=pathlib.Path('dist')/r['file_name']
+          shutil.make_archive(str(out.with_suffix('')),'zip','work')
+          raw=out.read_bytes()
+          pathlib.Path('dist/result.json').write_text(json.dumps({'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)}),encoding='utf-8')
+          PY
+          eval "$(python - <<'PY'
+          import json,shlex
+          r=json.load(open('staging/encartes-hotfix/READY.json',encoding='utf-8'))
+          for k in ('tag','title','file_name','notes'): print(k.upper()+'='+shlex.quote(r[k]))
+          PY
+          )"
+          gh release create "$TAG" "dist/$FILE_NAME" --prerelease --title "$TITLE" --notes "$NOTES"
+      - name: Ativar Beta 6.1
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib
+          r=json.load(open('staging/encartes-hotfix/READY.json',encoding='utf-8'))
+          z=json.load(open('dist/result.json',encoding='utf-8'))
+          repo='${{ github.repository }}'
+          m={'format':'SRSTUDIO_HYBRID_BUNDLE_1','product':'SR Studio Desktop Core','channel':'beta','version':r['distribution_version'],'created_at':r['created_at'],'min_launcher_version':'4.0.0-hybrid.pro1.1','bundle':{'url':f"https://github.com/{repo}/releases/download/{r['tag']}/{r['file_name']}",'sha256':z['sha256'],'size':z['size'],'member_prefix':'files/'},'repair':{'mode':'local_hash_catalog','full_check_every_days':7},'delete':[],'notes':r['notes']}
+          pathlib.Path('beta/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add beta/manifest.json
+          git commit -m 'Ativa SR Studio 4.0.5 Beta 6.1'
+          git push
