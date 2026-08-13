@@ -1,0 +1,10 @@
+{
+  "format": "SRSTUDIO_REPOSITORY_1",
+  "product": "SR Studio 4.0 Hybrid",
+  "channel": "stable",
+  "version": "4.0.0",
+  "published_at": "2026-08-13T09:44:00-03:00",
+  "minimum_launcher": "4.0.0",
+  "notes": "Canal Stable inicial. Aguardando publicacao do primeiro pacote completo do Desktop Core.",
+  "files": []
+}
