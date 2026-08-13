@@ -1,14 +1,20 @@
 {
-  "format": "SRSTUDIO_HYBRID_MANIFEST_1",
+  "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.3-hybrid.beta4",
-  "created_at": "2026-08-13T13:20:00-03:00",
+  "version": "4.0.4-hybrid.beta5",
+  "created_at": "2026-08-13T14:05:00-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
-  "files": [
-    {"path":"version.json","source":"files/version.json","size":335,"sha256":"3bdaef9744b40e1cef5174dc29d3f8002125d60f1520a837d9641a340062ad5e","critical":true},
-    {"path":"VERSAO.txt","source":"files/VERSAO.txt","size":59,"sha256":"da1f946bd920a8435a4a96be1da70cff71d9cadc28ac6933a1beba77ee5b3d06","critical":true}
-  ],
+  "bundle": {
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.4-hybrid.beta5/SR_STUDIO_4.0.4_BETA5_SR_IA_GUARD_IMAGENS_MANUAIS.zip",
+    "sha256": "5493470cdca97500330fdfd6935a4a1f791fe8f7930a567019fd91c28fe713d7",
+    "size": 2229546,
+    "member_prefix": "files/"
+  },
+  "repair": {
+    "mode": "local_hash_catalog",
+    "full_check_every_days": 7
+  },
   "delete": [],
-  "notes": "Beta 4: teste de atualizacao automatica."
+  "notes": "SR IA Guard: pedidos fora do escopo bloqueados antes da OpenAI, local-first, limites de consumo e Banco de Imagens manual. Encartes usa somente imagem oficial cadastrada."
 }
