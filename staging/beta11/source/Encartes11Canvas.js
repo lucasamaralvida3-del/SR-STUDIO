@@ -7,20 +7,14 @@ const textStyle=(node,s={})=>{node.style.fontFamily=s.font||'Segoe UI';node.styl
 function template(pg,filled){
   for(const t of pg.templateElements||[]){
     if(t.placeholder){const slot=(pg.templateSlots||[]).find(s=>Object.values(s.fields||{}).some(f=>f.sourceId===t.id));if(slot&&filled.has(slot.id))continue}
-    if(t.type==='image'){
-      const img=E('img','tpl-img'+(t.placeholder?' tpl-placeholder':''));img.src=t.url||'';img.style.objectFit=t.style?.fit||'contain';pos(img,t);A.pageNode.appendChild(img);
-    }else{
-      const d=E('div','tpl-text'+(t.placeholder?' tpl-placeholder':''),t.text||'');textStyle(d,t.style);pos(d,t);A.pageNode.appendChild(d);
-    }
+    if(t.type==='image'){const img=E('img','tpl-img'+(t.placeholder?' tpl-placeholder':''));img.src=t.url||'';img.style.objectFit=t.style?.fit||'contain';pos(img,t);A.pageNode.appendChild(img)}
+    else{const d=E('div','tpl-text'+(t.placeholder?' tpl-placeholder':''),t.text||'');textStyle(d,t.style);pos(d,t);A.pageNode.appendChild(d)}
   }
 }
 function slotProduct(pg,e,p,slot){
   for(const [role,f] of Object.entries(slot.fields||{})){
-    if(role==='IMAGEM'){
-      if(!p.image)continue;const img=E('img','slot-field image');img.src=p.image;img.alt=p.name||'Produto';pos(img,f);A.pageNode.appendChild(img);
-    }else{
-      const d=E('div','slot-field text',value(role,p));textStyle(d,f.style);pos(d,f);A.pageNode.appendChild(d);
-    }
+    if(role==='IMAGEM'){if(!p.image)continue;const img=E('img','slot-field image');img.src=p.image;img.alt=p.name||'Produto';pos(img,f);A.pageNode.appendChild(img)}
+    else{const d=E('div','slot-field text',value(role,p));textStyle(d,f.style);pos(d,f);A.pageNode.appendChild(d)}
   }
   const outline=E('div','slot-outline'+(A.state.selected===e.id?' selected':''));pos(outline,slot);outline.dataset.elementId=e.id;outline.addEventListener('click',ev=>{ev.stopPropagation();A.state.selected=e.id;A.emit()});A.pageNode.appendChild(outline);
 }
@@ -34,9 +28,9 @@ function genericCard(pg,e,p){
 }
 function bindMove(card,e,pg){
   let moving=false,moved=false,sx=0,sy=0,ox=0,oy=0;
-  card.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;A.state.selected=e.id;A.renderInspector();if(ev.offsetX>card.clientWidth-20&&ev.offsetY>card.clientHeight-20)return;moving=true;moved=false;sx=ev.clientX;sy=ev.clientY;ox=e.x;oy=e.y;card.setPointerCapture(ev.pointerId)});
+  card.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;A.state.selected=e.id;A.renderInspector();A.snapshot();if(ev.offsetX>card.clientWidth-20&&ev.offsetY>card.clientHeight-20)return;moving=true;moved=false;sx=ev.clientX;sy=ev.clientY;ox=e.x;oy=e.y;card.setPointerCapture(ev.pointerId)});
   card.addEventListener('pointermove',ev=>{if(!moving)return;const scale=Number(A.state.zoom)||1;let x=ox+(ev.clientX-sx)/scale,y=oy+(ev.clientY-sy)/scale;if(A.state.snap){x=Math.round(x/10)*10;y=Math.round(y/10)*10}x=Math.max(0,Math.min(pg.width-card.offsetWidth,x));y=Math.max(0,Math.min(pg.height-card.offsetHeight,y));e.x=x;e.y=y;card.style.left=x+'px';card.style.top=y+'px';moved=true});
-  card.addEventListener('pointerup',()=>{if(moving&&moved){A.snapshot();A.save()}moving=false});
+  card.addEventListener('pointerup',()=>{if(moving&&moved)A.save();moving=false});
   const observer=new ResizeObserver(entries=>{for(const item of entries){const r=item.contentRect;if(Math.abs(e.w-r.width)>1||Math.abs(e.h-r.height)>1){e.w=Math.round(r.width);e.h=Math.round(r.height);A.save()}}});observer.observe(card);
 }
 A.renderCanvas=()=>{
