@@ -1,0 +1,13 @@
+{
+  "product": "SR Studio 4.0 Hybrid",
+  "repository_base": "https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main",
+  "default_channel": "stable",
+  "channels": {
+    "stable": "stable/manifest.json",
+    "beta": "beta/manifest.json"
+  },
+  "launcher_manifest": "launcher/manifest.json",
+  "zero_admin": true,
+  "offline_fallback": true,
+  "repair_by_sha256": true
+}
