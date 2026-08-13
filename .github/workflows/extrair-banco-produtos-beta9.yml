@@ -1,0 +1,27 @@
+name: Extrair Banco Produtos Beta 9
+on:
+  push:
+    paths: ['.github/workflows/extrair-banco-produtos-beta9.yml']
+permissions:
+  contents: read
+jobs:
+  extrair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Baixar Beta 9
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/sr9/out /tmp/sr9/work
+          gh release download v4.0.8-hybrid.beta9 -p 'SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip' -D /tmp/sr9
+          unzip -q /tmp/sr9/SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip -d /tmp/sr9/work
+          cp /tmp/sr9/work/files/SRStudio21.py /tmp/sr9/out/
+          cp /tmp/sr9/work/files/ProductOrganizer.py /tmp/sr9/out/
+          cp /tmp/sr9/work/files/PromotionBuilder.py /tmp/sr9/out/
+          cp /tmp/sr9/work/files/Encartes3Engine.py /tmp/sr9/out/
+          cp /tmp/sr9/work/files/Encartes4_beta6.js /tmp/sr9/out/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: banco-produtos-beta9
+          path: /tmp/sr9/out
