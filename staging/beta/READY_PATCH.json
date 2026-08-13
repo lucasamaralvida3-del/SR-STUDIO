@@ -1,0 +1,16 @@
+{
+  "distribution_version": "4.0.4-hybrid.beta5",
+  "product_version": "4.0.4",
+  "release_label": "Beta 5",
+  "created_at": "2026-08-13T14:05:00-03:00",
+  "min_launcher_version": "4.0.0-hybrid.pro1.1",
+  "tag": "v4.0.4-hybrid.beta5",
+  "title": "SR Studio 4.0.4 Beta 5 - SR IA Guard + Imagens Manuais",
+  "file_name": "SR_STUDIO_4.0.4_BETA5_SR_IA_GUARD_IMAGENS_MANUAIS.zip",
+  "notes": "SR IA Guard: pedidos fora do escopo bloqueados antes da OpenAI, local-first, limites de consumo e Banco de Imagens manual. Encartes usa somente imagem oficial cadastrada.",
+  "base_url": "https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip",
+  "base_sha256": "dbe4ef57bae0bafad7e3f9f908ebda642afa89d9a8ca719933cf01bfdc423b32",
+  "patch_sha256": "9d072dfb2093ddb102533d64c515a662501850f80e92662a3776b8ab8788e63d",
+  "patch_size": 31784,
+  "delete": []
+}
