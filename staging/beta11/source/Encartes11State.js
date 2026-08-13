@@ -1,0 +1,34 @@
+(() => {
+'use strict';
+const A=window.SR11=window.SR11||{};
+A.VERSION='4.0.10 • Beta 11';
+A.STORE='srstudio_encartes_beta11_project_v2';
+A.uid=(p='id')=>p+'_'+Date.now().toString(36)+'_'+Math.random().toString(36).slice(2,8);
+A.copy=o=>JSON.parse(JSON.stringify(o));
+A.norm=s=>String(s??'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').trim().toUpperCase();
+A.money=v=>{if(v===null||v===undefined||v==='')return'';let s=String(v).trim().replace(/\s/g,'').replace(/\.(?=\d{3}(\D|$))/g,'').replace(',','.');const n=Number(s.replace(/[^0-9.-]/g,''));return Number.isFinite(n)?n.toFixed(2).replace('.',','):String(v)};
+A.priceParts=v=>{const x=(A.money(v)||'--,--').split(',');return{reais:x[0]||'--',centavos:','+(x[1]||'00').padEnd(2,'0').slice(0,2)}};
+A.newPage=(name='Página')=>({id:A.uid('pg'),name,width:794,height:1123,elements:[],templateElements:[],templateSlots:[],category:''});
+const empty=()=>({products:[],pages:[A.newPage('Página 1')],pageIndex:0,selected:null,grid:true,snap:true,zoom:.75,categoryFilter:'TODAS',fonts:[],projectName:'Novo Encarte'});
+try{A.state=JSON.parse(localStorage.getItem(A.STORE)||'null')||empty()}catch{A.state=empty()}
+if(!Array.isArray(A.state.pages)||!A.state.pages.length)A.state=empty();
+A.past=[];A.future=[];A.listeners=new Set();
+A.page=()=>A.state.pages[A.state.pageIndex]||A.state.pages[0];
+A.emit=()=>A.listeners.forEach(fn=>{try{fn()}catch(e){console.error(e)}});
+A.onChange=fn=>A.listeners.add(fn);
+A.save=()=>{try{localStorage.setItem(A.STORE,JSON.stringify(A.state))}catch{}};
+A.snapshot=()=>{A.past.push(JSON.stringify(A.state));if(A.past.length>60)A.past.shift();A.future=[]};
+A.commit=()=>{A.save();A.emit()};
+A.undo=()=>{if(!A.past.length)return;A.future.push(JSON.stringify(A.state));A.state=JSON.parse(A.past.pop());A.commit()};
+A.redo=()=>{if(!A.future.length)return;A.past.push(JSON.stringify(A.state));A.state=JSON.parse(A.future.pop());A.commit()};
+A.usedIds=()=>new Set(A.state.pages.flatMap(p=>p.elements||[]).map(e=>e.productId));
+A.categories=()=>['TODAS',...new Set(A.state.products.map(p=>p.category||'SEM CATEGORIA').sort((a,b)=>a.localeCompare(b,'pt-BR')))];
+A.emptySlot=(pg,pos)=>{const used=new Set((pg.elements||[]).map(e=>e.slotId).filter(Boolean));let slots=(pg.templateSlots||[]).filter(s=>!used.has(s.id));if(!slots.length)return null;if(!pos)return slots[0];return slots.sort((a,b)=>Math.hypot(a.x+a.w/2-pos.x,a.y+a.h/2-pos.y)-Math.hypot(b.x+b.w/2-pos.x,b.y+b.h/2-pos.y))[0]};
+A.placeProduct=(pid,pos)=>{if(!A.state.products.some(p=>p.id===pid))return;A.snapshot();const pg=A.page(),slot=A.emptySlot(pg,pos);let e;if(slot)e={id:A.uid('e'),productId:pid,slotId:slot.id,highlight:0};else{const n=pg.elements.filter(x=>!x.slotId).length;e={id:A.uid('e'),productId:pid,slotId:null,x:pos?.x??30+(n%3)*245,y:pos?.y??30+Math.floor(n/3)*275,w:220,h:250,highlight:0,fontFamily:'Segoe UI'}}pg.elements.push(e);A.state.selected=e.id;A.commit()};
+A.addPage=()=>{A.snapshot();A.state.pages.push(A.newPage('Página '+(A.state.pages.length+1)));A.state.pageIndex=A.state.pages.length-1;A.state.selected=null;A.commit()};
+A.duplicatePage=()=>{A.snapshot();const p=A.copy(A.page());p.id=A.uid('pg');p.name=(p.name||'Página')+' - cópia';p.elements=(p.elements||[]).map(e=>({...e,id:A.uid('e')}));A.state.pages.splice(A.state.pageIndex+1,0,p);A.state.pageIndex++;A.state.selected=null;A.commit()};
+A.deletePage=()=>{if(A.state.pages.length<2)return false;A.snapshot();A.state.pages.splice(A.state.pageIndex,1);A.state.pageIndex=Math.min(A.state.pageIndex,A.state.pages.length-1);A.state.selected=null;A.commit();return true};
+A.deleteSelected=()=>{const pg=A.page();if(!pg.elements.some(e=>e.id===A.state.selected))return;A.snapshot();pg.elements=pg.elements.filter(e=>e.id!==A.state.selected);A.state.selected=null;A.commit()};
+A.duplicateSelected=()=>{const pg=A.page(),e=pg.elements.find(x=>x.id===A.state.selected);if(!e)return false;A.snapshot();const n={...A.copy(e),id:A.uid('e')};if(n.slotId){const s=A.emptySlot(pg);if(!s)return false;n.slotId=s.id}else{n.x+=18;n.y+=18}pg.elements.push(n);A.state.selected=n.id;A.commit();return true};
+A.autoLayout=()=>{A.snapshot();if(A.state.pages.some(p=>(p.templateSlots||[]).length)){const used=A.usedIds();for(const pg of A.state.pages)for(const slot of pg.templateSlots||[]){if(pg.elements.some(e=>e.slotId===slot.id))continue;const p=A.state.products.find(x=>!used.has(x.id));if(!p)break;pg.elements.push({id:A.uid('e'),productId:p.id,slotId:slot.id,highlight:0});used.add(p.id)}A.state.pageIndex=0;A.state.selected=null;A.commit();return'template'}const levels=new Map();for(const pg of A.state.pages)for(const e of pg.elements||[])levels.set(e.productId,Math.max(levels.get(e.productId)||0,+e.highlight||0));const groups=new Map();for(const p of A.state.products){const c=p.category||'SEM CATEGORIA';if(!groups.has(c))groups.set(c,[]);groups.get(c).push(p)}A.state.pages=[];for(const [cat,list0] of groups){const list=[...list0].sort((a,b)=>(levels.get(b.id)||0)-(levels.get(a.id)||0));let pg=A.newPage(cat);pg.category=cat;A.state.pages.push(pg);let cell=0;for(const p of list){if(cell===12){pg=A.newPage(cat+' '+(A.state.pages.filter(x=>x.category===cat).length+1));pg.category=cat;A.state.pages.push(pg);cell=0}const lv=levels.get(p.id)||0,col=cell%3,row=Math.floor(cell/3);pg.elements.push({id:A.uid('e'),productId:p.id,x:28+col*246,y:35+row*265,w:lv>=2?466:220,h:lv>=2?250:240,highlight:lv,fontFamily:'Segoe UI'});cell++}}if(!A.state.pages.length)A.state.pages=[A.newPage('Página 1')];A.state.pageIndex=0;A.state.selected=null;A.commit();return'category'};
+})();
