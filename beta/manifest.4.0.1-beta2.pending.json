@@ -1,0 +1,20 @@
+{
+  "format": "SRSTUDIO_HYBRID_BUNDLE_1",
+  "product": "SR Studio Desktop Core",
+  "channel": "beta",
+  "version": "4.0.1-hybrid.beta2",
+  "created_at": "2026-08-13T11:29:00-03:00",
+  "min_launcher_version": "4.0.0-hybrid.base2.3",
+  "bundle": {
+    "url": "https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/SR_STUDIO_4.0.1_BETA2_TESTE_AUTOUPDATE.zip",
+    "sha256": "b78c57835d2e900febef11530b5743279d25305d6404a60fb5bc0ab46d7aa986",
+    "size": 2393058,
+    "member_prefix": "files/"
+  },
+  "repair": {
+    "mode": "local_hash_catalog",
+    "full_check_every_days": 7
+  },
+  "delete": [],
+  "notes": "Beta 2 de teste. Atualiza a exibicao para SR Studio 4.0.1 e centraliza a leitura da versao instalada via Launcher/instalador."
+}
