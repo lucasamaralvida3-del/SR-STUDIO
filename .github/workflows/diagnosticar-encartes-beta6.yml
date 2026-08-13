@@ -1,0 +1,44 @@
+name: Diagnosticar Encartes Beta 6
+
+on:
+  push:
+    paths:
+      - 'diagnostic/encartes-beta6.json'
+
+permissions:
+  contents: read
+
+jobs:
+  diagnosticar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Baixar Beta 6 e inspecionar integração
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/sr6
+          gh release download v4.0.5-hybrid.beta6 -p 'SR_STUDIO_4.0.5_BETA6_NOVO_EDITOR_ENCARTES.zip' -D /tmp/sr6
+          unzip -q /tmp/sr6/SR_STUDIO_4.0.5_BETA6_NOVO_EDITOR_ENCARTES.zip -d /tmp/sr6/work
+          echo '=== ARQUIVOS PRINCIPAIS ==='
+          find /tmp/sr6/work/files -maxdepth 1 -type f -printf '%f\n' | sort
+          echo '=== REFERENCIAS A ENCARTES3_INDEX ==='
+          grep -Rni --include='*.html' --include='*.js' 'Encartes3_index\|Encartes Studio\|ENCARTES' /tmp/sr6/work/files | head -n 100 || true
+          echo '=== HTML ENCARTES3: HEAD ==='
+          sed -n '1,180p' /tmp/sr6/work/files/Encartes3_index.html
+          echo '=== HTML ENCARTES3: TAIL ==='
+          tail -n 80 /tmp/sr6/work/files/Encartes3_index.html
+          echo '=== CHECAGENS ==='
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('/tmp/sr6/work/files')
+          h=(p/'Encartes3_index.html').read_text(encoding='utf-8',errors='replace')
+          print('html bytes',len(h.encode()))
+          print('beta6 tag count',h.count('SR_STUDIO_BETA6_ENCARTES'))
+          print('beta6 script count',h.count('Encartes4_beta6.js'))
+          print('encartes3 app count',h.count('Encartes3_app.js'))
+          print('body tags',h.lower().count('<body'),h.lower().count('</body>'))
+          print('script tags',h.lower().count('<script'),h.lower().count('</script>'))
+          PY
