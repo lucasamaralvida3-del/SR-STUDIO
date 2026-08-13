@@ -29,6 +29,28 @@ A.addPage=()=>{A.snapshot();A.state.pages.push(A.newPage('Página '+(A.state.pag
 A.duplicatePage=()=>{A.snapshot();const p=A.copy(A.page());p.id=A.uid('pg');p.name=(p.name||'Página')+' - cópia';p.elements=(p.elements||[]).map(e=>({...e,id:A.uid('e')}));A.state.pages.splice(A.state.pageIndex+1,0,p);A.state.pageIndex++;A.state.selected=null;A.commit()};
 A.deletePage=()=>{if(A.state.pages.length<2)return false;A.snapshot();A.state.pages.splice(A.state.pageIndex,1);A.state.pageIndex=Math.min(A.state.pageIndex,A.state.pages.length-1);A.state.selected=null;A.commit();return true};
 A.deleteSelected=()=>{const pg=A.page();if(!pg.elements.some(e=>e.id===A.state.selected))return;A.snapshot();pg.elements=pg.elements.filter(e=>e.id!==A.state.selected);A.state.selected=null;A.commit()};
-A.duplicateSelected=()=>{const pg=A.page(),e=pg.elements.find(x=>x.id===A.state.selected);if(!e)return false;A.snapshot();const n={...A.copy(e),id:A.uid('e')};if(n.slotId){const s=A.emptySlot(pg);if(!s)return false;n.slotId=s.id}else{n.x+=18;n.y+=18}pg.elements.push(n);A.state.selected=n.id;A.commit();return true};
-A.autoLayout=()=>{A.snapshot();if(A.state.pages.some(p=>(p.templateSlots||[]).length)){const used=A.usedIds();for(const pg of A.state.pages)for(const slot of pg.templateSlots||[]){if(pg.elements.some(e=>e.slotId===slot.id))continue;const p=A.state.products.find(x=>!used.has(x.id));if(!p)break;pg.elements.push({id:A.uid('e'),productId:p.id,slotId:slot.id,highlight:0});used.add(p.id)}A.state.pageIndex=0;A.state.selected=null;A.commit();return'template'}const levels=new Map();for(const pg of A.state.pages)for(const e of pg.elements||[])levels.set(e.productId,Math.max(levels.get(e.productId)||0,+e.highlight||0));const groups=new Map();for(const p of A.state.products){const c=p.category||'SEM CATEGORIA';if(!groups.has(c))groups.set(c,[]);groups.get(c).push(p)}A.state.pages=[];for(const [cat,list0] of groups){const list=[...list0].sort((a,b)=>(levels.get(b.id)||0)-(levels.get(a.id)||0));let pg=A.newPage(cat);pg.category=cat;A.state.pages.push(pg);let cell=0;for(const p of list){if(cell===12){pg=A.newPage(cat+' '+(A.state.pages.filter(x=>x.category===cat).length+1));pg.category=cat;A.state.pages.push(pg);cell=0}const lv=levels.get(p.id)||0,col=cell%3,row=Math.floor(cell/3);pg.elements.push({id:A.uid('e'),productId:p.id,x:28+col*246,y:35+row*265,w:lv>=2?466:220,h:lv>=2?250:240,highlight:lv,fontFamily:'Segoe UI'});cell++}}if(!A.state.pages.length)A.state.pages=[A.newPage('Página 1')];A.state.pageIndex=0;A.state.selected=null;A.commit();return'category'};
+A.duplicateSelected=()=>{const pg=A.page(),e=pg.elements.find(x=>x.id===A.state.selected);if(!e)return false;const n={...A.copy(e),id:A.uid('e')};if(n.slotId){const s=A.emptySlot(pg);if(!s)return false;n.slotId=s.id}else{n.x+=18;n.y+=18}A.snapshot();pg.elements.push(n);A.state.selected=n.id;A.commit();return true};
+A.autoLayout=()=>{
+  A.snapshot();
+  if(A.state.pages.some(p=>(p.templateSlots||[]).length)){
+    const used=A.usedIds();
+    for(const pg of A.state.pages)for(const slot of pg.templateSlots||[]){if(pg.elements.some(e=>e.slotId===slot.id))continue;const p=A.state.products.find(x=>!used.has(x.id));if(!p)break;pg.elements.push({id:A.uid('e'),productId:p.id,slotId:slot.id,highlight:0});used.add(p.id)}
+    A.state.pageIndex=0;A.state.selected=null;A.commit();return'template';
+  }
+  const levels=new Map();for(const pg of A.state.pages)for(const e of pg.elements||[])levels.set(e.productId,Math.max(levels.get(e.productId)||0,+e.highlight||0));
+  const groups=new Map();for(const p of A.state.products){const c=p.category||'SEM CATEGORIA';if(!groups.has(c))groups.set(c,[]);groups.get(c).push(p)}
+  A.state.pages=[];
+  for(const [cat,list0] of groups){
+    const list=[...list0].sort((a,b)=>(levels.get(b.id)||0)-(levels.get(a.id)||0));let pg=A.newPage(cat);pg.category=cat;A.state.pages.push(pg);let cell=0;
+    for(const p of list){
+      let lv=levels.get(p.id)||0;
+      if(cell>=12){pg=A.newPage(cat+' '+(A.state.pages.filter(x=>x.category===cat).length+1));pg.category=cat;A.state.pages.push(pg);cell=0}
+      let col=cell%3,row=Math.floor(cell/3),wide=lv>=2&&col<2;
+      if(lv>=2&&col===2){cell++;if(cell>=12){pg=A.newPage(cat+' '+(A.state.pages.filter(x=>x.category===cat).length+1));pg.category=cat;A.state.pages.push(pg);cell=0}col=cell%3;row=Math.floor(cell/3);wide=true}
+      pg.elements.push({id:A.uid('e'),productId:p.id,x:28+col*246,y:35+row*265,w:wide?466:220,h:wide?250:240,highlight:lv,fontFamily:'Segoe UI'});
+      cell+=wide?2:1;
+    }
+  }
+  if(!A.state.pages.length)A.state.pages=[A.newPage('Página 1')];A.state.pageIndex=0;A.state.selected=null;A.commit();return'category';
+};
 })();
