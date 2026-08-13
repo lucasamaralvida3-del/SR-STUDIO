@@ -1,4 +1,4 @@
-name: Publicar SR Studio Beta 7 - Hotfix Encartes
+name: Publicar SR Studio Beta 8 - Encartes Local
 
 on:
   push:
@@ -13,42 +13,38 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Baixar Beta 6.1 corrigida
+
+      - name: Baixar Beta 7
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
+          rm -rf work dist
           mkdir -p work dist
-          gh release download v4.0.5-hybrid.beta6.1 -p 'SR_STUDIO_4.0.5_BETA6.1.zip' -D dist
-          unzip -q dist/SR_STUDIO_4.0.5_BETA6.1.zip -d work
-      - name: Promover hotfix para Beta 7
+          gh release download v4.0.6-hybrid.beta7 -p 'SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip -d work
+
+      - name: Aplicar Beta 8
         shell: bash
         run: |
           set -euo pipefail
+          cp staging/beta8/Encartes3Engine.py work/files/Encartes3Engine.py
           python - <<'PY'
-          import json,pathlib
-          p=pathlib.Path('work/files')
-          v=json.load(open(p/'version.json',encoding='utf-8'))
-          v['distribution_version']='4.0.6-hybrid.beta7'
-          v['product_version']='4.0.6'
-          v['release_label']='Beta 7'
-          v['updated_at']='2026-08-13T16:24:00-03:00'
+          import json
+          from pathlib import Path
+          p=Path('work/files')
+          v=json.loads((p/'version.json').read_text(encoding='utf-8'))
+          v.update(distribution_version='4.0.7-hybrid.beta8',product_version='4.0.7',release_label='Beta 8',updated_at='2026-08-13T16:34:00-03:00')
           (p/'version.json').write_text(json.dumps(v,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
-          (p/'VERSAO.txt').write_text('SR Studio 4.0.6 • Beta 7\nHotfix do Studio de Encartes: corrige o carregamento da aba e mantém o novo editor iniciado na Beta 6.\n',encoding='utf-8')
-          h=p/'Encartes3_index.html'
-          text=h.read_text(encoding='utf-8')
-          text=text.replace('SR Studio 4.0.5 — Encartes Intelligence','SR Studio 4.0.6 — Encartes Intelligence')
-          text=text.replace('SR Studio 4.0.5 • Beta 6.1','SR Studio 4.0.6 • Beta 7')
-          text=text.replace('Encartes Intelligence 4.0.5 pronto','Encartes Intelligence 4.0.6 pronto')
+          (p/'VERSAO.txt').write_text('SR Studio 4.0.7 • Beta 8\nCorrige a aba vazia do Studio de Encartes e ativa o editor local-first.\n',encoding='utf-8')
+          h=p/'Encartes3_index.html'; text=h.read_text(encoding='utf-8')
+          text=text.replace('SR Studio 4.0.6 — Encartes Intelligence','SR Studio 4.0.7 — Encartes Studio').replace('SR Studio 4.0.6 • Beta 7','SR Studio 4.0.7 • Beta 8').replace('Encartes Intelligence 4.0.6 pronto','Encartes Studio 4.0.7 pronto')
           h.write_text(text,encoding='utf-8')
-          j=p/'Encartes4_beta6.js'
-          js=j.read_text(encoding='utf-8')
-          js=js.replace('BETA 6 · NOVO ENCARTES','BETA 7 · NOVO ENCARTES')
-          js=js.replace('4.0.5 • BETA 6','4.0.6 • BETA 7')
-          j.write_text(js,encoding='utf-8')
+          j=p/'Encartes4_beta6.js'; js=j.read_text(encoding='utf-8').replace('BETA 7 · NOVO ENCARTES','BETA 8 · NOVO ENCARTES').replace('4.0.6 • BETA 7','4.0.7 • BETA 8'); j.write_text(js,encoding='utf-8')
           PY
-      - name: Validar Beta 7
+
+      - name: Validar Beta 8
         shell: bash
         run: |
           set -euo pipefail
@@ -57,23 +53,23 @@ jobs:
           node --check work/files/Encartes4_beta6.js
           python - <<'PY'
           from pathlib import Path
-          import json,re
+          import importlib.util,json,re,urllib.request
           p=Path('work/files')
-          v=json.load(open(p/'version.json',encoding='utf-8'))
-          assert v['distribution_version']=='4.0.6-hybrid.beta7'
-          assert v['release_label']=='Beta 7'
+          v=json.loads((p/'version.json').read_text(encoding='utf-8'))
+          assert v['distribution_version']=='4.0.7-hybrid.beta8'
           h=(p/'Encartes3_index.html').read_text(encoding='utf-8')
-          assert 'href="Encartes3_style.css"' in h
-          assert 'src="Encartes3_app.js"' in h
-          assert 'src="Encartes4_beta6.js"' in h
+          assert 'href="Encartes3_style.css"' in h and 'src="Encartes3_app.js"' in h and 'src="Encartes4_beta6.js"' in h
           refs=re.findall(r'(?:href|src)="([^"]+)"',h)
-          missing=[x for x in refs if not x.startswith(('http:','https:','data:','#')) and not (p/x).exists()]
-          assert not missing, missing
-          assert 'Beta 7' in h
-          assert 'BETA 7 · NOVO ENCARTES' in (p/'Encartes4_beta6.js').read_text(encoding='utf-8')
-          print('Beta 7 validada com referencias locais OK')
+          assert not [x for x in refs if not x.startswith(('http:','https:','data:','#')) and not (p/x).exists()]
+          engine=(p/'Encartes3Engine.py').read_text(encoding='utf-8')
+          assert 'pad=28' not in engine and "ThreadingHTTPServer(('127.0.0.1', 0)" in engine
+          spec=importlib.util.spec_from_file_location('Encartes3EngineBeta8',p/'Encartes3Engine.py'); mod=importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+          url=mod.local_editor_url(); body=urllib.request.urlopen(url,timeout=3).read().decode('utf-8','replace')
+          assert url.startswith('http://127.0.0.1:') and 'Encartes4_beta6.js' in body
+          print('Editor local validado:',url)
           PY
-      - name: Empacotar e publicar Beta 7
+
+      - name: Empacotar e publicar Beta 8
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -82,25 +78,24 @@ jobs:
           find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
           python - <<'PY'
           import pathlib,shutil,hashlib,json
-          out=pathlib.Path('dist/SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip')
+          out=pathlib.Path('dist/SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip')
           shutil.make_archive(str(out.with_suffix('')),'zip','work')
-          raw=out.read_bytes()
-          pathlib.Path('dist/result.json').write_text(json.dumps({'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)}),encoding='utf-8')
+          raw=out.read_bytes(); pathlib.Path('dist/result.json').write_text(json.dumps({'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)}),encoding='utf-8')
           PY
-          gh release create v4.0.6-hybrid.beta7 dist/SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip --prerelease --title 'SR Studio 4.0.6 Beta 7 - Hotfix Encartes' --notes 'Beta 7: corrige o carregamento da aba Studio de Encartes. Publicada com número inteiro para manter compatibilidade com o fluxo de atualização Beta do SR Studio.'
-      - name: Ativar canal Beta 7
+          gh release create v4.0.7-hybrid.beta8 dist/SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip --prerelease --title 'SR Studio 4.0.7 Beta 8 - Encartes Local' --notes 'Beta 8: corrige a aba vazia causada por pad=28 no Tkinter e substitui o antigo Encartes Cloud pelo editor local-first servido somente em 127.0.0.1.'
+
+      - name: Ativar canal Beta 8
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           import json,pathlib
-          z=json.load(open('dist/result.json',encoding='utf-8'))
-          repo='${{ github.repository }}'
-          m={'format':'SRSTUDIO_HYBRID_BUNDLE_1','product':'SR Studio Desktop Core','channel':'beta','version':'4.0.6-hybrid.beta7','created_at':'2026-08-13T16:24:00-03:00','min_launcher_version':'4.0.0-hybrid.pro1.1','bundle':{'url':f'https://github.com/{repo}/releases/download/v4.0.6-hybrid.beta7/SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip','sha256':z['sha256'],'size':z['size'],'member_prefix':'files/'},'repair':{'mode':'local_hash_catalog','full_check_every_days':7},'delete':[],'notes':'Beta 7: hotfix de carregamento do Studio de Encartes, mantendo o novo editor e a regra de imagens oficiais manuais.'}
+          z=json.load(open('dist/result.json',encoding='utf-8')); repo='${{ github.repository }}'
+          m={'format':'SRSTUDIO_HYBRID_BUNDLE_1','product':'SR Studio Desktop Core','channel':'beta','version':'4.0.7-hybrid.beta8','created_at':'2026-08-13T16:34:00-03:00','min_launcher_version':'4.0.0-hybrid.pro1.1','bundle':{'url':f'https://github.com/{repo}/releases/download/v4.0.7-hybrid.beta8/SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip','sha256':z['sha256'],'size':z['size'],'member_prefix':'files/'},'repair':{'mode':'local_hash_catalog','full_check_every_days':7},'delete':[],'notes':'Beta 8: corrige a aba vazia do Encartes e ativa o editor local-first. Banco de Imagens permanece manual/oficial.'}
           pathlib.Path('beta/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
           PY
           git config user.name 'SR Studio Update Bot'
           git config user.email 'actions@users.noreply.github.com'
           git add beta/manifest.json
-          git commit -m 'Ativa SR Studio 4.0.6 Beta 7'
+          git commit -m 'Ativa SR Studio 4.0.7 Beta 8'
           git push
