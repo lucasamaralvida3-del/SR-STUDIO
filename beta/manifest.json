@@ -1,11 +1,20 @@
 {
-  "format": "SRSTUDIO_HYBRID_MANIFEST_2",
+  "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.0-hybrid.bootstrap",
-  "created_at": "2026-08-13T09:53:00-03:00",
-  "min_launcher_version": "4.0.0-hybrid.base2",
-  "files": [],
+  "version": "4.0.0-hybrid.beta1",
+  "created_at": "2026-08-13T10:12:00-03:00",
+  "min_launcher_version": "4.0.0-hybrid.base2.2",
+  "bundle": {
+    "url": "https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip",
+    "sha256": "dbe4ef57bae0bafad7e3f9f908ebda642afa89d9a8ca719933cf01bfdc423b32",
+    "size": 2215825,
+    "member_prefix": "files/"
+  },
+  "repair": {
+    "mode": "local_hash_catalog",
+    "full_check_every_days": 7
+  },
   "delete": [],
-  "notes": "Canal Beta preparado. O pacote completo sera ativado apos o upload do bundle publico."
+  "notes": "Beta 1 ativado. O Launcher valida o ZIP por SHA-256, instala todos os arquivos e gera localmente o catalogo de integridade para reparos futuros."
 }
