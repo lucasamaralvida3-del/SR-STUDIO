@@ -6,7 +6,7 @@
   "created_at": "2026-08-13T09:53:00-03:00",
   "min_launcher_version": "4.0.0-hybrid.base2.1",
   "bundle": {
-    "url": "https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/packages/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip",
+    "url": "https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip",
     "sha256": "dbe4ef57bae0bafad7e3f9f908ebda642afa89d9a8ca719933cf01bfdc423b32",
     "member_prefix": "files/"
   },
