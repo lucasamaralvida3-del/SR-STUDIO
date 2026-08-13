@@ -1,0 +1,124 @@
+name: Publicar SR Studio Beta por Transformacao
+
+on:
+  push:
+    paths:
+      - 'staging/beta6/READY_TRANSFORM.json'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Baixar e validar Beta base
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist work
+          python - <<'PY'
+          import json,pathlib,hashlib,urllib.request
+          r=json.load(open('staging/beta6/READY_TRANSFORM.json',encoding='utf-8'))
+          urllib.request.urlretrieve(r['base_url'],'dist/base.zip')
+          raw=pathlib.Path('dist/base.zip').read_bytes()
+          got=hashlib.sha256(raw).hexdigest()
+          assert got.lower()==r['base_sha256'].lower(), (got,r['base_sha256'])
+          assert len(raw)==int(r['base_size']), (len(raw),r['base_size'])
+          print('Base validada:',got,len(raw))
+          PY
+          unzip -q dist/base.zip -d work
+
+      - name: Aplicar Beta 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          python staging/beta6/transform_beta6.py work staging/beta6
+
+      - name: Validar Beta 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
+          find work -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.xlsx' -o -name '*.xls' -o -name '*.csv' \) -delete
+          python -m compileall -q work/files
+          node --check work/files/Encartes3_app.js
+          node --check work/files/Encartes4_beta6.js
+          python - <<'PY'
+          import json,pathlib
+          r=json.load(open('staging/beta6/READY_TRANSFORM.json',encoding='utf-8'))
+          v=json.load(open('work/files/version.json',encoding='utf-8'))
+          rep=json.load(open('work/files/beta6_report.json',encoding='utf-8'))
+          assert v['distribution_version']==r['distribution_version']
+          assert v['product_version']==r['product_version']
+          assert v['release_label']==r['release_label']
+          assert rep['html_targets'], 'Nenhum HTML recebeu o editor Beta 6'
+          assert pathlib.Path('work/files/Encartes4_beta6.js').stat().st_size > 10000
+          print('Beta 6 validada:',v['distribution_version'],rep['html_targets'])
+          PY
+
+      - name: Gerar bundle final
+        shell: bash
+        run: |
+          set -euo pipefail
+          find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
+          python - <<'PY'
+          import json,pathlib,shutil,hashlib
+          r=json.load(open('staging/beta6/READY_TRANSFORM.json',encoding='utf-8'))
+          out=pathlib.Path('dist')/r['file_name']
+          shutil.make_archive(str(out.with_suffix('')),'zip','work')
+          raw=out.read_bytes()
+          pathlib.Path('dist/result.json').write_text(json.dumps({'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)}),encoding='utf-8')
+          print(out, len(raw))
+          PY
+
+      - name: Publicar Release Beta 6
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$(python - <<'PY'
+          import json,shlex
+          r=json.load(open('staging/beta6/READY_TRANSFORM.json',encoding='utf-8'))
+          for k in ('tag','title','file_name','notes'): print(k.upper()+'='+shlex.quote(str(r[k])))
+          PY
+          )"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "dist/$FILE_NAME" --clobber
+          else
+            gh release create "$TAG" "dist/$FILE_NAME" --prerelease --title "$TITLE" --notes "$NOTES"
+          fi
+
+      - name: Ativar manifesto Beta 6
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib
+          r=json.load(open('staging/beta6/READY_TRANSFORM.json',encoding='utf-8'))
+          z=json.load(open('dist/result.json',encoding='utf-8'))
+          repo='${{ github.repository }}'
+          m={'format':'SRSTUDIO_HYBRID_BUNDLE_1','product':'SR Studio Desktop Core','channel':'beta','version':r['distribution_version'],'created_at':r['created_at'],'min_launcher_version':r['min_launcher_version'],'bundle':{'url':f"https://github.com/{repo}/releases/download/{r['tag']}/{r['file_name']}",'sha256':z['sha256'],'size':z['size'],'member_prefix':'files/'},'repair':{'mode':'local_hash_catalog','full_check_every_days':7},'delete':[],'notes':r['notes']}
+          pathlib.Path('beta/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name "SR Studio Update Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add beta/manifest.json
+          git commit -m "Ativa SR Studio 4.0.5 Beta 6"
+          git push
+
+      - name: Limpar staging Beta 6
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --rebase
+          git rm -r -f staging/beta6 || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Limpa staging publicado da Beta 6"
+            git push
+          fi
