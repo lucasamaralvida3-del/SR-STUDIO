@@ -1,0 +1,85 @@
+name: Publicar SR Studio Beta Patch Chunks
+
+on:
+  push:
+    paths:
+      - 'staging/beta/READY_PATCH_CHUNKS.json'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reconstruir e validar Beta
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist work
+          python - <<'PY'
+          import json,pathlib,base64,hashlib,urllib.request,glob
+          r=json.load(open('staging/beta/READY_PATCH_CHUNKS.json',encoding='utf-8'))
+          chunks=sorted(glob.glob('staging/beta/patch.*.b64'))
+          if not chunks: raise SystemExit('Patch ausente')
+          encoded=''.join(pathlib.Path(p).read_text(encoding='ascii').strip() for p in chunks)
+          raw=base64.b64decode(encoded)
+          if hashlib.sha256(raw).hexdigest().lower()!=r['patch_sha256'].lower(): raise SystemExit('SHA patch invalido')
+          if len(raw)!=int(r['patch_size']): raise SystemExit('Tamanho patch invalido')
+          pathlib.Path('dist/update.patch.xz').write_bytes(raw)
+          urllib.request.urlretrieve(r['base_url'],'dist/base.zip')
+          base=pathlib.Path('dist/base.zip').read_bytes()
+          if hashlib.sha256(base).hexdigest().lower()!=r['base_sha256'].lower(): raise SystemExit('SHA base invalido')
+          print('Base e patch validados')
+          PY
+          unxz -f dist/update.patch.xz
+          unzip -q dist/base.zip -d work
+          (cd work && patch -p1 --batch --forward < ../dist/update.patch)
+          python -m compileall -q work/files
+          test -f work/files/SRIAEngine.py
+          python - <<'PY'
+          import json
+          v=json.load(open('work/files/version.json',encoding='utf-8'))
+          assert v['product_version']=='4.0.2' and v['release_label']=='Beta 3'
+          PY
+      - name: Gerar bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib,shutil,hashlib
+          r=json.load(open('staging/beta/READY_PATCH_CHUNKS.json',encoding='utf-8'))
+          out=pathlib.Path('dist')/r['file_name']
+          shutil.make_archive(str(out.with_suffix('')),'zip','work')
+          raw=out.read_bytes()
+          pathlib.Path('dist/result.json').write_text(json.dumps({'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)}),encoding='utf-8')
+          PY
+      - name: Publicar Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$(python - <<'PY'
+          import json,shlex
+          r=json.load(open('staging/beta/READY_PATCH_CHUNKS.json',encoding='utf-8'))
+          for k in ('tag','title','file_name','notes'): print(k.upper()+'='+shlex.quote(str(r.get(k,''))))
+          PY
+          )"
+          if gh release view "$TAG" >/dev/null 2>&1; then gh release upload "$TAG" "dist/$FILE_NAME" --clobber; else gh release create "$TAG" "dist/$FILE_NAME" --prerelease --title "$TITLE" --notes "$NOTES"; fi
+      - name: Ativar Beta 3
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json,pathlib
+          r=json.load(open('staging/beta/READY_PATCH_CHUNKS.json',encoding='utf-8')); z=json.load(open('dist/result.json',encoding='utf-8')); repo='${{ github.repository }}'
+          m={'format':'SRSTUDIO_HYBRID_BUNDLE_1','product':'SR Studio Desktop Core','channel':'beta','version':r['distribution_version'],'created_at':r['created_at'],'min_launcher_version':r['min_launcher_version'],'bundle':{'url':f"https://github.com/{repo}/releases/download/{r['tag']}/{r['file_name']}",'sha256':z['sha256'],'size':z['size'],'member_prefix':'files/'},'repair':{'mode':'local_hash_catalog','full_check_every_days':7},'delete':[],'notes':r['notes']}
+          pathlib.Path('beta/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name "SR Studio Update Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add beta/manifest.json
+          git commit -m "Ativa SR Studio 4.0.2 Beta 3"
+          git push
