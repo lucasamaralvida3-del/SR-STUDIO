@@ -1,5 +1,5 @@
 from __future__ import annotations
-import base64, glob, json, lzma, os, pathlib, sys
+import glob, json, os, pathlib, sys
 
 root = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else 'work').resolve()
 staging = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else 'staging/beta6').resolve()
@@ -20,10 +20,10 @@ version_path.write_text(json.dumps(version, ensure_ascii=False, indent=2)+'\n', 
     encoding='utf-8'
 )
 
-encoded=''.join(pathlib.Path(p).read_text(encoding='ascii').strip() for p in sorted(glob.glob(str(staging/'editor.*.xz.b64'))))
-if not encoded: raise SystemExit('Chunks do editor Beta 6 ausentes')
+parts=sorted(glob.glob(str(staging/'editor.*.js.part')))
+if not parts: raise SystemExit('Partes do editor Beta 6 ausentes')
 dst = files / 'Encartes4_beta6.js'
-dst.write_bytes(lzma.decompress(base64.b64decode(encoded)))
+dst.write_text(''.join(pathlib.Path(p).read_text(encoding='utf-8') for p in parts), encoding='utf-8')
 marker = '<!-- SR_STUDIO_BETA6_ENCARTES -->'
 targets=[]
 for html in files.rglob('*.html'):
