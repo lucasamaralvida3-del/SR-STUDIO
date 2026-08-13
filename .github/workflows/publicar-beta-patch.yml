@@ -1,0 +1,143 @@
+name: Publicar SR Studio Beta por Patch
+
+on:
+  push:
+    paths:
+      - 'staging/beta/READY_PATCH.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruir Beta a partir da base validada
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist work
+          python - <<'PY'
+          import json, pathlib, base64, hashlib, urllib.request
+          r=json.load(open('staging/beta/READY_PATCH.json',encoding='utf-8'))
+          raw=base64.b64decode(pathlib.Path('staging/beta/patch.xz.b64').read_text(encoding='ascii'))
+          got=hashlib.sha256(raw).hexdigest()
+          if got.lower()!=str(r['patch_sha256']).lower():
+              raise SystemExit(f'Patch SHA256 invalido: {got}')
+          if len(raw)!=int(r['patch_size']):
+              raise SystemExit(f'Patch tamanho invalido: {len(raw)}')
+          pathlib.Path('dist/update.patch.xz').write_bytes(raw)
+          urllib.request.urlretrieve(r['base_url'],'dist/base.zip')
+          base=pathlib.Path('dist/base.zip').read_bytes()
+          if r.get('base_sha256'):
+              bgot=hashlib.sha256(base).hexdigest()
+              if bgot.lower()!=str(r['base_sha256']).lower():
+                  raise SystemExit(f'Base SHA256 invalido: {bgot}')
+          print('Patch e base validados.')
+          PY
+          unxz -f dist/update.patch.xz
+          unzip -q dist/base.zip -d work
+          (cd work && patch -p1 --batch --forward < ../dist/update.patch)
+
+      - name: Validar codigo reconstruido
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m compileall -q work/files
+          test -f work/files/SR_Studio_Gerador.py
+          test -f work/files/SRIAEngine.py
+          test -f work/files/version.json
+          python - <<'PY'
+          import json
+          v=json.load(open('work/files/version.json',encoding='utf-8'))
+          assert v['product_version']=='4.0.2'
+          assert v['release_label']=='Beta 3'
+          print('SR IA e versao Beta 3 validadas.')
+          PY
+
+      - name: Gerar bundle final e metadados
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib, shutil, hashlib
+          r=json.load(open('staging/beta/READY_PATCH.json',encoding='utf-8'))
+          out=pathlib.Path('dist')/r['file_name']
+          base=str(out.with_suffix(''))
+          shutil.make_archive(base,'zip','work')
+          raw=out.read_bytes()
+          result={'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)}
+          pathlib.Path('dist/result.json').write_text(json.dumps(result),encoding='utf-8')
+          print(f"Bundle final: {out} | {result['size']} bytes | {result['sha256']}")
+          PY
+
+      - name: Publicar Release Beta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          eval "$(python - <<'PY'
+          import json,shlex
+          r=json.load(open('staging/beta/READY_PATCH.json',encoding='utf-8'))
+          for k in ('tag','title','file_name','notes'):
+              print(k.upper()+'='+shlex.quote(str(r.get(k,''))))
+          PY
+          )"
+          FILE="dist/$FILE_NAME"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber
+          else
+            gh release create "$TAG" "$FILE" --prerelease --title "$TITLE" --notes "$NOTES"
+          fi
+
+      - name: Ativar manifesto Beta somente depois da Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, pathlib
+          r=json.load(open('staging/beta/READY_PATCH.json',encoding='utf-8'))
+          result=json.load(open('dist/result.json',encoding='utf-8'))
+          repo='${{ github.repository }}'
+          url=f"https://github.com/{repo}/releases/download/{r['tag']}/{r['file_name']}"
+          manifest={
+            'format':'SRSTUDIO_HYBRID_BUNDLE_1',
+            'product':'SR Studio Desktop Core',
+            'channel':'beta',
+            'version':r['distribution_version'],
+            'created_at':r['created_at'],
+            'min_launcher_version':r.get('min_launcher_version','4.0.0-hybrid.pro1'),
+            'bundle':{
+              'url':url,
+              'sha256':result['sha256'],
+              'size':int(result['size']),
+              'member_prefix':'files/'
+            },
+            'repair':{'mode':'local_hash_catalog','full_check_every_days':7},
+            'delete':r.get('delete',[]),
+            'notes':r.get('notes','')
+          }
+          pathlib.Path('beta/manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name "SR Studio Update Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add beta/manifest.json
+          git commit -m "Ativa SR Studio 4.0.2 Beta 3"
+          git push
+
+      - name: Limpar staging publicado
+        if: success()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git pull --rebase
+          git rm -f staging/beta/patch.xz.b64 staging/beta/READY_PATCH.json || true
+          if ! git diff --cached --quiet; then
+            git commit -m "Limpa staging Beta 3"
+            git push
+          fi
