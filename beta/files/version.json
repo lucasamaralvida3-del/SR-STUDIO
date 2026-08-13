@@ -1,0 +1,10 @@
+{
+  "product": "SR Studio",
+  "product_version": "4.0.3",
+  "distribution_version": "4.0.3-hybrid.beta4",
+  "channel": "beta",
+  "release_label": "Beta 4",
+  "update_test": true,
+  "feature": "AutoUpdate visivel + SR IA OpenAI",
+  "notes": "Beta 4 de teste: confirma a verificacao automatica na abertura e mantem a SR IA da Beta 3."
+}
