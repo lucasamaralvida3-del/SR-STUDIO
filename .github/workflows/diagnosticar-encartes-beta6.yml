@@ -1,9 +1,8 @@
-name: Diagnosticar Encartes Beta 7
+name: Diagnosticar XLSX Encartes Beta 8
 
 on:
   push:
     paths:
-      - 'diagnostic/encartes-beta6.json'
       - '.github/workflows/diagnosticar-encartes-beta6.yml'
 
 permissions:
@@ -14,29 +13,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Inspecionar painel Encartes da Beta 7
+      - name: Inspecionar suporte XLSX da Beta 8
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf /tmp/sr7 && mkdir -p /tmp/sr7
-          gh release download v4.0.6-hybrid.beta7 -p 'SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip' -D /tmp/sr7
-          unzip -q /tmp/sr7/SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip -d /tmp/sr7/work
-          echo '=== ENCARTES3ENGINE.PY COMPLETO ==='
-          cat /tmp/sr7/work/files/Encartes3Engine.py
-          echo '=== NAVIGATE / CLEAR_CONTENT ==='
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('/tmp/sr7/work/files/SR_Studio_Gerador.py')
-          lines=p.read_text(encoding='utf-8',errors='replace').splitlines()
-          for key in ('def navigate(', 'def clear_content('):
-              for i,line in enumerate(lines,1):
-                  if key in line:
-                      a=max(1,i-8); b=min(len(lines),i+85)
-                      print(f'--- {key} {a}:{b} ---')
-                      for n in range(a,b+1): print(f'{n:05d}: {lines[n-1]}')
-                      break
-          PY
-          echo '=== PALETAS ==='
-          grep -RniE 'APP_BG|CARD|BLUE2|MUTED|TEXT' /tmp/sr7/work/files/ui_v2.py | head -n 100 || true
+          rm -rf /tmp/sr8 && mkdir -p /tmp/sr8
+          gh release download v4.0.7-hybrid.beta8 -p 'SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip' -D /tmp/sr8
+          unzip -q /tmp/sr8/SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip -d /tmp/sr8/work
+          echo '=== HTML ENCARTES ==='
+          grep -nEi 'script|xlsx|sheet' /tmp/sr8/work/files/Encartes3_index.html || true
+          echo '=== ARQUIVOS XLSX/SHEET ==='
+          find /tmp/sr8/work/files -type f | grep -Ei 'xlsx|sheet' || true
+          echo '=== IMPORTADOR NOVO EDITOR ==='
+          grep -nE 'window\.XLSX|XLSX\.read|\.xlsx|importFile' /tmp/sr8/work/files/Encartes4_beta6.js || true
+          echo '=== IMPORTADOR LEGADO ==='
+          grep -nEi 'xlsx|sheet|FileReader|arrayBuffer' /tmp/sr8/work/files/Encartes3_app.js | head -n 120 || true
