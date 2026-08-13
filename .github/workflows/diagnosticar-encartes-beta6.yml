@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Baixar Beta 7 e inspecionar integração da aba
+      - name: Inspecionar painel Encartes da Beta 7
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -23,40 +23,20 @@ jobs:
           rm -rf /tmp/sr7 && mkdir -p /tmp/sr7
           gh release download v4.0.6-hybrid.beta7 -p 'SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip' -D /tmp/sr7
           unzip -q /tmp/sr7/SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip -d /tmp/sr7/work
-          echo '=== ARQUIVOS ENCARTES ==='
-          find /tmp/sr7/work/files -maxdepth 1 -type f -iname '*encart*' -printf '%f\n' | sort
-          echo '=== REFERENCIAS A ENCARTES NO APP PRINCIPAL ==='
-          grep -RniE 'Encartes Studio|Encartes3_index|encartes3|encartes_cloud|127\.0\.0\.1:3000|webview|iframe|HTMLLabel|HtmlFrame|tkhtml|cef|browser' /tmp/sr7/work/files --include='*.py' --include='*.json' | head -n 500 || true
-          echo '=== FUNCOES/CLASSES COM ENCARTES ==='
-          grep -RniE '^\s*(def|class) .*encart|encart.*=' /tmp/sr7/work/files --include='*.py' | head -n 300 || true
-          echo '=== TRECHOS SR_STUDIO_GERADOR ==='
+          echo '=== ENCARTES3ENGINE.PY COMPLETO ==='
+          cat /tmp/sr7/work/files/Encartes3Engine.py
+          echo '=== NAVIGATE / CLEAR_CONTENT ==='
           python - <<'PY'
           from pathlib import Path
           p=Path('/tmp/sr7/work/files/SR_Studio_Gerador.py')
           lines=p.read_text(encoding='utf-8',errors='replace').splitlines()
-          keys=('Encartes Studio','Encartes3_index','encartes3','encartes_cloud','127.0.0.1:3000','webview','browser')
-          seen=[]
-          for i,line in enumerate(lines,1):
-              if any(k.lower() in line.lower() for k in keys):
-                  a=max(1,i-18); b=min(len(lines),i+35)
-                  if any(a<=x<=b for x in seen): continue
-                  print(f'--- {a}:{b} ---')
-                  for n in range(a,b+1): print(f'{n:05d}: {lines[n-1]}')
-                  seen.extend(range(a,b+1))
+          for key in ('def navigate(', 'def clear_content('):
+              for i,line in enumerate(lines,1):
+                  if key in line:
+                      a=max(1,i-8); b=min(len(lines),i+85)
+                      print(f'--- {key} {a}:{b} ---')
+                      for n in range(a,b+1): print(f'{n:05d}: {lines[n-1]}')
+                      break
           PY
-          echo '=== TRECHOS UI_V2 ==='
-          python - <<'PY'
-          from pathlib import Path
-          p=Path('/tmp/sr7/work/files/ui_v2.py')
-          if not p.exists(): raise SystemExit
-          lines=p.read_text(encoding='utf-8',errors='replace').splitlines()
-          keys=('Encartes Studio','Encartes3_index','encartes3','encartes_cloud','127.0.0.1:3000','webview','browser')
-          seen=[]
-          for i,line in enumerate(lines,1):
-              if any(k.lower() in line.lower() for k in keys):
-                  a=max(1,i-18); b=min(len(lines),i+35)
-                  if any(a<=x<=b for x in seen): continue
-                  print(f'--- {a}:{b} ---')
-                  for n in range(a,b+1): print(f'{n:05d}: {lines[n-1]}')
-                  seen.extend(range(a,b+1))
-          PY
+          echo '=== PALETAS ==='
+          grep -RniE 'APP_BG|CARD|BLUE2|MUTED|TEXT' /tmp/sr7/work/files/ui_v2.py | head -n 100 || true
