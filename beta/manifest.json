@@ -2,13 +2,13 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.8-hybrid.beta9",
-  "created_at": "2026-08-13T16:46:00-03:00",
+  "version": "4.0.9-hybrid.beta10",
+  "created_at": "2026-08-13T17:05:00-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.8-hybrid.beta9/SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip",
-    "sha256": "b099775da55422f6d7d7d17b908a35180350e583f906771968013b84649085fe",
-    "size": 2574927,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.9-hybrid.beta10/SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip",
+    "sha256": "b17ed08adcd127cb191e777540a75d6e253cc3c1a7ed7a1a5785215200d9fc6a",
+    "size": 2577365,
     "member_prefix": "files/"
   },
   "repair": {
@@ -16,5 +16,5 @@
     "full_check_every_days": 7
   },
   "delete": [],
-  "notes": "Beta 9: importação XLSX local corrigida no Studio de Encartes."
+  "notes": "Beta 10: Encartes consulta automaticamente o Banco de Produtos durante a importação de planilhas."
 }
