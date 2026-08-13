@@ -1,4 +1,4 @@
-name: Extrair Banco Produtos Beta 9
+name: Extrair Encartes Beta 10
 on:
   push:
     paths: ['.github/workflows/extrair-banco-produtos-beta9.yml']
@@ -9,20 +9,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Baixar Beta 9
+      - name: Baixar Beta 10
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p /tmp/sr9/out /tmp/sr9/work
-          gh release download v4.0.8-hybrid.beta9 -p 'SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip' -D /tmp/sr9
-          unzip -q /tmp/sr9/SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip -d /tmp/sr9/work
-          cp /tmp/sr9/work/files/SRStudio21.py /tmp/sr9/out/
-          cp /tmp/sr9/work/files/ProductOrganizer.py /tmp/sr9/out/
-          cp /tmp/sr9/work/files/PromotionBuilder.py /tmp/sr9/out/
-          cp /tmp/sr9/work/files/Encartes3Engine.py /tmp/sr9/out/
-          cp /tmp/sr9/work/files/Encartes4_beta6.js /tmp/sr9/out/
+          rm -rf /tmp/sr10 && mkdir -p /tmp/sr10/out /tmp/sr10/work
+          gh release download v4.0.9-hybrid.beta10 -p 'SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip' -D /tmp/sr10
+          unzip -q /tmp/sr10/SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip -d /tmp/sr10/work
+          for f in Encartes3Engine.py Encartes3_index.html Encartes3_style.css Encartes3_app.js Encartes4_beta6.js EncartesDBBridge.py version.json SR_Studio_Gerador.py SRStudio21.py ProductOrganizer.py; do
+            test -f "/tmp/sr10/work/files/$f" && cp "/tmp/sr10/work/files/$f" /tmp/sr10/out/
+          done
       - uses: actions/upload-artifact@v4
         with:
-          name: banco-produtos-beta9
-          path: /tmp/sr9/out
-# run 2
+          name: encartes-beta10
+          path: /tmp/sr10/out
