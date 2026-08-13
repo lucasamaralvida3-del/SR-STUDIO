@@ -1,10 +1,20 @@
 {
-  "format": "SRSTUDIO_REPOSITORY_1",
-  "product": "SR Studio 4.0 Hybrid",
+  "format": "SRSTUDIO_HYBRID_BUNDLE_1",
+  "product": "SR Studio Desktop Core",
   "channel": "stable",
-  "version": "4.0.0",
-  "published_at": "2026-08-13T09:44:00-03:00",
-  "minimum_launcher": "4.0.0",
-  "notes": "Canal Stable inicial. Aguardando publicacao do primeiro pacote completo do Desktop Core.",
-  "files": []
+  "version": "4.0.0-hybrid.stable1",
+  "created_at": "2026-08-13T10:36:00-03:00",
+  "min_launcher_version": "4.0.0-hybrid.base2.3",
+  "bundle": {
+    "url": "https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip",
+    "sha256": "dbe4ef57bae0bafad7e3f9f908ebda642afa89d9a8ca719933cf01bfdc423b32",
+    "size": 2215825,
+    "member_prefix": "files/"
+  },
+  "repair": {
+    "mode": "local_hash_catalog",
+    "full_check_every_days": 7
+  },
+  "delete": [],
+  "notes": "Stable 1 promovido a partir do Beta 1 validado. Instalacao e reparo por bundle SHA-256."
 }
