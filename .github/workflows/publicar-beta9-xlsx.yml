@@ -1,9 +1,8 @@
-name: Publicar SR Studio Beta 10 Banco Produtos
+name: Publicar SR Studio Beta 11 Novo Encartes
 
 on:
   push:
     paths:
-      - 'staging/beta10/READY.json'
       - '.github/workflows/publicar-beta9-xlsx.yml'
 
 permissions:
@@ -14,33 +13,80 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Montar e validar Beta 10
+
+      - name: Montar Beta 11 sobre Beta 10
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
           rm -rf work dist && mkdir -p work dist
-          gh release download v4.0.8-hybrid.beta9 -p 'SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip' -D dist
-          unzip -q dist/SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip -d work
-          python staging/beta10/build_beta10.py work
+          gh release download v4.0.9-hybrid.beta10 -p 'SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip -d work
+          python staging/beta11/assemble.py
+
+      - name: Validar novo Encartes
+        shell: bash
+        run: |
+          set -euo pipefail
           python -m compileall -q work/files
-          node --check work/files/Encartes3_app.js
-          node --check work/files/Encartes4_beta6.js
+          node --check work/files/Encartes5_beta11.js
           test -s work/files/xlsx.full.min.js
-          python staging/beta10/validate_beta10.py work
-      - name: Publicar Beta 10
+          test -s work/files/Encartes11.css
+          test ! -e work/files/Encartes3_app.js
+          test ! -e work/files/Encartes3_style.css
+          test ! -e work/files/Encartes4_beta6.js
+          grep -q 'PRECO_REAIS' work/files/Encartes5_beta11.js
+          grep -q 'PRECO_CENTAVOS' work/files/Encartes5_beta11.js
+          grep -q 'autoLayout' work/files/Encartes5_beta11.js
+          grep -q 'duplicatePage' work/files/Encartes5_beta11.js
+          grep -q 'importPptxFile' work/files/Encartes5_beta11.js
+          grep -q 'importFonts' work/files/Encartes5_beta11.js
+          python - <<'PY'
+          import sys,types
+          from pathlib import Path
+          m=types.ModuleType('SRStudio21');m.norm=lambda s:str(s or '').upper();m.PRODUCT_DB=Path('/tmp/sr-beta11/product_catalog.sqlite');sys.modules['SRStudio21']=m
+          sys.path.insert(0,str(Path('work/files').resolve()))
+          from EncartesPPTXFields import role,make_slots
+          assert role('19','PRECO REAIS',60)=='PRECO_REAIS'
+          assert role(',98','PRECO CENTAVOS',30)=='PRECO_CENTAVOS'
+          items=[{'id':'n','type':'text','text':'ARROZ TESTE','x':80,'y':100,'w':240,'h':40,'style':{'fontSize':20},'role':'NOME'},{'id':'i','type':'image','x':90,'y':150,'w':220,'h':120,'style':{},'role':'IMAGEM'},{'id':'r','type':'text','text':'19','x':100,'y':285,'w':110,'h':70,'style':{'fontSize':60},'role':'PRECO_REAIS'},{'id':'c','type':'text','text':',98','x':205,'y':285,'w':80,'h':45,'style':{'fontSize':30},'role':'PRECO_CENTAVOS'}]
+          slots=make_slots(items,794,1123);assert len(slots)==1
+          assert all(k in slots[0]['fields'] for k in ('NOME','IMAGEM','PRECO_REAIS','PRECO_CENTAVOS'))
+          print('Reconhecimento PPTX e preço profissional: OK')
+          PY
+
+      - name: Empacotar e publicar Beta 11
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
           set -euo pipefail
           find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
-          python -c "from pathlib import Path;import hashlib,json,shutil;out=Path('dist/SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip');shutil.make_archive(str(out.with_suffix('')),'zip','work');b=out.read_bytes();Path('dist/result.json').write_text(json.dumps({'sha256':hashlib.sha256(b).hexdigest(),'size':len(b)}))"
-          gh release create v4.0.9-hybrid.beta10 dist/SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip --prerelease --title 'SR Studio 4.0.9 Beta 10 - Banco Automático' --notes 'Ao importar XLSX/CSV, o Encartes consulta automaticamente o Banco de Produtos por EAN, Código CISS ou nome e reaproveita os dados oficiais cadastrados.'
+          find work -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.xlsx' -o -name '*.xls' -o -name '*.csv' \) -delete
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,shutil
+          out=Path('dist/SR_STUDIO_4.0.10_BETA11_NOVO_ENCARTES_PPTX_CANVA.zip')
+          shutil.make_archive(str(out.with_suffix('')),'zip','work')
+          b=out.read_bytes();Path('dist/result.json').write_text(json.dumps({'sha256':hashlib.sha256(b).hexdigest(),'size':len(b)}),encoding='utf-8')
+          PY
+          gh release create v4.0.10-hybrid.beta11 dist/SR_STUDIO_4.0.10_BETA11_NOVO_ENCARTES_PPTX_CANVA.zip --prerelease --title 'SR Studio 4.0.10 Beta 11 - Novo Encartes + PPTX Canva' --notes 'Beta 11: o editor antigo foi removido do fluxo. Novo Encartes oficial com importação PPTX do Canva e reconhecimento de campos, preenchimento automático pelo Banco de Produtos, preço separado em R$ / REAIS / ,CENTAVOS, fontes manuais, destaque, categorias, layout automático, múltiplas páginas, duplicar página, desfazer/refazer e validação completa. Imagens permanecem manuais/oficiais.'
+
       - name: Ativar canal Beta
+        shell: bash
         run: |
-          python staging/beta10/write_manifest.py dist/result.json '${{ github.repository }}'
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          z=json.loads(Path('dist/result.json').read_text());repo='${{ github.repository }}'
+          m={'format':'SRSTUDIO_HYBRID_BUNDLE_1','product':'SR Studio Desktop Core','channel':'beta','version':'4.0.10-hybrid.beta11','created_at':'2026-08-13T17:17:00-03:00','min_launcher_version':'4.0.0-hybrid.pro1.1','bundle':{'url':f'https://github.com/{repo}/releases/download/v4.0.10-hybrid.beta11/SR_STUDIO_4.0.10_BETA11_NOVO_ENCARTES_PPTX_CANVA.zip','sha256':z['sha256'],'size':z['size'],'member_prefix':'files/'},'repair':{'mode':'local_hash_catalog','full_check_every_days':7},'delete':['Encartes3_app.js','Encartes3_style.css','Encartes4_beta6.js'],'notes':'Beta 11: novo Encartes oficial. PPTX Canva, Banco automático, preço profissional separado, fontes manuais, destaque, categorias, layout, páginas, undo/redo e validação. Imagens somente oficiais cadastradas.'}
+          Path('beta/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
           git config user.name 'SR Studio Update Bot'
           git config user.email 'actions@users.noreply.github.com'
+          git pull --rebase
           git add beta/manifest.json
-          git commit -m 'Ativa SR Studio 4.0.9 Beta 10'
+          git commit -m 'Ativa SR Studio 4.0.10 Beta 11'
           git push
