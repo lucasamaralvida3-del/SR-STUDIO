@@ -1,0 +1,48 @@
+name: Publicar SR Studio Beta
+
+on:
+  push:
+    paths:
+      - 'staging/beta/READY.json'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Reconstruir pacote
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cat staging/beta/chunks/*.b64 | base64 --decode > dist/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip
+          EXPECTED=$(python - <<'PY'
+          import json
+          print(json.load(open('staging/beta/READY.json', encoding='utf-8'))['sha256'])
+          PY
+          )
+          GOT=$(sha256sum dist/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip | awk '{print $1}')
+          echo "Esperado: $EXPECTED"
+          echo "Obtido:   $GOT"
+          test "$EXPECTED" = "$GOT"
+
+      - name: Publicar Release Beta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="v4.0.0-hybrid.beta1"
+          TITLE="SR Studio 4.0 Hybrid Beta 1"
+          FILE="dist/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$FILE" --clobber
+          else
+            gh release create "$TAG" "$FILE" --prerelease --title "$TITLE" --notes "Primeiro Beta publico do Desktop Core do SR Studio 4.0 Hybrid. Dados locais, bancos e planilhas operacionais foram excluidos do pacote."
+          fi
