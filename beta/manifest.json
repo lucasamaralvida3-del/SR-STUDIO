@@ -2,13 +2,13 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.5-hybrid.beta6",
-  "created_at": "2026-08-13T15:41:00-03:00",
+  "version": "4.0.5-hybrid.beta6.1",
+  "created_at": "2026-08-13T16:12:00-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.5-hybrid.beta6/SR_STUDIO_4.0.5_BETA6_NOVO_EDITOR_ENCARTES.zip",
-    "sha256": "e9d806cec622789023de27851261040f94db579e2f372048e2f3f91b94c0e3bf",
-    "size": 2238449,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.5-hybrid.beta6.1/SR_STUDIO_4.0.5_BETA6.1.zip",
+    "sha256": "738d5abdee68ed8dc5e7e20d24b6ea25f2ccdf73899ff32128cc561aed4483ea",
+    "size": 2238440,
     "member_prefix": "files/"
   },
   "repair": {
@@ -16,5 +16,5 @@
     "full_check_every_days": 7
   },
   "delete": [],
-  "notes": "Beta 6: novo núcleo do Studio de Encartes com canvas livre A4, blocos inteligentes, drag-and-drop, redimensionamento, grid/snap, importação XLSX/CSV, preço APP, limite por CPF, validação, autosave, desfazer/refazer, organização automática e impressão/PDF. O editor anterior permanece como fallback e o Banco de Imagens continua manual/oficial."
+  "notes": "Corrige o carregamento da aba Studio de Encartes e valida referencias locais antes de ativar o canal Beta."
 }
