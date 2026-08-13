@@ -1,0 +1,1 @@
+PRECO CLUBE']);const limit=pick(row,['LIMITE','LIMITE CPF','LIMITE POR CPF']);if(!name&&!code&&!price)return null;return{id:uid('p'),name:String(name||'').trim(),code:String(code||'').trim(),price:fmtMoney(price),app:fmtMoney(app),limit:String(limit||'').trim(),unit:detectUnit(row),image:'',category
