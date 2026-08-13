@@ -2,13 +2,13 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.6-hybrid.beta7",
-  "created_at": "2026-08-13T16:24:00-03:00",
+  "version": "4.0.7-hybrid.beta8",
+  "created_at": "2026-08-13T16:34:00-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.6-hybrid.beta7/SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip",
-    "sha256": "4573ddfa9ef9938f433f48251a51f3f11fc9aa53a349376e85a486ad41e8b8f3",
-    "size": 2238433,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.7-hybrid.beta8/SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip",
+    "sha256": "ce1b9716441e7a3d2bde9e0e845fd994d255a6bfdf3cbe88335a8765ef856637",
+    "size": 2239204,
     "member_prefix": "files/"
   },
   "repair": {
@@ -16,5 +16,5 @@
     "full_check_every_days": 7
   },
   "delete": [],
-  "notes": "Beta 7: hotfix de carregamento do Studio de Encartes, mantendo o novo editor e a regra de imagens oficiais manuais."
+  "notes": "Beta 8: corrige a aba vazia do Encartes e ativa o editor local-first. Banco de Imagens permanece manual/oficial."
 }
