@@ -21,22 +21,20 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist work
+          cat staging/beta/patch_chunks/*.b64 > dist/patch.xz.b64
+          base64 --decode dist/patch.xz.b64 > dist/update.patch.xz
           python - <<'PY'
-          import json, pathlib, base64, hashlib, urllib.request
+          import json, pathlib, hashlib, urllib.request
           r=json.load(open('staging/beta/READY_PATCH.json',encoding='utf-8'))
-          raw=base64.b64decode(pathlib.Path('staging/beta/patch.xz.b64').read_text(encoding='ascii'))
+          raw=pathlib.Path('dist/update.patch.xz').read_bytes()
           got=hashlib.sha256(raw).hexdigest()
-          if got.lower()!=str(r['patch_sha256']).lower():
-              raise SystemExit(f'Patch SHA256 invalido: {got}')
-          if len(raw)!=int(r['patch_size']):
-              raise SystemExit(f'Patch tamanho invalido: {len(raw)}')
-          pathlib.Path('dist/update.patch.xz').write_bytes(raw)
+          assert got.lower()==str(r['patch_sha256']).lower(), (got,r['patch_sha256'])
+          assert len(raw)==int(r['patch_size']), (len(raw),r['patch_size'])
           urllib.request.urlretrieve(r['base_url'],'dist/base.zip')
           base=pathlib.Path('dist/base.zip').read_bytes()
           if r.get('base_sha256'):
               bgot=hashlib.sha256(base).hexdigest()
-              if bgot.lower()!=str(r['base_sha256']).lower():
-                  raise SystemExit(f'Base SHA256 invalido: {bgot}')
+              assert bgot.lower()==str(r['base_sha256']).lower(), (bgot,r['base_sha256'])
           print('Patch e base validados.')
           PY
           unxz -f dist/update.patch.xz
@@ -47,32 +45,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
+          find work -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.xlsx' -o -name '*.xls' -o -name '*.csv' \) -delete
           python -m compileall -q work/files
-          test -f work/files/SR_Studio_Gerador.py
-          test -f work/files/SRIAEngine.py
-          test -f work/files/version.json
+          node --check work/files/Encartes3_app.js
           python - <<'PY'
           import json
+          r=json.load(open('staging/beta/READY_PATCH.json',encoding='utf-8'))
           v=json.load(open('work/files/version.json',encoding='utf-8'))
-          assert v['product_version']=='4.0.2'
-          assert v['release_label']=='Beta 3'
-          print('SR IA e versao Beta 3 validadas.')
+          assert v['distribution_version']==r['distribution_version']
+          assert v['product_version']==r['product_version']
+          assert v['release_label']==r['release_label']
+          print('Versao reconstruida validada:',v['distribution_version'])
           PY
 
-      - name: Gerar bundle final e metadados
+      - name: Gerar bundle final
         shell: bash
         run: |
           set -euo pipefail
+          find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
           python - <<'PY'
           import json, pathlib, shutil, hashlib
           r=json.load(open('staging/beta/READY_PATCH.json',encoding='utf-8'))
           out=pathlib.Path('dist')/r['file_name']
-          base=str(out.with_suffix(''))
-          shutil.make_archive(base,'zip','work')
+          shutil.make_archive(str(out.with_suffix('')),'zip','work')
           raw=out.read_bytes()
           result={'sha256':hashlib.sha256(raw).hexdigest(),'size':len(raw)}
           pathlib.Path('dist/result.json').write_text(json.dumps(result),encoding='utf-8')
-          print(f"Bundle final: {out} | {result['size']} bytes | {result['sha256']}")
+          print('Bundle:',out,result)
           PY
 
       - name: Publicar Release Beta
@@ -95,7 +95,7 @@ jobs:
             gh release create "$TAG" "$FILE" --prerelease --title "$TITLE" --notes "$NOTES"
           fi
 
-      - name: Ativar manifesto Beta somente depois da Release
+      - name: Ativar manifesto Beta
         shell: bash
         run: |
           set -euo pipefail
@@ -104,30 +104,18 @@ jobs:
           r=json.load(open('staging/beta/READY_PATCH.json',encoding='utf-8'))
           result=json.load(open('dist/result.json',encoding='utf-8'))
           repo='${{ github.repository }}'
-          url=f"https://github.com/{repo}/releases/download/{r['tag']}/{r['file_name']}"
           manifest={
-            'format':'SRSTUDIO_HYBRID_BUNDLE_1',
-            'product':'SR Studio Desktop Core',
-            'channel':'beta',
-            'version':r['distribution_version'],
-            'created_at':r['created_at'],
-            'min_launcher_version':r.get('min_launcher_version','4.0.0-hybrid.pro1'),
-            'bundle':{
-              'url':url,
-              'sha256':result['sha256'],
-              'size':int(result['size']),
-              'member_prefix':'files/'
-            },
-            'repair':{'mode':'local_hash_catalog','full_check_every_days':7},
-            'delete':r.get('delete',[]),
-            'notes':r.get('notes','')
-          }
+            'format':'SRSTUDIO_HYBRID_BUNDLE_1','product':'SR Studio Desktop Core','channel':'beta',
+            'version':r['distribution_version'],'created_at':r['created_at'],
+            'min_launcher_version':r.get('min_launcher_version','4.0.0-hybrid.pro1.1'),
+            'bundle':{'url':f"https://github.com/{repo}/releases/download/{r['tag']}/{r['file_name']}",'sha256':result['sha256'],'size':int(result['size']),'member_prefix':'files/'},
+            'repair':{'mode':'local_hash_catalog','full_check_every_days':7},'delete':r.get('delete',[]),'notes':r.get('notes','')}
           pathlib.Path('beta/manifest.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
           PY
           git config user.name "SR Studio Update Bot"
           git config user.email "actions@users.noreply.github.com"
           git add beta/manifest.json
-          git commit -m "Ativa SR Studio 4.0.2 Beta 3"
+          git commit -m "Ativa SR Studio Beta $(python -c \"import json;print(json.load(open('staging/beta/READY_PATCH.json'))['distribution_version'])\")"
           git push
 
       - name: Limpar staging publicado
@@ -136,8 +124,8 @@ jobs:
         run: |
           set -euo pipefail
           git pull --rebase
-          git rm -f staging/beta/patch.xz.b64 staging/beta/READY_PATCH.json || true
+          git rm -r -f staging/beta/patch_chunks staging/beta/patch.xz.b64 staging/beta/READY_PATCH.json || true
           if ! git diff --cached --quiet; then
-            git commit -m "Limpa staging Beta 3"
+            git commit -m "Limpa staging da publicacao Beta"
             git push
           fi
