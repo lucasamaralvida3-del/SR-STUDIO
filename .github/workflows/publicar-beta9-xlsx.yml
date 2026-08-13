@@ -1,0 +1,92 @@
+name: Publicar SR Studio Beta 9 XLSX
+
+on:
+  push:
+    paths:
+      - 'staging/beta9/READY.json'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Montar Beta 9
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work dist && mkdir -p work dist
+          gh release download v4.0.7-hybrid.beta8 -p 'SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip -d work
+          curl -fL --retry 3 'https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js' -o work/files/xlsx.full.min.js
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          p=Path('work/files')
+          v=json.loads((p/'version.json').read_text(encoding='utf-8'))
+          v.update(distribution_version='4.0.8-hybrid.beta9',product_version='4.0.8',release_label='Beta 9',updated_at='2026-08-13T16:46:00-03:00')
+          (p/'version.json').write_text(json.dumps(v,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          (p/'VERSAO.txt').write_text('SR Studio 4.0.8 • Beta 9\nCorrige a importação XLSX no novo Studio de Encartes com leitor local/offline.\n',encoding='utf-8')
+          h=p/'Encartes3_index.html'; s=h.read_text(encoding='utf-8')
+          tag='<script src="xlsx.full.min.js"></script>'
+          anchor='<script src="Encartes3_app.js"></script>'
+          if tag not in s: s=s.replace(anchor,tag+'\n'+anchor,1)
+          s=s.replace('SR Studio 4.0.7 • Beta 8','SR Studio 4.0.8 • Beta 9').replace('SR Studio 4.0.7 — Encartes Studio','SR Studio 4.0.8 — Encartes Studio')
+          h.write_text(s,encoding='utf-8')
+          j=p/'Encartes4_beta6.js'; x=j.read_text(encoding='utf-8').replace('BETA 8 · NOVO ENCARTES','BETA 9 · NOVO ENCARTES').replace('4.0.7 • BETA 8','4.0.8 • BETA 9'); j.write_text(x,encoding='utf-8')
+          PY
+      - name: Validar XLSX real
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --check work/files/Encartes4_beta6.js
+          node - <<'NODE'
+          const XLSX=require('./work/files/xlsx.full.min.js');
+          if(!XLSX || !XLSX.read || !XLSX.utils) throw new Error('SheetJS inválido');
+          const ws=XLSX.utils.json_to_sheet([{DESCRICAO:'ARROZ TESTE 5KG','PREÇO PROMOÇÃO':19.9,ENTRADA:'UN',LIMITE:'6UN'}]);
+          const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,'PROMO');
+          const buf=XLSX.write(wb,{type:'buffer',bookType:'xlsx'});
+          const rd=XLSX.read(buf,{type:'buffer'}); const rows=XLSX.utils.sheet_to_json(rd.Sheets[rd.SheetNames[0]],{defval:''});
+          if(rows.length!==1 || rows[0].DESCRICAO!=='ARROZ TESTE 5KG') throw new Error('Leitura XLSX falhou');
+          console.log('XLSX OK', XLSX.version, rows[0]);
+          NODE
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('work/files'); h=(p/'Encartes3_index.html').read_text(encoding='utf-8')
+          assert (p/'xlsx.full.min.js').stat().st_size > 500000
+          assert h.index('xlsx.full.min.js') < h.index('Encartes4_beta6.js')
+          assert 'window.XLSX' in (p/'Encartes4_beta6.js').read_text(encoding='utf-8')
+          print('Integração XLSX local validada')
+          PY
+      - name: Empacotar e publicar
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib,json,shutil
+          out=Path('dist/SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip')
+          shutil.make_archive(str(out.with_suffix('')),'zip','work')
+          b=out.read_bytes(); Path('dist/result.json').write_text(json.dumps({'sha256':hashlib.sha256(b).hexdigest(),'size':len(b)}))
+          PY
+          gh release create v4.0.8-hybrid.beta9 dist/SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip --prerelease --title 'SR Studio 4.0.8 Beta 9 - XLSX Local' --notes 'Beta 9: corrige a importação de arquivos XLSX no novo Studio de Encartes. SheetJS 0.20.3 passa a ser incluído localmente no pacote.'
+      - name: Ativar canal Beta
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          import json
+          z=json.loads(Path('dist/result.json').read_text()); repo='${{ github.repository }}'
+          m={'format':'SRSTUDIO_HYBRID_BUNDLE_1','product':'SR Studio Desktop Core','channel':'beta','version':'4.0.8-hybrid.beta9','created_at':'2026-08-13T16:46:00-03:00','min_launcher_version':'4.0.0-hybrid.pro1.1','bundle':{'url':f'https://github.com/{repo}/releases/download/v4.0.8-hybrid.beta9/SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip','sha256':z['sha256'],'size':z['size'],'member_prefix':'files/'},'repair':{'mode':'local_hash_catalog','full_check_every_days':7},'delete':[],'notes':'Beta 9: importação XLSX local corrigida no Studio de Encartes.'}
+          Path('beta/manifest.json').write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add beta/manifest.json && git commit -m 'Ativa SR Studio 4.0.8 Beta 9' && git push
