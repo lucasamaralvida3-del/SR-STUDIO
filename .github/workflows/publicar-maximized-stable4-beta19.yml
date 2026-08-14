@@ -1,0 +1,120 @@
+name: Publicar SR Studio Stable 4 e Beta 19 - Abertura Maximizada
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publicar-maximized-stable4-beta19.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Montar e validar Stable 4 e Beta 19
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf base work work_beta dist && mkdir -p base dist
+          gh release download v4.0.16-hybrid.stable3 -p 'SR_STUDIO_4.0.16_STABLE3_LOGO_OFICIAL.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.16_STABLE3_LOGO_OFICIAL.zip -d base
+          cp -a base work
+          cp -a base work_beta
+
+          python staging/maximized_update/assemble_maximized.py stable work
+          python staging/maximized_update/assemble_maximized.py beta work_beta
+
+          python -m compileall -q work/files work_beta/files
+          node --check work/files/Encartes10_beta16.js
+          node --check work_beta/files/Encartes10_beta16.js
+
+          grep -q 'def _open_maximized(self):' work/files/SR_Studio_Gerador.py
+          grep -q 'self.state("zoomed")' work/files/SR_Studio_Gerador.py
+          grep -q 'self.after_idle(self._open_maximized)' work/files/SR_Studio_Gerador.py
+          grep -q 'self.after(120, self._open_maximized)' work/files/SR_Studio_Gerador.py
+          grep -q '4.0.16-hybrid.stable4' work/files/version.json
+          grep -q '4.0.16 • Stable 4' work/files/Encartes10_beta16.js
+
+          grep -q 'def _open_maximized(self):' work_beta/files/SR_Studio_Gerador.py
+          grep -q 'self.state("zoomed")' work_beta/files/SR_Studio_Gerador.py
+          grep -q 'self.after_idle(self._open_maximized)' work_beta/files/SR_Studio_Gerador.py
+          grep -q '4.0.16-hybrid.beta19' work_beta/files/version.json
+          grep -q '4.0.16 • Beta 19' work_beta/files/Encartes10_beta16.js
+
+          # Garante que a logo oficial da Stable 3 foi preservada.
+          test -s work/files/assets/SR_logo.png
+          test -s work/files/assets/SR_Studio.ico
+          test -s work_beta/files/assets/SR_logo.png
+          test -s work_beta/files/assets/SR_Studio.ico
+
+          find work work_beta -type d -name __pycache__ -prune -exec rm -rf {} + || true
+          find work work_beta -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.xlsx' -o -name '*.xls' -o -name '*.csv' \) -delete
+
+      - name: Criar releases e sincronizar manifestos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STABLE_FILE='SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip'
+          STABLE_TAG='v4.0.16-hybrid.stable4'
+          BETA_FILE='SR_STUDIO_4.0.16_BETA19_MAXIMIZADO.zip'
+          BETA_TAG='v4.0.16-hybrid.beta19'
+
+          (cd work && zip -qr "../dist/$STABLE_FILE" .)
+          (cd work_beta && zip -qr "../dist/$BETA_FILE" .)
+
+          STABLE_SHA=$(sha256sum "dist/$STABLE_FILE" | awk '{print $1}')
+          STABLE_SIZE=$(stat -c%s "dist/$STABLE_FILE")
+          BETA_SHA=$(sha256sum "dist/$BETA_FILE" | awk '{print $1}')
+          BETA_SIZE=$(stat -c%s "dist/$BETA_FILE")
+
+          if gh release view "$STABLE_TAG" >/dev/null 2>&1; then
+            gh release upload "$STABLE_TAG" "dist/$STABLE_FILE" --clobber
+          else
+            gh release create "$STABLE_TAG" "dist/$STABLE_FILE" --title 'SR Studio 4.0.16 Stable 4 - Abertura Maximizada' --notes 'Stable 4: o SR Studio agora abre sempre maximizado na área útil da tela, preservando barra de tarefas e controles normais da janela. Mantém integralmente a Stable 3, incluindo a nova logo oficial.'
+          fi
+
+          if gh release view "$BETA_TAG" >/dev/null 2>&1; then
+            gh release upload "$BETA_TAG" "dist/$BETA_FILE" --clobber
+          else
+            gh release create "$BETA_TAG" "dist/$BETA_FILE" --prerelease --title 'SR Studio 4.0.16 Beta 19 - Abertura Maximizada' --notes 'Beta 19 sincronizada com a Stable 4: mesma base, mesma logo oficial e abertura sempre maximizada. Diferença apenas de identificação do canal.'
+          fi
+
+          export STABLE_FILE STABLE_TAG STABLE_SHA STABLE_SIZE BETA_FILE BETA_TAG BETA_SHA BETA_SIZE
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone, timedelta
+          from pathlib import Path
+          now=datetime.now(timezone(timedelta(hours=-3))).isoformat(timespec='seconds')
+          common_delete=['Encartes3_app.js','Encartes3_style.css','Encartes4_beta6.js','Encartes5_beta11.js','Encartes6_beta12.js']
+
+          sp=Path('stable/manifest.json'); sm=json.loads(sp.read_text(encoding='utf-8'))
+          sm.update(format='SRSTUDIO_HYBRID_BUNDLE_1',product='SR Studio Desktop Core',channel='stable',version='4.0.16-hybrid.stable4',created_at=now,min_launcher_version='4.0.0-hybrid.pro1.1')
+          sm['bundle']={'url':f"https://github.com/${{ github.repository }}/releases/download/{os.environ['STABLE_TAG']}/{os.environ['STABLE_FILE']}",'sha256':os.environ['STABLE_SHA'],'size':int(os.environ['STABLE_SIZE']),'member_prefix':'files/'}
+          sm['repair']={'mode':'local_hash_catalog','full_check_every_days':7}
+          sm['delete']=common_delete
+          sm['notes']='Stable 4: o SR Studio abre sempre maximizado na área útil da tela; logo oficial e recursos anteriores preservados.'
+          sp.write_text(json.dumps(sm,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+          bp=Path('beta/manifest.json'); bm=json.loads(bp.read_text(encoding='utf-8'))
+          bm.update(format='SRSTUDIO_HYBRID_BUNDLE_1',product='SR Studio Desktop Core',channel='beta',version='4.0.16-hybrid.beta19',created_at=now,min_launcher_version='4.0.0-hybrid.pro1.1')
+          bm['bundle']={'url':f"https://github.com/${{ github.repository }}/releases/download/{os.environ['BETA_TAG']}/{os.environ['BETA_FILE']}",'sha256':os.environ['BETA_SHA'],'size':int(os.environ['BETA_SIZE']),'member_prefix':'files/'}
+          bm['repair']={'mode':'local_hash_catalog','full_check_every_days':7}
+          bm['delete']=common_delete
+          bm['notes']='Beta 19 sincronizada com Stable 4: mesma base e abertura sempre maximizada; muda apenas a identificação do canal.'
+          bp.write_text(json.dumps(bm,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add stable/manifest.json beta/manifest.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Ativa Stable 4 e Beta 19 com abertura maximizada'
+            git push
+          fi
