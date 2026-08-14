@@ -1,4 +1,4 @@
-﻿param(
+param(
   [switch]$RepairOnly,
   [switch]$NoLaunch,
   [switch]$FullRepair
@@ -10,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 # GitHub and Python.org require modern TLS on Windows PowerShell 5.1.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$LauncherVersion = '4.0.1-hybrid.base2.5'
+$LauncherVersion = '4.0.1-hybrid.base3.2'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir      = Join-Path $SrHomeRoot 'App'
 $DataDir     = Join-Path $SrHomeRoot 'Data'
@@ -554,6 +554,27 @@ function Ensure-SrPythonRuntime {
   return $pythonwExe
 }
 
+# SR5_BETA6_LAUNCH_GUARD
+# Todo Core iniciado pelo Launcher recebe um marcador de processo. A copia instalada usa esse
+# marcador para distinguir uma abertura oficial de uma abertura direta por atalho antigo.
+function Start-SrGuardedProcess([string]$FilePath,$ArgumentList,[string]$WorkingDirectory) {
+  $previousGuard = [Environment]::GetEnvironmentVariable('SR_STUDIO_LAUNCHED_BY_UPDATER','Process')
+  $previousLauncherVersion = [Environment]::GetEnvironmentVariable('SR_STUDIO_LAUNCHER_VERSION','Process')
+  $env:SR_STUDIO_LAUNCHED_BY_UPDATER = '1'
+  $env:SR_STUDIO_LAUNCHER_VERSION = $LauncherVersion
+  try {
+    if($null -ne $ArgumentList -and @($ArgumentList).Count -gt 0) {
+      Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory
+    } else {
+      Start-Process -FilePath $FilePath -WorkingDirectory $WorkingDirectory
+    }
+  }
+  finally {
+    if($null -eq $previousGuard) { Remove-Item Env:SR_STUDIO_LAUNCHED_BY_UPDATER -ErrorAction SilentlyContinue } else { $env:SR_STUDIO_LAUNCHED_BY_UPDATER = $previousGuard }
+    if($null -eq $previousLauncherVersion) { Remove-Item Env:SR_STUDIO_LAUNCHER_VERSION -ErrorAction SilentlyContinue } else { $env:SR_STUDIO_LAUNCHER_VERSION = $previousLauncherVersion }
+  }
+}
+
 function Start-SrDesktop {
   $entry = Join-Path $AppDir ([string](Get-SrProperty $cfg 'entrypoint' 'SR_Studio_Gerador.py')).Replace('/','\')
   if(-not (Test-Path $entry)) {
@@ -564,7 +585,7 @@ function Start-SrDesktop {
   $extension = [IO.Path]::GetExtension($entry).ToLowerInvariant()
   Write-SrLog ('Opening Desktop Core: ' + $entry)
   if($extension -eq '.exe') {
-    Start-Process -FilePath $entry -WorkingDirectory $AppDir
+    Start-SrGuardedProcess $entry @() $AppDir
     return
   }
   if($extension -eq '.py') {
@@ -598,10 +619,10 @@ function Start-SrDesktop {
       if($pythonCommand) { $pythonPath=$pythonCommand.Source }
     }
     if(-not $pythonPath) { throw 'Python runtime not found. The Stable repository must provide a portable runtime for a new computer.' }
-    Start-Process -FilePath $pythonPath -ArgumentList @('"' + $entry + '"') -WorkingDirectory $AppDir
+    Start-SrGuardedProcess $pythonPath @('"' + $entry + '"') $AppDir
     return
   }
-  Start-Process -FilePath $entry -WorkingDirectory $AppDir
+  Start-SrGuardedProcess $entry @() $AppDir
 }
 
 try {

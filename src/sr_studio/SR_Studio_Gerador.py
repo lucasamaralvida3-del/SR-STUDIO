@@ -17,6 +17,47 @@ from pathlib import Path
 from decimal import Decimal, InvalidOperation
 from datetime import datetime
 
+# SR5_BETA6_DIRECT_LAUNCH_GUARD
+# Quando a copia instalada e aberta diretamente (por atalho antigo, Python ou pin da barra),
+# ela redireciona a abertura para o Bootstrap para que a verificacao de atualizacoes nunca seja pulada.
+def _sr5_require_official_launcher():
+    if os.name != "nt":
+        return
+    if str(os.environ.get("SR_STUDIO_LAUNCHED_BY_UPDATER", "")).strip() == "1":
+        return
+    local_app = str(os.environ.get("LOCALAPPDATA", "")).strip()
+    if not local_app:
+        return
+    sr_root = Path(local_app) / "SRStudio"
+    installed_app = sr_root / "App"
+    try:
+        here = Path(__file__).resolve()
+        app_root = installed_app.resolve()
+        here.relative_to(app_root)
+    except Exception:
+        # Desenvolvimento/CI ou copia fora da instalacao oficial: nao interceptar.
+        return
+    bootstrap = sr_root / "Launcher" / "SRStudioBootstrap.ps1"
+    if not bootstrap.exists():
+        return
+    powershell = Path(os.environ.get("SystemRoot", r"C:\Windows")) / "System32" / "WindowsPowerShell" / "v1.0" / "powershell.exe"
+    if not powershell.exists():
+        return
+    env = os.environ.copy()
+    env["SR_STUDIO_REDIRECTED_TO_LAUNCHER"] = "1"
+    try:
+        subprocess.Popen(
+            [str(powershell), "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", str(bootstrap)],
+            cwd=str(sr_root),
+            env=env,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    except Exception:
+        return
+    raise SystemExit(0)
+
+_sr5_require_official_launcher()
+
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 try:
