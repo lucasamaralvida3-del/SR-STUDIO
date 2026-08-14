@@ -24,6 +24,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Preparar dependências de teste
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check "openpyxl>=3.1.2" "Pillow>=10.0.0" "pypdf>=4.0.0" "tkinterdnd2>=0.4.2"
+
       - name: Validar metadados da fundação
         shell: powershell
         run: |
@@ -41,7 +47,7 @@ jobs:
           Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File -Recurse | ForEach-Object {
             python -m py_compile $_.FullName
           }
-          python -m py_compile build/materialize_baseline.py build/package_app.py tests/test_foundation.py
+          python -m py_compile build/materialize_baseline.py build/package_app.py build/integrate_studio5.py tests/test_foundation.py tests/test_v5_services.py
 
       - name: Validar JavaScript do Encartes
         shell: powershell
@@ -56,6 +62,23 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           python -m unittest tests.test_foundation -v
+
+      - name: Rodar testes funcionais 5.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m unittest tests.test_v5_services -v
+
+      - name: Validar integração da Central 5.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $main=Get-Content -Raw 'src/sr_studio/SR_Studio_Gerador.py'
+          foreach($required in @('from modules.Studio5Module import Studio5Panel','("studio5","★","Central 5.0")','def show_studio5(self):','elif key == "studio5": self.show_studio5()')){
+            if(-not $main.Contains($required)){ throw "Integração ausente: $required" }
+          }
+          $index=Get-Content -Raw 'src/sr_studio/Encartes3_index.html'
+          if(-not $index.Contains('Encartes11_v5.js')){ throw 'Bridge V5 não carregado no editor' }
 
       - name: Montar pacotes de fumaça Beta e Stable
         shell: powershell
@@ -88,9 +111,18 @@ jobs:
               raise SystemExit('Beta e Stable possuem estruturas diferentes')
           required = {
               'files/SR_Studio_Gerador.py',
-              'files/AtacadoModule.py',
-              'files/ManualModule.py',
+              'files/modules/Studio5Module.py',
+              'files/services/project_store.py',
+              'files/services/product_catalog.py',
+              'files/services/spreadsheet_profiles.py',
+              'files/services/template_registry.py',
+              'files/services/campaign_wizard.py',
+              'files/services/validation_center.py',
+              'files/services/export_profiles.py',
+              'files/services/update_rollback.py',
+              'files/data/v5_store.py',
               'files/Encartes10_beta16.js',
+              'files/Encartes11_v5.js',
               'files/assets/SR_logo.png',
               'files/version.json',
           }
