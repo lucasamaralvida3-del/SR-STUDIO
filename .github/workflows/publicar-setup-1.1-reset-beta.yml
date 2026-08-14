@@ -1,0 +1,89 @@
+name: Publicar SR Studio Setup 1.1 Reset Beta
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publicar-setup-1.1-reset-beta.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Validar fonte 1.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='installer/professional/SRStudioSetup.cs'
+          Select-String -LiteralPath $p -SimpleMatch -Pattern 'AssemblyVersion("1.1.0.0")' | Out-Null
+          Select-String -LiteralPath $p -SimpleMatch -Pattern 'ResetForStableInstall' | Out-Null
+          Select-String -LiteralPath $p -SimpleMatch -Pattern 'beta_access.json' | Out-Null
+          if(-not (Test-Path 'staging/logo_update/source/SR_Studio.ico')) { throw 'Logo ausente' }
+
+      - name: Compilar Setup 1.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $vswhere=Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          $vs=(& $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath | Select-Object -First 1).Trim()
+          if(-not $vs){ throw 'Visual Studio nao encontrado' }
+          $csc=Join-Path $vs 'MSBuild\Current\Bin\Roslyn\csc.exe'
+          $ref='C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
+          $args=@(
+            '/nologo','/target:winexe','/platform:anycpu','/optimize+','/deterministic+','/langversion:7.3',
+            '/win32icon:staging/logo_update/source/SR_Studio.ico','/out:dist/SR_Studio_Setup.exe',
+            "/reference:$ref\mscorlib.dll", "/reference:$ref\System.dll", "/reference:$ref\System.Core.dll",
+            "/reference:$ref\System.Drawing.dll", "/reference:$ref\System.Windows.Forms.dll",
+            "/reference:$ref\System.Web.Extensions.dll", "/reference:$ref\Microsoft.CSharp.dll",
+            'installer/professional/SRStudioSetup.cs'
+          )
+          & $csc @args
+          if($LASTEXITCODE -ne 0){ throw "Falha compilacao $LASTEXITCODE" }
+          if(-not (Test-Path 'dist/SR_Studio_Setup.exe')){ throw 'EXE ausente' }
+
+      - name: Self-test online
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=Start-Process -FilePath (Resolve-Path 'dist/SR_Studio_Setup.exe') -ArgumentList '/selftest' -Wait -PassThru
+          if($p.ExitCode -ne 0){ throw "Self-test falhou $($p.ExitCode)" }
+          $hash=(Get-FileHash -Algorithm SHA256 'dist/SR_Studio_Setup.exe').Hash.ToLowerInvariant()
+          "$hash  SR_Studio_Setup.exe" | Set-Content -Encoding ascii 'dist/SR_Studio_Setup.sha256.txt'
+          Write-Host "SETUP_1_1_OK $hash $((Get-Item 'dist/SR_Studio_Setup.exe').Length)"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR_Studio_Setup_1_1
+          path: |
+            dist/SR_Studio_Setup.exe
+            dist/SR_Studio_Setup.sha256.txt
+
+      - name: Atualizar release setup-latest
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='setup-latest'
+          gh release upload $tag 'dist/SR_Studio_Setup.exe' 'dist/SR_Studio_Setup.sha256.txt' --clobber
+          if($LASTEXITCODE -ne 0){ throw 'Falha ao publicar assets' }
+          $notes=@"
+          Instalador profissional online SR Studio 1.1.
+
+          - Instala sempre a Stable atual do repositorio.
+          - Antes de uma instalacao Stable, remove automaticamente autorizacao e estado Beta anteriores.
+          - Limpa Core/manifestos antigos que poderiam contaminar uma reinstalacao.
+          - Mantem runtime Python/cache grande quando seguro para evitar download desnecessario.
+          - Launcher continua validado por SHA-256.
+          "@
+          gh release edit $tag --title 'SR Studio - Instalador Oficial Online 1.1' --notes $notes --latest=false
+          if($LASTEXITCODE -ne 0){ throw 'Falha ao atualizar release' }
