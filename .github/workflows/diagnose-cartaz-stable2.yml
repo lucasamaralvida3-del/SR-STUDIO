@@ -1,0 +1,32 @@
+name: Diagnosticar Cartaz Stable 2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-cartaz-stable2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspecionar Beta 16 publicada
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work diag && mkdir -p work diag
+          gh release download v4.0.15-hybrid.beta16 -p 'SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip' -D diag
+          unzip -q diag/SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip -d work
+          python staging/stable2/diagnose_cartaz.py
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add staging/stable2/diagnostic.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Registra diagnóstico de geração de cartazes'
+            git push
+          fi
