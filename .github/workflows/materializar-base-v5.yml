@@ -1,0 +1,77 @@
+name: Materializar Base Canônica V5
+
+on:
+  push:
+    branches: [agent/base-v5-organizada]
+    paths: ['.github/workflows/materializar-base-v5.yml']
+
+permissions:
+  contents: write
+
+jobs:
+  materializar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Baixar e conferir Stable 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path _work -Force | Out-Null
+          gh release download 'v4.0.16-hybrid.stable4' -p 'SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip' -D _work --clobber
+          $zip='_work/SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip'
+          $sha=(Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          if($sha -ne '4ac83d3e1a704caab3c77ae21270d74bbe56182d9b22c7ae1b445f83a30089d6'){ throw "SHA inesperado: $sha" }
+          if((Get-Item $zip).Length -ne 2526714){ throw 'Tamanho inesperado' }
+          Expand-Archive -LiteralPath $zip -DestinationPath _work/extracted -Force
+
+      - name: Materializar src canônico
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Remove-Item src -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path src/app,src/platform/launcher,src/platform/installer | Out-Null
+          $items=Get-ChildItem -LiteralPath '_work/extracted' -Force
+          $runtime=if($items.Count -eq 1 -and $items[0].PSIsContainer){$items[0].FullName}else{(Resolve-Path '_work/extracted').Path}
+          Copy-Item -Path (Join-Path $runtime '*') -Destination 'src/app' -Recurse -Force
+          Copy-Item 'launcher/files/SRStudioLauncher.ps1' 'src/platform/launcher/SRStudioLauncher.ps1' -Force
+          Copy-Item 'launcher/files/SRStudioBootstrap.ps1' 'src/platform/launcher/SRStudioBootstrap.ps1' -Force
+          Copy-Item 'installer/SRStudioInstaller.ps1' 'src/platform/installer/SRStudioInstaller.ps1' -Force
+          Copy-Item 'installer/build_setup.py' 'src/platform/installer/build_setup.py' -Force
+          $baseline=@{
+            source_tag='v4.0.16-hybrid.stable4'
+            source_asset='SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip'
+            source_sha256='4ac83d3e1a704caab3c77ae21270d74bbe56182d9b22c7ae1b445f83a30089d6'
+            source_size=2526714
+            purpose='Baseline canônica exata antes do salto V5'
+          } | ConvertTo-Json -Depth 5
+          [IO.File]::WriteAllText('src/BASELINE.json',$baseline+"`n",(New-Object Text.UTF8Encoding($false)))
+
+      - name: Validar conteúdo antes do commit
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          foreach($f in @('SR_Studio_Gerador.py','AtacadoModule.py','ManualModule.py','SRStudio21.py','requirements.txt','assets/SR_logo.png','assets/SR_Studio.ico')){
+            if(-not (Test-Path (Join-Path 'src/app' $f))){ throw "Arquivo essencial ausente: $f" }
+          }
+          $count=(Get-ChildItem -LiteralPath 'src/app' -Recurse -File).Count
+          if($count -lt 50){ throw "Quantidade de arquivos suspeita: $count" }
+          Get-ChildItem -LiteralPath 'src/app' -Recurse -Filter '*.py' | ForEach-Object { python -m py_compile $_.FullName }
+          Get-ChildItem -LiteralPath 'src/app' -Recurse -Filter '*.js' | ForEach-Object { node --check $_.FullName }
+          Write-Host "Base validada: $count arquivos"
+
+      - name: Commitar fonte canônica
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem -LiteralPath 'src/app' -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          git config user.name 'SR Studio Architecture Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src
+          git commit -m 'Materializa Stable 4 como fonte canônica V5'
+          git push origin HEAD:agent/base-v5-organizada
