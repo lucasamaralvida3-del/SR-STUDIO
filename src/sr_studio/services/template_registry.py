@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 from EncartesPPTX import parse_pptx
+from EncartesPPTXFields import make_slots
 from data.v5_store import TEMPLATES_DIR, connection, json_dumps, json_loads, now_iso, uid
 
 FIELD_ROLES = (
@@ -100,7 +101,6 @@ def save_template(name: str, campaign: str, source_path: str | Path, analysis: d
     target = _copy_template(source, pid)
     mapping = mapping or detected_mapping(analysis)
     clean_mapping = {str(k): str(v) for k, v in mapping.items() if str(v) in FIELD_ROLES}
-    # Não grava dados transitórios grandes do render local; apenas o necessário para reaprender.
     stored_analysis = {
         "source": analysis.get("source") or source.name,
         "source_hash": source_hash,
@@ -171,15 +171,17 @@ def delete_template(profile_id: str) -> None:
 
 
 def apply_mapping(parsed: dict[str, Any], mapping: dict[str, str]) -> dict[str, Any]:
-    """Reaplica o mapeamento aprendido a uma análise nova do mesmo PPTX."""
+    """Reaplica o mapeamento aprendido e reconstrói os slots do modelo."""
     for page_index, page in enumerate(parsed.get("pages") or [], 1):
-        for element in page.get("templateElements") or []:
+        elements = page.get("templateElements") or []
+        for element in elements:
             key = f"p{page_index}:{element.get('pptxId') or element.get('id')}"
             role = mapping.get(key)
             if role in FIELD_ROLES:
                 element["role"] = role
-        # O algoritmo existente de slots entende os roles; a reconstrução completa dos slots
-        # será feita pelo editor ao carregar o template aprendido.
+                element["placeholder"] = bool(role and role != "TEXTO_FIXO")
+        page["templateSlots"] = make_slots(elements, float(page.get("width") or 794), float(page.get("height") or 1123))
+    parsed["slotCount"] = sum(len(page.get("templateSlots") or []) for page in parsed.get("pages") or [])
     return parsed
 
 
