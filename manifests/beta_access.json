@@ -1,0 +1,13 @@
+{
+  "format": "SRSTUDIO_BETA_ACCESS_1",
+  "scope": "beta",
+  "version_agnostic": true,
+  "expires_at": null,
+  "keys": [
+    {
+      "id": "MASTER-2026-01",
+      "sha256": "cc2a8e9a5fcbc752bfecf25663d03c117ac13ab631cd220e27a04cfe8d482d90",
+      "enabled": true
+    }
+  ]
+}
