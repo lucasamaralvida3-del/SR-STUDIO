@@ -1,0 +1,72 @@
+name: Publicar SR Studio Installer 4 Policy Fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publicar-installer4-policyfix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Corrigir gerador do instalador
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('installer/build_installer3_clean.py')
+          s=p.read_text(encoding='utf-8')
+          s=s.replace('SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd','SR_STUDIO_SETUP_4.0.16_STABLE_CORRIGIDO.cmd')
+          s=s.replace('SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.zip','SR_STUDIO_SETUP_4.0.16_STABLE_CORRIGIDO.zip')
+          s=s.replace('-NoProfile -File \"%%LOCALAPPDATA%%\\SRStudio\\Launcher\\SRStudioBootstrap.ps1\"','-NoProfile -ExecutionPolicy Bypass -File \"%%LOCALAPPDATA%%\\SRStudio\\Launcher\\SRStudioBootstrap.ps1\"')
+          s=s.replace('-NoProfile -File \"%LAUNCHER%\\SRStudioBootstrap.ps1\"','-NoProfile -ExecutionPolicy Bypass -File \"%LAUNCHER%\\SRStudioBootstrap.ps1\"')
+          s=s.replace('forbidden = ["FromBase64String", "::BEGIN_", "-ExecutionPolicy Bypass"]','forbidden = ["FromBase64String", "::BEGIN_"]')
+          p.write_text(s,encoding='utf-8',newline='\n')
+          if s.count('-ExecutionPolicy Bypass') < 2:
+              raise SystemExit('Policy bypass nao foi inserido nos dois pontos esperados')
+
+      - name: Gerar e validar instalador corrigido
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python installer/build_installer3_clean.py
+          $cmd='dist/SR_STUDIO_SETUP_4.0.16_STABLE_CORRIGIDO.cmd'
+          $zip='dist/SR_STUDIO_SETUP_4.0.16_STABLE_CORRIGIDO.zip'
+          if(-not (Test-Path $cmd)){ throw 'CMD corrigido nao foi gerado' }
+          if(-not (Test-Path $zip)){ throw 'ZIP corrigido nao foi gerado' }
+          $txt=Get-Content -Raw $cmd
+          if($txt -match 'FromBase64String|::BEGIN_'){ throw 'Instalador voltou a conter payload ofuscado' }
+          $hits=([regex]::Matches($txt,'-ExecutionPolicy Bypass')).Count
+          if($hits -lt 2){ throw "Bypass de processo ausente. Encontrado: $hits" }
+          Write-Host ('CMD SHA256: ' + (Get-FileHash -Algorithm SHA256 $cmd).Hash.ToLowerInvariant())
+          Write-Host ('ZIP SHA256: ' + (Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant())
+
+      - name: Persistir correcao do gerador
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add installer/build_installer3_clean.py
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Corrige ExecutionPolicy no instalador SR Studio'
+            git push origin HEAD:main
+          }
+
+      - name: Publicar release corrigida
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='v4.0.16-installer4'
+          $cmd='dist/SR_STUDIO_SETUP_4.0.16_STABLE_CORRIGIDO.cmd'
+          $zip='dist/SR_STUDIO_SETUP_4.0.16_STABLE_CORRIGIDO.zip'
+          $notes='Corrige o bloqueio ExecutionPolicy do Windows. Mantem instalador sem payload Base64; usa ExecutionPolicy Bypass somente no processo do PowerShell que executa os scripts oficiais do SR Studio, sem alterar a politica global do computador.'
+          gh release create $tag $cmd $zip --title 'SR Studio 4.0.16 - Instalador Corrigido' --notes $notes
