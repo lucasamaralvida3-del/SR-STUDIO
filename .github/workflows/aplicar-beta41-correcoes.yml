@@ -1,0 +1,88 @@
+name: Integrar SR Studio 5.0 Beta 4.1
+
+on:
+  push:
+    branches:
+      - next/5.0
+    paths:
+      - '.github/workflows/aplicar-beta41-correcoes.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: next/5.0
+          fetch-depth: 0
+
+      - name: Preparar dependências
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check "Pillow>=10.0.0" "openpyxl>=3.1.2" "pypdf>=4.0.0" "tkinterdnd2>=0.4.2" "numpy>=1.26,<3" "opencv-python-headless>=4.9.0"
+
+      - name: Recuperar logo oficial íntegra da Stable 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path 'build/stable_source' -Force | Out-Null
+          gh release download 'v4.0.16-hybrid.stable4' -p 'SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip' -D 'build/stable_source' --clobber
+          python build/restore_brand_from_stable.py 'build/stable_source/SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip'
+
+      - name: Aplicar correções Beta 4.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python build/patch_beta41.py
+
+      - name: Validar menu, revisão, logo e código
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File -Recurse | ForEach-Object { python -m py_compile $_.FullName }
+          node --check src/sr_studio/Encartes13_fidelity.js
+          python -m unittest tests.test_beta41 -v
+          python -m unittest tests.test_foundation -v
+          python -m unittest tests.test_v5_services -v
+          python -m unittest tests.test_v5_importers -v
+          python -m unittest tests.test_v5_http_bridge -v
+          python -m unittest tests.test_v5_export_render -v
+          python -m unittest tests.test_v5_visual -v
+          python -m unittest tests.test_v5_fidelity -v
+          @'
+          from PIL import Image
+          from pathlib import Path
+          p=Path('src/sr_studio/assets/SR_logo.png')
+          with Image.open(p) as im:
+              im.load()
+              assert im.size==(2048,2048), im.size
+              # A logo recuperada não pode ser uma imagem quase toda preta/truncada.
+              rgb=im.convert('RGB').resize((64,64))
+              px=list(rgb.getdata())
+              black=sum(1 for r,g,b in px if r<8 and g<8 and b<8)
+              assert black < len(px)*0.65, ('logo excessivamente preta',black,len(px))
+          assert Path('src/sr_studio/assets/SR_Studio.ico').stat().st_size>10000
+          print('LOGO_BETA41_OK')
+          '@ | Set-Content -LiteralPath 'build/verify_beta41_logo.py' -Encoding UTF8
+          python build/verify_beta41_logo.py
+          $env:PYTHONPATH=(Resolve-Path 'src/sr_studio').Path
+          python -c "import SR_Studio_Gerador as app; assert getattr(app.App,'_SR5_FIDELITY_INSTALLED',False); print('APP_BETA41_OK')"
+
+      - name: Commitar correções integradas
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Remove-Item -LiteralPath 'build/stable_source','build/verify_beta41_logo.py' -Recurse -Force -ErrorAction SilentlyContinue
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/sr_studio/ui/studio5_fidelity.py src/sr_studio/SR_Studio_Gerador.py src/sr_studio/Encartes13_fidelity.js src/sr_studio/assets/SR_logo.png src/sr_studio/assets/SR_Studio.ico
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Corrige menu, revisão e logo oficial na Beta 4.1'
+            git push origin HEAD:next/5.0
+          }
