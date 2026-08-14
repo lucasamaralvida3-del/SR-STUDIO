@@ -68,7 +68,14 @@ _sr5_require_official_launcher()
 
 def patch_launcher() -> None:
     text = LAUNCHER_FILE.read_text(encoding="utf-8-sig")
-    text = re.sub(r"\$LauncherVersion\s*=\s*'4\.0\.1-hybrid\.base3\.1'", "$LauncherVersion = '4.0.1-hybrid.base3.2'", text, count=1)
+    text, version_count = re.subn(
+        r"\$LauncherVersion\s*=\s*'4\.0\.1-hybrid\.base[0-9.]+'",
+        "$LauncherVersion = '4.0.1-hybrid.base3.2'",
+        text,
+        count=1,
+    )
+    if version_count != 1 and "4.0.1-hybrid.base3.2" not in text:
+        raise RuntimeError("Versao atual do Launcher nao foi localizada")
     if LAUNCHER_MARKER not in text:
         anchor = "function Start-SrDesktop {\n"
         if anchor not in text:
