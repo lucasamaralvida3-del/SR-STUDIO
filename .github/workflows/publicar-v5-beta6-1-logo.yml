@@ -23,14 +23,18 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           python -m pip install --disable-pip-version-check "Pillow>=10.0.0"
+          if($LASTEXITCODE -ne 0){ throw 'Falha ao preparar Pillow' }
 
       - name: Gerar e validar logo oficial
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           python build/apply_beta61_logo.py
+          if($LASTEXITCODE -ne 0){ throw 'Gerador da logo oficial falhou' }
           python -m py_compile src/sr_studio/SR_Studio_Gerador.py src/sr_studio/ui/splash_v5.py src/sr_studio/ui/studio5_visual.py src/sr_studio/ui/studio5_fidelity.py
+          if($LASTEXITCODE -ne 0){ throw 'Compilacao Python falhou' }
           node --check src/sr_studio/Encartes13_fidelity.js
+          if($LASTEXITCODE -ne 0){ throw 'Validacao JavaScript falhou' }
           $app=Get-Content -Raw src/sr_studio/SR_Studio_Gerador.py
           $visual=Get-Content -Raw src/sr_studio/ui/studio5_visual.py
           $fidelity=Get-Content -Raw src/sr_studio/ui/studio5_fidelity.py
@@ -48,10 +52,15 @@ jobs:
           git config user.name 'SR Studio Update Bot'
           git config user.email 'actions@users.noreply.github.com'
           git add src/sr_studio/assets/SR_logo.png src/sr_studio/assets/SR_Studio.ico
-          git rm -f staging/beta61_logo/source_part01.txt staging/beta61_logo/source_part02.txt 2>$null
+          if(Test-Path 'staging/beta61_logo/logo512_q98.b64'){
+            git rm -f staging/beta61_logo/logo512_q98.b64
+            if($LASTEXITCODE -ne 0){ throw 'Falha ao remover fonte Base64 antiga' }
+          }
           if(-not (git diff --cached --quiet)){
             git commit -m 'Beta 6.1 - substitui logo corrompida pela marca oficial validada'
+            if($LASTEXITCODE -ne 0){ throw 'Falha ao registrar assets da Beta 6.1' }
             git push origin HEAD:next/5.0
+            if($LASTEXITCODE -ne 0){ throw 'Falha ao publicar assets da Beta 6.1 no branch' }
           }
 
       - name: Montar pacote Beta 6.1
@@ -60,6 +69,7 @@ jobs:
           $ErrorActionPreference='Stop'
           New-Item -ItemType Directory -Path dist -Force | Out-Null
           python build/package_app.py --version '5.0.0-hybrid.beta6.1' --channel beta --release-label 'Beta 6.1' --output 'dist/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip' --metadata 'dist/package.json'
+          if($LASTEXITCODE -ne 0){ throw 'Empacotamento da Beta 6.1 falhou' }
 
       - name: Validar ZIP final e pixels da marca
         shell: powershell
@@ -108,6 +118,7 @@ jobs:
           print('BETA61_ZIP_OK',p.stat().st_size,'black',black,'white',white,'blue',blue,'ico',sorted(sizes))
           '@ | Set-Content dist/check_beta61.py -Encoding UTF8
           python dist/check_beta61.py
+          if($LASTEXITCODE -ne 0){ throw 'Inspecao do ZIP Beta 6.1 falhou' }
 
       - name: Publicar release Beta 6.1
         env:
@@ -119,11 +130,15 @@ jobs:
           $asset='dist/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip'
           $notes='Beta 6.1 - Logo Oficial. Substitui definitivamente o asset de marca que aparecia preto/corrompido na abertura, menu lateral, dashboard e icone da janela. A nova fonte foi validada por pixels antes do empacotamento e o ICO foi regenerado em multiplas resolucoes. Preserva integralmente a atualizacao garantida da Beta 6, o menu rolavel e a revisao de produtos corrigida.'
           cmd /c "gh release view $tag >nul 2>&1"
-          if($LASTEXITCODE -eq 0){
+          $exists=($LASTEXITCODE -eq 0)
+          if($exists){
             gh release upload $tag $asset --clobber
+            if($LASTEXITCODE -ne 0){ throw 'Falha ao enviar asset Beta 6.1' }
             gh release edit $tag --prerelease --title 'SR Studio 5.0.0 Beta 6.1 - Logo Oficial' --notes $notes
+            if($LASTEXITCODE -ne 0){ throw 'Falha ao editar release Beta 6.1' }
           } else {
             gh release create $tag $asset --target next/5.0 --prerelease --title 'SR Studio 5.0.0 Beta 6.1 - Logo Oficial' --notes $notes
+            if($LASTEXITCODE -ne 0){ throw 'Falha ao criar release Beta 6.1' }
           }
 
       - name: Atualizar somente o manifesto Beta oficial
@@ -142,16 +157,20 @@ jobs:
             notes='SR Studio 5.0 Beta 6.1 - logo oficial corrigida em splash, menu, dashboard e icone; demais recursos da Beta 6 preservados.'
           }
           git fetch origin main
+          if($LASTEXITCODE -ne 0){ throw 'Falha ao consultar main' }
           $work=Join-Path $env:RUNNER_TEMP 'sr-main-beta61-logo'
           if(Test-Path $work){Remove-Item $work -Recurse -Force}
           git worktree add $work origin/main
+          if($LASTEXITCODE -ne 0){ throw 'Falha ao montar worktree main' }
           New-Item -ItemType Directory -Force -Path (Join-Path $work 'beta')|Out-Null
           [IO.File]::WriteAllText((Join-Path $work 'beta/manifest.json'),(($beta|ConvertTo-Json -Depth 20)+"`n"),(New-Object Text.UTF8Encoding($false)))
           Push-Location $work
           git config user.name 'SR Studio Update Bot';git config user.email 'actions@users.noreply.github.com'
           git add beta/manifest.json
           git commit -m 'Publica SR Studio 5.0 Beta 6.1 - Logo Oficial'
+          if($LASTEXITCODE -ne 0){ Pop-Location; throw 'Falha ao registrar manifesto Beta 6.1' }
           git push origin HEAD:main
+          if($LASTEXITCODE -ne 0){ Pop-Location; throw 'Falha ao publicar manifesto Beta 6.1' }
           Pop-Location
 
       - name: Verificar publicação pública final
@@ -162,6 +181,7 @@ jobs:
           $ErrorActionPreference='Stop';Start-Sleep 4
           $local=Get-Content -Raw dist/package.json|ConvertFrom-Json
           $r=gh api repos/${{ github.repository }}/releases/tags/v5.0.0-hybrid.beta6.1|ConvertFrom-Json
+          if($LASTEXITCODE -ne 0){ throw 'Release Beta 6.1 nao encontrada' }
           if(-not $r.prerelease){throw 'Beta 6.1 nao esta marcada como prerelease'}
           $a=$r.assets|Where-Object name -eq 'SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip'|Select-Object -First 1
           if(-not $a){throw 'Asset Beta 6.1 ausente'}
