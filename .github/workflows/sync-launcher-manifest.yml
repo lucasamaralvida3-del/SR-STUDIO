@@ -1,0 +1,72 @@
+name: Sincronizar manifesto do Launcher
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'launcher/files/SRStudioLauncher.ps1'
+      - '.github/workflows/sync-launcher-manifest.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Recalcular manifesto a partir do arquivo real do repositorio
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='launcher/files/SRStudioLauncher.ps1'
+          SHA256=$(sha256sum "$FILE" | awk '{print $1}')
+          SIZE=$(stat -c%s "$FILE")
+          VERSION=$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text=Path('launcher/files/SRStudioLauncher.ps1').read_text(encoding='utf-8-sig')
+          m=re.search(r"\$LauncherVersion\s*=\s*'([^']+)'", text)
+          if not m:
+              raise SystemExit('LauncherVersion nao encontrado')
+          print(m.group(1))
+          PY
+          )
+          export SHA256 SIZE VERSION
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          p=Path('manifests/launcher.json')
+          data=json.loads(p.read_text(encoding='utf-8-sig')) if p.exists() else {}
+          data['format']='SRSTUDIO_LAUNCHER_MANIFEST_1'
+          data['product']='SR Studio Launcher'
+          data['version']=os.environ['VERSION']
+          data['files']=[{
+              'path':'SRStudioLauncher.ps1',
+              'source':'launcher/files/SRStudioLauncher.ps1',
+              'sha256':os.environ['SHA256'],
+              'size':int(os.environ['SIZE'])
+          }]
+          p.parent.mkdir(parents=True, exist_ok=True)
+          p.write_text(json.dumps(data,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('MANIFEST_SYNC',data['version'],data['files'][0]['sha256'],data['files'][0]['size'])
+          PY
+
+      - name: Commitar manifesto sincronizado
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add manifests/launcher.json
+          if git diff --cached --quiet; then
+            echo 'Manifesto ja estava sincronizado.'
+          else
+            git commit -m 'Sincroniza manifesto com Launcher real'
+            git push origin HEAD:main
+          fi
