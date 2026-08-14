@@ -1,0 +1,133 @@
+name: Publicar SR Studio 5.0 Beta 6 Retry
+
+on:
+  push:
+    branches: [next/5.0]
+    paths:
+      - '.github/workflows/publicar-v5-beta6-retry.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: next/5.0
+          fetch-depth: 0
+
+      - name: Aplicar guard de atualizacao
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python build/apply_beta6_update_guard.py
+          python -m py_compile src/sr_studio/SR_Studio_Gerador.py
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path 'launcher/files/SRStudioLauncher.ps1'),[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors -and $errors.Count -gt 0){ throw "Launcher invalido: $($errors[0].Message)" }
+          $app=Get-Content -Raw 'src/sr_studio/SR_Studio_Gerador.py'
+          $launcher=Get-Content -Raw 'launcher/files/SRStudioLauncher.ps1'
+          if(-not $app.Contains('SR5_BETA6_DIRECT_LAUNCH_GUARD')){ throw 'Guard do aplicativo ausente' }
+          if(-not $launcher.Contains('SR5_BETA6_LAUNCH_GUARD')){ throw 'Guard do Launcher ausente' }
+          if(-not $launcher.Contains('4.0.1-hybrid.base3.2')){ throw 'Versao do Launcher incorreta' }
+          if(-not $launcher.Contains('Start-SrGuardedProcess $pythonPath')){ throw 'Python nao esta sendo iniciado pelo guard' }
+          if($launcher.Contains('Start-Process -FilePath $pythonPath')){ throw 'Ainda existe abertura Python direta' }
+
+      - name: Registrar guard na base 5.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/sr_studio/SR_Studio_Gerador.py launcher/files/SRStudioLauncher.ps1
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Beta 6 - impede abertura instalada sem verificar atualizacoes'
+            git push origin HEAD:next/5.0
+          }
+
+      - name: Empacotar e validar Beta 6
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          python build/package_app.py --version '5.0.0-hybrid.beta6' --channel beta --release-label 'Beta 6' --output 'dist/SR_STUDIO_5.0.0_BETA6_ATUALIZACAO_GARANTIDA.zip' --metadata 'dist/package.json'
+          $meta=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          if([string]$meta.version -ne '5.0.0-hybrid.beta6'){ throw 'Versao empacotada incorreta' }
+          if([int64]$meta.size -lt 3000000){ throw 'ZIP Beta 6 incompleto' }
+          @'
+          import json,zipfile
+          p='dist/SR_STUDIO_5.0.0_BETA6_ATUALIZACAO_GARANTIDA.zip'
+          with zipfile.ZipFile(p) as z:
+              app=z.read('files/SR_Studio_Gerador.py').decode('utf-8-sig')
+              assert 'SR5_BETA6_DIRECT_LAUNCH_GUARD' in app
+              assert 'SR_STUDIO_LAUNCHED_BY_UPDATER' in app
+              v=json.loads(z.read('files/version.json').decode('utf-8-sig'))
+              assert v['distribution_version']=='5.0.0-hybrid.beta6'
+              for n in ('files/ui/studio5_visual.py','files/SRStudio21.py','files/assets/SR_logo.png'):
+                  assert n in z.namelist(),n
+          print('BETA6_ZIP_OK')
+          '@ | Set-Content dist/check.py -Encoding UTF8
+          python dist/check.py
+
+      - name: Publicar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='v5.0.0-hybrid.beta6'
+          $asset='dist/SR_STUDIO_5.0.0_BETA6_ATUALIZACAO_GARANTIDA.zip'
+          $notes='Beta 6 - Atualizacao Garantida. O Launcher marca a abertura oficial e o Core instalado redireciona qualquer abertura direta por atalho antigo, Python ou pin da barra para o Bootstrap. Assim a verificacao de atualizacoes nao pode mais ser pulada. Inclui as correcoes da Beta 5.'
+          cmd /c "gh release view $tag >nul 2>&1"
+          if($LASTEXITCODE -eq 0){ gh release upload $tag $asset --clobber; gh release edit $tag --prerelease --title 'SR Studio 5.0.0 Beta 6 - Atualizacao Garantida' --notes $notes }
+          else { gh release create $tag $asset --target next/5.0 --prerelease --title 'SR Studio 5.0.0 Beta 6 - Atualizacao Garantida' --notes $notes }
+
+      - name: Publicar Launcher 3.2 e manifesto Beta 6
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $meta=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          $launcher=(Resolve-Path 'launcher/files/SRStudioLauncher.ps1').Path
+          $lsha=(Get-FileHash -Algorithm SHA256 $launcher).Hash.ToLowerInvariant()
+          $lsize=(Get-Item $launcher).Length
+          $now=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
+          $asset='SR_STUDIO_5.0.0_BETA6_ATUALIZACAO_GARANTIDA.zip'
+          $url="https://github.com/${{ github.repository }}/releases/download/v5.0.0-hybrid.beta6/$asset"
+          $beta=[ordered]@{format='SRSTUDIO_HYBRID_BUNDLE_1';product='SR Studio';channel='beta';version='5.0.0-hybrid.beta6';product_version='5.0.0';release_label='Beta 6';published_at=$now;min_launcher='4.0.1-hybrid.base3.2';min_launcher_version='4.0.1-hybrid.base3.2';bundle=[ordered]@{url=$url;sha256=[string]$meta.sha256;size=[int64]$meta.size;member_prefix='files/'};url=$url;bundle_url=$url;sha256=[string]$meta.sha256;size=[int64]$meta.size;member_prefix='files/';notes='Beta 6 - abertura instalada sempre passa pelo Bootstrap/Launcher; preserva menu, revisao e visual da Beta 5.'}
+          $lm=[ordered]@{format='SRSTUDIO_LAUNCHER_MANIFEST_1';product='SR Studio Launcher';version='4.0.1-hybrid.base3.2';published_at=$now;files=@([ordered]@{path='SRStudioLauncher.ps1';source='launcher/files/SRStudioLauncher.ps1';sha256=$lsha;size=[int64]$lsize})}
+          git fetch origin main
+          $work=Join-Path $env:RUNNER_TEMP 'sr-main-beta6-retry'
+          if(Test-Path $work){Remove-Item $work -Recurse -Force}
+          git worktree add $work origin/main
+          New-Item -ItemType Directory -Force -Path (Join-Path $work 'launcher/files'),(Join-Path $work 'manifests'),(Join-Path $work 'beta') | Out-Null
+          Copy-Item $launcher (Join-Path $work 'launcher/files/SRStudioLauncher.ps1') -Force
+          [IO.File]::WriteAllText((Join-Path $work 'manifests/launcher.json'),(($lm|ConvertTo-Json -Depth 20)+"`n"),(New-Object Text.UTF8Encoding($false)))
+          [IO.File]::WriteAllText((Join-Path $work 'beta/manifest.json'),(($beta|ConvertTo-Json -Depth 20)+"`n"),(New-Object Text.UTF8Encoding($false)))
+          Push-Location $work
+          git config user.name 'SR Studio Update Bot'; git config user.email 'actions@users.noreply.github.com'
+          git add launcher/files/SRStudioLauncher.ps1 manifests/launcher.json beta/manifest.json
+          git commit -m 'Publica Beta 6 e Launcher Base 3.2'
+          git push origin HEAD:main
+          Pop-Location
+
+      - name: Confirmar publicacao
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Start-Sleep 4
+          $r=gh api repos/${{ github.repository }}/releases/tags/v5.0.0-hybrid.beta6 | ConvertFrom-Json
+          $a=$r.assets | Where-Object name -eq 'SR_STUDIO_5.0.0_BETA6_ATUALIZACAO_GARANTIDA.zip' | Select-Object -First 1
+          if(-not $a){throw 'Asset Beta 6 ausente'}
+          $meta=Get-Content -Raw dist/package.json | ConvertFrom-Json
+          if([int64]$a.size -ne [int64]$meta.size){throw 'Tamanho da release divergente'}
+          $ts=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          $m=Invoke-RestMethod -Uri ("https://raw.githubusercontent.com/${{ github.repository }}/main/beta/manifest.json?ts="+$ts) -Headers @{'Cache-Control'='no-cache'}
+          $lm=Invoke-RestMethod -Uri ("https://raw.githubusercontent.com/${{ github.repository }}/main/manifests/launcher.json?ts="+$ts) -Headers @{'Cache-Control'='no-cache'}
+          if($m.version -ne '5.0.0-hybrid.beta6'){throw "Manifesto Beta incorreto: $($m.version)"}
+          if($m.sha256 -ne $meta.sha256){throw 'SHA Beta divergente'}
+          if($lm.version -ne '4.0.1-hybrid.base3.2'){throw "Launcher incorreto: $($lm.version)"}
+          Write-Host "BETA6_OK $($m.version) $($m.sha256) $($m.size) LAUNCHER=$($lm.version)"
