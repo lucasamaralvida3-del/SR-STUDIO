@@ -1,0 +1,106 @@
+name: SR Studio Launcher base2.9 - Python Quote Fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publicar-launcher-base2.9-quotefix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Corrigir testes Python sem -c
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, json
+          from datetime import datetime, timezone, timedelta
+
+          p=Path('launcher/files/SRStudioLauncher.ps1')
+          text=p.read_text(encoding='utf-8-sig')
+          text=text.replace("$LauncherVersion = '4.0.1-hybrid.base2.8'", "$LauncherVersion = '4.0.1-hybrid.base2.9'", 1)
+
+          old1='''                  $tmpOut = Join-Path $LogDir 'python_candidate.out.log'\n                  $tmpErr = Join-Path $LogDir 'python_candidate.err.log'\n                  Remove-Item -LiteralPath $tmpOut,$tmpErr -Force -ErrorAction SilentlyContinue\n                  $proc = Start-Process -FilePath $exe -ArgumentList @('-c',\"import sys; print('%d.%d.%d' % sys.version_info[:3])\") -Wait -PassThru -RedirectStandardOutput $tmpOut -RedirectStandardError $tmpErr -WindowStyle Hidden\n                  $ver = ''\n                  if(Test-Path $tmpOut) { $ver = (Get-Content -Raw -LiteralPath $tmpOut).Trim() }\n                  if($proc.ExitCode -ne 0 -or -not $ver) {\n                    $errText=''\n                    if(Test-Path $tmpErr) { try { $errText=(Get-Content -Raw -LiteralPath $tmpErr).Trim() } catch { } }\n                    Write-SrLog ('Python candidate rejected. Exit=' + $proc.ExitCode + ' Path=' + $exe + $(if($errText){' Error=' + $errText}else{''}))\n                    continue\n                  }'''
+          new1='''                  $tmpOut = Join-Path $LogDir 'python_candidate.out.log'\n                  $tmpErr = Join-Path $LogDir 'python_candidate.err.log'\n                  $probe = Join-Path $LogDir 'python_candidate_probe.py'\n                  Remove-Item -LiteralPath $tmpOut,$tmpErr -Force -ErrorAction SilentlyContinue\n                  [IO.File]::WriteAllText($probe, \"import sys`nprint('%d.%d.%d' % sys.version_info[:3])`n\", (New-Object Text.UTF8Encoding($false)))\n                  & $exe $probe 1> $tmpOut 2> $tmpErr\n                  $candidateExit = $LASTEXITCODE\n                  $ver = ''\n                  if(Test-Path $tmpOut) { try { $ver = (Get-Content -Raw -LiteralPath $tmpOut).Trim() } catch { } }\n                  if($candidateExit -ne 0 -or -not $ver) {\n                    $errText=''\n                    if(Test-Path $tmpErr) { try { $errText=(Get-Content -Raw -LiteralPath $tmpErr).Trim() } catch { } }\n                    Write-SrLog ('Python candidate rejected. Exit=' + $candidateExit + ' Path=' + $exe + $(if($errText){' Error=' + $errText}else{''}))\n                    continue\n                  }'''
+          if old1 not in text:
+              raise SystemExit('Bloco candidate probe nao encontrado')
+          text=text.replace(old1,new1,1)
+
+          old2='''              $stageOut = Join-Path $LogDir 'portable_python_start.out.log'\n              $stageErr = Join-Path $LogDir 'portable_python_start.err.log'\n              Remove-Item -LiteralPath $stageOut,$stageErr -Force -ErrorAction SilentlyContinue\n              try {\n                $stageProc = Start-Process -FilePath $stagePython -ArgumentList @('-c',\"import sys; print('%d.%d.%d' % sys.version_info[:3])\") -Wait -PassThru -RedirectStandardOutput $stageOut -RedirectStandardError $stageErr -WindowStyle Hidden\n              } catch {\n                throw ('Runtime Python portatil nao conseguiu iniciar processo: ' + $_.Exception.Message)\n              }\n              $stageVersion=''\n              if(Test-Path $stageOut) { try { $stageVersion=(Get-Content -Raw -LiteralPath $stageOut).Trim() } catch { } }\n              $stageError=''\n              if(Test-Path $stageErr) { try { $stageError=(Get-Content -Raw -LiteralPath $stageErr).Trim() } catch { } }\n              Write-SrLog ('Portable Python startup exit=' + $stageProc.ExitCode + ' version=' + $stageVersion + $(if($stageError){' stderr=' + $stageError}else{''}))\n              if($stageProc.ExitCode -ne 0 -or $stageVersion -notmatch '^3\\.12\\.') {\n                throw ('Runtime Python portatil nao iniciou corretamente. Exit=' + $stageProc.ExitCode + $(if($stageError){' / ' + $stageError}else{''}))\n              }'''
+          new2='''              $stageOut = Join-Path $LogDir 'portable_python_start.out.log'\n              $stageErr = Join-Path $LogDir 'portable_python_start.err.log'\n              $stageProbe = Join-Path $LogDir 'portable_python_start_probe.py'\n              Remove-Item -LiteralPath $stageOut,$stageErr -Force -ErrorAction SilentlyContinue\n              [IO.File]::WriteAllText($stageProbe, \"import sys`nprint('%d.%d.%d' % sys.version_info[:3])`n\", (New-Object Text.UTF8Encoding($false)))\n              try {\n                & $stagePython $stageProbe 1> $stageOut 2> $stageErr\n                $stageExit = $LASTEXITCODE\n              } catch {\n                throw ('Runtime Python portatil nao conseguiu iniciar processo: ' + $_.Exception.Message)\n              }\n              $stageVersion=''\n              if(Test-Path $stageOut) { try { $stageVersion=(Get-Content -Raw -LiteralPath $stageOut).Trim() } catch { } }\n              $stageError=''\n              if(Test-Path $stageErr) { try { $stageError=(Get-Content -Raw -LiteralPath $stageErr).Trim() } catch { } }\n              Write-SrLog ('Portable Python startup exit=' + $stageExit + ' version=' + $stageVersion + $(if($stageError){' stderr=' + $stageError}else{''}))\n              if($stageExit -ne 0 -or $stageVersion -notmatch '^3\\.12\\.') {\n                throw ('Runtime Python portatil nao iniciou corretamente. Exit=' + $stageExit + $(if($stageError){' / ' + $stageError}else{''}))\n              }'''
+          if old2 not in text:
+              raise SystemExit('Bloco stage probe nao encontrado')
+          text=text.replace(old2,new2,1)
+
+          old3='''              $importOut = Join-Path $LogDir 'portable_python_imports.out.log'\n              $importErr = Join-Path $LogDir 'portable_python_imports.err.log'\n              Remove-Item -LiteralPath $importOut,$importErr -Force -ErrorAction SilentlyContinue\n              $importProc = Start-Process -FilePath $stagePython -ArgumentList @('-c',\"import tkinter, openpyxl, pypdf, PIL, numpy, cv2, tkinterdnd2; print('SR_RUNTIME_OK')\") -Wait -PassThru -RedirectStandardOutput $importOut -RedirectStandardError $importErr -WindowStyle Hidden\n              if($importProc.ExitCode -ne 0) {\n                $importError=''\n                if(Test-Path $importErr) { try { $importError=(Get-Content -Raw -LiteralPath $importErr).Trim() } catch { } }\n                throw ('Runtime Python portatil esta incompleto. Exit=' + $importProc.ExitCode + $(if($importError){' / ' + $importError}else{''}))\n              }'''
+          new3='''              $importOut = Join-Path $LogDir 'portable_python_imports.out.log'\n              $importErr = Join-Path $LogDir 'portable_python_imports.err.log'\n              $importProbe = Join-Path $LogDir 'portable_python_imports_probe.py'\n              Remove-Item -LiteralPath $importOut,$importErr -Force -ErrorAction SilentlyContinue\n              [IO.File]::WriteAllText($importProbe, \"import tkinter, openpyxl, pypdf, PIL, numpy, cv2, tkinterdnd2`nprint('SR_RUNTIME_OK')`n\", (New-Object Text.UTF8Encoding($false)))\n              & $stagePython $importProbe 1> $importOut 2> $importErr\n              $importExit = $LASTEXITCODE\n              if($importExit -ne 0) {\n                $importError=''\n                if(Test-Path $importErr) { try { $importError=(Get-Content -Raw -LiteralPath $importErr).Trim() } catch { } }\n                throw ('Runtime Python portatil esta incompleto. Exit=' + $importExit + $(if($importError){' / ' + $importError}else{''}))\n              }'''
+          if old3 not in text:
+              raise SystemExit('Bloco import probe nao encontrado')
+          text=text.replace(old3,new3,1)
+
+          data=('\ufeff'+text.lstrip('\ufeff')).encode('utf-8')
+          p.write_bytes(data)
+          now=datetime.now(timezone(timedelta(hours=-3))).isoformat(timespec='seconds')
+          manifest={
+            'format':'SRSTUDIO_LAUNCHER_MANIFEST_1',
+            'product':'SR Studio Launcher',
+            'version':'4.0.1-hybrid.base2.9',
+            'published_at':now,
+            'files':[{'path':'SRStudioLauncher.ps1','source':'launcher/files/SRStudioLauncher.ps1','sha256':hashlib.sha256(data).hexdigest(),'size':len(data)}]
+          }
+          Path('manifests/launcher.json').write_text(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+
+      - name: Validar sintaxe Launcher 2.9
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='launcher/files/SRStudioLauncher.ps1'
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $p),[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors -and $errors.Count -gt 0){ throw "PowerShell invalido: $($errors[0].Message)" }
+          if(-not (Select-String -LiteralPath $p -SimpleMatch "4.0.1-hybrid.base2.9")){ throw 'Versao base2.9 ausente' }
+          if(-not (Select-String -LiteralPath $p -SimpleMatch 'portable_python_start_probe.py')){ throw 'Probe em arquivo ausente' }
+          if(Select-String -LiteralPath $p -SimpleMatch "ArgumentList @('-c'" ){ throw 'Ainda existe probe Python via -c/ArgumentList' }
+
+      - name: Testar mesmo runtime com probe em arquivo
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $zip=Join-Path $env:RUNNER_TEMP 'runtime.zip'
+          $dir=Join-Path $env:RUNNER_TEMP 'runtime-test29'
+          Invoke-WebRequest -UseBasicParsing -Uri 'https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-runtime1/SR_STUDIO_PYTHON_3.12.10_RUNTIME1.zip' -OutFile $zip
+          if((Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant() -ne '80acc2aaffecb83a04cf60e7dc8a4b806124ee01e9f6f20a17fa2c439e65e0e9'){ throw 'SHA runtime divergente' }
+          Remove-Item $dir -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive $zip $dir -Force
+          $probe=Join-Path $env:RUNNER_TEMP 'probe29.py'
+          [IO.File]::WriteAllText($probe,"import sys`nimport tkinter, openpyxl, pypdf, PIL, numpy, cv2, tkinterdnd2`nprint('%d.%d.%d' % sys.version_info[:3])`nprint('SR_RUNTIME_OK')`n",(New-Object Text.UTF8Encoding($false)))
+          & (Join-Path $dir 'python.exe') $probe
+          if($LASTEXITCODE -ne 0){ throw "Runtime probe falhou: $LASTEXITCODE" }
+
+      - name: Publicar Launcher 2.9
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add launcher/files/SRStudioLauncher.ps1 manifests/launcher.json
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Corrige argumentos Python no Launcher base2.9'
+            git push origin HEAD:main
+          }
+
+      - name: Confirmar manifesto online
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Start-Sleep -Seconds 2
+          $u='https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/manifests/launcher.json?x='+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          $m=Invoke-RestMethod -Uri $u -Headers @{'Cache-Control'='no-cache'}
+          if([string]$m.version -ne '4.0.1-hybrid.base2.9'){ throw "Online ainda em $($m.version)" }
