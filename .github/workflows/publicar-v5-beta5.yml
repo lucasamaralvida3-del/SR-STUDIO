@@ -1,0 +1,228 @@
+name: Publicar SR Studio 5.0 Beta 5
+
+on:
+  push:
+    branches:
+      - next/5.0
+    paths:
+      - '.github/workflows/publicar-v5-beta5.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  corrigir-testar-publicar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: next/5.0
+          fetch-depth: 0
+
+      - name: Preparar dependências
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check "Pillow>=10.0.0" "openpyxl>=3.1.2" "pypdf>=4.0.0" "tkinterdnd2>=0.4.2" "numpy>=1.26,<3" "opencv-python-headless>=4.9.0"
+
+      - name: Baixar logo oficial íntegra da Stable 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path '.beta5-source' -Force | Out-Null
+          gh release download 'v4.0.16-hybrid.stable3' -p 'SR_STUDIO_4.0.16_STABLE3_LOGO_OFICIAL.zip' -D '.beta5-source' --clobber
+          if(-not (Test-Path '.beta5-source/SR_STUDIO_4.0.16_STABLE3_LOGO_OFICIAL.zip')){ throw 'Pacote oficial Stable 3 não encontrado' }
+
+      - name: Aplicar correções Beta 5
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python build/apply_beta5_fixes.py --logo-zip '.beta5-source/SR_STUDIO_4.0.16_STABLE3_LOGO_OFICIAL.zip'
+
+      - name: Validar logo menu e revisão inicial
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          from pathlib import Path
+          from PIL import Image
+          import ast
+
+          app=Path('src/sr_studio')
+          logo=app/'assets'/'SR_logo.png'
+          with Image.open(logo) as im:
+              im.load()
+              assert im.size==(2048,2048), im.size
+              probe=im.convert('RGB').resize((96,96),Image.Resampling.LANCZOS)
+              pix=list(probe.getdata())
+          black=sum(1 for r,g,b in pix if r<25 and g<25 and b<25)/len(pix)
+          white=sum(1 for r,g,b in pix if r>235 and g>235 and b>235)/len(pix)
+          blue=sum(1 for r,g,b in pix if b>110 and b>r*1.15 and b>g*1.05)/len(pix)
+          assert black<.12,(black,white,blue)
+          assert white>.08,(black,white,blue)
+          assert blue>.08,(black,white,blue)
+          assert (app/'assets'/'SR_Studio.ico').stat().st_size>10000
+
+          menu=(app/'ui'/'studio5_visual.py').read_text(encoding='utf-8-sig')
+          for token in ('nav_scroll.pack','SR5_BETA5_NAV_MOUSEWHEEL','self.quick_config_btn','Configurações'):
+              assert token in menu,token
+
+          review=(app/'SRStudio21.py').read_text(encoding='utf-8-sig')
+          assert 'SR5_BETA5_INITIAL_REVIEW_REFRESH' in review
+          assert 'self.after_idle(_sr5_initial_review_refresh)' in review
+          assert 'self.after(100, _sr5_initial_review_refresh)' in review
+          ast.parse(review)
+          print('BETA5_REGRESSIONS_OK',round(black,3),round(white,3),round(blue,3))
+          '@ | Set-Content -LiteralPath '.beta5-source/verify_beta5.py' -Encoding UTF8
+          python '.beta5-source/verify_beta5.py'
+
+      - name: Rodar compilação e testes completos 5.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File -Recurse | ForEach-Object { python -m py_compile $_.FullName }
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.js' -File | ForEach-Object { node --check $_.FullName }
+          python -m unittest tests.test_foundation -v
+          python -m unittest tests.test_v5_services -v
+          python -m unittest tests.test_v5_importers -v
+          python -m unittest tests.test_v5_http_bridge -v
+          python -m unittest tests.test_v5_export_render -v
+          python -m unittest tests.test_v5_visual -v
+          python -m unittest tests.test_v5_fidelity -v
+          $env:PYTHONPATH=(Resolve-Path 'src/sr_studio').Path
+          python -c "import SR_Studio_Gerador as app; assert getattr(app.App,'_SR5_VISUAL_INSTALLED',False); assert getattr(app.App,'_SR5_FIDELITY_INSTALLED',False); assert getattr(app.StartupSplash,'_SR5_SPLASH_INSTALLED',False); print('APP_BETA5_OK',app.APP_VERSION_INFO)"
+
+      - name: Registrar correções na base 5.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/sr_studio/ui/studio5_visual.py src/sr_studio/SRStudio21.py src/sr_studio/assets/SR_logo.png src/sr_studio/assets/SR_Studio.ico
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Corrige menu revisão inicial e logo oficial na Beta 5'
+            git push origin HEAD:next/5.0
+          }
+
+      - name: Montar pacote oficial Beta 5
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          python build/package_app.py --version '5.0.0-hybrid.beta5' --channel beta --release-label 'Beta 5' --output 'dist/SR_STUDIO_5.0.0_BETA5_CORRECOES_VISUAIS.zip' --metadata 'dist/package.json'
+          $meta=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          if([string]$meta.version -ne '5.0.0-hybrid.beta5'){ throw 'Versão empacotada incorreta' }
+          if([string]$meta.channel -ne 'beta'){ throw 'Canal empacotado incorreto' }
+          if([int64]$meta.size -lt 3000000){ throw 'Pacote Beta 5 parece incompleto' }
+
+      - name: Validar pacote final Beta 5
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import io,json,zipfile
+          from pathlib import Path
+          from PIL import Image
+          p=Path('dist/SR_STUDIO_5.0.0_BETA5_CORRECOES_VISUAIS.zip')
+          with zipfile.ZipFile(p) as z:
+              names=set(z.namelist())
+              required={
+                  'files/SR_Studio_Gerador.py','files/SRStudio21.py','files/ui/studio5_visual.py',
+                  'files/ui/studio5_fidelity.py','files/ui/hidpi.py','files/ui/splash_v5.py',
+                  'files/assets/SR_logo.png','files/assets/SR_Studio.ico','files/version.json',
+                  'files/Encartes13_fidelity.css','files/Encartes13_fidelity.js'
+              }
+              missing=sorted(required-names)
+              if missing: raise SystemExit('Ausentes: '+', '.join(missing))
+              menu=z.read('files/ui/studio5_visual.py').decode('utf-8-sig')
+              review=z.read('files/SRStudio21.py').decode('utf-8-sig')
+              assert 'nav_scroll.pack' in menu and 'SR5_BETA5_NAV_MOUSEWHEEL' in menu and 'self.quick_config_btn' in menu
+              assert 'SR5_BETA5_INITIAL_REVIEW_REFRESH' in review and 'after_idle(_sr5_initial_review_refresh)' in review
+              logo=Image.open(io.BytesIO(z.read('files/assets/SR_logo.png'))); logo.load(); assert logo.size==(2048,2048)
+              probe=logo.convert('RGB').resize((96,96),Image.Resampling.LANCZOS); pix=list(probe.getdata())
+              black=sum(1 for r,g,b in pix if r<25 and g<25 and b<25)/len(pix)
+              assert black<.12,black
+              v=json.loads(z.read('files/version.json').decode('utf-8-sig'))
+              assert v.get('distribution_version')=='5.0.0-hybrid.beta5'
+              assert v.get('release_label')=='Beta 5'
+              print('ZIP_BETA5_OK',len([n for n in names if not n.endswith('/')]),round(black,3))
+          '@ | Set-Content -LiteralPath 'dist/verify_beta5.py' -Encoding UTF8
+          python dist/verify_beta5.py
+
+      - name: Criar release oficial Beta 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='v5.0.0-hybrid.beta5'
+          $asset='dist/SR_STUDIO_5.0.0_BETA5_CORRECOES_VISUAIS.zip'
+          $notes='Beta 5 do SR Studio 5.0. Corrige a marca preta usando novamente a fonte oficial íntegra da Stable 3, normalizada em PNG 2048x2048 e ICO multi-resolução com validação visual. O menu lateral passa a ter rolagem real, mouse wheel, densidade ajustada para 1080p e acesso fixo a Configurações. A tela Revisar Produtos antes da geração passa a popular sua lista já na primeira abertura, com refresh no idle e segunda atualização após a geometria estabilizar. Mantém HiDPI, ícones vetoriais, abertura animada e todas as funções da Beta 4. Stable permanece inalterada.'
+          cmd /c "gh release view $tag >nul 2>&1"
+          if($LASTEXITCODE -eq 0){
+            gh release upload $tag $asset --clobber
+            gh release edit $tag --prerelease --title 'SR Studio 5.0.0 Beta 5 - Correções Visuais e Revisão' --notes $notes
+          } else {
+            gh release create $tag $asset --target 'next/5.0' --prerelease --title 'SR Studio 5.0.0 Beta 5 - Correções Visuais e Revisão' --notes $notes
+          }
+
+      - name: Atualizar manifesto Beta no main
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $meta=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          $asset='SR_STUDIO_5.0.0_BETA5_CORRECOES_VISUAIS.zip'
+          $url="https://github.com/${{ github.repository }}/releases/download/v5.0.0-hybrid.beta5/$asset"
+          $published=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
+          $manifest=[ordered]@{
+            format='SRSTUDIO_HYBRID_BUNDLE_1'
+            product='SR Studio'
+            channel='beta'
+            version='5.0.0-hybrid.beta5'
+            product_version='5.0.0'
+            release_label='Beta 5'
+            published_at=$published
+            min_launcher='4.0.1-hybrid.base2.5'
+            url=$url
+            bundle_url=$url
+            sha256=[string]$meta.sha256
+            size=[int64]$meta.size
+            member_prefix='files/'
+            notes='SR Studio 5.0 Beta 5 — corrige logo preta, menu lateral com rolagem e Configurações sempre acessível, e carregamento imediato dos itens na revisão de produtos antes da geração; visual HD da Beta 4 preservado.'
+          }
+          git fetch origin main
+          $work=Join-Path $env:RUNNER_TEMP 'srstudio-main-beta5-manifest'
+          if(Test-Path $work){ Remove-Item -LiteralPath $work -Recurse -Force }
+          git worktree add $work origin/main
+          New-Item -ItemType Directory -Path (Join-Path $work 'beta') -Force | Out-Null
+          [IO.File]::WriteAllText((Join-Path $work 'beta/manifest.json'),(($manifest|ConvertTo-Json -Depth 20)+"`n"),(New-Object Text.UTF8Encoding($false)))
+          Push-Location $work
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add beta/manifest.json
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Publica SR Studio 5.0.0 Beta 5 - Correções Visuais e Revisão'
+            git push origin HEAD:main
+          }
+          Pop-Location
+
+      - name: Verificar publicação Beta 5
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $release=gh api repos/${{ github.repository }}/releases/tags/v5.0.0-hybrid.beta5 | ConvertFrom-Json
+          if(-not $release.prerelease){ throw 'Release Beta 5 não está marcada como prerelease' }
+          $asset=$release.assets | Where-Object name -eq 'SR_STUDIO_5.0.0_BETA5_CORRECOES_VISUAIS.zip' | Select-Object -First 1
+          if(-not $asset){ throw 'Asset Beta 5 ausente' }
+          $local=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          if([int64]$asset.size -ne [int64]$local.size){ throw 'Tamanho do asset não confere' }
+          Start-Sleep -Seconds 3
+          $m=Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/${{ github.repository }}/main/beta/manifest.json' -Headers @{'Cache-Control'='no-cache'}
+          if([string]$m.version -ne '5.0.0-hybrid.beta5'){ throw 'Manifesto não aponta para Beta 5' }
+          if([string]$m.sha256 -ne [string]$local.sha256){ throw 'SHA do manifesto não confere' }
+          if([int64]$m.size -ne [int64]$local.size){ throw 'Tamanho do manifesto não confere' }
+          Write-Host "BETA5_PUBLICADA $($m.version) $($m.sha256) $($m.size)"
