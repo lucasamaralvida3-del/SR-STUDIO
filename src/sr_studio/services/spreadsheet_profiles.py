@@ -3,7 +3,6 @@ from __future__ import annotations
 import hashlib
 import re
 import unicodedata
-from datetime import datetime
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +22,7 @@ FIELDS = (
     "unit",
     "limit",
     "category",
+    "highlight",
 )
 
 FIELD_LABELS = {
@@ -37,6 +37,7 @@ FIELD_LABELS = {
     "unit": "Unidade",
     "limit": "Limite por CPF",
     "category": "Categoria",
+    "highlight": "Destaque",
 }
 
 ALIASES = {
@@ -51,6 +52,7 @@ ALIASES = {
     "unit": ("UNIDADE", "UN", "UND", "UN VENDA", "UNIDADE VENDA"),
     "limit": ("LIMITE", "LIMITE CPF", "LIMITE POR CPF", "QTD LIMITE", "QUANTIDADE LIMITE"),
     "category": ("CATEGORIA", "DEPARTAMENTO", "SECAO", "SEÇÃO", "SETOR", "GRUPO"),
+    "highlight": ("DESTAQUE", "DESTACAR", "PRIORIDADE", "PRIORITARIO", "PRIORITÁRIO", "CAPA", "OFERTA DESTAQUE"),
 }
 
 
@@ -66,6 +68,15 @@ def _cell(value: Any) -> str:
     if isinstance(value, float) and value.is_integer():
         return str(int(value))
     return str(value).strip()
+
+
+def _truthy(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return value != 0
+    n = _norm(value)
+    return n in {"1", "SIM", "S", "YES", "TRUE", "X", "DESTAQUE", "DESTACAR", "CAPA", "PRIORIDADE", "PRIORITARIO"}
 
 
 def header_signature(headers: list[str]) -> str:
@@ -238,6 +249,7 @@ def _mapped(row: dict[str, Any], mapping: dict[str, str]) -> dict[str, Any]:
     result["limit"] = _cell(result.get("limit"))
     result["category"] = _cell(result.get("category"))
     result["unit"] = _infer_unit(result.get("entry"), result.get("unit"))
+    result["highlight"] = _truthy(result.get("highlight"))
     return result
 
 
