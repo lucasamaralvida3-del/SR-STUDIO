@@ -1,0 +1,160 @@
+name: Publicar SR Studio 5.0 Beta 1
+
+on:
+  push:
+    branches:
+      - next/5.0
+    paths:
+      - '.github/workflows/publicar-v5-beta1.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: next/5.0
+          fetch-depth: 0
+
+      - name: Preparar dependências
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check "openpyxl>=3.1.2" "Pillow>=10.0.0" "pypdf>=4.0.0" "tkinterdnd2>=0.4.2" "numpy>=1.26,<3" "opencv-python-headless>=4.9.0"
+
+      - name: Validar código e testes 5.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File -Recurse | ForEach-Object { python -m py_compile $_.FullName }
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.js' -File | ForEach-Object { node --check $_.FullName }
+          python -m unittest tests.test_foundation -v
+          python -m unittest tests.test_v5_services -v
+          python -m unittest tests.test_v5_importers -v
+          python -m unittest tests.test_v5_http_bridge -v
+          python -m unittest tests.test_v5_export_render -v
+          $env:PYTHONPATH=(Resolve-Path 'src/sr_studio').Path
+          python -c "import SR_Studio_Gerador as app; print('APP_IMPORT_OK', app.APP_VERSION_INFO)"
+
+      - name: Montar pacote oficial Beta 1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          python build/package_app.py --version '5.0.0-hybrid.beta1' --channel beta --release-label 'Beta 1' --output 'dist/SR_STUDIO_5.0.0_BETA1_GRANDE_SALTO.zip' --metadata 'dist/package.json'
+          $meta=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          if([string]$meta.version -ne '5.0.0-hybrid.beta1'){ throw 'Versão empacotada incorreta' }
+          if([string]$meta.channel -ne 'beta'){ throw 'Canal empacotado incorreto' }
+          if([string]$meta.member_prefix -ne 'files/'){ throw 'Prefixo do bundle incorreto' }
+          if([int64]$meta.size -lt 2000000){ throw 'Pacote oficial parece incompleto' }
+
+      - name: Validar conteúdo final do ZIP
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import json, zipfile
+          from pathlib import Path
+          path=Path('dist/SR_STUDIO_5.0.0_BETA1_GRANDE_SALTO.zip')
+          required={
+            'files/SR_Studio_Gerador.py','files/modules/Studio5Module.py','files/data/v5_store.py',
+            'files/services/project_store.py','files/services/product_catalog.py','files/services/spreadsheet_profiles.py',
+            'files/services/template_registry.py','files/services/campaign_wizard.py','files/services/validation_center.py',
+            'files/services/export_profiles.py','files/services/project_export.py','files/services/release_channels.py',
+            'files/services/update_rollback.py','files/ui/template_mapping_visual.py','files/ui/studio5_enhancements.py',
+            'files/Encartes10_beta16.js','files/Encartes11_v5.js','files/Encartes3_index.html',
+            'files/assets/SR_logo.png','files/assets/SR_Studio.ico','files/version.json'
+          }
+          with zipfile.ZipFile(path) as z:
+              names=set(z.namelist())
+              missing=sorted(required-names)
+              if missing: raise SystemExit('Ausentes: '+', '.join(missing))
+              version=json.loads(z.read('files/version.json').decode('utf-8-sig'))
+              if version.get('distribution_version')!='5.0.0-hybrid.beta1': raise SystemExit('version.json incorreto')
+              if version.get('channel')!='beta': raise SystemExit('canal incorreto')
+              if version.get('release_label')!='Beta 1': raise SystemExit('label incorreto')
+              print('ZIP_OK',len([n for n in names if not n.endswith('/')]))
+          '@ | Set-Content -LiteralPath 'dist/verify.py' -Encoding UTF8
+          python dist/verify.py
+
+      - name: Criar release oficial Beta 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='v5.0.0-hybrid.beta1'
+          $asset='dist/SR_STUDIO_5.0.0_BETA1_GRANDE_SALTO.zip'
+          cmd /c "gh release view $tag >nul 2>&1"
+          if($LASTEXITCODE -eq 0){
+            gh release upload $tag $asset --clobber
+            gh release edit $tag --prerelease --title 'SR Studio 5.0.0 Beta 1 - Grande Salto' --notes 'Primeira Beta da nova geração SR Studio 5.0. Base reorganizada em fonte canônica única. Inclui Central 5.0; projetos com autosave, recuperação e versões; modelos Canva/PPTX aprendidos com mapeamento visual por clique; Banco Central de Produtos com EAN, aliases e qualidade de imagem; importador inteligente de planilhas; assistente de campanha com categorias e destaques; validação pré-impressão aprofundada; exportação direta do projeto para PDF/PNG/Instagram/Story/WhatsApp; histórico de atualização e rollback; bridge persistente do Encartes; CI unificado. Stable 4 permanece inalterada durante os testes.'
+          } else {
+            gh release create $tag $asset --target '${{ github.sha }}' --prerelease --title 'SR Studio 5.0.0 Beta 1 - Grande Salto' --notes 'Primeira Beta da nova geração SR Studio 5.0. Base reorganizada em fonte canônica única. Inclui Central 5.0; projetos com autosave, recuperação e versões; modelos Canva/PPTX aprendidos com mapeamento visual por clique; Banco Central de Produtos com EAN, aliases e qualidade de imagem; importador inteligente de planilhas; assistente de campanha com categorias e destaques; validação pré-impressão aprofundada; exportação direta do projeto para PDF/PNG/Instagram/Story/WhatsApp; histórico de atualização e rollback; bridge persistente do Encartes; CI unificado. Stable 4 permanece inalterada durante os testes.'
+          }
+
+      - name: Atualizar manifesto Beta no main
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $meta=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          $sha=[string]$meta.sha256
+          $size=[int64]$meta.size
+          $asset='SR_STUDIO_5.0.0_BETA1_GRANDE_SALTO.zip'
+          $url="https://github.com/${{ github.repository }}/releases/download/v5.0.0-hybrid.beta1/$asset"
+          $published=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
+          $manifest=[ordered]@{
+            format='SRSTUDIO_HYBRID_BUNDLE_1'
+            product='SR Studio'
+            channel='beta'
+            version='5.0.0-hybrid.beta1'
+            product_version='5.0.0'
+            release_label='Beta 1'
+            published_at=$published
+            min_launcher='4.0.1-hybrid.base2.5'
+            url=$url
+            bundle_url=$url
+            sha256=$sha
+            size=$size
+            member_prefix='files/'
+            notes='SR Studio 5.0 Beta 1 — Grande Salto: base canônica organizada; Central 5.0; projetos/autosave/recuperação/versões; modelos PPTX com mapeamento visual; Banco Central de Produtos; importador inteligente XLSX; campanhas automáticas com categorias e destaques; validação pré-impressão; exportação multiperfil; atualização e rollback.'
+          }
+          $json=$manifest | ConvertTo-Json -Depth 20
+          git fetch origin main
+          $work=Join-Path $env:RUNNER_TEMP 'srstudio-main-manifest'
+          if(Test-Path $work){ Remove-Item -LiteralPath $work -Recurse -Force }
+          git worktree add $work origin/main
+          New-Item -ItemType Directory -Path (Join-Path $work 'beta') -Force | Out-Null
+          [IO.File]::WriteAllText((Join-Path $work 'beta/manifest.json'),$json+"`n",(New-Object Text.UTF8Encoding($false)))
+          Push-Location $work
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add beta/manifest.json
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Publica SR Studio 5.0.0 Beta 1 - Grande Salto'
+            git push origin HEAD:main
+          }
+          Pop-Location
+
+      - name: Verificar release e manifesto publicados
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $release=gh api repos/${{ github.repository }}/releases/tags/v5.0.0-hybrid.beta1 | ConvertFrom-Json
+          if(-not $release.prerelease){ throw 'Release não marcada como prerelease' }
+          $asset=$release.assets | Where-Object name -eq 'SR_STUDIO_5.0.0_BETA1_GRANDE_SALTO.zip' | Select-Object -First 1
+          if(-not $asset){ throw 'Asset da Beta 1 ausente' }
+          $local=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          if([int64]$asset.size -ne [int64]$local.size){ throw 'Tamanho do asset publicado não confere' }
+          $raw='https://raw.githubusercontent.com/${{ github.repository }}/main/beta/manifest.json'
+          Start-Sleep -Seconds 3
+          $m=Invoke-RestMethod -Uri $raw -Headers @{'Cache-Control'='no-cache'}
+          if([string]$m.version -ne '5.0.0-hybrid.beta1'){ throw 'Manifesto Beta não aponta para a 5.0 Beta 1' }
+          if([string]$m.sha256 -ne [string]$local.sha256){ throw 'SHA do manifesto não confere' }
+          if([int64]$m.size -ne [int64]$local.size){ throw 'Tamanho do manifesto não confere' }
+          Write-Host "PUBLICACAO_OK $($m.version) $($m.sha256) $($m.size)"
