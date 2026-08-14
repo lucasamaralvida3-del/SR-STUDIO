@@ -41,42 +41,37 @@ jobs:
           $expanded='.next5/expanded'
           Remove-Item -LiteralPath $expanded -Recurse -Force -ErrorAction SilentlyContinue
           Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force
-          if(Test-Path (Join-Path $expanded 'files')){
-            $source=(Resolve-Path (Join-Path $expanded 'files')).Path
-          } else {
-            $entries=Get-ChildItem -LiteralPath $expanded
-            if($entries.Count -eq 1 -and $entries[0].PSIsContainer){ $source=$entries[0].FullName } else { $source=(Resolve-Path $expanded).Path }
-          }
+          $source=Join-Path $expanded 'files'
+          if(-not (Test-Path -LiteralPath $source)){ throw 'Prefixo files/ não encontrado no pacote Stable 4' }
           Remove-Item -LiteralPath 'src/sr_studio' -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path 'src/sr_studio' -Force | Out-Null
-          Copy-Item -Path (Join-Path $source '*') -Destination 'src/sr_studio' -Recurse -Force
-          Get-ChildItem -LiteralPath 'src/sr_studio' -Directory -Recurse -Filter '__pycache__' | Remove-Item -Recurse -Force
-          Get-ChildItem -LiteralPath 'src/sr_studio' -File -Recurse -Include '*.pyc','*.pyo' | Remove-Item -Force
-          if(-not (Test-Path 'src/sr_studio/SR_Studio_Gerador.py')){ throw 'Fonte principal não encontrada na Stable 4 extraída' }
-          if(-not (Test-Path 'src/sr_studio/assets/SR_logo.png')){ throw 'Logo oficial não encontrada na base canônica' }
-          if(-not (Test-Path 'src/sr_studio/version.json')){ throw 'version.json não encontrado na base canônica' }
+          Get-ChildItem -LiteralPath $source -Force | ForEach-Object {
+            Copy-Item -LiteralPath $_.FullName -Destination 'src/sr_studio' -Recurse -Force
+          }
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Directory -Recurse -Filter '__pycache__' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -LiteralPath 'src/sr_studio' -File -Recurse -Include '*.pyc','*.pyo' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
+          foreach($required in @('SR_Studio_Gerador.py','assets/SR_logo.png','assets/SR_Studio.ico','version.json','Encartes10_beta16.js','requirements.txt')){
+            if(-not (Test-Path -LiteralPath (Join-Path 'src/sr_studio' $required))){ throw "Arquivo canônico ausente: $required" }
+          }
 
       - name: Validar fonte canônica
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          python -m py_compile src/sr_studio/SR_Studio_Gerador.py
           Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File | ForEach-Object { python -m py_compile $_.FullName }
           $version=Get-Content -Raw 'src/sr_studio/version.json' | ConvertFrom-Json
           $dist=[string]($version.distribution_version)
           if(-not $dist){ $dist=[string]($version.version) }
           if($dist -ne '4.0.16-hybrid.stable4'){ throw "A fonte canônica não corresponde à Stable 4: $dist" }
           $count=(Get-ChildItem -LiteralPath 'src/sr_studio' -File -Recurse).Count
-          if($count -lt 50){ throw "Base extraída incompleta: apenas $count arquivos" }
-          "Arquivos canônicos: $count"
+          if($count -ne 65){ throw "Base extraída inesperada: $count arquivos; esperado 65" }
+          "Fonte canônica validada: $count arquivos"
 
       - name: Gravar metadados da fundação
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          New-Item -ItemType Directory -Path 'docs' -Force | Out-Null
           New-Item -ItemType Directory -Path 'build' -Force | Out-Null
-          New-Item -ItemType Directory -Path 'tests' -Force | Out-Null
           @'
           {
             "format": "SRSTUDIO_NEXT_FOUNDATION_1",
@@ -84,6 +79,8 @@ jobs:
             "source_of_truth": "src/sr_studio",
             "baseline": "4.0.16-hybrid.stable4",
             "baseline_tag": "v4.0.16-hybrid.stable4",
+            "baseline_sha256": "4ac83d3e1a704caab3c77ae21270d74bbe56182d9b22c7ae1b445f83a30089d6",
+            "canonical_file_count": 65,
             "status": "foundation",
             "public_release": false
           }
@@ -98,5 +95,6 @@ jobs:
           git add src/sr_studio build/foundation.json
           if(-not (git diff --cached --quiet)){
             git commit -m 'Materializa Stable 4 como base canônica da versão 5.0'
+            git pull --rebase origin next/5.0
             git push origin HEAD:next/5.0
           }
