@@ -41,8 +41,12 @@ jobs:
           $expanded='.next5/expanded'
           Remove-Item -LiteralPath $expanded -Recurse -Force -ErrorAction SilentlyContinue
           Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force
-          $entries=Get-ChildItem -LiteralPath $expanded
-          if($entries.Count -eq 1 -and $entries[0].PSIsContainer){ $source=$entries[0].FullName } else { $source=(Resolve-Path $expanded).Path }
+          if(Test-Path (Join-Path $expanded 'files')){
+            $source=(Resolve-Path (Join-Path $expanded 'files')).Path
+          } else {
+            $entries=Get-ChildItem -LiteralPath $expanded
+            if($entries.Count -eq 1 -and $entries[0].PSIsContainer){ $source=$entries[0].FullName } else { $source=(Resolve-Path $expanded).Path }
+          }
           Remove-Item -LiteralPath 'src/sr_studio' -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Path 'src/sr_studio' -Force | Out-Null
           Copy-Item -Path (Join-Path $source '*') -Destination 'src/sr_studio' -Recurse -Force
@@ -59,9 +63,9 @@ jobs:
           python -m py_compile src/sr_studio/SR_Studio_Gerador.py
           Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File | ForEach-Object { python -m py_compile $_.FullName }
           $version=Get-Content -Raw 'src/sr_studio/version.json' | ConvertFrom-Json
-          if([string]$version.version -ne '4.0.16-hybrid.stable4' -and [string]$version.distribution_version -ne '4.0.16-hybrid.stable4'){
-            throw 'A fonte canônica não corresponde à Stable 4'
-          }
+          $dist=[string]($version.distribution_version)
+          if(-not $dist){ $dist=[string]($version.version) }
+          if($dist -ne '4.0.16-hybrid.stable4'){ throw "A fonte canônica não corresponde à Stable 4: $dist" }
           $count=(Get-ChildItem -LiteralPath 'src/sr_studio' -File -Recurse).Count
           if($count -lt 50){ throw "Base extraída incompleta: apenas $count arquivos" }
           "Arquivos canônicos: $count"
