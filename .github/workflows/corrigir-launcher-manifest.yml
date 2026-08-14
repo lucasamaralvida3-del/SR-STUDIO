@@ -1,0 +1,77 @@
+name: Corrigir Manifesto Launcher pelos Bytes Reais
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/corrigir-launcher-manifest.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  corrigir:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Recalcular SHA e tamanho exatos
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json
+          from datetime import datetime, timezone, timedelta
+
+          p = Path('launcher/files/SRStudioLauncher.ps1')
+          b = p.read_bytes()
+          sha = hashlib.sha256(b).hexdigest()
+          size = len(b)
+          text = b.decode('utf-8-sig')
+          if "4.0.1-hybrid.base3.2" not in text:
+              raise SystemExit('Launcher esperado base3.2 nao encontrado')
+
+          now = datetime.now(timezone(timedelta(hours=-3))).isoformat(timespec='seconds')
+          manifest = {
+              'format': 'SRSTUDIO_LAUNCHER_MANIFEST_1',
+              'product': 'SR Studio Launcher',
+              'version': '4.0.1-hybrid.base3.2',
+              'published_at': now,
+              'files': [{
+                  'path': 'SRStudioLauncher.ps1',
+                  'source': 'launcher/files/SRStudioLauncher.ps1',
+                  'sha256': sha,
+                  'size': size,
+              }],
+          }
+          Path('manifests/launcher.json').write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('LAUNCHER_BYTES', size, sha)
+          PY
+
+      - name: Confirmar bytes do blob e publicar
+        run: |
+          set -e
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add manifests/launcher.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Recalcula manifesto exato do Launcher Base 3.2'
+            git push origin HEAD:main
+          fi
+
+      - name: Verificar manifesto publicado
+        run: |
+          sleep 3
+          python - <<'PY'
+          import json, hashlib, urllib.request, time
+          base='https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main'
+          ts=str(int(time.time()))
+          m=json.load(urllib.request.urlopen(base+'/manifests/launcher.json?ts='+ts))
+          data=urllib.request.urlopen(base+'/launcher/files/SRStudioLauncher.ps1?ts='+ts).read()
+          e=m['files'][0]
+          assert len(data)==int(e['size']), (len(data),e['size'])
+          assert hashlib.sha256(data).hexdigest()==e['sha256'], (hashlib.sha256(data).hexdigest(),e['sha256'])
+          print('MANIFESTO_LAUNCHER_OK',len(data),e['sha256'])
+          PY
