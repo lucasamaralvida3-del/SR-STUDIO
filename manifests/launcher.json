@@ -1,7 +1,14 @@
 {
-  "format": "SRSTUDIO_LAUNCHER_1",
-  "product": "SR Studio Launcher",
-  "version": "4.0.0",
-  "published_at": "2026-08-13T09:44:00-03:00",
-  "files": []
+    "format":  "SRSTUDIO_LAUNCHER_MANIFEST_1",
+    "product":  "SR Studio Launcher",
+    "version":  "4.0.1-hybrid.base2.5",
+    "published_at":  "2026-08-14T12:07:59-03:00",
+    "files":  [
+                  {
+                      "path":  "SRStudioLauncher.ps1",
+                      "source":  "launcher/files/SRStudioLauncher.ps1",
+                      "sha256":  "3831b4b226be5941e5c7b7da9813298f0df1b17d45f5fc71eff37d00630c895f",
+                      "size":  29148
+                  }
+              ]
 }
