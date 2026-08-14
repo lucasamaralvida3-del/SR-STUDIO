@@ -1,23 +1,23 @@
 {
-  "format": "SRSTUDIO_HYBRID_BUNDLE_1",
-  "product": "SR Studio",
-  "channel": "beta",
-  "version": "5.0.0-hybrid.beta6",
-  "product_version": "5.0.0",
-  "release_label": "Beta 6",
-  "published_at": "2026-08-14T17:27:38-03:00",
-  "min_launcher": "4.0.1-hybrid.base3.3",
-  "min_launcher_version": "4.0.1-hybrid.base3.3",
-  "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta6/SR_STUDIO_5.0.0_BETA6_ATUALIZACAO_GARANTIDA.zip",
-    "sha256": "844524741b0eda557da7b0d9a38517f792a0f9bb5ddc22b0209c0a493ed39110",
-    "size": 2864058,
-    "member_prefix": "files/"
-  },
-  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta6/SR_STUDIO_5.0.0_BETA6_ATUALIZACAO_GARANTIDA.zip",
-  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta6/SR_STUDIO_5.0.0_BETA6_ATUALIZACAO_GARANTIDA.zip",
-  "sha256": "844524741b0eda557da7b0d9a38517f792a0f9bb5ddc22b0209c0a493ed39110",
-  "size": 2864058,
-  "member_prefix": "files/",
-  "notes": "Beta 6 - atualizacao garantida em toda abertura instalada."
+    "format":  "SRSTUDIO_HYBRID_BUNDLE_1",
+    "product":  "SR Studio",
+    "channel":  "beta",
+    "version":  "5.0.0-hybrid.beta6.1",
+    "product_version":  "5.0.0",
+    "release_label":  "Beta 6.1",
+    "published_at":  "2026-08-14T18:06:43-03:00",
+    "min_launcher":  "4.0.1-hybrid.base3.2",
+    "min_launcher_version":  "4.0.1-hybrid.base3.2",
+    "bundle":  {
+                   "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta6.1/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip",
+                   "sha256":  "d2957c15674447364676fd8c0c1416203c4ee39951ed37d4e0f8425255c8bfc8",
+                   "size":  2665598,
+                   "member_prefix":  "files/"
+               },
+    "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta6.1/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip",
+    "bundle_url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta6.1/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip",
+    "sha256":  "d2957c15674447364676fd8c0c1416203c4ee39951ed37d4e0f8425255c8bfc8",
+    "size":  2665598,
+    "member_prefix":  "files/",
+    "notes":  "SR Studio 5.0 Beta 6.1 - logo oficial corrigida em splash, menu, dashboard e icone; demais recursos da Beta 6 preservados."
 }
