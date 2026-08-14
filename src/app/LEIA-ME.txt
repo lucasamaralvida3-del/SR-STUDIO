@@ -1,0 +1,12 @@
+SR STUDIO 4.0.4 • BETA 5 — SR IA GUARD + BANCO DE IMAGENS MANUAL
+
+NOVIDADES
+- SR IA exclusiva para funções do SR Studio.
+- Pedidos fora do escopo são bloqueados LOCALMENTE antes da OpenAI: zero crédito.
+- Consultas simples (ex.: procurar produto/listar campanhas) tentam o banco local primeiro: zero crédito quando resolvidas localmente.
+- Contador local de chamadas e tokens.
+- Limites diário e mensal configuráveis em Configurações > SR IA.
+- Beta 5 continua em SOMENTE LEITURA para ações críticas.
+- Banco de imagens: importação 100% manual. Nenhuma pesquisa automática de imagens e nenhuma OpenAI usada para localizar imagens.
+- Encartes usa a imagem oficial já cadastrada no Banco de Produtos.
+- Versionamento central: SR Studio 4.0.4 • Beta 5.
