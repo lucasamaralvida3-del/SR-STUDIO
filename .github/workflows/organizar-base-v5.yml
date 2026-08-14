@@ -1,0 +1,289 @@
+name: Organizar Base Canônica V5
+
+on:
+  push:
+    branches:
+      - agent/base-v5-organizada
+    paths:
+      - '.github/workflows/organizar-base-v5.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  organizar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Baixar Stable 4 oficial
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path _baseline -Force | Out-Null
+          gh release download 'v4.0.16-hybrid.stable4' -p 'SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip' -D _baseline --clobber
+          $zip='_baseline/SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip'
+          $sha=(Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          if($sha -ne '4ac83d3e1a704caab3c77ae21270d74bbe56182d9b22c7ae1b445f83a30089d6'){ throw "SHA da Stable 4 divergente: $sha" }
+          if((Get-Item $zip).Length -ne 2526714){ throw 'Tamanho da Stable 4 divergente' }
+          Expand-Archive -LiteralPath $zip -DestinationPath _baseline/extracted -Force
+
+      - name: Criar estrutura canônica
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Remove-Item src,tests,docs,tools -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path src/app,src/platform/launcher,src/platform/installer,tests/smoke,docs,tools/release | Out-Null
+          $items=Get-ChildItem -LiteralPath '_baseline/extracted' -Force
+          if($items.Count -eq 1 -and $items[0].PSIsContainer){
+            $runtime=$items[0].FullName
+          } else {
+            $runtime=(Resolve-Path '_baseline/extracted').Path
+          }
+          Copy-Item -Path (Join-Path $runtime '*') -Destination 'src/app' -Recurse -Force
+          Copy-Item 'launcher/files/SRStudioLauncher.ps1' 'src/platform/launcher/SRStudioLauncher.ps1' -Force
+          Copy-Item 'launcher/files/SRStudioBootstrap.ps1' 'src/platform/launcher/SRStudioBootstrap.ps1' -Force
+          Copy-Item 'installer/SRStudioInstaller.ps1' 'src/platform/installer/SRStudioInstaller.ps1' -Force
+          Copy-Item 'installer/build_setup.py' 'src/platform/installer/build_setup.py' -Force
+
+          $baseline=[ordered]@{
+            source_tag='v4.0.16-hybrid.stable4'
+            source_asset='SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip'
+            source_sha256='4ac83d3e1a704caab3c77ae21270d74bbe56182d9b22c7ae1b445f83a30089d6'
+            imported_at=(Get-Date).ToUniversalTime().ToString('o')
+            note='src/app é a cópia canônica exata da Stable 4 antes da evolução V5.'
+          }
+          $baseline | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath 'src/BASELINE.json' -Encoding utf8
+
+      - name: Criar documentação da nova base
+        shell: powershell
+        run: |
+          @'
+          # SR Studio
+
+          Fonte oficial do **SR Studio**.
+
+          ## Estrutura canônica
+
+          - `src/app/` — aplicação desktop completa. Esta é a única fonte de verdade funcional a partir da V5.
+          - `src/platform/launcher/` — Launcher e Bootstrap de atualização.
+          - `src/platform/installer/` — instalador Zero Admin e builder.
+          - `tests/` — testes permanentes do produto.
+          - `docs/` — arquitetura, roadmap e política de releases.
+          - `tools/release/` — ferramentas de empacotamento e validação.
+          - `stable/` e `beta/` — somente manifestos dos canais publicados.
+          - `staging/` — histórico legado das versões 4.x; não deve mais ser usado como fonte de desenvolvimento novo.
+
+          ## Regra V5
+
+          Toda nova funcionalidade nasce em `src/app`. Stable e Beta são geradas da mesma árvore de código; somente identificação de canal/versão pode mudar.
+
+          Baseline desta reorganização: **SR Studio 4.0.16 Stable 4**.
+          '@ | Set-Content -LiteralPath README.md -Encoding utf8
+
+          @'
+          # Arquitetura SR Studio V5
+
+          ## Objetivo
+          Remover a dependência de múltiplos diretórios de staging e transformar o pacote publicado em uma fonte canônica, testável e reproduzível.
+
+          ## Camadas
+          1. `src/app`: interface Tkinter, módulos de cartazes, Atacado, Promoções, Encartes, Banco de Produtos, SR IA e integrações locais.
+          2. `src/platform/launcher`: bootstrap, atualização, canais Stable/Beta, rollback e integridade.
+          3. `src/platform/installer`: instalação Zero Admin e preparação do ambiente local.
+          4. `tests`: validação estrutural, sintática e posteriormente testes funcionais de importação/geração.
+          5. `tools/release`: build único usado por Beta e Stable.
+
+          ## Princípios
+          - uma única fonte funcional;
+          - Stable e Beta nunca divergem em código quando partem da mesma entrega;
+          - publicação somente após testes;
+          - nenhuma feature nova em `staging/betaXX`;
+          - dados do usuário ficam fora da pasta da aplicação e sobrevivem a atualizações;
+          - formatos de projeto e banco terão versionamento e migração explícitos.
+          '@ | Set-Content -LiteralPath docs/ARCHITECTURE.md -Encoding utf8
+
+          @'
+          # Roadmap do grande salto de versão
+
+          Após a reorganização da base, a próxima geração será implementada sobre `src/app` em um único ciclo de desenvolvimento amplo:
+
+          1. Gerenciador de Projetos, autosave e recuperação de sessão.
+          2. Gerenciador de Modelos Canva/PPTX com mapeamento manual e aprendizado.
+          3. Banco Central de Produtos com código, EAN, aliases, imagens e histórico.
+          4. Importador Inteligente de Planilhas com perfis reutilizáveis.
+          5. Assistente de Campanhas e distribuição automática multipágina.
+          6. Central de Validação e pré-impressão.
+          7. Central de Exportação para impressão, PDF, PNG, Instagram, Story e WhatsApp.
+          8. Atualização profissional com histórico e rollback acessível pela interface.
+          9. Testes automáticos permanentes e migração de dados.
+
+          A versão final desse ciclo deverá representar um salto maior de produto, em vez de uma sequência de pequenas Betas desconectadas.
+          '@ | Set-Content -LiteralPath docs/ROADMAP_V5.md -Encoding utf8
+
+          @'
+          # Política de releases
+
+          - `src/app` é a fonte única.
+          - Beta recebe builds de desenvolvimento validados.
+          - Stable recebe apenas builds aprovados.
+          - Quando uma alteração for publicada diretamente na Stable, a mesma árvore funcional deve ser publicada também na Beta.
+          - Manifestos de canal apontam para bundles imutáveis com SHA-256.
+          - Instalador e Launcher possuem versionamento próprio.
+          - Uma publicação não pode modificar dados persistentes sem rotina de backup/migração.
+          '@ | Set-Content -LiteralPath docs/RELEASE_POLICY.md -Encoding utf8
+
+          @'
+          # Histórico legado
+
+          Os diretórios `staging/beta*`, workflows antigos e pacotes 4.x permanecem no repositório apenas para rastreabilidade. A partir da base V5, não devem receber novas funcionalidades. O desenvolvimento segue em `src/`.
+          '@ | Set-Content -LiteralPath docs/LEGACY.md -Encoding utf8
+
+      - name: Criar build canônico
+        shell: powershell
+        run: |
+          @'
+          from __future__ import annotations
+          import argparse, hashlib, json, shutil, zipfile
+          from pathlib import Path
+
+          ROOT = Path(__file__).resolve().parents[2]
+          APP = ROOT / "src" / "app"
+
+          def sha256(path: Path) -> str:
+              h = hashlib.sha256()
+              with path.open("rb") as f:
+                  for chunk in iter(lambda: f.read(1024 * 1024), b""):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          def build(output: Path) -> dict:
+              if not APP.exists():
+                  raise SystemExit("src/app não existe")
+              output.parent.mkdir(parents=True, exist_ok=True)
+              with zipfile.ZipFile(output, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as z:
+                  for p in sorted(APP.rglob("*")):
+                      if p.is_file() and "__pycache__" not in p.parts:
+                          z.write(p, p.relative_to(APP).as_posix())
+              return {"file": output.name, "sha256": sha256(output), "size": output.stat().st_size}
+
+          if __name__ == "__main__":
+              ap = argparse.ArgumentParser()
+              ap.add_argument("--output", required=True)
+              args = ap.parse_args()
+              result = build(Path(args.output))
+              print(json.dumps(result, ensure_ascii=False))
+          '@ | Set-Content -LiteralPath tools/release/build_bundle.py -Encoding utf8
+
+      - name: Criar smoke test permanente
+        shell: powershell
+        run: |
+          @'
+          from __future__ import annotations
+          import ast, json, pathlib, sys
+
+          ROOT = pathlib.Path(__file__).resolve().parents[2]
+          APP = ROOT / "src" / "app"
+          required = [
+              "SR_Studio_Gerador.py",
+              "AtacadoModule.py",
+              "ManualModule.py",
+              "SRStudio21.py",
+              "requirements.txt",
+              "assets/SR_logo.png",
+              "assets/SR_Studio.ico",
+          ]
+          missing = [x for x in required if not (APP / x).exists()]
+          if missing:
+              raise SystemExit("Arquivos essenciais ausentes: " + ", ".join(missing))
+          failures=[]
+          for p in APP.rglob("*.py"):
+              try:
+                  ast.parse(p.read_text(encoding="utf-8-sig"), filename=str(p))
+              except Exception as exc:
+                  failures.append(f"{p.relative_to(APP)}: {exc}")
+          if failures:
+              raise SystemExit("Python inválido:\n" + "\n".join(failures))
+          baseline=json.loads((ROOT / "src" / "BASELINE.json").read_text(encoding="utf-8-sig"))
+          if baseline["source_tag"] != "v4.0.16-hybrid.stable4":
+              raise SystemExit("Baseline inesperada")
+          print(f"OK: {sum(1 for _ in APP.rglob('*') if _.is_file())} arquivos; Python válido; logo oficial presente.")
+          '@ | Set-Content -LiteralPath tests/smoke/validate_base.py -Encoding utf8
+
+      - name: Validar base canônica
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python tests/smoke/validate_base.py
+          python tools/release/build_bundle.py --output _baseline/rebuild.zip
+          Get-ChildItem -LiteralPath 'src/app' -Recurse -Filter '*.py' | ForEach-Object { python -m py_compile $_.FullName }
+          $js=Get-ChildItem -LiteralPath 'src/app' -Recurse -Filter '*.js'
+          foreach($f in $js){ node --check $f.FullName }
+          $main=Get-Content -Raw -LiteralPath 'src/app/SR_Studio_Gerador.py'
+          if($main -notmatch "state\(['\"]zoomed['\"]\)"){ Write-Host 'Aviso: maximização pode estar aplicada por helper/patch, não pelo padrão direto.' }
+          if($main -notmatch 'SR_logo\.png'){ throw 'Referência à logo oficial não encontrada no app principal' }
+
+      - name: Criar CI da V5
+        shell: powershell
+        run: |
+          @'
+          name: CI SR Studio V5
+
+          on:
+            push:
+              branches: [agent/base-v5-organizada]
+              paths:
+                - 'src/**'
+                - 'tests/**'
+                - 'tools/**'
+                - '.github/workflows/ci-v5.yml'
+            pull_request:
+              paths:
+                - 'src/**'
+                - 'tests/**'
+                - 'tools/**'
+
+          jobs:
+            validar:
+              runs-on: windows-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: '3.12'
+                - uses: actions/setup-node@v4
+                  with:
+                    node-version: '22'
+                - name: Smoke estrutural
+                  shell: powershell
+                  run: python tests/smoke/validate_base.py
+                - name: Compilar Python
+                  shell: powershell
+                  run: |
+                    Get-ChildItem -LiteralPath 'src/app' -Recurse -Filter '*.py' | ForEach-Object { python -m py_compile $_.FullName }
+                - name: Validar JavaScript
+                  shell: powershell
+                  run: |
+                    Get-ChildItem -LiteralPath 'src/app' -Recurse -Filter '*.js' | ForEach-Object { node --check $_.FullName }
+                - name: Build reproduzível
+                  shell: powershell
+                  run: python tools/release/build_bundle.py --output dist/SR_STUDIO_V5_CI.zip
+          '@ | Set-Content -LiteralPath '.github/workflows/ci-v5.yml' -Encoding utf8
+
+      - name: Salvar base organizada na branch
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Remove-Item -LiteralPath 'src/app/__pycache__' -Recurse -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -LiteralPath 'src/app' -Recurse -Directory -Filter '__pycache__' | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+          git config user.name 'SR Studio Architecture Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add README.md src tests docs tools .github/workflows/ci-v5.yml
+          git status --short
+          if(git diff --cached --quiet){ throw 'Nenhuma alteração estrutural foi gerada' }
+          git commit -m 'Organiza base canônica do SR Studio V5'
+          git push origin HEAD:agent/base-v5-organizada
