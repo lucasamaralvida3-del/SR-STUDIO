@@ -2,13 +2,13 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.14-hybrid.beta15",
-  "created_at": "2026-08-14T09:49:49-03:00",
+  "version": "4.0.15-hybrid.beta16",
+  "created_at": "2026-08-14T10:35:51-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.14-hybrid.beta15/SR_STUDIO_4.0.14_BETA15_EDITOR_PRO.zip",
-    "sha256": "6a541239b1049e50cb235648b40de0da9409e55bc43f3dce2a416507c2b1f8b2",
-    "size": 2553431,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.15-hybrid.beta16/SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip",
+    "sha256": "60961a34cb2e62a6171ce3fda2860249765ba5f35f94b69354c4022163f9b5bd",
+    "size": 2565151,
     "member_prefix": "files/"
   },
   "repair": {
@@ -22,5 +22,5 @@
     "Encartes5_beta11.js",
     "Encartes6_beta12.js"
   ],
-  "notes": "Beta 15: Editor PRO com edição manual por partes, aprendizado de template, guias/camadas, imagem com zoom e foco, cópia de ajustes, backup e versões do projeto."
+  "notes": "Beta 16: edição manual reconstruída com interação Canva-like: multi-seleção, 8 alças, rotação, edição direta, recorte, barra contextual, posição, alinhamento, grupos, camadas e atalhos."
 }
