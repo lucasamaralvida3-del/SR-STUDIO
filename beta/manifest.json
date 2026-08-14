@@ -2,13 +2,13 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.12-hybrid.beta13",
-  "created_at": "2026-08-14T07:33:57-03:00",
+  "version": "4.0.13-hybrid.beta14",
+  "created_at": "2026-08-14T08:22:33-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.12-hybrid.beta13/SR_STUDIO_4.0.12_BETA13_IMAGENS_CANVA.zip",
-    "sha256": "b57bbac0de7633d3b8762ab80b0f0557191a90b1b82fbdc93d5f56a3a3188c6b",
-    "size": 2541144,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.13-hybrid.beta14/SR_STUDIO_4.0.13_BETA14_AJUSTE_VISUAL_CANVA.zip",
+    "sha256": "2f31013222bebf556a9e5a9b9f0d35d068845d5856dd26ad471e6103e545225d",
+    "size": 2543697,
     "member_prefix": "files/"
   },
   "repair": {
@@ -22,5 +22,5 @@
     "Encartes5_beta11.js",
     "Encartes6_beta12.js"
   ],
-  "notes": "Beta 13: reconhece automaticamente caixas brancas e Freeforms agrupadas do PPTX Canva como áreas de imagem. Calcula as coordenadas reais dentro dos grupos, vincula cada caixa ao bloco de nome/preço mais próximo e usa a imagem oficial do Banco de Produtos ao clicar ou arrastar o item. Mantém o design completo renderizado pelo PowerPoint da Beta 12."
+  "notes": "Beta 14: ajuste visual do Canva com camadas corretas, imagem recortada dentro do slot, autoajuste de nome e preço e alinhamento fiel ao PPTX."
 }
