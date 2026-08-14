@@ -1,0 +1,111 @@
+name: Integrar Fidelidade Visual SR Studio 5.0 Beta 4
+
+on:
+  push:
+    branches:
+      - next/5.0
+    paths:
+      - '.github/workflows/aplicar-fidelidade-beta4.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: next/5.0
+          fetch-depth: 0
+
+      - name: Preparar dependências
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check "Pillow>=10.0.0" "openpyxl>=3.1.2" "pypdf>=4.0.0" "tkinterdnd2>=0.4.2" "numpy>=1.26,<3" "opencv-python-headless>=4.9.0"
+
+      - name: Gerar marca HD e ícone multi-resolução
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python build/rebuild_brand_assets.py
+          python - <<'PY'
+          from PIL import Image
+          from pathlib import Path
+          p=Path('src/sr_studio/assets/SR_logo.png')
+          with Image.open(p) as im:
+              print('LOGO_DIM',im.size)
+              assert im.width==2048 and im.height==2048
+          assert Path('src/sr_studio/assets/SR_Studio.ico').stat().st_size>10000
+          PY
+
+      - name: Ativar HiDPI e camada visual Beta 4
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          from pathlib import Path
+
+          main=Path('src/sr_studio/SR_Studio_Gerador.py')
+          text=main.read_text(encoding='utf-8-sig')
+          if 'from ui.hidpi import enable_hidpi' not in text:
+              anchor='except Exception:\n    APP_TK_BASE=tk.Tk\n'
+              insert=anchor+'\nfrom ui.hidpi import enable_hidpi\nenable_hidpi()\n'
+              if anchor not in text: raise SystemExit('Âncora HiDPI não encontrada')
+              text=text.replace(anchor,insert,1)
+          if '_install_studio5_fidelity(App)' not in text:
+              anchor='_install_studio5_visual(App)\n'
+              insert=anchor+'\n# SR Studio 5.0 Beta 4 — fidelidade visual e ícones vetoriais.\nfrom ui.studio5_fidelity import install_studio5_fidelity as _install_studio5_fidelity\n_install_studio5_fidelity(App)\n'
+              if anchor not in text: raise SystemExit('Âncora visual não encontrada')
+              text=text.replace(anchor,insert,1)
+          main.write_text(text,encoding='utf-8')
+
+          index=Path('src/sr_studio/Encartes3_index.html')
+          html=index.read_text(encoding='utf-8-sig')
+          if 'Encartes13_fidelity.css' not in html:
+              html=html.replace('<link rel="stylesheet" href="Encartes12_visual.css">','<link rel="stylesheet" href="Encartes12_visual.css"><link rel="stylesheet" href="Encartes13_fidelity.css">',1)
+          if 'Encartes13_fidelity.js' not in html:
+              html=html.replace('<script src="Encartes12_visual.js"></script>','<script src="Encartes12_visual.js"></script>\n<script src="Encartes13_fidelity.js"></script>',1)
+          index.write_text(html,encoding='utf-8')
+          '@ | Set-Content -LiteralPath 'apply_beta4.py' -Encoding UTF8
+          python apply_beta4.py
+
+      - name: Validar código e fidelidade
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File -Recurse | ForEach-Object { python -m py_compile $_.FullName }
+          node --check src/sr_studio/Encartes13_fidelity.js
+          python -m unittest tests.test_foundation -v
+          python -m unittest tests.test_v5_services -v
+          python -m unittest tests.test_v5_importers -v
+          python -m unittest tests.test_v5_http_bridge -v
+          python -m unittest tests.test_v5_export_render -v
+          python -m unittest tests.test_v5_visual -v
+          python -m unittest tests.test_v5_fidelity -v
+          $env:PYTHONPATH=(Resolve-Path 'src/sr_studio').Path
+          python -c "import SR_Studio_Gerador as app; assert getattr(app.App,'_SR5_VISUAL_INSTALLED',False); assert getattr(app.App,'_SR5_FIDELITY_INSTALLED',False); print('APP_FIDELITY_OK',app.APP_VERSION_INFO)"
+
+      - name: Verificar ausência dos ícones raster improvisados no novo shell
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $f=Get-Content -Raw 'src/sr_studio/ui/studio5_fidelity.py'
+          if($f -notmatch 'class VectorIcon'){ throw 'VectorIcon ausente' }
+          if($f -notmatch 'Per-Monitor'){ Write-Host 'HiDPI validado pelo módulo dedicado' }
+          $js=Get-Content -Raw 'src/sr_studio/Encartes13_fidelity.js'
+          if($js -notmatch '<svg'){ throw 'SVG vetorial ausente no Encartes' }
+
+      - name: Commitar fidelidade visual
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Remove-Item -LiteralPath 'apply_beta4.py' -Force -ErrorAction SilentlyContinue
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/sr_studio/SR_Studio_Gerador.py src/sr_studio/Encartes3_index.html src/sr_studio/assets/SR_logo.png src/sr_studio/assets/SR_Studio.ico
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Integra fidelidade visual e ativos HD do SR Studio 5.0 Beta 4'
+            git push origin HEAD:next/5.0
+          }
