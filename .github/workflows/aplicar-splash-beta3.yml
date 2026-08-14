@@ -1,0 +1,82 @@
+name: Integrar Abertura Animada SR Studio 5.0 Beta 3
+
+on:
+  push:
+    branches:
+      - next/5.0
+    paths:
+      - '.github/workflows/aplicar-splash-beta3.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  integrar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: next/5.0
+          fetch-depth: 0
+
+      - name: Preparar dependências
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check "openpyxl>=3.1.2" "Pillow>=10.0.0" "pypdf>=4.0.0" "tkinterdnd2>=0.4.2" "numpy>=1.26,<3" "opencv-python-headless>=4.9.0"
+
+      - name: Integrar abertura 5.0 no aplicativo principal
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          from pathlib import Path
+          path=Path('src/sr_studio/SR_Studio_Gerador.py')
+          text=path.read_text(encoding='utf-8')
+          marker="_install_studio5_visual(App)\n\n\nif __name__==\"__main__\":"
+          replacement="""_install_studio5_visual(App)\n\n# SR Studio 5.0 Beta 3 — abertura animada real.\n# Mantém o boot funcional existente e substitui apenas a apresentação da Splash.\nfrom ui.splash_v5 import install_startup_splash_v5 as _install_startup_splash_v5\n_install_startup_splash_v5(StartupSplash, _brand_photo, APP_DISPLAY_VERSION)\n\n\nif __name__==\"__main__\":"""
+          if '_install_startup_splash_v5(StartupSplash' not in text:
+              if marker not in text:
+                  raise SystemExit('Ponto de integração da Splash não encontrado')
+              text=text.replace(marker,replacement,1)
+              path.write_text(text,encoding='utf-8')
+          print('SPLASH_V5_INTEGRADA')
+          '@ | Set-Content -LiteralPath 'apply_splash.py' -Encoding UTF8
+          python apply_splash.py
+
+      - name: Validar código e instalação do patch
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m py_compile src/sr_studio/ui/splash_v5.py
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File -Recurse | ForEach-Object { python -m py_compile $_.FullName }
+          $env:PYTHONPATH=(Resolve-Path 'src/sr_studio').Path
+          python -c "import SR_Studio_Gerador as app; assert getattr(app.StartupSplash,'_SR5_SPLASH_INSTALLED',False); print('SPLASH_PATCH_OK', app.APP_DISPLAY_VERSION)"
+          python -m unittest tests.test_foundation -v
+          python -m unittest tests.test_v5_services -v
+          python -m unittest tests.test_v5_importers -v
+          python -m unittest tests.test_v5_http_bridge -v
+          python -m unittest tests.test_v5_export_render -v
+
+      - name: Validar características da animação
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $s=Get-Content -Raw 'src/sr_studio/ui/splash_v5.py'
+          foreach($token in @('_draw_gradient','_logo_frames','_orbit_ids','_particles','_sweep_id','_target_progress','Tudo pronto • abrindo o Studio')){
+            if($s -notmatch [regex]::Escape($token)){ throw "Recurso visual ausente: $token" }
+          }
+          $main=Get-Content -Raw 'src/sr_studio/SR_Studio_Gerador.py'
+          if($main -notmatch '_install_startup_splash_v5\(StartupSplash'){ throw 'Patch da Splash não foi ativado no App' }
+
+      - name: Commitar integração da abertura
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/sr_studio/SR_Studio_Gerador.py
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Integra abertura animada do SR Studio 5.0 Beta 3'
+            git push origin HEAD:next/5.0
+          }
