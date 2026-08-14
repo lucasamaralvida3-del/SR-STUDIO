@@ -1,0 +1,37 @@
+(() => {
+'use strict';
+const A=window.SR11;
+if(!A||A.__BETA15_CORE__)return;A.__BETA15_CORE__=true;
+A.VERSION='4.0.14 • Beta 15';
+const ver=document.querySelector('.ver');if(ver)ver.textContent=A.VERSION;
+A.TEMPLATE_MEMORY_STORE='srstudio_encartes_template_memory_v2';
+A.state.partEditMode=Boolean(A.state.partEditMode);
+A.state.compareOriginal=Boolean(A.state.compareOriginal);
+A.state.selectedPart=A.state.selectedPart||null;
+A.PART_ROLES=['NOME','IMAGEM','PRECO_RS','PRECO_REAIS','PRECO_CENTAVOS','UNIDADE','LIMITE','PRECO_APP'];
+A.partLabel=r=>({NOME:'Nome',IMAGEM:'Imagem',PRECO_RS:'R$',PRECO_REAIS:'Reais',PRECO_CENTAVOS:'Centavos',UNIDADE:'Unidade',LIMITE:'Limite',PRECO_APP:'Preço APP'}[r]||r);
+A.ensurePart=(e,role)=>{e.partEdits=e.partEdits||{};e.partEdits[role]=e.partEdits[role]||{dx:0,dy:0,dw:0,dh:0};return e.partEdits[role]};
+A.effectiveField=(e,role,base)=>{const m=e?.partEdits?.[role]||{},s={...(base?.style||{})};for(const k of ['font','fontSize','bold','italic','color','align','vAlign','fit'])if(m[k]!==undefined)s[k]=m[k];return{x:(base?.x||0)+(Number(m.dx)||0),y:(base?.y||0)+(Number(m.dy)||0),w:Math.max(8,(base?.w||8)+(Number(m.dw)||0)),h:Math.max(8,(base?.h||8)+(Number(m.dh)||0)),style:s,autoDetected:base?.autoDetected,fit:m.fit||base?.fit||s.fit,z:Number.isFinite(Number(m.z))?Number(m.z):undefined,locked:Boolean(m.locked)}};
+function hashText(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return(h>>>0).toString(36)}
+A.templateKey=pg=>{if(!pg?.templateSlots?.length)return'';const sig=(pg.templateSlots||[]).map(s=>({i:s.index,x:Math.round(s.x),y:Math.round(s.y),w:Math.round(s.w),h:Math.round(s.h),r:Object.keys(s.fields||{}).sort()}));return 'tpl_'+hashText(JSON.stringify({w:Math.round(pg.width),h:Math.round(pg.height),slots:sig}))};
+A.slotType=(pg,slot)=>{const a=(slot.w*slot.h)/(pg.width*pg.height);if(a>=.045)return'GRANDE';if(a>=.021)return'MÉDIO';return'PEQUENO'};
+A.loadTemplateMemory=()=>{try{return JSON.parse(localStorage.getItem(A.TEMPLATE_MEMORY_STORE)||'{}')||{}}catch{return{}}};
+A.saveTemplateMemory=m=>{try{localStorage.setItem(A.TEMPLATE_MEMORY_STORE,JSON.stringify(m));return true}catch{return false}};
+A.selectedElement=()=>A.page()?.elements?.find(x=>x.id===A.state.selected)||null;
+A.selectedSlot=()=>{const e=A.selectedElement();return e?.slotId?(A.page().templateSlots||[]).find(s=>s.id===e.slotId):null};
+A.availableParts=()=>{const s=A.selectedSlot();return s?A.PART_ROLES.filter(r=>s.fields?.[r]):[]};
+A.applyRememberedToElement=(pg,e)=>{if(!e?.slotId)return false;const slot=(pg.templateSlots||[]).find(s=>s.id===e.slotId);if(!slot)return false;const mem=A.loadTemplateMemory()[A.templateKey(pg)];if(!mem)return false;const exact=mem.slots?.[String(slot.index)]?.parts;const type=mem.types?.[A.slotType(pg,slot)]?.parts;const src=exact||type;if(!src)return false;e.partEdits=A.copy(src);return true};
+A.learnTemplate=()=>{const mem=A.loadTemplateMemory();let saved=0;for(const pg of A.state.pages||[]){const key=A.templateKey(pg);if(!key)continue;const model=mem[key]||{savedAt:'',slots:{},types:{}};for(const e of pg.elements||[]){if(!e.slotId||!e.partEdits)continue;const slot=(pg.templateSlots||[]).find(s=>s.id===e.slotId);if(!slot)continue;const parts=A.copy(e.partEdits);model.slots[String(slot.index)]={parts};model.types[A.slotType(pg,slot)]={parts:A.copy(parts)};saved++}model.savedAt=new Date().toISOString();mem[key]=model}A.saveTemplateMemory(mem);A.toast(saved?('Modelo aprendido com '+saved+' bloco(s).'):'Faça alguns ajustes manuais antes de aprender o modelo.');return saved};
+A.applyTemplateMemory=()=>{A.snapshot();let n=0;for(const pg of A.state.pages||[])for(const e of pg.elements||[])if(A.applyRememberedToElement(pg,e))n++;A.commit();A.toast(n?('Padrão aplicado em '+n+' produto(s).'):'Nenhum padrão salvo para este template.');return n};
+A.copyPartToSimilar=()=>{const pg=A.page(),e=A.selectedElement(),slot=A.selectedSlot(),role=A.state.selectedPart;if(!e||!slot||!role||!e.partEdits?.[role])return 0;const type=A.slotType(pg,slot),src=A.copy(e.partEdits[role]);A.snapshot();let n=0;for(const x of pg.elements||[]){if(x.id===e.id||!x.slotId)continue;const s=(pg.templateSlots||[]).find(q=>q.id===x.slotId);if(!s||A.slotType(pg,s)!==type||!s.fields?.[role])continue;x.partEdits=x.partEdits||{};x.partEdits[role]=A.copy(src);n++}A.commit();A.toast(n?('Ajuste aplicado em '+n+' bloco(s) '+type.toLowerCase()+'.'):'Nenhum bloco semelhante encontrado.');return n};
+A.copyProductAdjustmentsToSimilar=()=>{const pg=A.page(),e=A.selectedElement(),slot=A.selectedSlot();if(!e||!slot||!e.partEdits)return 0;const type=A.slotType(pg,slot);A.snapshot();let n=0;for(const x of pg.elements||[]){if(x.id===e.id||!x.slotId)continue;const s=(pg.templateSlots||[]).find(q=>q.id===x.slotId);if(!s||A.slotType(pg,s)!==type)continue;x.partEdits=A.copy(e.partEdits);n++}A.commit();A.toast(n?('Produto-base copiado para '+n+' bloco(s) semelhantes.'):'Nenhum bloco semelhante encontrado.');return n};
+A.resetSelectedPart=()=>{const e=A.selectedElement(),r=A.state.selectedPart;if(!e||!r||!e.partEdits?.[r])return;A.snapshot();delete e.partEdits[r];A.commit()};
+A.resetSelectedProduct=()=>{const e=A.selectedElement();if(!e)return;A.snapshot();delete e.partEdits;A.commit()};
+A.resetCurrentPage=()=>{A.snapshot();for(const e of A.page().elements||[])delete e.partEdits;A.commit();A.toast('Ajustes manuais da página removidos.')};
+A.replaceSelectedProduct=pid=>{const e=A.selectedElement();if(!e||!A.state.products.some(p=>p.id===pid))return false;A.snapshot();e.productId=pid;A.commit();return true};
+A.fillCurrentPage=()=>{const pg=A.page(),used=A.usedIds(),slots=(pg.templateSlots||[]).filter(s=>!(pg.elements||[]).some(e=>e.slotId===s.id));if(!slots.length){A.toast('Não há blocos vazios nesta página.');return 0}const pool=A.state.products.filter(p=>!used.has(p.id)&&(A.state.categoryFilter==='TODAS'||(p.category||'SEM CATEGORIA')===A.state.categoryFilter));A.snapshot();let n=0;for(const slot of slots){const p=pool.shift();if(!p)break;const e={id:A.uid('e'),productId:p.id,slotId:slot.id,highlight:0};pg.elements.push(e);A.applyRememberedToElement(pg,e);n++}A.commit();A.toast(n?('Preenchidos '+n+' bloco(s) desta página.'):'Nenhum produto disponível neste filtro.');return n};
+const oldPlace=A.placeProduct;A.placeProduct=(pid,pos)=>{oldPlace(pid,pos);const e=A.selectedElement();if(e?.slotId&&A.applyRememberedToElement(A.page(),e)){A.save();A.emit()}};
+const oldAuto=A.autoLayout;A.autoLayout=()=>{const r=oldAuto();let n=0;for(const pg of A.state.pages||[])for(const e of pg.elements||[])if(e.slotId&&A.applyRememberedToElement(pg,e))n++;if(n){A.save();A.emit()}return r};
+const oldValidate=A.validate;A.validate=()=>{const issues=oldValidate();for(const pg of A.state.pages||[]){for(const e of pg.elements||[]){if(!e.slotId||!e.partEdits)continue;const slot=(pg.templateSlots||[]).find(s=>s.id===e.slotId);if(!slot)continue;for(const [role,base] of Object.entries(slot.fields||{})){const f=A.effectiveField(e,role,base);if(f.x<0||f.y<0||f.x+f.w>pg.width||f.y+f.h>pg.height)issues.push({severity:'warn',message:pg.name+': '+A.partLabel(role)+' de um produto saiu da página.'})}}}return issues};
+console.info('[SR Studio] Beta 15 core PRO ativo');
+})();
