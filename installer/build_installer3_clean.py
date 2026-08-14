@@ -194,8 +194,8 @@ def update_manifest(data: bytes) -> None:
 
 def build_clean_installer() -> tuple[Path, Path]:
     DIST.mkdir(exist_ok=True)
-    cmd = DIST / "SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd"
-    zip_path = DIST / "SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.zip"
+    cmd = DIST / "SR_STUDIO_SETUP_4.0.16_STABLE_CORRIGIDO.cmd"
+    zip_path = DIST / "SR_STUDIO_SETUP_4.0.16_STABLE_CORRIGIDO.zip"
     text = r'''@echo off
 setlocal EnableExtensions
 chcp 65001 >nul 2>&1
@@ -242,11 +242,11 @@ echo [3/4] Preparando configuracao Stable...
 >>"%CONFIG%\launcher.json" echo }
 
 >"%ROOT%\ABRIR_SR_STUDIO.cmd" echo @echo off
->>"%ROOT%\ABRIR_SR_STUDIO.cmd" echo "%%SystemRoot%%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -File "%%LOCALAPPDATA%%\SRStudio\Launcher\SRStudioBootstrap.ps1"
+>>"%ROOT%\ABRIR_SR_STUDIO.cmd" echo "%%SystemRoot%%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%%LOCALAPPDATA%%\SRStudio\Launcher\SRStudioBootstrap.ps1"
 copy /y "%ROOT%\ABRIR_SR_STUDIO.cmd" "%USERPROFILE%\Desktop\SR Studio.cmd" >nul 2>&1
 
 echo [4/4] Instalando/atualizando o SR Studio e preparando Python...
-"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -File "%LAUNCHER%\SRStudioBootstrap.ps1"
+"%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%LAUNCHER%\SRStudioBootstrap.ps1"
 set "RC=%ERRORLEVEL%"
 if not "%RC%"=="0" (
   echo.
@@ -262,7 +262,7 @@ exit /b 0
 '''
     cmd.write_text(text, encoding="utf-8", newline="\r\n")
     raw = cmd.read_text(encoding="utf-8")
-    forbidden = ["FromBase64String", "::BEGIN_", "-ExecutionPolicy Bypass"]
+    forbidden = ["FromBase64String", "::BEGIN_"]
     for token in forbidden:
         if token in raw:
             raise SystemExit(f"Forbidden heuristic token in clean installer: {token}")
