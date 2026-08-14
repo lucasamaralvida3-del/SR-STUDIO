@@ -31,9 +31,15 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           New-Item -ItemType Directory -Force -Path dist | Out-Null
-          $csc = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\Roslyn\csc.exe'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if(-not (Test-Path $vswhere)) { throw "vswhere nao encontrado: $vswhere" }
+          $vs = (& $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath | Select-Object -First 1).Trim()
+          if(-not $vs) { throw 'Visual Studio/MSBuild nao localizado pelo vswhere.' }
+          $csc = Join-Path $vs 'MSBuild\Current\Bin\Roslyn\csc.exe'
           if(-not (Test-Path $csc)) { throw "Roslyn csc nao encontrado: $csc" }
           $ref = 'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
+          if(-not (Test-Path $ref)) { throw "Reference Assemblies .NET 4.8 nao encontradas: $ref" }
+          Write-Host "Compilador: $csc"
           $args = @(
             '/nologo',
             '/target:winexe',
