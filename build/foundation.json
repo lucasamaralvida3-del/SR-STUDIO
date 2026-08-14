@@ -1,0 +1,11 @@
+{
+  "format": "SRSTUDIO_NEXT_FOUNDATION_1",
+  "target_major": "5.0.0",
+  "source_of_truth": "src/sr_studio",
+  "baseline": "4.0.16-hybrid.stable4",
+  "baseline_tag": "v4.0.16-hybrid.stable4",
+  "baseline_sha256": "4ac83d3e1a704caab3c77ae21270d74bbe56182d9b22c7ae1b445f83a30089d6",
+  "canonical_file_count": 65,
+  "status": "foundation",
+  "public_release": false
+}

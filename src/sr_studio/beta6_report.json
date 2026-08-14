@@ -1,0 +1,25 @@
+{
+  "distribution_version": "4.0.5-hybrid.beta6",
+  "product_version": "4.0.5",
+  "release_label": "Beta 6",
+  "editor_script": "files/Encartes4_beta6.js",
+  "editor_sha256": "cd848215276a24d47259f540876299dec607482b62039eb130905411d076e2c2",
+  "html_targets": [
+    "files/Encartes3_index.html"
+  ],
+  "features": [
+    "canvas livre A4",
+    "drag-and-drop",
+    "redimensionamento",
+    "grid/snap",
+    "importacao XLSX/CSV",
+    "blocos inteligentes",
+    "preco APP",
+    "limite CPF",
+    "validacao",
+    "autosave",
+    "undo/redo",
+    "organizar automaticamente",
+    "impressao/PDF"
+  ]
+}

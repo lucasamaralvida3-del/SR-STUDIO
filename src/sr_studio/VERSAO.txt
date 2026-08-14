@@ -1,0 +1,2 @@
+SR Studio 4.0.16 • Stable 4
+Janela principal abre sempre maximizada, ajustada à área útil da tela.

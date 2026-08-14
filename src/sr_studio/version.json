@@ -1,0 +1,10 @@
+{
+  "product": "SR Studio",
+  "product_version": "4.0.16",
+  "distribution_version": "4.0.16-hybrid.stable4",
+  "channel": "stable",
+  "release_label": "Stable 4",
+  "feature": "SR IA Guard + economia de créditos + banco de imagens manual",
+  "notes": "Pedidos fora do escopo são bloqueados antes da OpenAI; consultas simples usam dados locais; limites de consumo; imagens de produtos somente por importação manual.",
+  "updated_at": "2026-08-14T11:39:00-03:00"
+}
