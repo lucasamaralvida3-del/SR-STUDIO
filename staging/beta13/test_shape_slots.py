@@ -1,5 +1,13 @@
 from __future__ import annotations
-import io, zipfile
+import io, sys, tempfile, types, unicodedata, zipfile
+from pathlib import Path
+
+# O runner Linux não possui Tkinter. O parser precisa apenas de norm e PRODUCT_DB.
+stub=types.ModuleType('SRStudio21')
+stub.norm=lambda s: ''.join(c for c in unicodedata.normalize('NFD',str(s or '')) if unicodedata.category(c)!='Mn').strip().upper()
+stub.PRODUCT_DB=Path(tempfile.mkdtemp())/'products.db'
+sys.modules['SRStudio21']=stub
+
 from EncartesPPTXReader import parse_pptx
 
 P='http://schemas.openxmlformats.org/presentationml/2006/main'
