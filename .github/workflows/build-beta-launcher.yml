@@ -1,0 +1,120 @@
+name: Build SR Studio Beta Universal
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'installer/beta/**'
+      - 'staging/logo_update/source/SR_Studio.ico'
+      - '.github/workflows/build-beta-launcher.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validar arquivos
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if(-not (Test-Path 'installer/beta/SRStudioBeta.cs')) { throw 'Fonte Beta ausente.' }
+          if(-not (Test-Path 'staging/logo_update/source/SR_Studio.ico')) { throw 'Logo SR_Studio.ico ausente.' }
+
+      - name: Compilar SR_Studio_Beta.exe
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if(-not (Test-Path $vswhere)) { throw "vswhere nao encontrado: $vswhere" }
+          $vs = (& $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath | Select-Object -First 1).Trim()
+          if(-not $vs) { throw 'Visual Studio/MSBuild nao localizado.' }
+          $csc = Join-Path $vs 'MSBuild\Current\Bin\Roslyn\csc.exe'
+          if(-not (Test-Path $csc)) { throw "Roslyn csc nao encontrado: $csc" }
+          $ref = 'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
+          if(-not (Test-Path $ref)) { throw 'Reference Assemblies .NET 4.8 nao encontradas.' }
+          $args = @(
+            '/nologo',
+            '/target:winexe',
+            '/platform:anycpu',
+            '/optimize+',
+            '/deterministic+',
+            '/langversion:7.3',
+            '/win32icon:staging/logo_update/source/SR_Studio.ico',
+            '/out:dist/SR_Studio_Beta.exe',
+            "/reference:$ref\mscorlib.dll",
+            "/reference:$ref\System.dll",
+            "/reference:$ref\System.Core.dll",
+            "/reference:$ref\System.Drawing.dll",
+            "/reference:$ref\System.Windows.Forms.dll",
+            "/reference:$ref\System.Web.Extensions.dll",
+            'installer/beta/SRStudioBeta.cs'
+          )
+          & $csc @args
+          if($LASTEXITCODE -ne 0) { throw "Falha na compilacao: $LASTEXITCODE" }
+          if(-not (Test-Path 'dist/SR_Studio_Beta.exe')) { throw 'EXE Beta nao foi gerado.' }
+
+      - name: Self-test online
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=Start-Process -FilePath (Resolve-Path 'dist/SR_Studio_Beta.exe') -ArgumentList '/selftest' -Wait -PassThru
+          if($p.ExitCode -ne 0) { throw "Self-test Beta falhou: $($p.ExitCode)" }
+          $beta=Invoke-RestMethod -Uri ('https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/beta/manifest.json?x='+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -Headers @{'Cache-Control'='no-cache'}
+          if([string]$beta.channel -ne 'beta') { throw 'Manifesto Beta invalido.' }
+          $launcher=Invoke-RestMethod -Uri ('https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/manifests/launcher.json?x='+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -Headers @{'Cache-Control'='no-cache'}
+          if([string]$launcher.version -notmatch 'base3\.3|base[4-9]\.|base[1-9][0-9]') { Write-Host "Launcher atual: $($launcher.version)" }
+          Write-Host "Beta atual: $($beta.version)"
+          Write-Host "Launcher atual: $($launcher.version)"
+
+      - name: Gerar SHA-256
+        shell: powershell
+        run: |
+          $hash=(Get-FileHash -Algorithm SHA256 'dist/SR_Studio_Beta.exe').Hash.ToLowerInvariant()
+          "$hash  SR_Studio_Beta.exe" | Set-Content -Encoding ascii 'dist/SR_Studio_Beta.sha256.txt'
+          Write-Host "SHA-256: $hash"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR_Studio_Beta
+          path: |
+            dist/SR_Studio_Beta.exe
+            dist/SR_Studio_Beta.sha256.txt
+          if-no-files-found: error
+
+      - name: Publicar executavel Beta fixo
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='beta-launcher-latest'
+          $title='SR Studio - Acesso Beta Universal'
+          $notes=@"
+          Executavel universal de acesso ao canal Beta do SR Studio.
+
+          - Nao contem numero fixo de Beta.
+          - A cada abertura baixa o Bootstrap atual.
+          - Forca o canal Beta.
+          - Bootstrap atualiza o Launcher pelo manifesto oficial.
+          - Launcher valida a chave Beta quando necessario.
+          - Baixa e aplica automaticamente a Beta mais recente.
+          - Usa o runtime Python portatil oficial do SR Studio.
+          "@
+          cmd /c "gh release view $tag >nul 2>&1"
+          $exists=($LASTEXITCODE -eq 0)
+          if($exists) {
+            gh release upload $tag 'dist/SR_Studio_Beta.exe' 'dist/SR_Studio_Beta.sha256.txt' --clobber
+            if($LASTEXITCODE -ne 0) { throw 'Falha ao atualizar assets Beta.' }
+            gh release edit $tag --title $title --notes $notes --latest=false
+          } else {
+            gh release create $tag 'dist/SR_Studio_Beta.exe' 'dist/SR_Studio_Beta.sha256.txt' --title $title --notes $notes --latest=false
+          }
