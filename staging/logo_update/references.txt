@@ -1,0 +1,102 @@
+### SR_logo.png
+work/files/SR_Studio_Gerador.py:1811:        # Substitui a antiga imagem SR_logo.png no menu principal para unificar a identidade.
+### SR_Studio.ico
+### iconphoto/iconbitmap
+### splash
+work/files/ManualModule.py:22:# Cache leve usado pelo Cartaz Venda. É carregado durante a abertura do SR Studio
+work/files/SRIAEngine.py:883:    # Mantido leve: apenas carrega settings; nenhuma chamada à OpenAI no splash.
+work/files/SR_Studio_Gerador.py:155:# Reaproveita histórico e preferências do 1.x na primeira abertura do 2.0.
+work/files/SR_Studio_Gerador.py:170:# Dados preparados durante a abertura para evitar consultas lentas ao clicar nas telas.
+work/files/SR_Studio_Gerador.py:1330:class StartupSplash:
+work/files/SR_Studio_Gerador.py:1331:    """Tela de abertura leve com progresso real das verificações iniciais."""
+work/files/SR_Studio_Gerador.py:1334:        ("MODELOS", "Carregando modelos PowerPoint..."),
+work/files/SR_Studio_Gerador.py:1336:        ("IMPRESSORAS", "Carregando impressoras..."),
+work/files/SR_Studio_Gerador.py:1337:        ("CONFIGURAÇÕES", "Carregando preferências..."),
+work/files/SR_Studio_Gerador.py:1382:            self.root.after(650, self._show_if_still_loading)
+work/files/SR_Studio_Gerador.py:1388:        # Splash 4.0.4: mesma linguagem visual usada na tela de atualização.
+work/files/SR_Studio_Gerador.py:1434:            "Splash.Horizontal.TProgressbar",
+work/files/SR_Studio_Gerador.py:1440:                                        style="Splash.Horizontal.TProgressbar")
+work/files/SR_Studio_Gerador.py:1471:    def _show_if_still_loading(self):
+work/files/SR_Studio_Gerador.py:1569:            emit(1,"Carregando e preparando modelos...",20)
+work/files/SR_Studio_Gerador.py:1581:            emit(2,"Pré-carregando bancos, catálogos, encartes e templates...",38)
+work/files/SR_Studio_Gerador.py:1606:            emit(3,"Carregando impressora padrão e impressoras instaladas...",56)
+work/files/SR_Studio_Gerador.py:1616:            emit(4,"Carregando configurações, fila e centros do sistema...",69)
+work/files/SR_Studio_Gerador.py:1673:        # Splash 2.0: mantém a abertura tempo suficiente para uma transição
+work/files/SR_Studio_Gerador.py:1685:    """Pré-carrega os componentes caros mesmo quando a Splash está desativada."""
+work/files/SR_Studio_Gerador.py:1721:def run_startup_splash():
+work/files/SR_Studio_Gerador.py:1722:    """Executa a abertura e usa esse tempo para preparar as telas mais pesadas."""
+work/files/SR_Studio_Gerador.py:1728:    splash=StartupSplash(settings)
+work/files/SR_Studio_Gerador.py:1729:    splash.run()
+work/files/SR_Studio_Gerador.py:1763:        # Os modelos já são preparados na etapa de abertura (Splash).
+work/files/SR_Studio_Gerador.py:1778:            ("SR.Loading.Horizontal.TProgressbar",self.palette["BLUE2"]),
+work/files/SR_Studio_Gerador.py:2548:        tk.Label(row,text="Animação de abertura",bg=pal["CARD"],fg=pal["TEXT"],font=("Segoe UI",8,"bold")).grid(row=0,column=3,sticky="w")
+work/files/SR_Studio_Gerador.py:2552:        tk.Label(row,text="Duração da abertura",bg=pal["CARD"],fg=pal["TEXT"],font=("Segoe UI",8,"bold")).grid(row=2,column=2,sticky="w",pady=(10,0))
+work/files/SR_Studio_Gerador.py:2556:        add_tooltip(startup_anim,"Sempre mostra a abertura. 'Somente se demorar' só aparece quando a inicialização passar de aproximadamente meio segundo.")
+work/files/SR_Studio_Gerador.py:2667:        # O diagnóstico pesado não roda mais no clique de Configurações; a saúde já foi verificada na abertura.
+work/files/SR_Studio_Gerador.py:2987:        ready.pack(side="right",anchor="n",pady=4);add_tooltip(ready,"PowerPoint, modelos, banco e preferências são verificados na abertura.")
+work/files/SR_Studio_Gerador.py:3197:        self.loading_box=tk.Frame(left,bg=CARD,highlightbackground=LINE,highlightthickness=1)
+work/files/SR_Studio_Gerador.py:3198:        self.loading_box.pack(fill="x",pady=(8,0))
+work/files/SR_Studio_Gerador.py:3199:        self.loading_bar=ttk.Progressbar(self.loading_box,mode="indeterminate",style="SR.Loading.Horizontal.TProgressbar")
+work/files/SR_Studio_Gerador.py:3200:        self.loading_label=tk.Label(self.loading_box,text="",bg=CARD,fg=TEXT,font=("Segoe UI",9,"bold"))
+work/files/SR_Studio_Gerador.py:3201:        self.loading_elapsed=tk.StringVar(value="")
+work/files/SR_Studio_Gerador.py:3202:        self.loading_elapsed_label=tk.Label(self.loading_box,textvariable=self.loading_elapsed,bg=CARD,fg=BLUE_2,font=("Segoe UI",8,"bold"))
+work/files/SR_Studio_Gerador.py:3203:        self.import_started=None; self.import_loading_active=False
+work/files/SR_Studio_Gerador.py:3258:        self.gen_spinner=ttk.Progressbar(panel,mode="indeterminate",style="SR.Loading.Horizontal.TProgressbar")
+work/files/SR_Studio_Gerador.py:3312:        self.loading_label.pack(anchor="w",padx=14,pady=(10,4))
+work/files/SR_Studio_Gerador.py:3313:        self.loading_bar.pack(fill="x",padx=14)
+work/files/SR_Studio_Gerador.py:3314:        self.loading_elapsed_label.pack(anchor="w",padx=14,pady=(5,10))
+work/files/SR_Studio_Gerador.py:3315:        self.loading_bar.start(12)
+work/files/SR_Studio_Gerador.py:3316:        self.import_started=time.time(); self.import_loading_active=True; self._tick_import_elapsed()
+work/files/SR_Studio_Gerador.py:3322:        if not getattr(self,"import_loading_active",False) or not self.import_started:return
+work/files/SR_Studio_Gerador.py:3323:        self.loading_elapsed.set(f"{time.time()-self.import_started:.1f}s decorridos")
+work/files/SR_Studio_Gerador.py:3332:        self.loading_label.config(text=icons[step % len(icons)] + "  " + msgs[step % len(msgs)])
+work/files/SR_Studio_Gerador.py:3337:        self.import_loading_active=False
+work/files/SR_Studio_Gerador.py:3338:        self.loading_bar.stop()
+work/files/SR_Studio_Gerador.py:3339:        self.loading_bar.pack_forget()
+work/files/SR_Studio_Gerador.py:3340:        self.loading_label.pack_forget()
+work/files/SR_Studio_Gerador.py:3341:        self.loading_elapsed_label.pack_forget()
+work/files/SR_Studio_Gerador.py:3908:            img=tk.Label(card,text="Carregando miniatura...",bg=pal["ROW_ALT"],fg=pal["MUTED"],font=("Segoe UI",8),height=12);img.pack(fill="x",padx=10,pady=(10,6));load_thumb(path,img)
+work/files/SR_Studio_Gerador.py:3954:    run_startup_splash()
+work/files/AtacadoModule.py:1171:        self.loading_card=tk.Frame(outer,bg=CARD,highlightbackground=LINE,highlightthickness=1)
+work/files/AtacadoModule.py:1172:        self.loading_title=tk.Label(self.loading_card,text="",bg=CARD,fg=TEXT,font=("Segoe UI",11,"bold"))
+work/files/AtacadoModule.py:1173:        self.loading_title.pack(anchor="w",padx=16,pady=(12,3))
+work/files/AtacadoModule.py:1174:        self.loading_stage=tk.StringVar(value="")
+work/files/AtacadoModule.py:1175:        stage_row=tk.Frame(self.loading_card,bg=CARD);stage_row.pack(fill="x",padx=16)
+work/files/AtacadoModule.py:1176:        tk.Label(stage_row,textvariable=self.loading_stage,bg=CARD,fg=MUTED,font=("Segoe UI",8),anchor="w").pack(side="left",fill="x",expand=True)
+work/files/AtacadoModule.py:1177:        self.loading_percent=tk.StringVar(value="0%")
+work/files/AtacadoModule.py:1178:        tk.Label(stage_row,textvariable=self.loading_percent,bg=CARD,fg=BLUE2,font=("Segoe UI",8,"bold")).pack(side="right")
+work/files/AtacadoModule.py:1179:        self.loading_progress=ttk.Progressbar(self.loading_card,maximum=100,style="SR.Horizontal.TProgressbar")
+work/files/AtacadoModule.py:1180:        self.loading_progress.pack(fill="x",padx=16,pady=(8,4))
+work/files/AtacadoModule.py:1181:        self.loading_elapsed=tk.StringVar(value="")
+work/files/AtacadoModule.py:1182:        tk.Label(self.loading_card,textvariable=self.loading_elapsed,bg=CARD,fg=BLUE2,font=("Segoe UI",8,"bold"),anchor="w").pack(fill="x",padx=16,pady=(0,10))
+work/files/AtacadoModule.py:1183:        self._loading_started=None; self._loading_active=False
+work/files/AtacadoModule.py:1240:    def start_inline_loading(self,title):
+work/files/AtacadoModule.py:1241:        self._loading_started=time.time(); self._loading_active=True
+work/files/AtacadoModule.py:1242:        self.loading_title.config(text=title); self.loading_stage.set("Preparando..."); self.loading_progress["value"]=4
+work/files/AtacadoModule.py:1243:        if hasattr(self,"loading_percent"):self.loading_percent.set("4%")
+work/files/AtacadoModule.py:1244:        if not self.loading_card.winfo_ismapped(): self.loading_card.pack(fill="x",padx=24,pady=(10,0),before=self.stats_frame)
+work/files/AtacadoModule.py:1245:        self._tick_loading_time()
+work/files/AtacadoModule.py:1246:    def _tick_loading_time(self):
+work/files/AtacadoModule.py:1247:        if not self._loading_active or not self._loading_started:return
+work/files/AtacadoModule.py:1248:        elapsed=time.time()-self._loading_started
+work/files/AtacadoModule.py:1249:        self.loading_elapsed.set(f"{elapsed:0.1f}s decorridos")
+work/files/AtacadoModule.py:1250:        self.after(250 if not self.reduced_animations else 650,self._tick_loading_time)
+work/files/AtacadoModule.py:1251:    def update_inline_loading(self,a,b,text):
+work/files/AtacadoModule.py:1252:        self.loading_stage.set(text)
+work/files/AtacadoModule.py:1253:        value=(a/b*100 if b else min(92,self.loading_progress["value"]+4))
+work/files/AtacadoModule.py:1254:        self.loading_progress["value"]=value
+work/files/AtacadoModule.py:1255:        if hasattr(self,"loading_percent"):self.loading_percent.set(f"{int(value)}%")
+work/files/AtacadoModule.py:1256:    def stop_inline_loading(self,success=True):
+work/files/AtacadoModule.py:1257:        self._loading_active=False
+work/files/AtacadoModule.py:1258:        self.loading_progress["value"]=100 if success else 0
+work/files/AtacadoModule.py:1259:        if hasattr(self,"loading_percent"):self.loading_percent.set("100%" if success else "—")
+work/files/AtacadoModule.py:1260:        self.loading_elapsed.set("Concluído  ✓" if success else "Interrompido")
+work/files/AtacadoModule.py:1261:        self.after(800 if success else 1200,lambda:self.loading_card.pack_forget() if self.loading_card.winfo_exists() else None)
+work/files/AtacadoModule.py:1308:        self.start_inline_loading("Analisando relatório do Atacado")
+work/files/AtacadoModule.py:1310:        def prog(a,b,t):self.after(0,lambda:self.update_inline_loading(a,b,t))
+work/files/AtacadoModule.py:1320:        self.stop_inline_loading(True);self.busy=False;self.app.busy=False;self.import_btn.config(state="normal",text="IMPORTAR PDF")
+work/files/AtacadoModule.py:1330:        self.stop_inline_loading(False);self.busy=False;self.app.busy=False;self.import_btn.config(state="normal",text="IMPORTAR PDF")
+work/files/AtacadoModule.py:1386:        self.start_inline_loading("Gerando cartazes do Atacado")
+work/files/AtacadoModule.py:1389:            self.after(0,lambda:(self.update_inline_loading(a,b,t),self.progress.config(value=(a/b*100 if b else 0)),self.status.set(t)))
+work/files/AtacadoModule.py:1404:        self.stop_inline_loading(True);self.busy=False;self.app.busy=False;self.gen_btn.config(state="normal",text="GERAR CARTAZES");self.print_btn.config(state="normal");self.both_btn.config(state="normal");self.cancel_btn.config(state="disabled");self.progress["value"]=100
+work/files/AtacadoModule.py:1438:        self.stop_inline_loading(False);self.busy=False;self.app.busy=False;self.gen_btn.config(state="normal",text="GERAR CARTAZES");self.print_btn.config(state="normal");self.both_btn.config(state="normal");self.cancel_btn.config(state="disabled")
