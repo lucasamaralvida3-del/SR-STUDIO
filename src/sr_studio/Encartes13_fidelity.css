@@ -1,0 +1,36 @@
+/* SR Studio 5.0 Beta 4 — Fidelidade Visual */
+:root{
+  --sr-blue:#123fae;--sr-blue2:#2f67e7;--sr-blue3:#4c7df0;--sr-bg:#f2f5fa;--sr-card:#fff;
+  --sr-line:#e2e8f1;--sr-text:#15213b;--sr-muted:#758198;--sr-soft:#f7f9fc;--sr-shadow:0 14px 36px rgba(26,45,85,.10);
+  font-family:"Segoe UI Variable","Segoe UI",Arial,sans-serif
+}
+html,body,#sr11-root{background:var(--sr-bg)!important;color:var(--sr-text)!important;font-family:"Segoe UI Variable","Segoe UI",Arial,sans-serif!important}
+.app{grid-template-columns:90px minmax(0,1fr)!important;grid-template-rows:78px 1fr 68px!important;background:var(--sr-bg)!important}
+.sr5-rail{width:auto!important;background:linear-gradient(180deg,#123fae 0%,#103895 57%,#0b2a71 100%)!important;padding:14px 10px!important;gap:7px!important;box-shadow:8px 0 30px rgba(18,63,174,.15)!important}
+.sr5-rail-logo{width:60px!important;height:60px!important;border-radius:17px!important;background:#fff!important;box-shadow:0 12px 26px rgba(5,23,72,.30)!important;margin-bottom:12px!important;image-rendering:auto!important}
+.sr5-rail-btn{width:64px!important;min-height:58px!important;border-radius:15px!important;gap:4px!important;color:#dce6ff!important;transition:.16s ease!important}
+.sr5-rail-btn b{width:22px;height:22px;display:grid;place-items:center;font-size:0!important;line-height:1!important}
+.sr5-rail-btn b svg{width:21px;height:21px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.sr5-rail-btn span{font-size:8.5px!important;font-weight:700!important;letter-spacing:.01em}
+.sr5-rail-btn:hover,.sr5-rail-btn.active{background:rgba(255,255,255,.14)!important;color:#fff!important;transform:translateY(-1px)}
+.sr5-rail-btn.active{box-shadow:inset 3px 0 0 #fff}
+.sr5-rail-version{font-size:8px!important;color:#9fb9f8!important}
+.top{padding:11px 20px!important;gap:9px!important;background:#fff!important;border-bottom:1px solid var(--sr-line)!important;box-shadow:0 2px 14px rgba(28,48,87,.045)!important}
+.brand{min-width:126px!important;color:var(--sr-muted)!important}.brand strong{font-size:14px!important;color:var(--sr-text)!important}
+.sr5-project-head{min-width:205px!important}.sr5-project-head .kicker{font-size:8px!important;letter-spacing:.06em}.sr5-project-head .name{font-size:14px!important}.sr5-project-head .saved{font-size:8px!important}
+.top button,.top select{height:38px!important;border-radius:10px!important;padding:0 12px!important;font-family:inherit!important;box-shadow:0 1px 2px rgba(26,45,85,.04)!important}
+.top button{display:inline-flex!important;align-items:center!important;gap:7px!important}.top button svg{width:17px;height:17px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round;flex:none}
+.top .primary{box-shadow:0 8px 18px rgba(18,63,174,.22)!important}.ver{border-radius:9px!important}.status{border-radius:10px!important}
+.main{grid-template-columns:310px minmax(560px,1fr) 326px!important;gap:14px!important;padding:14px!important;background:var(--sr-bg)!important}
+.side{border:1px solid var(--sr-line)!important;border-radius:18px!important;padding:16px!important;background:#fff!important;box-shadow:var(--sr-shadow)!important}
+.side.right{border:1px solid var(--sr-line)!important}.title{font-size:9px!important;letter-spacing:.11em!important;color:#7a879b!important;margin:4px 0 12px!important}.input{height:40px!important;border-radius:11px!important;background:#f9fbfd!important}.btn{border-radius:11px!important;padding:10px 11px!important;font-family:inherit!important}
+.products{gap:9px!important}.prod{border-radius:14px!important;padding:10px!important;box-shadow:0 4px 14px rgba(25,43,80,.06)!important}.prod:hover{box-shadow:0 12px 28px rgba(18,63,174,.12)!important}.prod-name{font-size:12px!important;font-weight:750!important}.cat{border-radius:8px!important}.prod-add{border-radius:10px!important}
+.center{border:1px solid #dce4ef!important;border-radius:18px!important;background:linear-gradient(180deg,#edf1f7 0%,#e8edf4 100%)!important;padding:34px!important;box-shadow:inset 0 1px 0 rgba(255,255,255,.8)!important}.center:before{left:22px!important;top:13px!important;color:#8a98ac!important}.page{box-shadow:0 28px 64px rgba(24,42,78,.24)!important;border-radius:7px!important}.prod-card{border-radius:14px!important;box-shadow:0 8px 22px rgba(23,39,74,.15)!important}.prod-card.selected{box-shadow:0 0 0 3px rgba(47,103,231,.20),0 15px 34px rgba(23,39,74,.20)!important}
+.pages{padding:10px 16px!important;gap:9px!important;box-shadow:0 -4px 18px rgba(28,48,87,.04)!important}.page-tab,.page-action{height:44px!important;border-radius:12px!important}.page-tab.active{box-shadow:0 4px 12px rgba(18,63,174,.10)!important}
+.kpi{border-radius:12px!important;padding:10px!important}.kpi b{font-size:20px!important}.prop label{font-size:8px!important;letter-spacing:.04em}.help{border-radius:12px!important}.issue{border-radius:11px!important}.font-pill{border-radius:9px!important}
+.pro-toolbar{border-radius:13px!important;padding:7px!important;box-shadow:0 8px 24px rgba(25,43,80,.12)!important}.pro-toolbar button{border-radius:9px!important}.part-metrics input,.part-metrics select{border-radius:9px!important}
+.sr5-project-pill,.sr5-project-btn{border-radius:10px!important}.modal{border-radius:20px!important;box-shadow:0 32px 100px rgba(8,21,51,.34)!important}.toast{border-radius:12px!important}
+.sr5-float-tools{left:118px!important;top:96px!important;border-radius:13px!important;padding:7px!important;box-shadow:0 12px 34px rgba(25,43,80,.16)!important}.sr5-float-tools button{width:34px;height:34px;padding:6px!important;display:grid;place-items:center}.sr5-float-tools button svg{width:18px;height:18px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
+@media(max-width:1380px){.main{grid-template-columns:270px minmax(500px,1fr) 282px!important}.sr5-project-head{display:none}}
+@media(max-width:1100px){.app{grid-template-columns:72px minmax(0,1fr)!important}.sr5-rail-btn{width:52px!important}.main{grid-template-columns:225px minmax(440px,1fr) 235px!important;padding:9px!important;gap:9px!important}}
+@media print{.sr5-rail,.sr5-float-tools{display:none!important}.app{display:block!important}.top,.side,.pages{display:none!important}.main{display:block!important;padding:0!important}.center{padding:0!important;border:0!important;background:#fff!important}.page{border-radius:0!important;box-shadow:none!important}}
