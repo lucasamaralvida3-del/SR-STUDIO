@@ -20,7 +20,15 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          Expand-Archive -LiteralPath 'installer/source_payload.zip' -DestinationPath '.' -Force
+          $parts=Get-ChildItem -LiteralPath 'installer/payload_chunks' -Filter 'part*.txt' | Sort-Object Name
+          if($parts.Count -ne 6){ throw "Quantidade inválida de partes: $($parts.Count)" }
+          $b64=($parts | ForEach-Object { (Get-Content -Raw -LiteralPath $_.FullName).Trim() }) -join ''
+          $zip='installer/source_payload.fixed.zip'
+          [IO.File]::WriteAllBytes($zip,[Convert]::FromBase64String($b64))
+          $payloadSha=(Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          if($payloadSha -ne '340d31e23dafabc72f5ea16ba50a03fc88cbe027ad70bbeaadce2151f65f443e'){ throw "Payload remontado com SHA inválido: $payloadSha" }
+          if((Get-Item $zip).Length -ne 15618){ throw 'Payload remontado com tamanho inválido' }
+          Expand-Archive -LiteralPath $zip -DestinationPath '.' -Force
           $files=@(
             'launcher/files/SRStudioLauncher.ps1',
             'launcher/files/SRStudioBootstrap.ps1',
@@ -61,7 +69,6 @@ jobs:
           }
           $json=$manifest | ConvertTo-Json -Depth 10
           [IO.File]::WriteAllText('manifests/launcher.json',$json+"`n",(New-Object Text.UTF8Encoding($false)))
-
           git config user.name 'SR Studio Update Bot'
           git config user.email 'actions@users.noreply.github.com'
           git add launcher/files/SRStudioLauncher.ps1 launcher/files/SRStudioBootstrap.ps1 installer/SRStudioInstaller.ps1 installer/build_setup.py manifests/launcher.json
@@ -152,17 +159,14 @@ jobs:
           $betaSha=(Get-FileHash -Algorithm SHA256 $betaPath).Hash.ToLowerInvariant()
           $stableSize=(Get-Item $stablePath).Length
           $betaSize=(Get-Item $betaPath).Length
-
           gh release upload 'v4.0.16-hybrid.stable4' $stablePath --clobber
           gh release upload 'v4.0.16-hybrid.beta19' $betaPath --clobber
-
           $tag='v4.0.16-installer2'
           if(gh release view $tag 2>$null){
             gh release upload $tag $stablePath $betaPath --clobber
           } else {
             gh release create $tag $stablePath $betaPath --title 'SR Studio 4.0.16 - Instalador Zero Admin Setup 2' --notes 'Instalador corrigido do SR Studio 4.0.16. Corrige autoatualização do Launcher para os manifestos Bundle atuais, força o canal solicitado na reinstalação e ignora aliases inválidos do Python em WindowsApps. Inclui instaladores Stable 4 e Beta 19, ambos validados em instalação limpa no Windows.'
           }
-
           $now=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
           $m=[ordered]@{
             format='SRSTUDIO_INSTALLER_1'
@@ -172,24 +176,11 @@ jobs:
             launcher_version='4.0.1-hybrid.base2.5'
             zero_admin=$true
             install_root='%LOCALAPPDATA%\SRStudio'
-            stable=[ordered]@{
-              target_version='4.0.16-hybrid.stable4'
-              file=$stableFile
-              url="https://github.com/${{ github.repository }}/releases/download/v4.0.16-installer2/$stableFile"
-              sha256=$stableSha
-              size=[int64]$stableSize
-            }
-            beta=[ordered]@{
-              target_version='4.0.16-hybrid.beta19'
-              file=$betaFile
-              url="https://github.com/${{ github.repository }}/releases/download/v4.0.16-installer2/$betaFile"
-              sha256=$betaSha
-              size=[int64]$betaSize
-            }
+            stable=[ordered]@{target_version='4.0.16-hybrid.stable4';file=$stableFile;url="https://github.com/${{ github.repository }}/releases/download/v4.0.16-installer2/$stableFile";sha256=$stableSha;size=[int64]$stableSize}
+            beta=[ordered]@{target_version='4.0.16-hybrid.beta19';file=$betaFile;url="https://github.com/${{ github.repository }}/releases/download/v4.0.16-installer2/$betaFile";sha256=$betaSha;size=[int64]$betaSize}
           }
           $json=$m|ConvertTo-Json -Depth 20
           [IO.File]::WriteAllText('installer/manifest.json',$json+"`n",(New-Object Text.UTF8Encoding($false)))
-
           git config user.name 'SR Studio Update Bot'
           git config user.email 'actions@users.noreply.github.com'
           git add installer/manifest.json
