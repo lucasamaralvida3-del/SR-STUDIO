@@ -1,9 +1,10 @@
 from pathlib import Path
 import json, shutil, sys
 
-R=Path('work/files')
-S=Path('staging/logo_update/source')
 channel=(sys.argv[1] if len(sys.argv)>1 else 'stable').lower()
+root=Path(sys.argv[2] if len(sys.argv)>2 else 'work')
+R=root/'files'
+S=Path('staging/logo_update/source')
 
 assets=R/'assets'; assets.mkdir(parents=True,exist_ok=True)
 shutil.copy2(S/'SR_logo.png', assets/'SR_logo.png')
@@ -51,10 +52,12 @@ if channel=='stable':
     v.update(distribution_version='4.0.16-hybrid.stable3',product_version='4.0.16',channel='stable',release_label='Stable 3',updated_at='2026-08-14T11:17:00-03:00')
     display='4.0.16 • Stable 3'
     note='SR Studio 4.0.16 • Stable 3\nNova logo oficial aplicada na abertura, menu principal e ícone do aplicativo.\n'
-else:
+elif channel=='beta':
     v.update(distribution_version='4.0.16-hybrid.beta18',product_version='4.0.16',channel='beta',release_label='Beta 18',updated_at='2026-08-14T11:17:00-03:00')
     display='4.0.16 • Beta 18'
     note='SR Studio 4.0.16 • Beta 18\nSincronizada com Stable 3: nova logo oficial na abertura, menu principal e ícone do aplicativo.\n'
+else:
+    raise SystemExit('Canal inválido: use stable ou beta')
 vpath.write_text(json.dumps(v,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
 (R/'VERSAO.txt').write_text(note,encoding='utf-8')
 
@@ -65,9 +68,8 @@ if js.exists():
     import re
     s,n=re.subn(r"A\.VERSION='4\.0\.16 • (?:Stable 2|Beta 17)'",f"A.VERSION='{display}'",s,count=1)
     if n==0:
-        # tolera pacote Stable 2 em que o texto já esteja com outra etiqueta 4.0.16
         s,n=re.subn(r"A\.VERSION='4\.0\.16 • [^']+'",f"A.VERSION='{display}'",s,count=1)
     if n==0: raise SystemExit('Versão do Encartes10 não localizada')
     js.write_text(s,encoding='utf-8')
 
-print('Logo oficial aplicada para',channel)
+print('Logo oficial aplicada para',channel,'em',root)
