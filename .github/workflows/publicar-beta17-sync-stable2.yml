@@ -1,0 +1,99 @@
+name: Publicar SR Studio Beta 17 sincronizada com Stable 2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publicar-beta17-sync-stable2.yml'
+      - 'staging/beta17/**'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Montar Beta 17 sobre Stable 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work dist && mkdir -p work dist
+          gh release download v4.0.16-hybrid.stable2 -p 'SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip -d work
+          python staging/beta17/assemble.py
+          python -m compileall -q work/files
+          node --check work/files/Encartes8_beta14.js
+          node --check work/files/Encartes9_beta15.js
+          node --check work/files/Encartes10_beta16.js
+          grep -q '4.0.16-hybrid.beta17' work/files/version.json
+          grep -q '"channel": "beta"' work/files/version.json
+          grep -q '4.0.16 • Beta 17' work/files/Encartes10_beta16.js
+          test -s work/files/SRSpellCheck.py
+          PYTHONPATH=work/files python - <<'PY'
+          from SRSpellCheck import correct_product_name, correct_campaign_text
+          cases={
+              'ACUCAR DELTA 5KG':'AÇÚCAR DELTA 5KG',
+              'CAFE VASCONCELOS 500G':'CAFÉ VASCONCELOS 500G',
+              'LINGUICA TOSCANA':'LINGUIÇA TOSCANA',
+              'FILE DE TILAPIA 500G':'FILÉ DE TILÁPIA 500G',
+          }
+          for raw,expected in cases.items():
+              got=correct_product_name(raw)
+              assert got==expected,(raw,got,expected)
+          assert correct_campaign_text('TERCA VERDE')=='TERÇA VERDE'
+          print('Corretor OK')
+          PY
+          find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
+          find work -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' \) -delete
+
+      - name: Criar release Beta 17 e ativar canal Beta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='SR_STUDIO_4.0.16_BETA17_SYNC_STABLE2.zip'
+          TAG='v4.0.16-hybrid.beta17'
+          (cd work && zip -qr "../dist/$FILE" .)
+          SHA=$(sha256sum "dist/$FILE" | awk '{print $1}')
+          SIZE=$(stat -c%s "dist/$FILE")
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "dist/$FILE" --clobber
+          else
+            gh release create "$TAG" "dist/$FILE" --prerelease --title 'SR Studio 4.0.16 Beta 17 - Sincronizada com Stable 2' --notes 'Beta 17 sincronizada integralmente com a Stable 2. Mesmo código e mesmas funções, incluindo Encartes Studio Canva-like, PPTX/XLSX, Banco de Produtos, imagens automáticas, edição visual, aprendizado de template, múltiplas páginas, validação, backup, versões e corretor ortográfico LOCAL FIRST. Diferença apenas de identificação do canal Beta.'
+          fi
+          export SHA SIZE FILE TAG
+          python - <<'PY'
+          import json,os
+          from datetime import datetime,timezone,timedelta
+          from pathlib import Path
+          p=Path('beta/manifest.json')
+          m=json.loads(p.read_text(encoding='utf-8'))
+          m['format']='SRSTUDIO_HYBRID_BUNDLE_1'
+          m['product']='SR Studio Desktop Core'
+          m['channel']='beta'
+          m['version']='4.0.16-hybrid.beta17'
+          m['created_at']=datetime.now(timezone(timedelta(hours=-3))).isoformat(timespec='seconds')
+          m['min_launcher_version']='4.0.0-hybrid.pro1.1'
+          m['bundle']={
+            'url':f"https://github.com/${{ github.repository }}/releases/download/{os.environ['TAG']}/{os.environ['FILE']}",
+            'sha256':os.environ['SHA'],
+            'size':int(os.environ['SIZE']),
+            'member_prefix':'files/'
+          }
+          m['repair']={'mode':'local_hash_catalog','full_check_every_days':7}
+          m['delete']=['Encartes3_app.js','Encartes3_style.css','Encartes4_beta6.js','Encartes5_beta11.js','Encartes6_beta12.js']
+          m['notes']='Beta 17 sincronizada com Stable 2: mesmo código e mesmas funções; muda apenas a identificação do canal.'
+          p.write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add beta/manifest.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Sincroniza Beta 17 com Stable 2'
+            git push
+          fi
