@@ -1,0 +1,199 @@
+name: Publicar Instalador SR Studio Setup 2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publicar-installer2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Materializar e validar fontes do instalador
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive -LiteralPath 'installer/source_payload.zip' -DestinationPath '.' -Force
+          $files=@(
+            'launcher/files/SRStudioLauncher.ps1',
+            'launcher/files/SRStudioBootstrap.ps1',
+            'installer/SRStudioInstaller.ps1'
+          )
+          foreach($f in $files){
+            $tokens=$null; $errors=$null
+            [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f),[ref]$tokens,[ref]$errors) | Out-Null
+            if($errors -and $errors.Count -gt 0){ throw "PowerShell inválido em $f : $($errors[0].Message)" }
+          }
+          python -m py_compile installer/build_setup.py
+          if(-not (Select-String -LiteralPath 'launcher/files/SRStudioLauncher.ps1' -SimpleMatch "4.0.1-hybrid.base2.5")){ throw 'Versão do Launcher incorreta' }
+          if(-not (Select-String -LiteralPath 'launcher/files/SRStudioLauncher.ps1' -SimpleMatch "SRSTUDIO_HYBRID_BUNDLE_1")){ throw 'Launcher sem suporte ao Bundle 1' }
+          if(-not (Select-String -LiteralPath 'installer/SRStudioInstaller.ps1' -SimpleMatch "4.0.16-setup2")){ throw 'Versão do instalador incorreta' }
+          if(-not (Select-String -LiteralPath 'installer/SRStudioInstaller.ps1' -SimpleMatch "\\WindowsApps\\")){ throw 'Proteção contra WindowsApps ausente' }
+
+      - name: Corrigir manifesto do Launcher e publicar fontes
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $launcher='launcher/files/SRStudioLauncher.ps1'
+          $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $launcher).Hash.ToLowerInvariant()
+          $size=(Get-Item -LiteralPath $launcher).Length
+          $now=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
+          $manifest=[ordered]@{
+            format='SRSTUDIO_LAUNCHER_MANIFEST_1'
+            product='SR Studio Launcher'
+            version='4.0.1-hybrid.base2.5'
+            published_at=$now
+            files=@(
+              [ordered]@{
+                path='SRStudioLauncher.ps1'
+                source='launcher/files/SRStudioLauncher.ps1'
+                sha256=$hash
+                size=[int64]$size
+              }
+            )
+          }
+          $json=$manifest | ConvertTo-Json -Depth 10
+          [IO.File]::WriteAllText('manifests/launcher.json',$json+"`n",(New-Object Text.UTF8Encoding($false)))
+
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add launcher/files/SRStudioLauncher.ps1 launcher/files/SRStudioBootstrap.ps1 installer/SRStudioInstaller.ps1 installer/build_setup.py manifests/launcher.json
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Corrige Launcher e fontes do instalador Setup 2'
+            git push origin HEAD:main
+          }
+
+      - name: Montar instaladores Stable e Beta
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          python installer/build_setup.py --channel stable --output dist/SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd
+          python installer/build_setup.py --channel beta --output dist/SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd
+          foreach($f in @('dist/SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd','dist/SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd')){
+            if((Get-Item $f).Length -lt 100000){ throw "Instalador incompleto: $f" }
+            $text=[IO.File]::ReadAllText((Resolve-Path $f))
+            foreach($section in @('INSTALLER','BOOTSTRAP','LAUNCHER','ICON')){
+              if($text -notmatch ('::BEGIN_'+$section)){ throw "Payload $section ausente em $f" }
+            }
+          }
+
+      - name: Testar instalação limpa Stable
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:SR_SETUP_CI='1'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP 'srstudio-smoke-stable'
+          Remove-Item -LiteralPath $env:LOCALAPPDATA -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          cmd /c 'dist\SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd stable --no-launch'
+          if($LASTEXITCODE -ne 0){ throw "Instalação Stable falhou: $LASTEXITCODE" }
+          $root=Join-Path $env:LOCALAPPDATA 'SRStudio'
+          foreach($f in @('App\SR_Studio_Gerador.py','Launcher\SRStudioLauncher.ps1','Launcher\SRStudioBootstrap.ps1','Config\launcher.json','Config\installed.json')){
+            if(-not (Test-Path (Join-Path $root $f))){ throw "Arquivo esperado ausente: $f" }
+          }
+          $cfg=Get-Content -Raw (Join-Path $root 'Config\launcher.json') | ConvertFrom-Json
+          $installed=Get-Content -Raw (Join-Path $root 'Config\installed.json') | ConvertFrom-Json
+          if([string]$cfg.channel -ne 'stable'){ throw 'Canal Stable não foi gravado corretamente' }
+          if([string]$installed.version -ne '4.0.16-hybrid.stable4'){ throw "Versão Stable instalada incorreta: $($installed.version)" }
+          if((Get-Content -Raw (Join-Path $root 'Launcher\SRStudioLauncher.ps1')) -notmatch '4\.0\.1-hybrid\.base2\.5'){ throw 'Launcher novo não foi instalado/sincronizado' }
+
+      - name: Testar reinstalação e limpar alias WindowsApps
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:SR_SETUP_CI='1'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP 'srstudio-smoke-stable'
+          $cfgPath=Join-Path $env:LOCALAPPDATA 'SRStudio\Config\launcher.json'
+          $cfg=Get-Content -Raw $cfgPath | ConvertFrom-Json
+          $cfg.channel='beta'
+          $cfg.python_command='C:\Users\Teste\AppData\Local\Microsoft\WindowsApps\python.exe'
+          [IO.File]::WriteAllText($cfgPath,($cfg|ConvertTo-Json -Depth 20),(New-Object Text.UTF8Encoding($false)))
+          cmd /c 'dist\SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd stable --no-launch'
+          if($LASTEXITCODE -ne 0){ throw "Reinstalação Stable falhou: $LASTEXITCODE" }
+          $cfg=Get-Content -Raw $cfgPath | ConvertFrom-Json
+          if([string]$cfg.channel -ne 'stable'){ throw 'Reinstalação não restaurou canal Stable' }
+          if([string]$cfg.python_command){ throw "Alias Python inválido não foi limpo: $($cfg.python_command)" }
+
+      - name: Testar instalação limpa Beta
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:SR_SETUP_CI='1'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP 'srstudio-smoke-beta'
+          Remove-Item -LiteralPath $env:LOCALAPPDATA -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          cmd /c 'dist\SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd beta --no-launch'
+          if($LASTEXITCODE -ne 0){ throw "Instalação Beta falhou: $LASTEXITCODE" }
+          $root=Join-Path $env:LOCALAPPDATA 'SRStudio'
+          $cfg=Get-Content -Raw (Join-Path $root 'Config\launcher.json') | ConvertFrom-Json
+          $installed=Get-Content -Raw (Join-Path $root 'Config\installed.json') | ConvertFrom-Json
+          if([string]$cfg.channel -ne 'beta'){ throw 'Canal Beta não foi gravado corretamente' }
+          if([string]$installed.version -ne '4.0.16-hybrid.beta19'){ throw "Versão Beta instalada incorreta: $($installed.version)" }
+
+      - name: Publicar instaladores e manifesto
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $stableFile='SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd'
+          $betaFile='SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd'
+          $stablePath=Join-Path 'dist' $stableFile
+          $betaPath=Join-Path 'dist' $betaFile
+          $stableSha=(Get-FileHash -Algorithm SHA256 $stablePath).Hash.ToLowerInvariant()
+          $betaSha=(Get-FileHash -Algorithm SHA256 $betaPath).Hash.ToLowerInvariant()
+          $stableSize=(Get-Item $stablePath).Length
+          $betaSize=(Get-Item $betaPath).Length
+
+          gh release upload 'v4.0.16-hybrid.stable4' $stablePath --clobber
+          gh release upload 'v4.0.16-hybrid.beta19' $betaPath --clobber
+
+          $tag='v4.0.16-installer2'
+          if(gh release view $tag 2>$null){
+            gh release upload $tag $stablePath $betaPath --clobber
+          } else {
+            gh release create $tag $stablePath $betaPath --title 'SR Studio 4.0.16 - Instalador Zero Admin Setup 2' --notes 'Instalador corrigido do SR Studio 4.0.16. Corrige autoatualização do Launcher para os manifestos Bundle atuais, força o canal solicitado na reinstalação e ignora aliases inválidos do Python em WindowsApps. Inclui instaladores Stable 4 e Beta 19, ambos validados em instalação limpa no Windows.'
+          }
+
+          $now=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
+          $m=[ordered]@{
+            format='SRSTUDIO_INSTALLER_1'
+            product='SR Studio'
+            version='4.0.16-setup2'
+            published_at=$now
+            launcher_version='4.0.1-hybrid.base2.5'
+            zero_admin=$true
+            install_root='%LOCALAPPDATA%\SRStudio'
+            stable=[ordered]@{
+              target_version='4.0.16-hybrid.stable4'
+              file=$stableFile
+              url="https://github.com/${{ github.repository }}/releases/download/v4.0.16-installer2/$stableFile"
+              sha256=$stableSha
+              size=[int64]$stableSize
+            }
+            beta=[ordered]@{
+              target_version='4.0.16-hybrid.beta19'
+              file=$betaFile
+              url="https://github.com/${{ github.repository }}/releases/download/v4.0.16-installer2/$betaFile"
+              sha256=$betaSha
+              size=[int64]$betaSize
+            }
+          }
+          $json=$m|ConvertTo-Json -Depth 20
+          [IO.File]::WriteAllText('installer/manifest.json',$json+"`n",(New-Object Text.UTF8Encoding($false)))
+
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add installer/manifest.json
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Publica instalador SR Studio 4.0.16 Setup 2'
+            git push origin HEAD:main
+          }
