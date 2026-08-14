@@ -1,0 +1,82 @@
+name: Publicar SR Studio Stable 2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publicar-stable2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Montar e validar Stable 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work dist && mkdir -p work dist
+          gh release download v4.0.15-hybrid.beta16 -p 'SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip -d work
+          python staging/stable2/assemble.py
+          python -m compileall -q work/files
+          node --check work/files/Encartes8_beta14.js
+          node --check work/files/Encartes9_beta15.js
+          node --check work/files/Encartes10_beta16.js
+          python staging/stable2/test_stable2.py
+          grep -q '4.0.16-hybrid.stable2' work/files/version.json
+          grep -q '4.0.16 • Stable 2' work/files/Encartes10_beta16.js
+          test -s work/files/SRSpellCheck.py
+          find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
+          find work -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.xlsx' -o -name '*.xls' -o -name '*.csv' \) -delete
+
+      - name: Criar release Stable 2 e ativar canal Stable
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip'
+          TAG='v4.0.16-hybrid.stable2'
+          (cd work && zip -qr "../dist/$FILE" .)
+          SHA=$(sha256sum "dist/$FILE" | awk '{print $1}')
+          SIZE=$(stat -c%s "dist/$FILE")
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "dist/$FILE" --clobber
+          else
+            gh release create "$TAG" "dist/$FILE" --title 'SR Studio 4.0.16 Stable 2 - Versão Completa' --notes 'Stable 2: promoção completa de todas as funções validadas até a Beta 16, incluindo Encartes Studio com edição visual Canva-like, importação PPTX/XLSX, Banco de Produtos, imagens automáticas, edição manual, aprendizado de template, múltiplas páginas, validação, backup e versões. Adiciona corretor ortográfico LOCAL FIRST antes da geração de cartazes para corrigir acentuação e erros seguros em nomes de produtos e enunciados, preservando marcas e dando prioridade às correções aprendidas pelo usuário.'
+          fi
+          export SHA SIZE FILE TAG
+          python - <<'PY'
+          import json,os
+          from datetime import datetime,timezone,timedelta
+          from pathlib import Path
+          p=Path('stable/manifest.json')
+          m=json.loads(p.read_text(encoding='utf-8'))
+          m['format']='SRSTUDIO_HYBRID_BUNDLE_1'
+          m['product']='SR Studio Desktop Core'
+          m['channel']='stable'
+          m['version']='4.0.16-hybrid.stable2'
+          m['created_at']=datetime.now(timezone(timedelta(hours=-3))).isoformat(timespec='seconds')
+          m['min_launcher_version']='4.0.0-hybrid.pro1.1'
+          m['bundle']={
+            'url':f"https://github.com/${{ github.repository }}/releases/download/{os.environ['TAG']}/{os.environ['FILE']}",
+            'sha256':os.environ['SHA'],'size':int(os.environ['SIZE']),'member_prefix':'files/'
+          }
+          m['repair']={'mode':'local_hash_catalog','full_check_every_days':7}
+          m['delete']=['Encartes3_app.js','Encartes3_style.css','Encartes4_beta6.js','Encartes5_beta11.js','Encartes6_beta12.js']
+          m['notes']='Stable 2: versão completa até a Beta 16 + corretor ortográfico local para geração de cartazes.'
+          p.write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add stable/manifest.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Ativa SR Studio 4.0.16 Stable 2'
+            git push
+          fi
