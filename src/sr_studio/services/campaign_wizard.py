@@ -13,7 +13,7 @@ from services.spreadsheet_profiles import read_rows
 from services.template_registry import load_learned_template
 
 
-def _product_from_row(row: dict[str, Any]) -> dict[str, Any]:
+def _product_from_row(row: dict[str, Any], source_index: int = 0) -> dict[str, Any]:
     code = str(row.get("code") or "").strip()
     ean = str(row.get("ean") or "").strip()
     raw_name = str(row.get("name") or "").strip()
@@ -37,10 +37,34 @@ def _product_from_row(row: dict[str, Any]) -> dict[str, Any]:
         "unit": unit,
         "image": image,
         "category": category,
+        "highlight": bool(row.get("highlight")),
         "bankFound": bool(bank),
         "matchMethod": "BANCO_CENTRAL" if bank else "PLANILHA",
         "identityKey": identity,
+        "sourceIndex": int(source_index),
     }
+
+
+def _ordered_products(products: list[dict[str, Any]], group_by_category: bool) -> list[dict[str, Any]]:
+    if not group_by_category:
+        return sorted(products, key=lambda p: (0 if p.get("highlight") else 1, int(p.get("sourceIndex") or 0)))
+    # Mantém a ordem de surgimento das categorias na planilha e coloca os destaques primeiro dentro de cada grupo.
+    category_order: dict[str, int] = {}
+    for p in products:
+        category_order.setdefault(str(p.get("category") or "SEM CATEGORIA"), len(category_order))
+    return sorted(
+        products,
+        key=lambda p: (
+            category_order.get(str(p.get("category") or "SEM CATEGORIA"), 9999),
+            0 if p.get("highlight") else 1,
+            int(p.get("sourceIndex") or 0),
+        ),
+    )
+
+
+def _page_category(assigned: list[dict[str, Any]]) -> str:
+    cats = {str(p.get("category") or "SEM CATEGORIA") for p in assigned}
+    return next(iter(cats)) if len(cats) == 1 else "MISTO"
 
 
 def _template_pages(template: dict[str, Any], products: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -63,15 +87,23 @@ def _template_pages(template: dict[str, Any], products: list[dict[str, Any]]) ->
         if not slots:
             break
         placed = 0
+        assigned: list[dict[str, Any]] = []
         for slot in slots:
             try:
                 product = next(remaining)
             except StopIteration:
                 exhausted = True
                 break
-            source["elements"].append({"id": uid("e"), "productId": product["id"], "slotId": slot.get("id"), "highlight": 0})
+            assigned.append(product)
+            source["elements"].append({
+                "id": uid("e"),
+                "productId": product["id"],
+                "slotId": slot.get("id"),
+                "highlight": 1 if product.get("highlight") else 0,
+            })
             placed += 1
         if placed:
+            source["category"] = _page_category(assigned)
             result.append(source)
         if exhausted:
             break
@@ -85,7 +117,7 @@ def _grid_pages(products: list[dict[str, Any]], per_page: int = 12) -> list[dict
     pages = []
     for start in range(0, len(products), per_page):
         chunk = products[start : start + per_page]
-        page = {"id": uid("pg"), "name": f"Página {len(pages)+1}", "width": 794, "height": 1123, "elements": [], "templateElements": [], "templateSlots": [], "category": ""}
+        page = {"id": uid("pg"), "name": f"Página {len(pages)+1}", "width": 794, "height": 1123, "elements": [], "templateElements": [], "templateSlots": [], "category": _page_category(chunk)}
         cols = 3
         rows = max(1, (per_page + cols - 1) // cols)
         cell_w = 238
@@ -95,7 +127,7 @@ def _grid_pages(products: list[dict[str, Any]], per_page: int = 12) -> list[dict
             page["elements"].append({
                 "id": uid("e"), "productId": product["id"], "slotId": None,
                 "x": 28 + col * 246, "y": 35 + row * cell_h,
-                "w": cell_w, "h": max(180, cell_h - 16), "highlight": 0, "fontFamily": "Segoe UI",
+                "w": cell_w, "h": max(180, cell_h - 16), "highlight": 1 if product.get("highlight") else 0, "fontFamily": "Segoe UI",
             })
         pages.append(page)
     return pages or [{"id": uid("pg"), "name": "Página 1", "width": 794, "height": 1123, "elements": [], "templateElements": [], "templateSlots": [], "category": ""}]
@@ -109,11 +141,13 @@ def build_campaign(
     spreadsheet_profile: dict[str, Any],
     template_profile_id: str = "",
     products_per_page: int = 12,
+    group_by_category: bool = True,
 ) -> dict[str, Any]:
     rows = read_rows(spreadsheet_path, spreadsheet_profile)
     if not rows:
         raise ValueError("A planilha não possui produtos utilizáveis com o perfil selecionado.")
-    products = [_product_from_row(row) for row in rows]
+    products = [_product_from_row(row, i) for i, row in enumerate(rows)]
+    products = _ordered_products(products, bool(group_by_category))
     template = load_learned_template(template_profile_id) if template_profile_id else None
     pages = _template_pages(template, products) if template else _grid_pages(products, products_per_page)
     if template and not pages:
@@ -146,7 +180,7 @@ def build_campaign(
             "spreadsheet_profile_id": str(spreadsheet_profile.get("id") or ""),
             "source_spreadsheet": str(spreadsheet_path),
             "source_template": str((template or {}).get("profile", {}).get("template_path") or ""),
-            "campaign_settings": {"products_per_page": products_per_page},
+            "campaign_settings": {"products_per_page": products_per_page, "group_by_category": bool(group_by_category)},
         },
     )
     project["state"]["encartes_state"] = encartes_state
@@ -157,5 +191,7 @@ def build_campaign(
         "pages": len(pages),
         "bank_found": sum(1 for p in products if p.get("bankFound")),
         "without_image": sum(1 for p in products if not p.get("image")),
+        "highlighted": sum(1 for p in products if p.get("highlight")),
+        "categories": len({p.get("category") for p in products}),
         "template_used": bool(template),
     }
