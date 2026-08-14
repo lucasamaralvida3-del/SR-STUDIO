@@ -1,0 +1,307 @@
+name: SR Studio Installer 3 - Clean AV + Python Fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/installer3-antivirus-pythonfix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Corrigir deteccao e instalacao do Python
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          p = Path('launcher/files/SRStudioLauncher.ps1')
+          text = p.read_text(encoding='utf-8-sig')
+          text = text.replace("$LauncherVersion = '4.0.1-hybrid.base2.5'", "$LauncherVersion = '4.0.1-hybrid.base2.6'", 1)
+
+          new_func = r'''function Ensure-SrPythonRuntime {
+            $pythonRoot = Join-Path $RuntimeDir 'python'
+            New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+
+            $candidateList = New-Object System.Collections.Generic.List[string]
+            function Add-SrPythonCandidate([string]$Candidate) {
+              if(-not $Candidate) { return }
+              try { $expanded = Expand-SrEnv $Candidate } catch { $expanded = $Candidate }
+              if(-not $expanded) { return }
+              if($expanded -match '\\WindowsApps\\') { return }
+              if((Test-Path -LiteralPath $expanded -PathType Leaf) -and -not $candidateList.Contains($expanded)) {
+                $candidateList.Add($expanded)
+              }
+            }
+
+            # 1) Runtime privado ja existente.
+            Add-SrPythonCandidate (Join-Path $pythonRoot 'pythonw.exe')
+            Add-SrPythonCandidate (Join-Path $pythonRoot 'python.exe')
+
+            # 2) Python configurado pelo usuario/instalador.
+            Add-SrPythonCandidate ([string](Get-SrProperty $cfg 'python_command' ''))
+
+            # 3) Instalacoes Python 3.12 comuns por usuario/maquina.
+            Add-SrPythonCandidate (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\pythonw.exe')
+            Add-SrPythonCandidate (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe')
+            if($env:ProgramFiles) {
+              Add-SrPythonCandidate (Join-Path $env:ProgramFiles 'Python312\pythonw.exe')
+              Add-SrPythonCandidate (Join-Path $env:ProgramFiles 'Python312\python.exe')
+            }
+
+            # 4) Python Launcher oficial, se existir.
+            try {
+              $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue
+              if($pyCmd -and $pyCmd.Source -notmatch '\\WindowsApps\\') {
+                $resolved = (& $pyCmd.Source -3.12 -c "import sys; print(sys.executable)" 2>$null | Select-Object -First 1)
+                if($resolved) { Add-SrPythonCandidate ([string]$resolved).Trim() }
+              }
+            } catch { }
+
+            # 5) PATH, ignorando aliases falsos da Microsoft Store.
+            foreach($cmdName in @('pythonw.exe','python.exe')) {
+              try {
+                $cmd = Get-Command $cmdName -ErrorAction SilentlyContinue
+                if($cmd) { Add-SrPythonCandidate $cmd.Source }
+              } catch { }
+            }
+
+            function Resolve-SrPythonPair($Candidates) {
+              foreach($candidate in @($Candidates)) {
+                $leaf = [IO.Path]::GetFileName($candidate).ToLowerInvariant()
+                $dir = Split-Path $candidate -Parent
+                $exe = ''
+                $wexe = ''
+                if($leaf -eq 'pythonw.exe') {
+                  $wexe = $candidate
+                  $exe = Join-Path $dir 'python.exe'
+                } else {
+                  $exe = $candidate
+                  $wexe = Join-Path $dir 'pythonw.exe'
+                }
+                if(-not (Test-Path -LiteralPath $exe -PathType Leaf)) { continue }
+                try {
+                  $ver = (& $exe -c "import sys; print('%d.%d.%d' % sys.version_info[:3])" 2>$null | Select-Object -First 1)
+                  if($LASTEXITCODE -ne 0 -or -not $ver) { continue }
+                  if(([string]$ver).Trim() -notmatch '^3\.12\.') { continue }
+                  if(-not (Test-Path -LiteralPath $wexe -PathType Leaf)) { $wexe = $exe }
+                  return @{ python=$exe; pythonw=$wexe; version=([string]$ver).Trim() }
+                } catch { }
+              }
+              return $null
+            }
+
+            $resolvedPair = Resolve-SrPythonPair $candidateList
+
+            if($null -eq $resolvedPair) {
+              Write-SrLog 'Python 3.12 real nao encontrado. Instalando Python oficial por usuario (ZERO ADMIN).'
+              $installer = Join-Path $CacheDir 'python-3.12.10-amd64.exe'
+              if(-not (Test-Path $installer)) {
+                Invoke-SrDownload 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' $installer 300 3
+              }
+
+              # Confirma que o executavel veio assinado antes de executa-lo.
+              try {
+                $sig = Get-AuthenticodeSignature -LiteralPath $installer
+                if($sig.Status -ne 'Valid') { throw ('Assinatura digital do instalador Python invalida: ' + $sig.Status) }
+                Write-SrLog ('Python installer signature valid: ' + $sig.SignerCertificate.Subject)
+              } catch {
+                throw ('Python installer authenticity check failed. ' + $_.Exception.Message)
+              }
+
+              # Nao usa TargetDir customizado. Isso evita o caso em que o instalador retorna 0
+              # por detectar uma instalacao existente, mas nao cria python.exe na pasta privada.
+              $arguments = @(
+                '/quiet',
+                'InstallAllUsers=0',
+                'Include_launcher=1',
+                'InstallLauncherAllUsers=0',
+                'PrependPath=0',
+                'AppendPath=0',
+                'AssociateFiles=0',
+                'Shortcuts=0',
+                'Include_test=0',
+                'Include_doc=0',
+                'Include_dev=0',
+                'Include_debug=0',
+                'Include_symbols=0',
+                'Include_tcltk=1',
+                'Include_pip=1'
+              )
+              $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+              Write-SrLog ('Python installer exit code: ' + $process.ExitCode)
+              if($process.ExitCode -ne 0) {
+                throw ('Python per-user installation failed. Exit code: ' + $process.ExitCode)
+              }
+
+              $postInstall = New-Object System.Collections.Generic.List[string]
+              foreach($c in @(
+                (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\pythonw.exe'),
+                (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe')
+              )) { if(Test-Path -LiteralPath $c -PathType Leaf) { $postInstall.Add($c) } }
+              try {
+                $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue
+                if($pyCmd -and $pyCmd.Source -notmatch '\\WindowsApps\\') {
+                  $resolved = (& $pyCmd.Source -3.12 -c "import sys; print(sys.executable)" 2>$null | Select-Object -First 1)
+                  if($resolved) { $postInstall.Add(([string]$resolved).Trim()) }
+                }
+              } catch { }
+              $resolvedPair = Resolve-SrPythonPair $postInstall
+              if($null -eq $resolvedPair) {
+                throw ('Python installer returned success (exit code 0), but Python 3.12 could not be located. Check antivirus quarantine and ' + $LogDir)
+              }
+            }
+
+            $pythonExe = [string]$resolvedPair.python
+            $pythonwExe = [string]$resolvedPair.pythonw
+            Write-SrLog ('Using Python ' + [string]$resolvedPair.version + ': ' + $pythonExe)
+
+            $requirementsPath = Join-Path $AppDir 'requirements.txt'
+            if(Test-Path $requirementsPath) {
+              $requirementsHash = Get-SrSha256 $requirementsPath
+              $marker = Join-Path $RuntimeDir 'srstudio_requirements.sha256'
+              $markerValue = $requirementsHash + '|' + $pythonExe
+              $installedMarker = ''
+              if(Test-Path $marker) { try { $installedMarker = (Get-Content -Raw -LiteralPath $marker).Trim() } catch { } }
+              if($installedMarker -ne $markerValue) {
+                Write-SrLog 'Installing/updating SR Studio Python dependencies.'
+                $pipLog = Join-Path $LogDir 'pip_runtime.log'
+                $pipErr = $pipLog + '.err'
+                $pipArgs = @('-m','pip','install','--disable-pip-version-check','--no-warn-script-location','--upgrade','-r',$requirementsPath)
+                $proc = Start-Process -FilePath $pythonExe -ArgumentList $pipArgs -Wait -PassThru -RedirectStandardOutput $pipLog -RedirectStandardError $pipErr
+                if($proc.ExitCode -ne 0) { throw ('Python dependencies failed to install. See ' + $pipErr) }
+                [IO.File]::WriteAllText($marker,$markerValue,(New-Object Text.UTF8Encoding($false)))
+                Write-SrLog 'SR Studio Python dependencies are ready.'
+              }
+            }
+            return $pythonwExe
+          }
+
+          function Start-SrDesktop'''
+
+          pattern = r'function Ensure-SrPythonRuntime \{.*?\n\}\n\nfunction Start-SrDesktop'
+          updated, n = re.subn(pattern, new_func, text, count=1, flags=re.S)
+          if n != 1:
+              raise SystemExit(f'Nao foi possivel substituir Ensure-SrPythonRuntime: {n}')
+          p.write_text(updated, encoding='utf-8-sig', newline='\r\n')
+
+      - name: Validar Launcher e atualizar manifesto
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $launcher='launcher/files/SRStudioLauncher.ps1'
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $launcher),[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors -and $errors.Count -gt 0){ throw "Launcher PowerShell invalido: $($errors[0].Message)" }
+          if(-not (Select-String -LiteralPath $launcher -SimpleMatch "4.0.1-hybrid.base2.6")){ throw 'Versao nova ausente' }
+          if(-not (Select-String -LiteralPath $launcher -SimpleMatch 'Get-AuthenticodeSignature')){ throw 'Validacao Authenticode ausente' }
+          if(-not (Select-String -LiteralPath $launcher -SimpleMatch 'Programs\Python\Python312')){ throw 'Deteccao Python 3.12 por usuario ausente' }
+          $hash=(Get-FileHash -Algorithm SHA256 -LiteralPath $launcher).Hash.ToLowerInvariant()
+          $size=(Get-Item -LiteralPath $launcher).Length
+          $now=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
+          $manifest=[ordered]@{
+            format='SRSTUDIO_LAUNCHER_MANIFEST_1'
+            product='SR Studio Launcher'
+            version='4.0.1-hybrid.base2.6'
+            published_at=$now
+            files=@([ordered]@{path='SRStudioLauncher.ps1';source='launcher/files/SRStudioLauncher.ps1';sha256=$hash;size=[int64]$size})
+          }
+          [IO.File]::WriteAllText('manifests/launcher.json',(($manifest|ConvertTo-Json -Depth 10)+"`n"),(New-Object Text.UTF8Encoding($false)))
+
+      - name: Criar instalador limpo sem Base64
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          $cmd=@'
+          @echo off
+          setlocal EnableExtensions
+          chcp 65001 >nul 2>&1
+          title SR Studio 4.0.16 - Instalador Limpo
+          set "ROOT=%LOCALAPPDATA%\SRStudio"
+          set "LAUNCHER=%ROOT%\Launcher"
+          set "CONFIG=%ROOT%\Config"
+          set "LOGS=%ROOT%\Logs"
+          set "RAW=https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main"
+          echo ============================================================
+          echo         SR STUDIO 4.0.16 - INSTALADOR LIMPO
+          echo ============================================================
+          echo.
+          echo Este instalador nao possui payload Base64 nem arquivo oculto.
+          echo Os componentes sao baixados diretamente do repositorio oficial.
+          echo.
+          where curl.exe >nul 2>&1 || (echo ERRO: curl.exe nao encontrado no Windows.& pause & exit /b 10)
+          mkdir "%LAUNCHER%" "%CONFIG%" "%LOGS%" >nul 2>&1
+          echo [1/4] Baixando Bootstrap oficial...
+          curl.exe -fL --retry 3 "%RAW%/launcher/files/SRStudioBootstrap.ps1" -o "%LAUNCHER%\SRStudioBootstrap.ps1" || (echo Falha no Bootstrap.& pause & exit /b 11)
+          echo [2/4] Baixando Launcher oficial...
+          curl.exe -fL --retry 3 "%RAW%/launcher/files/SRStudioLauncher.ps1" -o "%LAUNCHER%\SRStudioLauncher.ps1" || (echo Falha no Launcher.& pause & exit /b 12)
+          echo [3/4] Preparando configuracao Stable...
+          >"%CONFIG%\launcher.json" echo {
+          >>"%CONFIG%\launcher.json" echo   "schema": 3,
+          >>"%CONFIG%\launcher.json" echo   "channel": "stable",
+          >>"%CONFIG%\launcher.json" echo   "auto_update": true,
+          >>"%CONFIG%\launcher.json" echo   "repair_on_start": true,
+          >>"%CONFIG%\launcher.json" echo   "full_repair_every_days": 7,
+          >>"%CONFIG%\launcher.json" echo   "allow_offline": true,
+          >>"%CONFIG%\launcher.json" echo   "remote_manifest_base": "https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main",
+          >>"%CONFIG%\launcher.json" echo   "entrypoint": "SR_Studio_Gerador.py",
+          >>"%CONFIG%\launcher.json" echo   "python_command": "",
+          >>"%CONFIG%\launcher.json" echo   "encartes_cloud_url": "http://127.0.0.1:3000",
+          >>"%CONFIG%\launcher.json" echo   "keep_backups": 3,
+          >>"%CONFIG%\launcher.json" echo   "connect_timeout_seconds": 15,
+          >>"%CONFIG%\launcher.json" echo   "download_timeout_seconds": 300,
+          >>"%CONFIG%\launcher.json" echo   "download_retries": 3,
+          >>"%CONFIG%\launcher.json" echo   "auto_update_launcher": true
+          >>"%CONFIG%\launcher.json" echo }
+          >"%ROOT%\ABRIR_SR_STUDIO.cmd" echo @echo off
+          >>"%ROOT%\ABRIR_SR_STUDIO.cmd" echo "%%SystemRoot%%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%%LOCALAPPDATA%%\SRStudio\Launcher\SRStudioBootstrap.ps1"
+          copy /y "%ROOT%\ABRIR_SR_STUDIO.cmd" "%USERPROFILE%\Desktop\SR Studio.cmd" >nul 2>&1
+          echo [4/4] Instalando/atualizando o SR Studio e preparando Python...
+          "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" -NoProfile -ExecutionPolicy Bypass -File "%LAUNCHER%\SRStudioBootstrap.ps1"
+          set "RC=%ERRORLEVEL%"
+          if not "%RC%"=="0" (
+            echo.
+            echo A instalacao encontrou um erro. Codigo: %RC%
+            echo Envie os arquivos de %%LOCALAPPDATA%%\SRStudio\Logs para diagnostico.
+            pause
+            exit /b %RC%
+          )
+          echo.
+          echo SR Studio instalado com sucesso.
+          exit /b 0
+          '@
+          $cmd=$cmd -replace '^          ',' ' -replace "(?m)^ ",''
+          [IO.File]::WriteAllText('dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd',$cmd,(New-Object Text.UTF8Encoding($false)))
+          Compress-Archive -LiteralPath 'dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd' -DestinationPath 'dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.zip' -Force
+          if((Get-Content -Raw 'dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd') -match 'BEGIN_'){ throw 'Instalador limpo ainda contem payload embutido' }
+          if((Get-Content -Raw 'dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd') -match 'FromBase64String'){ throw 'Instalador limpo ainda contem Base64' }
+
+      - name: Publicar alteracoes e instalador
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add launcher/files/SRStudioLauncher.ps1 manifests/launcher.json
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Corrige runtime Python e atualiza Launcher base2.6'
+            git push origin HEAD:main
+          }
+          $tag='v4.0.16-installer3'
+          $cmd='dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd'
+          $zip='dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.zip'
+          if(gh release view $tag 2>$null){
+            gh release upload $tag $cmd $zip --clobber
+          } else {
+            gh release create $tag $cmd $zip --title 'SR Studio 4.0.16 - Instalador Limpo' --notes 'Instalador Stable sem payload Base64. Launcher base2.6 corrige deteccao do Python 3.12, prefere instalacao existente, valida assinatura digital do instalador oficial do Python e corrige o caso de exit code 0 sem python.exe na pasta esperada.'
+          }
