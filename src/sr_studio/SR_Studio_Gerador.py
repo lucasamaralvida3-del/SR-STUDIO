@@ -4029,6 +4029,11 @@ class App(APP_TK_BASE):
 from ui.studio5_visual import install_studio5_visual as _install_studio5_visual
 _install_studio5_visual(App)
 
+# SR Studio 5.0 Beta 3 â€” abertura animada real.
+# MantÃ©m o boot funcional existente e substitui apenas a apresentaÃ§Ã£o da Splash.
+from ui.splash_v5 import install_startup_splash_v5 as _install_startup_splash_v5
+_install_startup_splash_v5(StartupSplash, _brand_photo, APP_DISPLAY_VERSION)
+
 
 if __name__=="__main__":
     run_startup_splash()
