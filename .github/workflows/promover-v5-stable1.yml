@@ -1,0 +1,280 @@
+name: Promover SR Studio 5.0 Stable 1
+
+on:
+  push:
+    branches: [next/5.0]
+    paths:
+      - '.github/workflows/promover-v5-stable1.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  promover:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: next/5.0
+          fetch-depth: 0
+
+      - name: Preparar validadores
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check "Pillow>=10.0.0"
+          if($LASTEXITCODE -ne 0){ throw 'Falha ao preparar Pillow' }
+          New-Item -ItemType Directory -Force -Path dist,dist/beta | Out-Null
+
+      - name: Baixar e validar Beta 6.1 oficial
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $stamp=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          $beta=Invoke-RestMethod -Uri ("https://raw.githubusercontent.com/${{ github.repository }}/main/beta/manifest.json?ts="+$stamp) -Headers @{'Cache-Control'='no-cache'}
+          if([string]$beta.version -ne '5.0.0-hybrid.beta6.1'){ throw "Beta oficial inesperada: $($beta.version)" }
+          if([string]$beta.sha256 -ne 'd2957c15674447364676fd8c0c1416203c4ee39951ed37d4e0f8425255c8bfc8'){ throw 'SHA da Beta 6.1 oficial mudou' }
+          if([int64]$beta.size -ne 2665598){ throw 'Tamanho da Beta 6.1 oficial mudou' }
+          $beta | ConvertTo-Json -Depth 20 | Set-Content dist/beta_manifest.json -Encoding UTF8
+          gh release download v5.0.0-hybrid.beta6.1 --repo '${{ github.repository }}' --pattern 'SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip' --dir dist/beta --clobber
+          if($LASTEXITCODE -ne 0){ throw 'Falha ao baixar a Beta 6.1 publicada' }
+          $zip='dist/beta/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip'
+          if(-not (Test-Path $zip)){ throw 'ZIP Beta 6.1 ausente' }
+          $sha=(Get-FileHash -Algorithm SHA256 $zip).Hash.ToLowerInvariant()
+          $size=(Get-Item $zip).Length
+          if($sha -ne [string]$beta.sha256){ throw "SHA Beta divergente: $sha" }
+          if([int64]$size -ne [int64]$beta.size){ throw "Tamanho Beta divergente: $size" }
+          Write-Host "BETA61_FONTE_OK $sha $size"
+
+      - name: Criar Stable 1 alterando somente identificação de canal
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          from __future__ import annotations
+          import hashlib, io, json, zipfile
+          from datetime import datetime, timezone
+          from pathlib import Path
+          from PIL import Image
+
+          beta = Path('dist/beta/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip')
+          stable = Path('dist/SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip')
+          meta_names = {'files/version.json','files/SRStudioVersion.txt','files/VERSAO.txt'}
+
+          def sha256(path: Path) -> str:
+              h=hashlib.sha256()
+              with path.open('rb') as f:
+                  for chunk in iter(lambda:f.read(1024*1024),b''):
+                      h.update(chunk)
+              return h.hexdigest()
+
+          with zipfile.ZipFile(beta,'r') as zin:
+              beta_names=zin.namelist()
+              if len(beta_names) != len(set(beta_names)):
+                  raise RuntimeError('Beta contem nomes duplicados no ZIP')
+              required={
+                  'files/SR_Studio_Gerador.py','files/SRStudio21.py','files/version.json',
+                  'files/SRStudioVersion.txt','files/VERSAO.txt',
+                  'files/assets/SR_logo.png','files/assets/SR_Studio.ico',
+                  'files/ui/splash_v5.py','files/ui/studio5_visual.py','files/ui/studio5_fidelity.py',
+                  'files/Encartes13_fidelity.js'
+              }
+              missing=required-set(beta_names)
+              if missing:
+                  raise RuntimeError(f'Beta incompleta: {sorted(missing)}')
+
+              version=json.loads(zin.read('files/version.json').decode('utf-8-sig'))
+              if version.get('distribution_version') != '5.0.0-hybrid.beta6.1':
+                  raise RuntimeError(f'version.json Beta inesperado: {version}')
+              version.update({
+                  'product_version':'5.0.0',
+                  'version':'5.0.0-hybrid.stable1',
+                  'distribution_version':'5.0.0-hybrid.stable1',
+                  'channel':'stable',
+                  'release_label':'Stable 1',
+                  'built_at':datetime.now(timezone.utc).isoformat(),
+              })
+              replacements={
+                  'files/version.json':(json.dumps(version,ensure_ascii=False,indent=2)+'\n').encode('utf-8'),
+                  'files/SRStudioVersion.txt':b'5.0.0-hybrid.stable1\n',
+                  'files/VERSAO.txt':'SR Studio 5.0.0 • Stable 1\n'.encode('utf-8'),
+              }
+
+              if stable.exists(): stable.unlink()
+              with zipfile.ZipFile(stable,'w',compression=zipfile.ZIP_DEFLATED,compresslevel=9) as zout:
+                  for info in zin.infolist():
+                      data=replacements.get(info.filename,zin.read(info.filename))
+                      new_info=zipfile.ZipInfo(info.filename,date_time=info.date_time)
+                      new_info.compress_type=zipfile.ZIP_DEFLATED
+                      new_info.external_attr=info.external_attr
+                      new_info.create_system=info.create_system
+                      new_info.flag_bits=info.flag_bits
+                      zout.writestr(new_info,data,compress_type=zipfile.ZIP_DEFLATED,compresslevel=9)
+
+          # Prova de promoção: todos os membros fora dos 3 metadados precisam ser byte a byte idênticos.
+          with zipfile.ZipFile(beta,'r') as zb, zipfile.ZipFile(stable,'r') as zs:
+              if set(zb.namelist()) != set(zs.namelist()):
+                  raise RuntimeError('Lista de arquivos Stable difere da Beta 6.1')
+              changed=[]
+              for name in zb.namelist():
+                  if name in meta_names: continue
+                  if zb.read(name) != zs.read(name): changed.append(name)
+              if changed:
+                  raise RuntimeError(f'Arquivos funcionais alterados na promoção: {changed[:20]}')
+
+              stable_v=json.loads(zs.read('files/version.json').decode('utf-8-sig'))
+              assert stable_v.get('distribution_version')=='5.0.0-hybrid.stable1',stable_v
+              assert stable_v.get('channel')=='stable',stable_v
+              assert stable_v.get('release_label')=='Stable 1',stable_v
+
+              # Logo oficial: nenhum bloco preto, proporções esperadas e ICO multirresolução.
+              with Image.open(io.BytesIO(zs.read('files/assets/SR_logo.png'))) as im:
+                  im.load(); rgb=im.convert('RGB')
+              if rgb.size!=(512,512): raise RuntimeError(f'Logo com dimensão inesperada: {rgb.size}')
+              px=list(rgb.getdata()); n=len(px)
+              black=sum(1 for r,g,b in px if max(r,g,b)<20)/n
+              white=sum(1 for r,g,b in px if min(r,g,b)>245)/n
+              blue=sum(1 for r,g,b in px if b>120 and b>r*1.20 and b>g*1.05)/n
+              if black>=0.001 or white<=0.30 or blue<=0.35:
+                  raise RuntimeError(f'Logo rejeitada black={black} white={white} blue={blue}')
+              with Image.open(io.BytesIO(zs.read('files/assets/SR_Studio.ico'))) as ico:
+                  ico.load(); sizes=set(ico.ico.sizes())
+              expected={(16,16),(24,24),(32,32),(48,48),(64,64),(96,96),(128,128),(256,256)}
+              if not expected.issubset(sizes): raise RuntimeError(f'ICO incompleto: {sorted(sizes)}')
+
+              app=zs.read('files/SR_Studio_Gerador.py').decode('utf-8-sig')
+              menu=zs.read('files/ui/studio5_visual.py').decode('utf-8-sig')
+              fidelity=zs.read('files/ui/studio5_fidelity.py').decode('utf-8-sig')
+              splash=zs.read('files/ui/splash_v5.py').decode('utf-8-sig')
+              review=zs.read('files/SRStudio21.py').decode('utf-8-sig')
+              for token in ('SR5_BETA6_DIRECT_LAUNCH_GUARD','SR_STUDIO_LAUNCHED_BY_UPDATER','BRAND_LOGO = ASSETS / "SR_logo.png"','def _brand_photo'):
+                  if token not in app: raise RuntimeError(f'App sem marcador preservado: {token}')
+              if 'SR5_BETA5_NAV_MOUSEWHEEL' not in menu or 'self.quick_config_btn' not in menu:
+                  raise RuntimeError('Menu rolável/configurações da Beta 6.1 não preservados')
+              if '_brand_photo(self,58)' not in fidelity or '_brand_photo(self,92)' not in fidelity:
+                  raise RuntimeError('Logo do shell/dashboard não preservada')
+              if 'brand_photo(self.root, size)' not in splash:
+                  raise RuntimeError('Logo do splash não preservada')
+              if 'SR5_BETA5_INITIAL_REVIEW_REFRESH' not in review:
+                  raise RuntimeError('Correção da revisão de produtos não preservada')
+
+          out={
+              'file':stable.name,
+              'version':'5.0.0-hybrid.stable1',
+              'channel':'stable',
+              'release_label':'Stable 1',
+              'sha256':sha256(stable),
+              'size':stable.stat().st_size,
+              'member_prefix':'files/',
+              'source_beta_sha256':sha256(beta),
+              'identical_except_metadata':True,
+          }
+          Path('dist/stable_package.json').write_text(json.dumps(out,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('STABLE1_PROMOTION_OK',json.dumps(out,ensure_ascii=False))
+          '@ | Set-Content dist/promote.py -Encoding UTF8
+          python dist/promote.py
+          if($LASTEXITCODE -ne 0){ throw 'Promoção byte a byte para Stable 1 falhou' }
+
+      - name: Compilar pacote Stable 1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $check='dist/stable_check'
+          if(Test-Path $check){Remove-Item $check -Recurse -Force}
+          Expand-Archive -LiteralPath 'dist/SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip' -DestinationPath $check -Force
+          python -m py_compile "$check/files/SR_Studio_Gerador.py" "$check/files/SRStudio21.py" "$check/files/ui/splash_v5.py" "$check/files/ui/studio5_visual.py" "$check/files/ui/studio5_fidelity.py"
+          if($LASTEXITCODE -ne 0){ throw 'Compilação Python da Stable 1 falhou' }
+          node --check "$check/files/Encartes13_fidelity.js"
+          if($LASTEXITCODE -ne 0){ throw 'Validação JavaScript da Stable 1 falhou' }
+          Write-Host 'STABLE1_COMPILE_OK'
+
+      - name: Publicar release Stable 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='v5.0.0-hybrid.stable1'
+          $asset='dist/SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip'
+          $title='SR Studio 5.0.0 Stable 1 - Oficial'
+          $notes='Stable 1 do SR Studio 5.0.0, promovida diretamente da Beta 6.1 validada. O conteúdo funcional é byte a byte idêntico ao da Beta 6.1; somente version.json, SRStudioVersion.txt e VERSAO.txt foram alterados para identificar o canal Stable. Inclui logo oficial corrigida no splash/menu/dashboard/ícone, atualização garantida, menu rolável e revisão de produtos corrigida.'
+          cmd /c "gh release view $tag --repo ${{ github.repository }} >nul 2>&1"
+          $exists=($LASTEXITCODE -eq 0)
+          if($exists){
+            gh release upload $tag $asset --repo '${{ github.repository }}' --clobber
+            if($LASTEXITCODE -ne 0){ throw 'Falha ao reenviar asset Stable 1' }
+            gh release edit $tag --repo '${{ github.repository }}' --title $title --notes $notes --latest
+            if($LASTEXITCODE -ne 0){ throw 'Falha ao atualizar release Stable 1' }
+          } else {
+            gh release create $tag $asset --repo '${{ github.repository }}' --target next/5.0 --title $title --notes $notes --latest
+            if($LASTEXITCODE -ne 0){ throw 'Falha ao criar release Stable 1' }
+          }
+
+      - name: Atualizar manifesto Stable oficial
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $meta=Get-Content -Raw dist/stable_package.json | ConvertFrom-Json
+          $now=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
+          $asset='SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip'
+          $url="https://github.com/${{ github.repository }}/releases/download/v5.0.0-hybrid.stable1/$asset"
+          $stable=[ordered]@{
+            format='SRSTUDIO_HYBRID_BUNDLE_1';product='SR Studio';channel='stable';version='5.0.0-hybrid.stable1';product_version='5.0.0';release_label='Stable 1';published_at=$now;created_at=$now;
+            min_launcher='4.0.1-hybrid.base3.3';min_launcher_version='4.0.1-hybrid.base3.3';
+            bundle=[ordered]@{url=$url;sha256=[string]$meta.sha256;size=[int64]$meta.size;member_prefix='files/'};
+            url=$url;bundle_url=$url;sha256=[string]$meta.sha256;size=[int64]$meta.size;member_prefix='files/';
+            repair=[ordered]@{mode='local_hash_catalog';full_check_every_days=7};
+            delete=@('Encartes3_app.js','Encartes3_style.css','Encartes4_beta6.js','Encartes5_beta11.js','Encartes6_beta12.js');
+            notes='SR Studio 5.0 Stable 1 - promoção direta da Beta 6.1 validada; logo oficial corrigida e todos os recursos da Beta 6.1 preservados.'
+          }
+          git fetch origin main
+          if($LASTEXITCODE -ne 0){ throw 'Falha ao consultar main' }
+          $work=Join-Path $env:RUNNER_TEMP 'sr-main-v5-stable1'
+          if(Test-Path $work){Remove-Item $work -Recurse -Force}
+          git worktree add $work origin/main
+          if($LASTEXITCODE -ne 0){ throw 'Falha ao montar worktree main' }
+          New-Item -ItemType Directory -Force -Path (Join-Path $work 'stable') | Out-Null
+          [IO.File]::WriteAllText((Join-Path $work 'stable/manifest.json'),(($stable|ConvertTo-Json -Depth 30)+"`n"),(New-Object Text.UTF8Encoding($false)))
+          Push-Location $work
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add stable/manifest.json
+          git commit -m 'Publica SR Studio 5.0 Stable 1'
+          if($LASTEXITCODE -ne 0){ Pop-Location; throw 'Falha ao registrar manifesto Stable 1' }
+          git push origin HEAD:main
+          if($LASTEXITCODE -ne 0){ Pop-Location; throw 'Falha ao publicar manifesto Stable 1' }
+          Pop-Location
+
+      - name: Verificar Stable e sincronismo com Beta
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Start-Sleep 5
+          $local=Get-Content -Raw dist/stable_package.json | ConvertFrom-Json
+          $r=gh api repos/${{ github.repository }}/releases/tags/v5.0.0-hybrid.stable1 | ConvertFrom-Json
+          if($LASTEXITCODE -ne 0){ throw 'Release Stable 1 não encontrada' }
+          if([bool]$r.draft){ throw 'Stable 1 está como draft' }
+          if([bool]$r.prerelease){ throw 'Stable 1 foi marcada indevidamente como prerelease' }
+          $a=$r.assets | Where-Object name -eq 'SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip' | Select-Object -First 1
+          if(-not $a){ throw 'Asset Stable 1 ausente' }
+          if([int64]$a.size -ne [int64]$local.size){ throw 'Tamanho da release Stable divergente' }
+          if([string]$a.digest -and [string]$a.digest -ne ('sha256:'+[string]$local.sha256)){ throw "Digest da release divergente: $($a.digest)" }
+
+          $stamp=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          $s=Invoke-RestMethod -Uri ("https://raw.githubusercontent.com/${{ github.repository }}/main/stable/manifest.json?ts="+$stamp) -Headers @{'Cache-Control'='no-cache'}
+          if([string]$s.version -ne '5.0.0-hybrid.stable1'){ throw "Manifesto Stable incorreto: $($s.version)" }
+          if([string]$s.channel -ne 'stable'){ throw 'Canal Stable incorreto no manifesto' }
+          if([string]$s.sha256 -ne [string]$local.sha256){ throw 'SHA do manifesto Stable divergente' }
+          if([int64]$s.size -ne [int64]$local.size){ throw 'Tamanho do manifesto Stable divergente' }
+          if([string]$s.min_launcher_version -ne '4.0.1-hybrid.base3.3'){ throw 'Launcher mínimo Stable incorreto' }
+
+          $b=Invoke-RestMethod -Uri ("https://raw.githubusercontent.com/${{ github.repository }}/main/beta/manifest.json?ts="+($stamp+1)) -Headers @{'Cache-Control'='no-cache'}
+          if([string]$b.version -ne '5.0.0-hybrid.beta6.1'){ throw "Beta deixou de estar sincronizada: $($b.version)" }
+          if([string]$b.sha256 -ne 'd2957c15674447364676fd8c0c1416203c4ee39951ed37d4e0f8425255c8bfc8'){ throw 'Beta 6.1 mudou durante a promoção' }
+
+          Write-Host "STABLE1_PUBLICADA $($s.version) $($s.sha256) $($s.size)"
+          Write-Host "BETA61_SINCRONIZADA $($b.version) $($b.sha256) $($b.size)"
