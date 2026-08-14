@@ -1,0 +1,121 @@
+name: Build SR Studio Stable Universal
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'installer/stable/SRStudioStable.cs'
+      - '.github/workflows/build-stable-launcher.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Preparar ícone oficial da Stable 1
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force -Path dist,dist/stable | Out-Null
+          gh release download v5.0.0-hybrid.stable1 --repo 'lucasamaralvida3-del/SR-STUDIO' --pattern 'SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip' --dir dist/stable --clobber
+          if($LASTEXITCODE -ne 0){throw 'Falha ao baixar Stable 1 para obter o ícone oficial'}
+          Expand-Archive -LiteralPath 'dist/stable/SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip' -DestinationPath 'dist/stable/core' -Force
+          $ico='dist/stable/core/files/assets/SR_Studio.ico'
+          if(-not (Test-Path $ico)){throw 'Ícone oficial ausente no pacote Stable 1'}
+          Copy-Item $ico 'dist/SR_Studio.ico' -Force
+
+      - name: Compilar SR_Studio_Stable.exe
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+          if(-not (Test-Path $vswhere)){throw 'vswhere não encontrado'}
+          $vs=(& $vswhere -latest -products * -requires Microsoft.Component.MSBuild -property installationPath | Select-Object -First 1).Trim()
+          if(-not $vs){throw 'Visual Studio/MSBuild não localizado'}
+          $csc=Join-Path $vs 'MSBuild\Current\Bin\Roslyn\csc.exe'
+          if(-not (Test-Path $csc)){throw 'Roslyn csc não encontrado'}
+          $ref='C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
+          $args=@(
+            '/nologo','/target:winexe','/platform:anycpu','/optimize+','/deterministic+','/langversion:7.3',
+            '/win32icon:dist/SR_Studio.ico','/out:dist/SR_Studio_Stable.exe',
+            "/reference:$ref\mscorlib.dll","/reference:$ref\System.dll","/reference:$ref\System.Core.dll",
+            "/reference:$ref\System.Drawing.dll","/reference:$ref\System.Windows.Forms.dll","/reference:$ref\System.Web.Extensions.dll",
+            'installer/stable/SRStudioStable.cs'
+          )
+          & $csc @args
+          if($LASTEXITCODE -ne 0){throw "Falha na compilação: $LASTEXITCODE"}
+          if(-not (Test-Path 'dist/SR_Studio_Stable.exe')){throw 'EXE Stable não foi gerado'}
+
+      - name: Self-test online Stable + Launcher Base 3.4
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p=Start-Process -FilePath (Resolve-Path 'dist/SR_Studio_Stable.exe') -ArgumentList '/selftest' -Wait -PassThru
+          if($p.ExitCode -ne 0){throw "Self-test Stable falhou: $($p.ExitCode)"}
+          $stable=Invoke-RestMethod -Uri ('https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/stable/manifest.json?x='+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -Headers @{'Cache-Control'='no-cache'}
+          if([string]$stable.channel -ne 'stable'){throw 'Manifesto Stable inválido'}
+          if([string]$stable.version -ne '5.0.0-hybrid.stable1'){throw "Stable inesperada: $($stable.version)"}
+          $launcher=Invoke-RestMethod -Uri ('https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/manifests/launcher.json?x='+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -Headers @{'Cache-Control'='no-cache'}
+          if([string]$launcher.version -ne '4.0.1-hybrid.base3.4'){throw "Launcher inesperado: $($launcher.version)"}
+          Write-Host "STABLE_EXE_SELFTEST_OK $($stable.version) $($launcher.version)"
+
+      - name: Gerar SHA-256
+        shell: powershell
+        run: |
+          $hash=(Get-FileHash -Algorithm SHA256 'dist/SR_Studio_Stable.exe').Hash.ToLowerInvariant()
+          $size=(Get-Item 'dist/SR_Studio_Stable.exe').Length
+          "$hash  SR_Studio_Stable.exe" | Set-Content -Encoding ascii 'dist/SR_Studio_Stable.sha256.txt'
+          Write-Host "STABLE_EXE $hash $size"
+
+      - name: Publicar executável Stable fixo
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='stable-launcher-latest'
+          $title='SR Studio - Acesso Stable Universal'
+          $notes=@"
+          Executável universal do canal Stable do SR Studio.
+
+          - Não contém número fixo de Stable.
+          - A cada abertura baixa o Bootstrap oficial atual.
+          - Força o canal Stable.
+          - Atualiza automaticamente o Launcher pelo manifesto oficial.
+          - Abre a Stable mais recente disponível.
+          - Usa o runtime Python portátil oficial quando necessário.
+          "@
+          cmd /c "gh release view $tag --repo lucasamaralvida3-del/SR-STUDIO >nul 2>&1"
+          $exists=($LASTEXITCODE -eq 0)
+          if($exists){
+            gh release upload $tag 'dist/SR_Studio_Stable.exe' 'dist/SR_Studio_Stable.sha256.txt' --repo 'lucasamaralvida3-del/SR-STUDIO' --clobber
+            if($LASTEXITCODE -ne 0){throw 'Falha ao atualizar executável Stable'}
+            gh release edit $tag --repo 'lucasamaralvida3-del/SR-STUDIO' --title $title --notes $notes --latest=false
+          } else {
+            gh release create $tag 'dist/SR_Studio_Stable.exe' 'dist/SR_Studio_Stable.sha256.txt' --repo 'lucasamaralvida3-del/SR-STUDIO' --title $title --notes $notes --latest=false
+          }
+          if($LASTEXITCODE -ne 0){throw 'Falha ao publicar executável Stable'}
+
+      - name: Verificar release final
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $localSha=(Get-FileHash -Algorithm SHA256 'dist/SR_Studio_Stable.exe').Hash.ToLowerInvariant()
+          $localSize=(Get-Item 'dist/SR_Studio_Stable.exe').Length
+          $r=gh api repos/lucasamaralvida3-del/SR-STUDIO/releases/tags/stable-launcher-latest | ConvertFrom-Json
+          $a=$r.assets | Where-Object name -eq 'SR_Studio_Stable.exe' | Select-Object -First 1
+          if(-not $a){throw 'Asset SR_Studio_Stable.exe ausente'}
+          if([int64]$a.size -ne [int64]$localSize){throw 'Tamanho do executável Stable divergente'}
+          if([string]$a.digest -and [string]$a.digest -ne ('sha256:'+$localSha)){throw 'SHA do executável Stable divergente'}
+          Write-Host "STABLE_EXE_PUBLICADO $localSha $localSize"
