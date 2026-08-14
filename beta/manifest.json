@@ -1,16 +1,23 @@
 {
-    "format":  "SRSTUDIO_HYBRID_BUNDLE_1",
-    "product":  "SR Studio",
-    "channel":  "beta",
-    "version":  "5.0.0-hybrid.beta3",
-    "product_version":  "5.0.0",
-    "release_label":  "Beta 3",
-    "published_at":  "2026-08-14T15:23:53-03:00",
-    "min_launcher":  "4.0.1-hybrid.base2.5",
-    "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta3/SR_STUDIO_5.0.0_BETA3_ABERTURA_ANIMADA.zip",
-    "bundle_url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta3/SR_STUDIO_5.0.0_BETA3_ABERTURA_ANIMADA.zip",
-    "sha256":  "7d55aa058c3cb525c98c61b0ba8d13e96e92cc50a24a50fc5078f16845c01979",
-    "size":  3989345,
-    "member_prefix":  "files/",
-    "notes":  "SR Studio 5.0 Beta 3 â€” Abertura Animada: intro real com gradiente, logo oficial animada, halo/orbita, partÃ­culas, sweep de luz, tÃ­tulo em movimento, progresso ligado ao boot real e transiÃ§Ã£o suave; Nova Interface da Beta 2 preservada."
+  "format": "SRSTUDIO_HYBRID_BUNDLE_1",
+  "product": "SR Studio",
+  "channel": "beta",
+  "version": "5.0.0-hybrid.beta3",
+  "product_version": "5.0.0",
+  "release_label": "Beta 3",
+  "published_at": "2026-08-14T15:23:53-03:00",
+  "min_launcher_version": "4.0.1-hybrid.base3.0",
+  "min_launcher": "4.0.1-hybrid.base3.0",
+  "bundle": {
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta3/SR_STUDIO_5.0.0_BETA3_ABERTURA_ANIMADA.zip",
+    "sha256": "7d55aa058c3cb525c98c61b0ba8d13e96e92cc50a24a50fc5078f16845c01979",
+    "size": 3989345,
+    "member_prefix": "files/"
+  },
+  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta3/SR_STUDIO_5.0.0_BETA3_ABERTURA_ANIMADA.zip",
+  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta3/SR_STUDIO_5.0.0_BETA3_ABERTURA_ANIMADA.zip",
+  "sha256": "7d55aa058c3cb525c98c61b0ba8d13e96e92cc50a24a50fc5078f16845c01979",
+  "size": 3989345,
+  "member_prefix": "files/",
+  "notes": "SR Studio 5.0 Beta 3 — Abertura Animada: intro real com gradiente, logo oficial animada, halo/orbita, partículas, sweep de luz, título em movimento, progresso ligado ao boot real e transição suave; Nova Interface da Beta 2 preservada."
 }
