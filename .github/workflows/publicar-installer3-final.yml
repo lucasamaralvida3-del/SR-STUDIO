@@ -1,0 +1,33 @@
+name: Publicar SR Studio Installer 3 Final
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publicar-installer3-final.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Gerar instalador limpo
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python installer/build_installer3_clean.py
+          $f='dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd'
+          $hash=(Get-FileHash -Algorithm SHA256 $f).Hash.ToLowerInvariant()
+          if($hash -ne '1cf7103c0d949ae4696ed5af6e3d56164e92ad1d08be36f6d87926fa741f4e90'){ throw "Hash inesperado: $hash" }
+      - name: Criar release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: cmd
+        run: >-
+          gh release create v4.0.16-installer3
+          dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd
+          dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.zip
+          --title "SR Studio 4.0.16 - Instalador Limpo"
+          --notes "Instalador Stable limpo, sem payload Base64 e sem ExecutionPolicy Bypass. Launcher base2.6 corrige a deteccao do Python e o erro exit code 0."
