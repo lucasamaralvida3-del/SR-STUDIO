@@ -6,6 +6,8 @@ from tkinter import ttk, filedialog, messagebox
 
 from services.export_profiles import list_profiles as list_export_profiles, export_images
 from services.project_export import export_project
+from services.release_channels import check as check_release_channel
+from services.update_rollback import status as update_status
 from ui.template_mapping_visual import VisualTemplateMappingDialog
 
 
@@ -111,10 +113,71 @@ def install_studio5_enhancements(panel_cls):
         result = export_images(files, profile, folder, "srstudio")
         messagebox.showinfo("Exportação", f"Exportação concluída: {len(result)} arquivo(s).", parent=self)
 
+    def build_updates(self):
+        f = self.tab_updates
+        top = tk.Frame(f, bg=self.bg)
+        top.pack(fill="x", padx=18, pady=(18, 8))
+        self._heading(top, "Atualizações e Rollback", "Consulte Stable/Beta, veja a versão instalada e mantenha pontos seguros de retorno.")
+        self.update_info_label = tk.Label(top, text="", bg=self.bg, fg=self.text, justify="left", anchor="w", font=("Segoe UI", 10))
+        self.update_info_label.pack(fill="x")
+        bar = tk.Frame(top, bg=self.bg)
+        bar.pack(fill="x", pady=8)
+        self.update_channel_var = tk.StringVar(value="stable")
+        ttk.Combobox(bar, textvariable=self.update_channel_var, values=["stable", "beta"], state="readonly", width=12).pack(side="left")
+        self._button(bar, "Verificar atualizações", self.check_updates_now, primary=True).pack(side="left", padx=6)
+        self._button(bar, "Criar snapshot agora", self.create_snapshot_now).pack(side="left")
+        self._button(bar, "Restaurar snapshot selecionado", self.restore_snapshot_selected, danger=True).pack(side="left", padx=6)
+        self.remote_update_label = tk.Label(top, text="", bg=self.bg, fg=self.muted, justify="left", anchor="w", font=("Segoe UI", 9))
+        self.remote_update_label.pack(fill="x", pady=(0, 8))
+        card = self._card(f)
+        card.pack(fill="both", expand=True, padx=18, pady=(0, 18))
+        self.snapshot_tree = ttk.Treeview(card, columns=("label", "version", "channel", "date", "exists"), show="headings")
+        for c, t, w in [("label", "Snapshot", 330), ("version", "Versão", 190), ("channel", "Canal", 90), ("date", "Criado", 170), ("exists", "Disponível", 90)]:
+            self.snapshot_tree.heading(c, text=t); self.snapshot_tree.column(c, width=w, anchor="w")
+        self.snapshot_tree.pack(fill="both", expand=True, padx=10, pady=10)
+
+    def refresh_updates(self):
+        st = update_status(); ins = st.get("installed", {})
+        current_channel = str(ins.get("channel") or "stable").lower()
+        if hasattr(self, "update_channel_var") and current_channel in {"stable", "beta"}:
+            self.update_channel_var.set(current_channel)
+        self.update_info_label.config(text=f"Instalado: {ins.get('version') or 'não identificado'} • Canal: {current_channel.upper()} • {len(st.get('update_history') or [])} atualização(ões) no histórico")
+        self.snapshot_tree.delete(*self.snapshot_tree.get_children()); self._snapshot_index = {}
+        for x in st.get("snapshots") or []:
+            self._snapshot_index[x["id"]] = x
+            self.snapshot_tree.insert("", "end", iid=x["id"], values=(x["label"], x["version"], x.get("channel", ""), x["created_at"], "SIM" if x.get("exists") else "NÃO"))
+
+    def check_updates_now(self):
+        channel = self.update_channel_var.get() if hasattr(self, "update_channel_var") else "stable"
+        if hasattr(self, "remote_update_label"):
+            self.remote_update_label.config(text=f"Consultando canal {channel.upper()}...")
+        self._run(lambda: check_release_channel(channel), self._check_updates_done, "Consultando atualizações...")
+
+    def check_updates_done(self, result):
+        current = result.get("current") or "não identificado"
+        latest = result.get("latest") or "indisponível"
+        notes = str((result.get("remote") or {}).get("notes") or "").strip()
+        if result.get("update_available"):
+            text = f"Nova versão disponível: {latest} • instalada: {current}. Feche e abra o SR Studio para o Launcher atualizar o canal selecionado."
+            color = self.green
+        elif result.get("same_version"):
+            text = f"Você já está na versão mais recente do canal {str(result.get('channel')).upper()}: {latest}."
+            color = self.green
+        else:
+            text = f"Canal {str(result.get('channel')).upper()}: {latest} • instalada: {current}."
+            color = self.muted
+        if notes:
+            text += "\n" + notes
+        self.remote_update_label.config(text=text, fg=color)
+
     panel_cls._template_analyzed = template_analyzed
     panel_cls._build_export = build_export
     panel_cls.refresh_export_profiles = refresh_export_profiles
     panel_cls.export_project_now = export_project_now
     panel_cls._export_project_done = export_project_done
     panel_cls.export_pages = export_pages
+    panel_cls._build_updates = build_updates
+    panel_cls.refresh_updates = refresh_updates
+    panel_cls.check_updates_now = check_updates_now
+    panel_cls._check_updates_done = check_updates_done
     return panel_cls
