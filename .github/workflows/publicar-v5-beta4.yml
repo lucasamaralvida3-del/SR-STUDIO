@@ -1,0 +1,171 @@
+name: Publicar SR Studio 5.0 Beta 4
+
+on:
+  push:
+    branches:
+      - next/5.0
+    paths:
+      - '.github/workflows/publicar-v5-beta4.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: next/5.0
+          fetch-depth: 0
+
+      - name: Preparar dependências
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check "openpyxl>=3.1.2" "Pillow>=10.0.0" "pypdf>=4.0.0" "tkinterdnd2>=0.4.2" "numpy>=1.26,<3" "opencv-python-headless>=4.9.0"
+
+      - name: Validar código, fidelidade e testes 5.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File -Recurse | ForEach-Object { python -m py_compile $_.FullName }
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.js' -File | ForEach-Object { node --check $_.FullName }
+          python -m unittest tests.test_foundation -v
+          python -m unittest tests.test_v5_services -v
+          python -m unittest tests.test_v5_importers -v
+          python -m unittest tests.test_v5_http_bridge -v
+          python -m unittest tests.test_v5_export_render -v
+          python -m unittest tests.test_v5_visual -v
+          python -m unittest tests.test_v5_fidelity -v
+          $env:PYTHONPATH=(Resolve-Path 'src/sr_studio').Path
+          python -c "import SR_Studio_Gerador as app; assert getattr(app.App,'_SR5_VISUAL_INSTALLED',False); assert getattr(app.App,'_SR5_FIDELITY_INSTALLED',False); assert getattr(app.StartupSplash,'_SR5_SPLASH_INSTALLED',False); print('APP_BETA4_OK',app.APP_VERSION_INFO)"
+
+      - name: Montar pacote oficial Beta 4
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          python build/package_app.py --version '5.0.0-hybrid.beta4' --channel beta --release-label 'Beta 4' --output 'dist/SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip' --metadata 'dist/package.json'
+          $meta=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          if([string]$meta.version -ne '5.0.0-hybrid.beta4'){ throw 'Versão empacotada incorreta' }
+          if([string]$meta.channel -ne 'beta'){ throw 'Canal empacotado incorreto' }
+          if([int64]$meta.size -lt 2500000){ throw 'Pacote oficial parece incompleto' }
+
+      - name: Validar conteúdo da Beta 4 no ZIP
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import io, json, zipfile
+          from pathlib import Path
+          from PIL import Image
+          path=Path('dist/SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip')
+          required={
+            'files/SR_Studio_Gerador.py','files/ui/splash_v5.py','files/ui/studio5_visual.py','files/ui/studio5_fidelity.py','files/ui/hidpi.py',
+            'files/modules/Studio5Module.py','files/Encartes3_index.html','files/Encartes11.css','files/Encartes12_visual.css','files/Encartes12_visual.js',
+            'files/Encartes13_fidelity.css','files/Encartes13_fidelity.js','files/Encartes11_v5.js','files/assets/SR_logo.png','files/assets/SR_Studio.ico','files/version.json',
+            'files/services/project_store.py','files/services/product_catalog.py','files/services/spreadsheet_profiles.py','files/services/template_registry.py',
+            'files/services/campaign_wizard.py','files/services/validation_center.py','files/services/export_profiles.py','files/services/project_export.py','files/services/update_rollback.py'
+          }
+          with zipfile.ZipFile(path) as z:
+              names=set(z.namelist());missing=sorted(required-names)
+              if missing: raise SystemExit('Ausentes: '+', '.join(missing))
+              main=z.read('files/SR_Studio_Gerador.py').decode('utf-8-sig')
+              index=z.read('files/Encartes3_index.html').decode('utf-8-sig')
+              fidelity=z.read('files/ui/studio5_fidelity.py').decode('utf-8-sig')
+              hidpi=z.read('files/ui/hidpi.py').decode('utf-8-sig')
+              js=z.read('files/Encartes13_fidelity.js').decode('utf-8-sig')
+              if '_install_studio5_fidelity(App)' not in main: raise SystemExit('Fidelidade desktop não ativada')
+              if 'enable_hidpi()' not in main: raise SystemExit('HiDPI não ativado')
+              if 'Encartes13_fidelity.css' not in index or 'Encartes13_fidelity.js' not in index: raise SystemExit('Fidelidade Encartes não carregada')
+              if 'class VectorIcon' not in fidelity: raise SystemExit('Ícones vetoriais desktop ausentes')
+              if 'SetProcessDpiAwarenessContext' not in hidpi: raise SystemExit('Per-Monitor V2 ausente')
+              if '<svg' not in js: raise SystemExit('Ícones SVG do Encartes ausentes')
+              with Image.open(io.BytesIO(z.read('files/assets/SR_logo.png'))) as im:
+                  if im.width<1024 or im.height<1024: raise SystemExit(f'Logo ainda baixa resolução: {im.size}')
+                  print('LOGO_HD',im.size)
+              version=json.loads(z.read('files/version.json').decode('utf-8-sig'))
+              if version.get('distribution_version')!='5.0.0-hybrid.beta4': raise SystemExit('version.json incorreto')
+              if version.get('channel')!='beta': raise SystemExit('canal incorreto')
+              if version.get('release_label')!='Beta 4': raise SystemExit('label incorreto')
+              print('ZIP_BETA4_OK',len([n for n in names if not n.endswith('/')]))
+          '@ | Set-Content -LiteralPath 'dist/verify.py' -Encoding UTF8
+          python dist/verify.py
+
+      - name: Criar release oficial Beta 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='v5.0.0-hybrid.beta4'
+          $asset='dist/SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip'
+          $notes='Beta 4 do SR Studio 5.0 focada em fidelidade visual. Reestrutura o shell para ficar muito mais próximo dos mockups aprovados, com sidebar e topbar refinadas, dashboard redesenhado, proporções e espaçamentos revisados, cards e hierarquia visual melhorados. Corrige a nitidez com DPI Per-Monitor V2 no Windows, logo oficial normalizada em 2048x2048, ícone do aplicativo multi-resolução e ícones vetoriais no desktop. O Encartes Studio recebe nova camada de fidelidade e ícones SVG vetoriais. Mantém a abertura animada e todas as funções da Beta 3. Stable permanece inalterada.'
+          cmd /c "gh release view $tag >nul 2>&1"
+          if($LASTEXITCODE -eq 0){
+            gh release upload $tag $asset --clobber
+            gh release edit $tag --prerelease --title 'SR Studio 5.0.0 Beta 4 - Fidelidade Visual' --notes $notes
+          } else {
+            gh release create $tag $asset --target '${{ github.sha }}' --prerelease --title 'SR Studio 5.0.0 Beta 4 - Fidelidade Visual' --notes $notes
+          }
+
+      - name: Atualizar manifesto Beta no main
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $meta=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          $asset='SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip'
+          $url="https://github.com/${{ github.repository }}/releases/download/v5.0.0-hybrid.beta4/$asset"
+          $published=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
+          $manifest=[ordered]@{
+            format='SRSTUDIO_HYBRID_BUNDLE_1'
+            product='SR Studio'
+            channel='beta'
+            version='5.0.0-hybrid.beta4'
+            product_version='5.0.0'
+            release_label='Beta 4'
+            published_at=$published
+            min_launcher='4.0.1-hybrid.base2.5'
+            url=$url
+            bundle_url=$url
+            sha256=[string]$meta.sha256
+            size=[int64]$meta.size
+            member_prefix='files/'
+            notes='SR Studio 5.0 Beta 4 — Fidelidade Visual: interface aproximada dos mockups aprovados, DPI Per-Monitor V2, logo 2048x2048 normalizada, ICO multi-resolução e ícones vetoriais/SVG; Beta 3 preservada.'
+          }
+          $json=$manifest | ConvertTo-Json -Depth 20
+          git fetch origin main
+          $work=Join-Path $env:RUNNER_TEMP 'srstudio-main-beta4-manifest'
+          if(Test-Path $work){ Remove-Item -LiteralPath $work -Recurse -Force }
+          git worktree add $work origin/main
+          New-Item -ItemType Directory -Path (Join-Path $work 'beta') -Force | Out-Null
+          [IO.File]::WriteAllText((Join-Path $work 'beta/manifest.json'),$json+"`n",(New-Object Text.UTF8Encoding($false)))
+          Push-Location $work
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add beta/manifest.json
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Publica SR Studio 5.0.0 Beta 4 - Fidelidade Visual'
+            git push origin HEAD:main
+          }
+          Pop-Location
+
+      - name: Verificar publicação Beta 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $release=gh api repos/${{ github.repository }}/releases/tags/v5.0.0-hybrid.beta4 | ConvertFrom-Json
+          if(-not $release.prerelease){ throw 'Release não marcada como prerelease' }
+          $asset=$release.assets | Where-Object name -eq 'SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip' | Select-Object -First 1
+          if(-not $asset){ throw 'Asset da Beta 4 ausente' }
+          $local=Get-Content -Raw 'dist/package.json' | ConvertFrom-Json
+          if([int64]$asset.size -ne [int64]$local.size){ throw 'Tamanho publicado não confere' }
+          Start-Sleep -Seconds 3
+          $m=Invoke-RestMethod -Uri 'https://raw.githubusercontent.com/${{ github.repository }}/main/beta/manifest.json' -Headers @{'Cache-Control'='no-cache'}
+          if([string]$m.version -ne '5.0.0-hybrid.beta4'){ throw 'Manifesto Beta não aponta para a Beta 4' }
+          if([string]$m.sha256 -ne [string]$local.sha256){ throw 'SHA do manifesto não confere' }
+          if([int64]$m.size -ne [int64]$local.size){ throw 'Tamanho do manifesto não confere' }
+          Write-Host "BETA4_PUBLICADA $($m.version) $($m.sha256) $($m.size)"
