@@ -1,0 +1,114 @@
+name: Atualizar instalador 1.2 com retry do Launcher
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/upgrade-installer-1.2-retry.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Aplicar retry seguro no instalador
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('installer/professional/SRStudioSetup.cs')
+          s=p.read_text(encoding='utf-8-sig')
+          s=s.replace('[assembly: AssemblyVersion("1.1.0.0")]', '[assembly: AssemblyVersion("1.2.0.0")]')
+          s=s.replace('[assembly: AssemblyFileVersion("1.1.0.0")]', '[assembly: AssemblyFileVersion("1.2.0.0")]')
+
+          start=s.index('        internal static string DownloadAndValidateLauncher()')
+          end=s.index('        internal static void DownloadIcon()', start)
+          new_func=r'''        internal static string DownloadAndValidateLauncher()
+        {
+            PrepareDirectories();
+            Exception lastError = null;
+
+            // O manifesto e o Launcher podem ser atualizados quase simultaneamente.
+            // Faz ate 3 tentativas, sempre baixando novamente o manifesto e o arquivo.
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                string temp = LauncherPath + ".download";
+                try
+                {
+                    if (File.Exists(temp)) File.Delete(temp);
+
+                    string manifestText = DownloadString(Program.LauncherManifestUrl);
+                    Dictionary<string, object> manifest = Json.DeserializeObject(manifestText) as Dictionary<string, object>;
+                    if (manifest == null) throw new Exception("Manifesto do Launcher inválido.");
+                    string format = GetString(manifest, "format");
+                    if (format != "SRSTUDIO_LAUNCHER_MANIFEST_1" && format != "SRSTUDIO_LAUNCHER_1")
+                        throw new Exception("Formato do Launcher não suportado: " + format);
+
+                    object filesObj;
+                    if (!manifest.TryGetValue("files", out filesObj)) throw new Exception("Manifesto do Launcher não contém arquivos.");
+                    object[] files = filesObj as object[];
+                    if (files == null || files.Length == 0) throw new Exception("Manifesto do Launcher está vazio.");
+
+                    Dictionary<string, object> entry = files[0] as Dictionary<string, object>;
+                    if (entry == null) throw new Exception("Entrada do Launcher inválida.");
+                    string source = GetString(entry, "source").Replace('\\', '/');
+                    string expectedSha = GetString(entry, "sha256").ToLowerInvariant();
+                    long expectedSize = GetLong(entry, "size");
+                    if (String.IsNullOrWhiteSpace(source) || expectedSha.Length != 64)
+                        throw new Exception("Dados de validação do Launcher ausentes.");
+
+                    DownloadFile(Program.RepoBase + "/" + source, temp);
+
+                    long actualSize = new FileInfo(temp).Length;
+                    string actualSha = Sha256(temp);
+                    bool sizeOk = expectedSize <= 0 || actualSize == expectedSize;
+                    bool hashOk = String.Equals(actualSha, expectedSha, StringComparison.OrdinalIgnoreCase);
+
+                    if (!sizeOk || !hashOk)
+                    {
+                        throw new Exception(
+                            "Launcher e manifesto ainda estão sendo sincronizados. " +
+                            "Tentativa " + attempt + "/3. " +
+                            "Tamanho esperado/recebido: " + expectedSize + "/" + actualSize + ".");
+                    }
+
+                    if (File.Exists(LauncherPath)) File.Delete(LauncherPath);
+                    File.Move(temp, LauncherPath);
+                    return GetString(manifest, "version");
+                }
+                catch (Exception ex)
+                {
+                    lastError = ex;
+                    try { if (File.Exists(temp)) File.Delete(temp); } catch { }
+                    if (attempt < 3) System.Threading.Thread.Sleep(1500 * attempt);
+                }
+            }
+
+            throw new Exception(
+                "Não foi possível obter um Launcher que corresponda ao manifesto oficial após 3 tentativas. " +
+                "Tente novamente em alguns segundos. Detalhe: " +
+                (lastError == null ? "erro desconhecido" : lastError.Message));
+        }
+
+'''
+          s=s[:start]+new_func+s[end:]
+          p.write_text(s,encoding='utf-8')
+          PY
+
+      - name: Commitar instalador 1.2
+        shell: bash
+        run: |
+          set -e
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add installer/professional/SRStudioSetup.cs
+          git commit -m 'Atualiza instalador profissional para 1.2 com retry seguro'
+          git push origin HEAD:main
