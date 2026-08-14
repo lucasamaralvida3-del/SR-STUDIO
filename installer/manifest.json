@@ -1,0 +1,29 @@
+{
+    "format":  "SRSTUDIO_INSTALLER_1",
+    "product":  "SR Studio",
+    "version":  "4.0.16-setup2",
+    "published_at":  "2026-08-14T12:10:59-03:00",
+    "launcher_version":  "4.0.1-hybrid.base2.5",
+    "zero_admin":  true,
+    "install_root":  "%LOCALAPPDATA%\\SRStudio",
+    "stable":  {
+                   "target_version":  "4.0.16-hybrid.stable4",
+                   "file":  "SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd",
+                   "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-installer2/SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd",
+                   "sha256":  "bd60f688c3a04c7db2ebd4b2ceb255ccca52d3dd222d10c55ea41ec4c973d385",
+                   "size":  106430
+               },
+    "beta":  {
+                 "target_version":  "4.0.16-hybrid.beta19",
+                 "file":  "SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd",
+                 "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-installer2/SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd",
+                 "sha256":  "b84cbc97521f3243fcd67989303c6f2011aebf65d8a03cb200f72a38800280ec",
+                 "size":  106428
+             },
+    "fixes":  [
+                  "Suporte do Launcher ao SRSTUDIO_HYBRID_BUNDLE_1",
+                  "Manifesto de autoatualizaÃ§Ã£o do Launcher corrigido",
+                  "Canal Stable/Beta forÃ§ado corretamente na reinstalaÃ§Ã£o",
+                  "Alias invÃ¡lido do Python em WindowsApps removido automaticamente"
+              ]
+}
