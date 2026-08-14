@@ -1,0 +1,38 @@
+name: Diagnosticar logo SR Studio
+
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-logo-stable.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspecionar logo na Stable 2
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work dist && mkdir -p work dist staging/logo_update
+          gh release download v4.0.16-hybrid.stable2 -p 'SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip -d work
+          {
+            echo '### IMAGENS'
+            find work/files -type f \( -iname '*.png' -o -iname '*.jpg' -o -iname '*.jpeg' -o -iname '*.ico' -o -iname '*.gif' \) -printf '%P\n' | sort
+            echo
+            echo '### REFERENCIAS LOGO/ICONE/SPLASH'
+            grep -RniE 'logo|iconphoto|iconbitmap|PhotoImage|splash|SR Studio|SRSTUDIO' work/files --include='*.py' --include='*.html' --include='*.js' --include='*.css' | head -n 400 || true
+          } > staging/logo_update/diagnostic.txt
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add staging/logo_update/diagnostic.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Diagnostica pontos de logo do SR Studio'
+            git push
+          fi
