@@ -7,8 +7,8 @@
     {
       "path": "SRStudioLauncher.ps1",
       "source": "launcher/files/SRStudioLauncher.ps1",
-      "sha256": "58826958d6cec584ee7211242eda68bccb6b84662a1daf9da3fdda45cb295105",
-      "size": 48085
+      "sha256": "25ab707b8042afacd97902604564756e14c0993aae666eb73b7e6af6f288ce63",
+      "size": 47103
     }
   ]
 }
