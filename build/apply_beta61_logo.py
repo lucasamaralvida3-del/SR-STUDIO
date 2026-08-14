@@ -8,11 +8,17 @@ from pathlib import Path
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-SOURCE_B64 = ROOT / "staging" / "beta61_logo" / "logo512_q98.b64"
+SOURCE_PARTS = [
+    ROOT / "staging" / "beta61_logo" / "exact_part1.b64",
+    ROOT / "staging" / "beta61_logo" / "exact_part2.b64",
+    ROOT / "staging" / "beta61_logo" / "exact_part3.b64",
+    ROOT / "staging" / "beta61_logo" / "exact_part4.b64",
+]
 ASSETS = ROOT / "src" / "sr_studio" / "assets"
 LOGO_PNG = ASSETS / "SR_logo.png"
 ICON_ICO = ASSETS / "SR_Studio.ico"
 
+EXPECTED_BASE64_LENGTH = 19136
 EXPECTED_SOURCE_SIZE = 14352
 EXPECTED_SOURCE_SHA256 = "82e9f1568d1f4e70e2a1521876133b8c61643c89f587cfa9009e99744cee69f4"
 EXPECTED_DIMENSION = (512, 512)
@@ -49,7 +55,16 @@ def validate_visual(image: Image.Image, label: str) -> None:
 
 
 def main() -> None:
-    text = "".join(SOURCE_B64.read_text(encoding="ascii").split())
+    chunks = []
+    for part in SOURCE_PARTS:
+        text = "".join(part.read_text(encoding="ascii").split())
+        if len(text) != 4784:
+            raise RuntimeError(f"Bloco da logo com tamanho inválido: {part.name}={len(text)}")
+        chunks.append(text)
+    text = "".join(chunks)
+    if len(text) != EXPECTED_BASE64_LENGTH:
+        raise RuntimeError(f"Base64 da logo com comprimento inválido: {len(text)}")
+
     raw = base64.b64decode(text, validate=True)
     if len(raw) != EXPECTED_SOURCE_SIZE:
         raise RuntimeError(f"Fonte da logo com tamanho inválido: {len(raw)}")
