@@ -1,16 +1,23 @@
 {
-    "format":  "SRSTUDIO_HYBRID_BUNDLE_1",
-    "product":  "SR Studio",
-    "channel":  "beta",
-    "version":  "5.0.0-hybrid.beta4",
-    "product_version":  "5.0.0",
-    "release_label":  "Beta 4",
-    "published_at":  "2026-08-14T15:40:21-03:00",
-    "min_launcher":  "4.0.1-hybrid.base2.5",
-    "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta4/SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip",
-    "bundle_url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta4/SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip",
-    "sha256":  "d040084f30380351ba3884a08501c139be5cf682e6d927234d51c5ae5fb34004",
-    "size":  4258522,
-    "member_prefix":  "files/",
-    "notes":  "SR Studio 5.0 Beta 4 â€” Fidelidade Visual: interface aproximada dos mockups aprovados, DPI Per-Monitor V2, logo 2048x2048 normalizada, ICO multi-resoluÃ§Ã£o e Ã­cones vetoriais/SVG; Beta 3 preservada."
+  "format": "SRSTUDIO_HYBRID_BUNDLE_1",
+  "product": "SR Studio",
+  "channel": "beta",
+  "version": "5.0.0-hybrid.beta4",
+  "product_version": "5.0.0",
+  "release_label": "Beta 4",
+  "published_at": "2026-08-14T15:40:21-03:00",
+  "min_launcher": "4.0.1-hybrid.base3.0",
+  "min_launcher_version": "4.0.1-hybrid.base3.0",
+  "bundle": {
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta4/SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip",
+    "sha256": "d040084f30380351ba3884a08501c139be5cf682e6d927234d51c5ae5fb34004",
+    "size": 4258522,
+    "member_prefix": "files/"
+  },
+  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta4/SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip",
+  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta4/SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip",
+  "sha256": "d040084f30380351ba3884a08501c139be5cf682e6d927234d51c5ae5fb34004",
+  "size": 4258522,
+  "member_prefix": "files/",
+  "notes": "SR Studio 5.0 Beta 4 — Fidelidade Visual: interface aproximada dos mockups aprovados, DPI Per-Monitor V2, logo 2048x2048 normalizada, ICO multi-resolução e ícones vetoriais/SVG; Beta 3 preservada."
 }
