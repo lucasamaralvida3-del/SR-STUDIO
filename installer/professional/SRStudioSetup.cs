@@ -17,8 +17,8 @@ using Microsoft.Win32;
 [assembly: AssemblyProduct("SR Studio")]
 [assembly: AssemblyCompany("SR")]
 [assembly: AssemblyDescription("Instalador online oficial do SR Studio")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("1.1.0.0")]
+[assembly: AssemblyFileVersion("1.1.0.0")]
 
 namespace SRStudioSetup
 {
@@ -176,6 +176,42 @@ namespace SRStudioSetup
             catch { }
         }
 
+        internal static void ResetForStableInstall()
+        {
+            PrepareDirectories();
+
+            // Uma instalacao Stable nunca deve herdar autorizacao/canal/estado Beta.
+            // Preserva apenas o runtime Python/cache grande para evitar downloads desnecessarios.
+            string[] stateFiles = new string[]
+            {
+                Path.Combine(ConfigDir, "beta_access.json"),
+                Path.Combine(ConfigDir, "launcher.json"),
+                Path.Combine(ConfigDir, "installed.json"),
+                Path.Combine(ConfigDir, "integrity.json"),
+                Path.Combine(CacheDir, "beta_access_manifest.json"),
+                Path.Combine(CacheDir, "last_manifest.json"),
+                Path.Combine(CacheDir, "last_manifest.repaired.json")
+            };
+            foreach (string file in stateFiles)
+            {
+                try { if (File.Exists(file)) File.Delete(file); } catch { }
+            }
+
+            string[] resetDirs = new string[]
+            {
+                Path.Combine(Root, "App"),
+                Path.Combine(Root, "Staging"),
+                Path.Combine(Root, "Backups")
+            };
+            foreach (string dir in resetDirs)
+            {
+                try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }
+            }
+
+            Directory.CreateDirectory(ConfigDir);
+            Directory.CreateDirectory(CacheDir);
+        }
+
         internal static void WriteStableConfig()
         {
             PrepareDirectories();
@@ -302,6 +338,15 @@ namespace SRStudioSetup
             if (result != DialogResult.Yes) return 0;
             try
             {
+                // Remove primeiro credenciais/estado Beta para impedir qualquer heranca em uma reinstalacao.
+                try { File.Delete(Path.Combine(ConfigDir, "beta_access.json")); } catch { }
+                try { File.Delete(Path.Combine(CacheDir, "beta_access_manifest.json")); } catch { }
+                try { File.Delete(Path.Combine(ConfigDir, "launcher.json")); } catch { }
+                try { File.Delete(Path.Combine(ConfigDir, "installed.json")); } catch { }
+                try { File.Delete(Path.Combine(ConfigDir, "integrity.json")); } catch { }
+                try { File.Delete(Path.Combine(CacheDir, "last_manifest.json")); } catch { }
+                try { File.Delete(Path.Combine(CacheDir, "last_manifest.repaired.json")); } catch { }
+
                 string desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "SR Studio.lnk");
                 if (File.Exists(desktop)) File.Delete(desktop);
                 string startDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.StartMenu), "Programs", "SR Studio");
@@ -575,8 +620,12 @@ namespace SRStudioSetup
                 stable = await Task.Run<StableInfo>(delegate { return OnlineInstaller.GetStableInfo(); });
                 versionLabel.Text = "Stable selecionada: " + stable.Version;
 
-                SetProgress(15, "Preparando a instalação local...");
-                await Task.Run(delegate { OnlineInstaller.PrepareDirectories(); });
+                SetProgress(15, "Preparando instalação Stable limpa...");
+                await Task.Run(delegate
+                {
+                    OnlineInstaller.PrepareDirectories();
+                    OnlineInstaller.ResetForStableInstall();
+                });
 
                 SetProgress(25, "Baixando Bootstrap oficial...");
                 await Task.Run(delegate { OnlineInstaller.DownloadBootstrap(); });
