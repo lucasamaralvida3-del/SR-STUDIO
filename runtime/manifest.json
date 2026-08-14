@@ -1,0 +1,11 @@
+{
+  "format": "SRSTUDIO_PYTHON_RUNTIME_1",
+  "product": "SR Studio Python Runtime",
+  "version": "runtime1",
+  "python_version": "3.12.10",
+  "architecture": "x64",
+  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-runtime1/SR_STUDIO_PYTHON_3.12.10_RUNTIME1.zip",
+  "sha256": "80acc2aaffecb83a04cf60e7dc8a4b806124ee01e9f6f20a17fa2c439e65e0e9",
+  "size": 125606812,
+  "requirements_sha256": "fc19d78ca8a68b814e6442e3a6d343083df0632eb3012b4d4bb45168a03723fa"
+}

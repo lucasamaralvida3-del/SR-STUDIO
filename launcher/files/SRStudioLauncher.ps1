@@ -10,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 # GitHub and Python.org require modern TLS on Windows PowerShell 5.1.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$LauncherVersion = '4.0.1-hybrid.base2.6'
+$LauncherVersion = '4.0.1-hybrid.base2.7'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir      = Join-Path $SrHomeRoot 'App'
 $DataDir     = Join-Path $SrHomeRoot 'Data'
@@ -501,7 +501,7 @@ function Apply-SrBundleManifest($Source,$Manifest) {
 
 function Ensure-SrPythonRuntime {
   $pythonRoot = Join-Path $RuntimeDir 'python'
-  New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+  New-Item -ItemType Directory -Path $RuntimeDir -Force | Out-Null
 
   $candidateList = New-Object 'System.Collections.Generic.List[string]'
   function Add-SrPythonCandidate([string]$Candidate) {
@@ -512,30 +512,6 @@ function Ensure-SrPythonRuntime {
     if((Test-Path -LiteralPath $expanded -PathType Leaf) -and -not $candidateList.Contains($expanded)) {
       $candidateList.Add($expanded)
     }
-  }
-
-  # Primeiro, reutiliza Python 3.12 real ja existente. Nao força instalacao privada.
-  Add-SrPythonCandidate (Join-Path $pythonRoot 'pythonw.exe')
-  Add-SrPythonCandidate (Join-Path $pythonRoot 'python.exe')
-  Add-SrPythonCandidate ([string](Get-SrProperty $cfg 'python_command' ''))
-  Add-SrPythonCandidate (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\pythonw.exe')
-  Add-SrPythonCandidate (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe')
-  if($env:ProgramFiles) {
-    Add-SrPythonCandidate (Join-Path $env:ProgramFiles 'Python312\pythonw.exe')
-    Add-SrPythonCandidate (Join-Path $env:ProgramFiles 'Python312\python.exe')
-  }
-  try {
-    $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue
-    if($pyCmd -and $pyCmd.Source -notmatch '\\WindowsApps\\') {
-      $resolved = (& $pyCmd.Source -3.12 -c "import sys; print(sys.executable)" 2>$null | Select-Object -First 1)
-      if($resolved) { Add-SrPythonCandidate (([string]$resolved).Trim()) }
-    }
-  } catch { }
-  foreach($cmdName in @('pythonw.exe','python.exe')) {
-    try {
-      $cmd = Get-Command $cmdName -ErrorAction SilentlyContinue
-      if($cmd) { Add-SrPythonCandidate $cmd.Source }
-    } catch { }
   }
 
   function Resolve-SrPythonPair($Candidates) {
@@ -561,58 +537,63 @@ function Ensure-SrPythonRuntime {
     return $null
   }
 
+  # 1) Runtime portatil do proprio SR Studio.
+  Add-SrPythonCandidate (Join-Path $pythonRoot 'pythonw.exe')
+  Add-SrPythonCandidate (Join-Path $pythonRoot 'python.exe')
+
+  # 2) Python configurado ou ja instalado no computador.
+  Add-SrPythonCandidate ([string](Get-SrProperty $cfg 'python_command' ''))
+  Add-SrPythonCandidate (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\pythonw.exe')
+  Add-SrPythonCandidate (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe')
+  if($env:ProgramFiles) {
+    Add-SrPythonCandidate (Join-Path $env:ProgramFiles 'Python312\pythonw.exe')
+    Add-SrPythonCandidate (Join-Path $env:ProgramFiles 'Python312\python.exe')
+  }
+  foreach($cmdName in @('pythonw.exe','python.exe')) {
+    try {
+      $cmd = Get-Command $cmdName -ErrorAction SilentlyContinue
+      if($cmd) { Add-SrPythonCandidate $cmd.Source }
+    } catch { }
+  }
+
   $resolvedPair = Resolve-SrPythonPair $candidateList
+  $runtimeRequirementsHash = ''
 
   if($null -eq $resolvedPair) {
-    Write-SrLog 'Python 3.12 real nao encontrado. Instalando Python oficial por usuario (ZERO ADMIN).'
-    $installer = Join-Path $CacheDir 'python-3.12.10-amd64.exe'
-    if(-not (Test-Path $installer)) {
-      Invoke-SrDownload 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' $installer 300 3
-    }
+    Write-SrLog 'Python 3.12 nao encontrado. Preparando runtime portatil oficial do SR Studio (ZERO ADMIN / sem instalar Python no Windows).'
+    $runtimeManifestUrl = $officialRepositoryBase.TrimEnd('/') + '/runtime/manifest.json'
+    $runtimeManifestPath = Join-Path $CacheDir 'python_runtime_manifest.json'
+    Invoke-SrDownload $runtimeManifestUrl $runtimeManifestPath 60 3
+    $runtimeManifest = Read-SrJson $runtimeManifestPath
+    if([string]$runtimeManifest.format -ne 'SRSTUDIO_PYTHON_RUNTIME_1') { throw 'Manifesto do runtime Python invalido.' }
+    if(([string]$runtimeManifest.python_version) -notmatch '^3\.12\.') { throw 'Versao Python do runtime nao suportada.' }
+    $runtimeUrl = [string]$runtimeManifest.url
+    if(-not (Test-SrUrlAllowed $runtimeUrl)) { throw 'URL insegura no runtime Python.' }
+    $runtimeZip = Join-Path $CacheDir 'srstudio_python_runtime.zip'
+    Invoke-SrDownload $runtimeUrl $runtimeZip ([int](Get-SrProperty $cfg 'download_timeout_seconds' 300)) 3
+    $expectedSize = [int64]$runtimeManifest.size
+    if($expectedSize -gt 0 -and (Get-Item -LiteralPath $runtimeZip).Length -ne $expectedSize) { throw 'Tamanho invalido do runtime Python.' }
+    $expectedHash = ([string]$runtimeManifest.sha256).ToLowerInvariant()
+    if((Get-SrSha256 $runtimeZip) -ne $expectedHash) { throw 'SHA-256 invalido do runtime Python.' }
+    Write-SrLog ('Runtime Python validado: ' + $expectedHash)
 
-    # So executa o instalador oficial se a assinatura digital for valida.
-    $sig = Get-AuthenticodeSignature -LiteralPath $installer
-    if($sig.Status -ne 'Valid') {
-      throw ('Python installer authenticity check failed. Signature status: ' + $sig.Status)
-    }
-    Write-SrLog ('Python installer signature valid: ' + $sig.SignerCertificate.Subject)
+    $runtimeStage = Join-Path $StageDir ('python_runtime_' + (Get-Date -Format 'yyyyMMdd_HHmmss'))
+    Remove-Item -LiteralPath $runtimeStage -Recurse -Force -ErrorAction SilentlyContinue
+    New-Item -ItemType Directory -Path $runtimeStage -Force | Out-Null
+    Expand-Archive -LiteralPath $runtimeZip -DestinationPath $runtimeStage -Force
+    $stagePython = Join-Path $runtimeStage 'python.exe'
+    if(-not (Test-Path -LiteralPath $stagePython -PathType Leaf)) { throw 'python.exe ausente no runtime portatil.' }
+    $stageVersion = (& $stagePython -c "import sys; print('%d.%d.%d' % sys.version_info[:3])" 2>$null | Select-Object -First 1)
+    if($LASTEXITCODE -ne 0 -or (([string]$stageVersion).Trim()) -notmatch '^3\.12\.') { throw 'Runtime Python portatil nao iniciou corretamente.' }
+    & $stagePython -c "import tkinter, openpyxl, pypdf, PIL, numpy, cv2, tkinterdnd2; print('SR_RUNTIME_OK')" | Out-Null
+    if($LASTEXITCODE -ne 0) { throw 'Runtime Python portatil esta incompleto.' }
 
-    # Usa o destino padrao por usuario. O Launcher anterior usava TargetDir privado e
-    # podia receber exit code 0 sem encontrar python.exe na pasta esperada.
-    $arguments = @(
-      '/quiet',
-      'InstallAllUsers=0',
-      'Include_launcher=0',
-      'InstallLauncherAllUsers=0',
-      'PrependPath=0',
-      'AppendPath=0',
-      'AssociateFiles=0',
-      'Shortcuts=0',
-      'Include_test=0',
-      'Include_doc=0',
-      'Include_dev=0',
-      'Include_debug=0',
-      'Include_symbols=0',
-      'Include_tcltk=1',
-      'Include_pip=1'
-    )
-    $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
-    Write-SrLog ('Python installer exit code: ' + $process.ExitCode)
-    if($process.ExitCode -ne 0) {
-      throw ('Python per-user installation failed. Exit code: ' + $process.ExitCode)
-    }
-
-    $postInstall = New-Object 'System.Collections.Generic.List[string]'
-    foreach($c in @(
-      (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\pythonw.exe'),
-      (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe')
-    )) {
-      if(Test-Path -LiteralPath $c -PathType Leaf) { $postInstall.Add($c) }
-    }
-    $resolvedPair = Resolve-SrPythonPair $postInstall
-    if($null -eq $resolvedPair) {
-      throw ('Python installer returned success (exit code 0), but Python 3.12 could not be located. Check antivirus quarantine and ' + $LogDir)
-    }
+    Remove-Item -LiteralPath $pythonRoot -Recurse -Force -ErrorAction SilentlyContinue
+    Move-Item -LiteralPath $runtimeStage -Destination $pythonRoot -Force
+    $runtimeRequirementsHash = ([string]$runtimeManifest.requirements_sha256).ToLowerInvariant()
+    $resolvedPair = Resolve-SrPythonPair @((Join-Path $pythonRoot 'pythonw.exe'),(Join-Path $pythonRoot 'python.exe'))
+    if($null -eq $resolvedPair) { throw 'Runtime Python foi extraido, mas nao pode ser iniciado.' }
+    Write-SrLog ('Runtime Python portatil pronto: ' + [string]$resolvedPair.version)
   }
 
   $pythonExe = [string]$resolvedPair.python
@@ -624,6 +605,9 @@ function Ensure-SrPythonRuntime {
     $requirementsHash = Get-SrSha256 $requirementsPath
     $marker = Join-Path $RuntimeDir 'srstudio_requirements.sha256'
     $markerValue = $requirementsHash + '|' + $pythonExe
+    if($runtimeRequirementsHash -and $runtimeRequirementsHash -eq $requirementsHash) {
+      [IO.File]::WriteAllText($marker,$markerValue,(New-Object Text.UTF8Encoding($false)))
+    }
     $installedMarker = ''
     if(Test-Path $marker) { try { $installedMarker = (Get-Content -Raw -LiteralPath $marker).Trim() } catch { } }
     if($installedMarker -ne $markerValue) {
