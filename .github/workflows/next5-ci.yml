@@ -28,7 +28,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          python -m pip install --disable-pip-version-check "openpyxl>=3.1.2" "Pillow>=10.0.0" "pypdf>=4.0.0" "tkinterdnd2>=0.4.2"
+          python -m pip install --disable-pip-version-check "openpyxl>=3.1.2" "Pillow>=10.0.0" "pypdf>=4.0.0" "tkinterdnd2>=0.4.2" "numpy>=1.26,<3" "opencv-python-headless>=4.9.0"
 
       - name: Validar metadados da fundação
         shell: powershell
@@ -47,7 +47,7 @@ jobs:
           Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File -Recurse | ForEach-Object {
             python -m py_compile $_.FullName
           }
-          python -m py_compile build/materialize_baseline.py build/package_app.py build/integrate_studio5.py tests/test_foundation.py tests/test_v5_services.py
+          python -m py_compile build/materialize_baseline.py build/package_app.py build/integrate_studio5.py build/apply_studio5_enhancements.py tests/test_foundation.py tests/test_v5_services.py tests/test_v5_http_bridge.py
 
       - name: Validar JavaScript do Encartes
         shell: powershell
@@ -69,6 +69,19 @@ jobs:
           $ErrorActionPreference='Stop'
           python -m unittest tests.test_v5_services -v
 
+      - name: Testar bridge HTTP de projetos e autosave
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m unittest tests.test_v5_http_bridge -v
+
+      - name: Smoke import do aplicativo completo
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:PYTHONPATH=(Resolve-Path 'src/sr_studio').Path
+          python -c "import SR_Studio_Gerador as app; print('APP_IMPORT_OK', app.APP_VERSION_INFO)"
+
       - name: Validar integração da Central 5.0
         shell: powershell
         run: |
@@ -79,6 +92,8 @@ jobs:
           }
           $index=Get-Content -Raw 'src/sr_studio/Encartes3_index.html'
           if(-not $index.Contains('Encartes11_v5.js')){ throw 'Bridge V5 não carregado no editor' }
+          $studio=Get-Content -Raw 'src/sr_studio/modules/Studio5Module.py'
+          if(-not $studio.Contains('_install_studio5_enhancements(Studio5Panel)')){ throw 'Aprimoramentos 5.0 não ativados' }
 
       - name: Montar pacotes de fumaça Beta e Stable
         shell: powershell
@@ -119,7 +134,11 @@ jobs:
               'files/services/campaign_wizard.py',
               'files/services/validation_center.py',
               'files/services/export_profiles.py',
+              'files/services/project_export.py',
+              'files/services/release_channels.py',
               'files/services/update_rollback.py',
+              'files/ui/template_mapping_visual.py',
+              'files/ui/studio5_enhancements.py',
               'files/data/v5_store.py',
               'files/Encartes10_beta16.js',
               'files/Encartes11_v5.js',
