@@ -2,13 +2,13 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.11-hybrid.beta12",
-  "created_at": "2026-08-13T23:10:00-03:00",
+  "version": "4.0.12-hybrid.beta13",
+  "created_at": "2026-08-14T07:33:57-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.11-hybrid.beta12/SR_STUDIO_4.0.11_BETA12_PPTX_DESIGN_COMPLETO.zip",
-    "sha256": "d3dce463710e3e9c8f3853e1e35a60fa39cf94450cc976d04bcf2775c08e5eb9",
-    "size": 2539446,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.12-hybrid.beta13/SR_STUDIO_4.0.12_BETA13_IMAGENS_CANVA.zip",
+    "sha256": "b57bbac0de7633d3b8762ab80b0f0557191a90b1b82fbdc93d5f56a3a3188c6b",
+    "size": 2541144,
     "member_prefix": "files/"
   },
   "repair": {
@@ -19,7 +19,8 @@
     "Encartes3_app.js",
     "Encartes3_style.css",
     "Encartes4_beta6.js",
-    "Encartes5_beta11.js"
+    "Encartes5_beta11.js",
+    "Encartes6_beta12.js"
   ],
-  "notes": "Beta 12: PPTX do Canva com design completo renderizado pelo PowerPoint local. O slide original vira a base visual e somente os campos dinâmicos reconhecidos ficam editáveis e preenchíveis. Se o PowerPoint não estiver disponível, o Studio informa claramente o modo estrutural."
+  "notes": "Beta 13: reconhece automaticamente caixas brancas e Freeforms agrupadas do PPTX Canva como áreas de imagem. Calcula as coordenadas reais dentro dos grupos, vincula cada caixa ao bloco de nome/preço mais próximo e usa a imagem oficial do Banco de Produtos ao clicar ou arrastar o item. Mantém o design completo renderizado pelo PowerPoint da Beta 12."
 }
