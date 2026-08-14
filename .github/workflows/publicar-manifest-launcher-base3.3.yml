@@ -1,0 +1,80 @@
+name: Publicar manifesto Launcher Base 3.3
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/publicar-manifest-launcher-base3.3.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gerar manifesto a partir do Launcher Base 3.3 real
+        shell: bash
+        run: |
+          set -euo pipefail
+          FILE='launcher/files/SRStudioLauncher.ps1'
+          SHA256=$(sha256sum "$FILE" | awk '{print $1}')
+          SIZE=$(stat -c%s "$FILE")
+          VERSION=$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          t=Path('launcher/files/SRStudioLauncher.ps1').read_text(encoding='utf-8-sig')
+          m=re.search(r"\$LauncherVersion\s*=\s*'([^']+)'",t)
+          if not m: raise SystemExit('LauncherVersion ausente')
+          print(m.group(1))
+          PY
+          )
+          test "$VERSION" = '4.0.1-hybrid.base3.3'
+          export SHA256 SIZE VERSION
+          python3 - <<'PY'
+          import json,os
+          from pathlib import Path
+          p=Path('manifests/launcher.json')
+          d=json.loads(p.read_text(encoding='utf-8-sig'))
+          d['format']='SRSTUDIO_LAUNCHER_MANIFEST_1'
+          d['product']='SR Studio Launcher'
+          d['version']=os.environ['VERSION']
+          d['files']=[{'path':'SRStudioLauncher.ps1','source':'launcher/files/SRStudioLauncher.ps1','sha256':os.environ['SHA256'],'size':int(os.environ['SIZE'])}]
+          p.write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+          bp=Path('beta/manifest.json')
+          b=json.loads(bp.read_text(encoding='utf-8-sig'))
+          b['min_launcher']='4.0.1-hybrid.base3.3'
+          b['min_launcher_version']='4.0.1-hybrid.base3.3'
+          bp.write_text(json.dumps(b,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          print('PUBLISHED',d['version'],d['files'][0]['sha256'],d['files'][0]['size'])
+          PY
+
+      - name: Validar protecoes da Base 3.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'function Assert-SrBetaAccess' launcher/files/SRStudioLauncher.ps1
+          grep -q 'function Repair-SrBundleManifest' launcher/files/SRStudioLauncher.ps1
+          grep -q 'SRSTUDIO_PYTHON_RUNTIME_1' launcher/files/SRStudioLauncher.ps1
+          grep -q 'srstudio_python_runtime.zip' launcher/files/SRStudioLauncher.ps1
+          if grep -q 'python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' launcher/files/SRStudioLauncher.ps1; then
+            echo 'REGRESSAO: instalador Python EXE detectado'
+            exit 1
+          fi
+
+      - name: Publicar manifestos
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add manifests/launcher.json beta/manifest.json
+          git commit -m 'Publica Launcher Base 3.3 consolidada e exige na Beta'
+          git push origin HEAD:main
