@@ -1,4 +1,4 @@
-name: Publicar SR Studio Beta 11 Novo Encartes
+name: Publicar SR Studio Beta 12 Design PPTX
 
 on:
   push:
@@ -14,37 +14,35 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Montar e validar Beta 11
+      - name: Montar e validar Beta 12
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           rm -rf work dist && mkdir -p work dist
-          gh release download v4.0.9-hybrid.beta10 -p 'SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip' -D dist
-          unzip -q dist/SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip -d work
-          python staging/beta11/assemble.py
+          gh release download v4.0.10-hybrid.beta11 -p 'SR_STUDIO_4.0.10_BETA11_NOVO_ENCARTES_PPTX_CANVA.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.10_BETA11_NOVO_ENCARTES_PPTX_CANVA.zip -d work
+          python staging/beta12/assemble.py
           python -m compileall -q work/files
-          node --check work/files/Encartes5_beta11.js
-          test -s work/files/xlsx.full.min.js
+          node --check work/files/Encartes6_beta12.js
+          test -s work/files/EncartesPPTXVisual.py
+          test -s work/files/EncartesPPTXReader.py
           test -s work/files/Encartes11.css
-          test ! -e work/files/Encartes3_app.js
-          test ! -e work/files/Encartes3_style.css
-          test ! -e work/files/Encartes4_beta6.js
-          grep -q 'PRECO_REAIS' work/files/Encartes5_beta11.js
-          grep -q 'PRECO_CENTAVOS' work/files/Encartes5_beta11.js
-          grep -q 'autoLayout' work/files/Encartes5_beta11.js
-          grep -q 'duplicatePage' work/files/Encartes5_beta11.js
-          grep -q 'importPptxFile' work/files/Encartes5_beta11.js
-          grep -q 'importFonts' work/files/Encartes5_beta11.js
+          test ! -e work/files/Encartes5_beta11.js
+          grep -q 'backgroundUrl' work/files/Encartes6_beta12.js
+          grep -q 'visualMode' work/files/Encartes6_beta12.js
+          grep -q 'render_slide_backgrounds' work/files/EncartesPPTXReader.py
+          grep -q 'PowerPoint.Application' work/files/EncartesPPTXVisual.py
+          grep -q 'Encartes6_beta12.js' work/files/Encartes3_index.html
           find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
           find work -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.xlsx' -o -name '*.xls' -o -name '*.csv' \) -delete
 
-      - name: Criar release Beta 11
+      - name: Criar release Beta 12
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          (cd work && zip -qr ../dist/SR_STUDIO_4.0.10_BETA11_NOVO_ENCARTES_PPTX_CANVA.zip .)
-          gh release create v4.0.10-hybrid.beta11 dist/SR_STUDIO_4.0.10_BETA11_NOVO_ENCARTES_PPTX_CANVA.zip --prerelease --title 'SR Studio 4.0.10 Beta 11 - Novo Encartes + PPTX Canva' --notes 'Beta 11: novo Encartes oficial com PPTX Canva, Banco de Produtos, preço separado em R$ / REAIS / ,CENTAVOS, fontes manuais, destaque, categorias, layout automático, múltiplas páginas, duplicar página, desfazer/refazer e validação completa. O editor antigo foi removido do pacote.'
+          (cd work && zip -qr ../dist/SR_STUDIO_4.0.11_BETA12_PPTX_DESIGN_COMPLETO.zip .)
+          gh release create v4.0.11-hybrid.beta12 dist/SR_STUDIO_4.0.11_BETA12_PPTX_DESIGN_COMPLETO.zip --prerelease --title 'SR Studio 4.0.11 Beta 12 - PPTX Canva com Design Completo' --notes 'Beta 12: o PPTX do Canva passa a usar o PowerPoint local para renderizar o design original completo do slide, ocultando apenas os campos dinâmicos reconhecidos. Nome, imagem, R$, reais, centavos, unidade, limite e APP continuam editáveis e preenchidos pelo Banco de Produtos. Se o PowerPoint não estiver disponível, o Studio informa claramente que entrou em modo estrutural.'
