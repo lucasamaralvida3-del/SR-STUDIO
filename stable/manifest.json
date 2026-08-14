@@ -7,8 +7,8 @@
     "release_label":  "Stable 1",
     "published_at":  "2026-08-14T18:21:07-03:00",
     "created_at":  "2026-08-14T18:21:07-03:00",
-    "min_launcher":  "4.0.1-hybrid.base3.3",
-    "min_launcher_version":  "4.0.1-hybrid.base3.3",
+    "min_launcher":  "4.0.1-hybrid.base3.4",
+    "min_launcher_version":  "4.0.1-hybrid.base3.4",
     "bundle":  {
                    "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable1/SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip",
                    "sha256":  "1083fe9c13076412013c60810391a3896c17e0512581daf4b53087af2ac59b5b",
@@ -31,5 +31,5 @@
                    "Encartes5_beta11.js",
                    "Encartes6_beta12.js"
                ],
-    "notes":  "SR Studio 5.0 Stable 1 - promoÃ§Ã£o direta da Beta 6.1 validada; logo oficial corrigida e todos os recursos da Beta 6.1 preservados."
+    "notes":  "SR Studio 5.0 Stable 1 - promoÃƒÂ§ÃƒÂ£o direta da Beta 6.1 validada; logo oficial corrigida e todos os recursos da Beta 6.1 preservados."
 }

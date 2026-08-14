@@ -10,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 # GitHub and Python.org require modern TLS on Windows PowerShell 5.1.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$LauncherVersion = '4.0.1-hybrid.base3.3'
+$LauncherVersion = '4.0.1-hybrid.base3.4'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir      = Join-Path $SrHomeRoot 'App'
 $DataDir     = Join-Path $SrHomeRoot 'Data'
@@ -894,6 +894,25 @@ function Ensure-SrPythonRuntime {
   return $pythonwExe
 }
 
+function Start-SrOfficialDesktopProcess([string]$FilePath,[object[]]$ArgumentList,[string]$WorkingDirectory) {
+  # Base 3.4: o Core 5.0 exige esta marca para distinguir a abertura oficial
+  # de atalhos/Python antigos. O processo filho herda a variavel e o Launcher
+  # restaura o ambiente logo apos iniciar o Core.
+  $previousLaunchMarker = [Environment]::GetEnvironmentVariable('SR_STUDIO_LAUNCHED_BY_UPDATER','Process')
+  [Environment]::SetEnvironmentVariable('SR_STUDIO_LAUNCHED_BY_UPDATER','1','Process')
+  try {
+    Write-SrLog ('Opening officially through Launcher Base 3.4: ' + $FilePath)
+    if($null -ne $ArgumentList -and @($ArgumentList).Count -gt 0) {
+      Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory
+    } else {
+      Start-Process -FilePath $FilePath -WorkingDirectory $WorkingDirectory
+    }
+  }
+  finally {
+    [Environment]::SetEnvironmentVariable('SR_STUDIO_LAUNCHED_BY_UPDATER',$previousLaunchMarker,'Process')
+  }
+}
+
 function Start-SrDesktop {
   $entry = Join-Path $AppDir ([string](Get-SrProperty $cfg 'entrypoint' 'SR_Studio_Gerador.py')).Replace('/','\')
   if(-not (Test-Path $entry)) {
@@ -904,7 +923,7 @@ function Start-SrDesktop {
   $extension = [IO.Path]::GetExtension($entry).ToLowerInvariant()
   Write-SrLog ('Opening Desktop Core: ' + $entry)
   if($extension -eq '.exe') {
-    Start-Process -FilePath $entry -WorkingDirectory $AppDir
+    Start-SrOfficialDesktopProcess $entry @() $AppDir
     return
   }
   if($extension -eq '.py') {
@@ -938,10 +957,10 @@ function Start-SrDesktop {
       if($pythonCommand) { $pythonPath=$pythonCommand.Source }
     }
     if(-not $pythonPath) { throw 'Python runtime not found. The Stable repository must provide a portable runtime for a new computer.' }
-    Start-Process -FilePath $pythonPath -ArgumentList @('"' + $entry + '"') -WorkingDirectory $AppDir
+    Start-SrOfficialDesktopProcess $pythonPath @('"' + $entry + '"') $AppDir
     return
   }
-  Start-Process -FilePath $entry -WorkingDirectory $AppDir
+  Start-SrOfficialDesktopProcess $entry @() $AppDir
 }
 
 try {

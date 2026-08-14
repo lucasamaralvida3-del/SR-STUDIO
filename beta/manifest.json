@@ -6,8 +6,8 @@
     "product_version":  "5.0.0",
     "release_label":  "Beta 6.1",
     "published_at":  "2026-08-14T18:06:43-03:00",
-    "min_launcher":  "4.0.1-hybrid.base3.2",
-    "min_launcher_version":  "4.0.1-hybrid.base3.2",
+    "min_launcher":  "4.0.1-hybrid.base3.4",
+    "min_launcher_version":  "4.0.1-hybrid.base3.4",
     "bundle":  {
                    "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta6.1/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip",
                    "sha256":  "d2957c15674447364676fd8c0c1416203c4ee39951ed37d4e0f8425255c8bfc8",
