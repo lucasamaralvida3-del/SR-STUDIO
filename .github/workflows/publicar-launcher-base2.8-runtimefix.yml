@@ -1,0 +1,325 @@
+name: SR Studio Launcher base2.8 - Python Runtime Fix
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publicar-launcher-base2.8-runtimefix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gerar Launcher base2.8
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib, json, re
+          from datetime import datetime, timezone, timedelta
+
+          p=Path('launcher/files/SRStudioLauncher.ps1')
+          text=p.read_text(encoding='utf-8-sig')
+          text=text.replace("$LauncherVersion = '4.0.1-hybrid.base2.7'", "$LauncherVersion = '4.0.1-hybrid.base2.8'", 1)
+
+          new_func=r'''function Ensure-SrPythonRuntime {
+            $pythonRoot = Join-Path $RuntimeDir 'python'
+            New-Item -ItemType Directory -Path $RuntimeDir -Force | Out-Null
+
+            $candidateList = New-Object 'System.Collections.Generic.List[string]'
+            function Add-SrPythonCandidate([string]$Candidate,[string]$Origin='unknown') {
+              if(-not $Candidate) { return }
+              try { $expanded = Expand-SrEnv $Candidate } catch { $expanded = $Candidate }
+              if(-not $expanded) { return }
+              if($expanded -match '\\WindowsApps\\') { return }
+              if((Test-Path -LiteralPath $expanded -PathType Leaf) -and -not $candidateList.Contains($expanded)) {
+                $candidateList.Add($expanded)
+                Write-SrLog ('Python candidate [' + $Origin + ']: ' + $expanded)
+              }
+            }
+
+            function Add-SrRegistryPythonCandidates {
+              $roots = @(
+                'Registry::HKEY_CURRENT_USER\Software\Python\PythonCore',
+                'Registry::HKEY_LOCAL_MACHINE\Software\Python\PythonCore',
+                'Registry::HKEY_LOCAL_MACHINE\Software\Wow6432Node\Python\PythonCore'
+              )
+              foreach($root in $roots) {
+                try {
+                  if(-not (Test-Path -LiteralPath $root)) { continue }
+                  foreach($tagKey in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
+                    if(([string]$tagKey.PSChildName) -notmatch '^3\.12') { continue }
+                    $installKey = $tagKey.PSPath + '\InstallPath'
+                    if(-not (Test-Path -LiteralPath $installKey)) { continue }
+                    $item = Get-Item -LiteralPath $installKey -ErrorAction SilentlyContinue
+                    $props = Get-ItemProperty -LiteralPath $installKey -ErrorAction SilentlyContinue
+                    $installDir = ''
+                    try { $installDir = [string]$item.GetValue('') } catch { }
+                    $exe = ''
+                    $wexe = ''
+                    if($props) {
+                      try { $exe = [string]$props.ExecutablePath } catch { }
+                      try { $wexe = [string]$props.WindowedExecutablePath } catch { }
+                    }
+                    if(-not $exe -and $installDir) { $exe = Join-Path $installDir 'python.exe' }
+                    if(-not $wexe -and $installDir) { $wexe = Join-Path $installDir 'pythonw.exe' }
+                    Add-SrPythonCandidate $exe ('registry ' + $tagKey.PSChildName)
+                    Add-SrPythonCandidate $wexe ('registry ' + $tagKey.PSChildName)
+                  }
+                } catch {
+                  Write-SrLog ('Python registry scan skipped for ' + $root + ': ' + $_.Exception.Message)
+                }
+              }
+            }
+
+            function Resolve-SrPythonPair($Candidates) {
+              foreach($candidate in @($Candidates)) {
+                $leaf = [IO.Path]::GetFileName($candidate).ToLowerInvariant()
+                $dir = Split-Path $candidate -Parent
+                if($leaf -eq 'pythonw.exe') {
+                  $wexe = $candidate
+                  $exe = Join-Path $dir 'python.exe'
+                } else {
+                  $exe = $candidate
+                  $wexe = Join-Path $dir 'pythonw.exe'
+                }
+                if(-not (Test-Path -LiteralPath $exe -PathType Leaf)) { continue }
+                try {
+                  $tmpOut = Join-Path $LogDir 'python_candidate.out.log'
+                  $tmpErr = Join-Path $LogDir 'python_candidate.err.log'
+                  Remove-Item -LiteralPath $tmpOut,$tmpErr -Force -ErrorAction SilentlyContinue
+                  $proc = Start-Process -FilePath $exe -ArgumentList @('-c',"import sys; print('%d.%d.%d' % sys.version_info[:3])") -Wait -PassThru -RedirectStandardOutput $tmpOut -RedirectStandardError $tmpErr -WindowStyle Hidden
+                  $ver = ''
+                  if(Test-Path $tmpOut) { $ver = (Get-Content -Raw -LiteralPath $tmpOut).Trim() }
+                  if($proc.ExitCode -ne 0 -or -not $ver) {
+                    $errText=''
+                    if(Test-Path $tmpErr) { try { $errText=(Get-Content -Raw -LiteralPath $tmpErr).Trim() } catch { } }
+                    Write-SrLog ('Python candidate rejected. Exit=' + $proc.ExitCode + ' Path=' + $exe + $(if($errText){' Error=' + $errText}else{''}))
+                    continue
+                  }
+                  if($ver -notmatch '^3\.12\.') { Write-SrLog ('Python candidate wrong version ' + $ver + ': ' + $exe); continue }
+                  if(-not (Test-Path -LiteralPath $wexe -PathType Leaf)) { $wexe = $exe }
+                  return @{ python=$exe; pythonw=$wexe; version=$ver }
+                } catch {
+                  Write-SrLog ('Python candidate could not start: ' + $exe + ' / ' + $_.Exception.Message)
+                }
+              }
+              return $null
+            }
+
+            # 1) Runtime portatil do proprio SR Studio.
+            Add-SrPythonCandidate (Join-Path $pythonRoot 'pythonw.exe') 'SR runtime'
+            Add-SrPythonCandidate (Join-Path $pythonRoot 'python.exe') 'SR runtime'
+
+            # 2) Python configurado no launcher.
+            Add-SrPythonCandidate ([string](Get-SrProperty $cfg 'python_command' '')) 'launcher config'
+
+            # 3) Registro oficial do Python (PEP 514 / instalador oficial).
+            Add-SrRegistryPythonCandidates
+
+            # 4) Caminhos comuns e qualquer Python312/Python3.12 instalado por usuario/maquina.
+            foreach($baseDir in @(
+              (Join-Path $env:LOCALAPPDATA 'Programs\Python'),
+              $(if($env:ProgramFiles){$env:ProgramFiles}else{$null}),
+              $(if(${env:ProgramFiles(x86)}){${env:ProgramFiles(x86)}}else{$null})
+            )) {
+              if(-not $baseDir -or -not (Test-Path -LiteralPath $baseDir)) { continue }
+              try {
+                foreach($exeFile in @(Get-ChildItem -LiteralPath $baseDir -Filter 'python.exe' -File -Recurse -Depth 3 -ErrorAction SilentlyContinue)) {
+                  if($exeFile.FullName -match '\\WindowsApps\\') { continue }
+                  Add-SrPythonCandidate $exeFile.FullName 'filesystem scan'
+                  $w = Join-Path $exeFile.DirectoryName 'pythonw.exe'
+                  Add-SrPythonCandidate $w 'filesystem scan'
+                }
+              } catch { }
+            }
+
+            foreach($cmdName in @('pythonw.exe','python.exe')) {
+              try {
+                $cmd = Get-Command $cmdName -ErrorAction SilentlyContinue
+                if($cmd) { Add-SrPythonCandidate $cmd.Source 'PATH' }
+              } catch { }
+            }
+
+            $resolvedPair = Resolve-SrPythonPair $candidateList
+            $runtimeRequirementsHash = ''
+
+            if($null -eq $resolvedPair) {
+              Write-SrLog 'Python 3.12 utilizavel nao encontrado. Preparando runtime portatil oficial do SR Studio.'
+              $runtimeManifestUrl = $officialRepositoryBase.TrimEnd('/') + '/runtime/manifest.json'
+              $runtimeManifestPath = Join-Path $CacheDir 'python_runtime_manifest.json'
+              Invoke-SrDownload $runtimeManifestUrl $runtimeManifestPath 60 3
+              $runtimeManifest = Read-SrJson $runtimeManifestPath
+              if([string]$runtimeManifest.format -ne 'SRSTUDIO_PYTHON_RUNTIME_1') { throw 'Manifesto do runtime Python invalido.' }
+              if(([string]$runtimeManifest.python_version) -notmatch '^3\.12\.') { throw 'Versao Python do runtime nao suportada.' }
+              $runtimeUrl = [string]$runtimeManifest.url
+              if(-not (Test-SrUrlAllowed $runtimeUrl)) { throw 'URL insegura no runtime Python.' }
+              $runtimeZip = Join-Path $CacheDir 'srstudio_python_runtime.zip'
+              $expectedSize = [int64]$runtimeManifest.size
+              $expectedHash = ([string]$runtimeManifest.sha256).ToLowerInvariant()
+
+              $cacheOk = $false
+              if(Test-Path -LiteralPath $runtimeZip -PathType Leaf) {
+                try {
+                  $cacheOk = (((Get-Item -LiteralPath $runtimeZip).Length -eq $expectedSize) -and ((Get-SrSha256 $runtimeZip) -eq $expectedHash))
+                } catch { $cacheOk = $false }
+              }
+              if($cacheOk) {
+                Write-SrLog 'Reutilizando runtime Python ja baixado e validado no cache.'
+              } else {
+                Invoke-SrDownload $runtimeUrl $runtimeZip ([int](Get-SrProperty $cfg 'download_timeout_seconds' 600)) 3
+              }
+              if($expectedSize -gt 0 -and (Get-Item -LiteralPath $runtimeZip).Length -ne $expectedSize) { throw 'Tamanho invalido do runtime Python.' }
+              if((Get-SrSha256 $runtimeZip) -ne $expectedHash) { throw 'SHA-256 invalido do runtime Python.' }
+              Write-SrLog ('Runtime Python validado: ' + $expectedHash)
+
+              # Remove Mark-of-the-Web do ZIP e dos binarios extraidos. Isto nao desativa antivirus.
+              try { Unblock-File -LiteralPath $runtimeZip -ErrorAction SilentlyContinue } catch { }
+              $runtimeStage = Join-Path $StageDir ('python_runtime_' + (Get-Date -Format 'yyyyMMdd_HHmmss'))
+              Remove-Item -LiteralPath $runtimeStage -Recurse -Force -ErrorAction SilentlyContinue
+              New-Item -ItemType Directory -Path $runtimeStage -Force | Out-Null
+              Expand-Archive -LiteralPath $runtimeZip -DestinationPath $runtimeStage -Force
+              try { Get-ChildItem -LiteralPath $runtimeStage -File -Recurse -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue } catch { }
+
+              $stagePython = Join-Path $runtimeStage 'python.exe'
+              if(-not (Test-Path -LiteralPath $stagePython -PathType Leaf)) { throw 'python.exe ausente no runtime portatil.' }
+              foreach($dll in @('python312.dll','vcruntime140.dll','vcruntime140_1.dll')) {
+                $dllPath=Join-Path $runtimeStage $dll
+                Write-SrLog ('Runtime component ' + $dll + ': ' + $(if(Test-Path -LiteralPath $dllPath){'OK'}else{'AUSENTE'}))
+              }
+
+              $stageOut = Join-Path $LogDir 'portable_python_start.out.log'
+              $stageErr = Join-Path $LogDir 'portable_python_start.err.log'
+              Remove-Item -LiteralPath $stageOut,$stageErr -Force -ErrorAction SilentlyContinue
+              try {
+                $stageProc = Start-Process -FilePath $stagePython -ArgumentList @('-c',"import sys; print('%d.%d.%d' % sys.version_info[:3])") -Wait -PassThru -RedirectStandardOutput $stageOut -RedirectStandardError $stageErr -WindowStyle Hidden
+              } catch {
+                throw ('Runtime Python portatil nao conseguiu iniciar processo: ' + $_.Exception.Message)
+              }
+              $stageVersion=''
+              if(Test-Path $stageOut) { try { $stageVersion=(Get-Content -Raw -LiteralPath $stageOut).Trim() } catch { } }
+              $stageError=''
+              if(Test-Path $stageErr) { try { $stageError=(Get-Content -Raw -LiteralPath $stageErr).Trim() } catch { } }
+              Write-SrLog ('Portable Python startup exit=' + $stageProc.ExitCode + ' version=' + $stageVersion + $(if($stageError){' stderr=' + $stageError}else{''}))
+              if($stageProc.ExitCode -ne 0 -or $stageVersion -notmatch '^3\.12\.') {
+                throw ('Runtime Python portatil nao iniciou corretamente. Exit=' + $stageProc.ExitCode + $(if($stageError){' / ' + $stageError}else{''}))
+              }
+
+              $importOut = Join-Path $LogDir 'portable_python_imports.out.log'
+              $importErr = Join-Path $LogDir 'portable_python_imports.err.log'
+              Remove-Item -LiteralPath $importOut,$importErr -Force -ErrorAction SilentlyContinue
+              $importProc = Start-Process -FilePath $stagePython -ArgumentList @('-c',"import tkinter, openpyxl, pypdf, PIL, numpy, cv2, tkinterdnd2; print('SR_RUNTIME_OK')") -Wait -PassThru -RedirectStandardOutput $importOut -RedirectStandardError $importErr -WindowStyle Hidden
+              if($importProc.ExitCode -ne 0) {
+                $importError=''
+                if(Test-Path $importErr) { try { $importError=(Get-Content -Raw -LiteralPath $importErr).Trim() } catch { } }
+                throw ('Runtime Python portatil esta incompleto. Exit=' + $importProc.ExitCode + $(if($importError){' / ' + $importError}else{''}))
+              }
+
+              Remove-Item -LiteralPath $pythonRoot -Recurse -Force -ErrorAction SilentlyContinue
+              Move-Item -LiteralPath $runtimeStage -Destination $pythonRoot -Force
+              $runtimeRequirementsHash = ([string]$runtimeManifest.requirements_sha256).ToLowerInvariant()
+              $resolvedPair = Resolve-SrPythonPair @((Join-Path $pythonRoot 'pythonw.exe'),(Join-Path $pythonRoot 'python.exe'))
+              if($null -eq $resolvedPair) { throw 'Runtime Python foi extraido, mas nao pode ser iniciado depois da instalacao.' }
+              Write-SrLog ('Runtime Python portatil pronto: ' + [string]$resolvedPair.version)
+            }
+
+            $pythonExe = [string]$resolvedPair.python
+            $pythonwExe = [string]$resolvedPair.pythonw
+            Write-SrLog ('Using Python ' + [string]$resolvedPair.version + ': ' + $pythonExe)
+
+            $requirementsPath = Join-Path $AppDir 'requirements.txt'
+            if(Test-Path $requirementsPath) {
+              $requirementsHash = Get-SrSha256 $requirementsPath
+              $marker = Join-Path $RuntimeDir 'srstudio_requirements.sha256'
+              $markerValue = $requirementsHash + '|' + $pythonExe
+              if($runtimeRequirementsHash -and $runtimeRequirementsHash -eq $requirementsHash) {
+                [IO.File]::WriteAllText($marker,$markerValue,(New-Object Text.UTF8Encoding($false)))
+              }
+              $installedMarker = ''
+              if(Test-Path $marker) { try { $installedMarker = (Get-Content -Raw -LiteralPath $marker).Trim() } catch { } }
+              if($installedMarker -ne $markerValue) {
+                Write-SrLog 'Installing/updating SR Studio Python dependencies.'
+                $pipLog = Join-Path $LogDir 'pip_runtime.log'
+                $pipErr = $pipLog + '.err'
+                $pipArgs = @('-m','pip','install','--disable-pip-version-check','--no-warn-script-location','--upgrade','-r',$requirementsPath)
+                $proc = Start-Process -FilePath $pythonExe -ArgumentList $pipArgs -Wait -PassThru -RedirectStandardOutput $pipLog -RedirectStandardError $pipErr
+                if($proc.ExitCode -ne 0) { throw ('Python dependencies failed to install. See ' + $pipErr) }
+                [IO.File]::WriteAllText($marker,$markerValue,(New-Object Text.UTF8Encoding($false)))
+                Write-SrLog 'SR Studio Python dependencies are ready.'
+              }
+            }
+            return $pythonwExe
+          }
+
+          function Start-SrDesktop'''
+
+          pattern=r'function Ensure-SrPythonRuntime \{.*?\r?\n\}\r?\n\r?\nfunction Start-SrDesktop'
+          updated,n=re.subn(pattern,lambda _m:new_func,text,count=1,flags=re.S)
+          if n != 1:
+              raise SystemExit(f'Falha substituindo Ensure-SrPythonRuntime: {n}')
+          data=('\ufeff'+updated.lstrip('\ufeff')).encode('utf-8')
+          p.write_bytes(data)
+
+          now=datetime.now(timezone(timedelta(hours=-3))).isoformat(timespec='seconds')
+          manifest={
+            'format':'SRSTUDIO_LAUNCHER_MANIFEST_1',
+            'product':'SR Studio Launcher',
+            'version':'4.0.1-hybrid.base2.8',
+            'published_at':now,
+            'files':[{'path':'SRStudioLauncher.ps1','source':'launcher/files/SRStudioLauncher.ps1','sha256':hashlib.sha256(data).hexdigest(),'size':len(data)}]
+          }
+          Path('manifests/launcher.json').write_text(json.dumps(manifest,indent=2,ensure_ascii=False)+'\n',encoding='utf-8')
+
+      - name: Validar Launcher base2.8
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $f='launcher/files/SRStudioLauncher.ps1'
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $f),[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors -and $errors.Count -gt 0){ throw "PowerShell invalido: $($errors[0].Message)" }
+          foreach($needle in @('4.0.1-hybrid.base2.8','HKEY_CURRENT_USER\Software\Python\PythonCore','Unblock-File','portable_python_start.err.log','Python candidate')){
+            if(-not (Select-String -LiteralPath $f -SimpleMatch $needle)){ throw "Validacao ausente: $needle" }
+          }
+
+      - name: Testar ZIP portatil apos extracao
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $url='https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-runtime1/SR_STUDIO_PYTHON_3.12.10_RUNTIME1.zip'
+          $zip=Join-Path $env:RUNNER_TEMP 'runtime.zip'
+          $dir=Join-Path $env:RUNNER_TEMP 'runtime-extracted-test'
+          Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $zip
+          Unblock-File -LiteralPath $zip -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath $dir -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $zip -DestinationPath $dir -Force
+          Get-ChildItem -LiteralPath $dir -File -Recurse | Unblock-File -ErrorAction SilentlyContinue
+          $py=Join-Path $dir 'python.exe'
+          & $py -c "import sys,tkinter,openpyxl,pypdf,PIL,numpy,cv2,tkinterdnd2; print(sys.version); print('SR_RUNTIME_EXTRACT_OK')"
+          if($LASTEXITCODE -ne 0){ throw 'Runtime falhou depois de baixar/extrair' }
+
+      - name: Publicar Launcher base2.8
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add launcher/files/SRStudioLauncher.ps1 manifests/launcher.json
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Corrige descoberta e runtime Python no Launcher base2.8'
+            git push origin HEAD:main
+          }
+
+      - name: Confirmar Launcher online
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Start-Sleep -Seconds 2
+          $u='https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/manifests/launcher.json?x=' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          $m=Invoke-RestMethod -Uri $u -Headers @{'Cache-Control'='no-cache'}
+          if([string]$m.version -ne '4.0.1-hybrid.base2.8'){ throw "Online ainda em $($m.version)" }
