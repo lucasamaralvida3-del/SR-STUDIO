@@ -10,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 # GitHub and Python.org require modern TLS on Windows PowerShell 5.1.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$LauncherVersion = '4.0.1-hybrid.base2.9'
+$LauncherVersion = '4.0.1-hybrid.base3.0'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir      = Join-Path $SrHomeRoot 'App'
 $DataDir     = Join-Path $SrHomeRoot 'Data'
@@ -131,6 +131,102 @@ if(-not [string](Get-SrProperty $cfg 'remote_manifest_base' '')) {
 }
 $channel = [string](Get-SrProperty $cfg 'channel' 'stable')
 if(($channel -ne 'stable') -and ($channel -ne 'beta')) { $channel = 'stable' }
+
+# Base 3.0: acesso Beta universal, independente da versao do Core.
+$BetaAccessLocalPath = Join-Path $CfgDir 'beta_access.json'
+$BetaAccessCachePath = Join-Path $CacheDir 'beta_access_manifest.json'
+
+function Get-SrTextSha256([string]$Text) {
+  $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try {
+    return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()
+  } finally { $sha.Dispose() }
+}
+
+function Normalize-SrBetaKey([string]$Key) {
+  if(-not $Key) { return '' }
+  return (($Key.ToUpperInvariant()) -replace '[^A-Z0-9]','')
+}
+
+function Get-SrBetaAccessManifest {
+  $url = $officialRepositoryBase.TrimEnd('/') + '/manifests/beta_access.json?ts=' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+  $tmp = Join-Path $StageDir 'beta_access_manifest.download.json'
+  try {
+    Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $tmp -TimeoutSec 20 -Headers @{'Cache-Control'='no-cache'}
+    $m = Read-SrJson $tmp
+    if([string]$m.format -ne 'SRSTUDIO_BETA_ACCESS_1') { throw 'Formato de acesso Beta invalido.' }
+    Copy-Item -LiteralPath $tmp -Destination $BetaAccessCachePath -Force
+    return $m
+  } catch {
+    Write-SrLog ('Validacao online da chave Beta indisponivel: ' + $_.Exception.Message)
+    if(Test-Path -LiteralPath $BetaAccessCachePath) {
+      $cached = Read-SrJson $BetaAccessCachePath
+      if([string]$cached.format -eq 'SRSTUDIO_BETA_ACCESS_1') {
+        Write-SrLog 'Usando manifesto de acesso Beta em cache.'
+        return $cached
+      }
+    }
+    throw 'Nao foi possivel validar o acesso ao canal Beta. Verifique a internet e tente novamente.'
+  }
+}
+
+function Find-SrBetaKeyEntry($Manifest,[string]$Hash) {
+  foreach($entry in @($Manifest.keys)) {
+    $enabled = [bool](Get-SrProperty $entry 'enabled' $false)
+    $expected = ([string](Get-SrProperty $entry 'sha256' '')).ToLowerInvariant()
+    if($enabled -and $expected -and ($expected -eq $Hash.ToLowerInvariant())) { return $entry }
+  }
+  return $null
+}
+
+function Test-SrStoredBetaAccess($Manifest) {
+  if(-not (Test-Path -LiteralPath $BetaAccessLocalPath)) { return $false }
+  try {
+    $local = Read-SrJson $BetaAccessLocalPath
+    $hash = ([string](Get-SrProperty $local 'key_sha256' '')).ToLowerInvariant()
+    if(-not $hash) { return $false }
+    return ($null -ne (Find-SrBetaKeyEntry $Manifest $hash))
+  } catch { return $false }
+}
+
+function Request-SrBetaAccess($Manifest) {
+  try { Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction Stop } catch { throw 'Nao foi possivel abrir a tela de chave Beta.' }
+  $message = "Digite sua CHAVE DE ACESSO BETA do SR Studio.`r`n`r`nA chave e universal e nao depende da versao da Beta."
+  for($attempt=1; $attempt -le 3; $attempt++) {
+    $entered = [Microsoft.VisualBasic.Interaction]::InputBox($message,'SR Studio - Acesso Beta','')
+    if([string]::IsNullOrWhiteSpace($entered)) { throw 'Acesso ao canal Beta cancelado.' }
+    $normalized = Normalize-SrBetaKey $entered
+    $hash = Get-SrTextSha256 $normalized
+    $entry = Find-SrBetaKeyEntry $Manifest $hash
+    if($null -ne $entry) {
+      $local = [ordered]@{
+        format = 'SRSTUDIO_BETA_ACCESS_LOCAL_1'
+        key_id = [string](Get-SrProperty $entry 'id' '')
+        key_sha256 = $hash
+        scope = 'beta'
+        activated_at = (Get-Date).ToString('o')
+      }
+      Save-SrJson $local $BetaAccessLocalPath
+      Write-SrLog ('Acesso Beta autorizado. Key ID: ' + [string]$local.key_id)
+      return
+    }
+    $message = "Chave invalida. Tentativa $attempt de 3.`r`n`r`nDigite novamente a CHAVE DE ACESSO BETA."
+  }
+  throw 'Chave de acesso Beta invalida.'
+}
+
+function Assert-SrBetaAccess {
+  if($channel -ne 'beta') { return }
+  $manifest = Get-SrBetaAccessManifest
+  if(Test-SrStoredBetaAccess $manifest) {
+    Write-SrLog 'Acesso Beta universal ja autorizado neste computador.'
+    return
+  }
+  Request-SrBetaAccess $manifest
+}
+
+if($channel -eq 'beta') { Assert-SrBetaAccess }
 
 function Resolve-SrManifest {
   $remoteBase = [string](Get-SrProperty $cfg 'remote_manifest_base' '')
