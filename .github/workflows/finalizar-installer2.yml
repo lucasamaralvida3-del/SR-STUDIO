@@ -1,0 +1,104 @@
+name: Finalizar Instalador SR Studio Setup 2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/finalizar-installer2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  finalizar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Baixar e verificar instaladores validados
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          gh release download 'v4.0.16-hybrid.stable4' -p 'SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd' -D dist --clobber
+          gh release download 'v4.0.16-hybrid.beta19' -p 'SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd' -D dist --clobber
+          $stable='dist/SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd'
+          $beta='dist/SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd'
+          $stableSha=(Get-FileHash -Algorithm SHA256 $stable).Hash.ToLowerInvariant()
+          $betaSha=(Get-FileHash -Algorithm SHA256 $beta).Hash.ToLowerInvariant()
+          if($stableSha -ne 'bd60f688c3a04c7db2ebd4b2ceb255ccca52d3dd222d10c55ea41ec4c973d385'){ throw "SHA Stable inesperado: $stableSha" }
+          if($betaSha -ne 'b84cbc97521f3243fcd67989303c6f2011aebf65d8a03cb200f72a38800280ec'){ throw "SHA Beta inesperado: $betaSha" }
+          if((Get-Item $stable).Length -ne 106430){ throw 'Tamanho Stable inesperado' }
+          if((Get-Item $beta).Length -ne 106428){ throw 'Tamanho Beta inesperado' }
+
+      - name: Criar release dedicada do instalador
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='v4.0.16-installer2'
+          $stable='dist/SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd'
+          $beta='dist/SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd'
+          cmd /c "gh release view $tag >nul 2>&1"
+          $exists=($LASTEXITCODE -eq 0)
+          if($exists){
+            gh release upload $tag $stable $beta --clobber
+          } else {
+            gh release create $tag $stable $beta --title 'SR Studio 4.0.16 - Instalador Zero Admin Setup 2' --notes 'Instalador corrigido do SR Studio 4.0.16. Corrige a atualização automática do Launcher para os manifestos Bundle atuais, força o canal solicitado em reinstalações e ignora aliases inválidos do Python em WindowsApps. Stable 4 e Beta 19 foram testadas em instalação limpa no Windows; a Stable também foi testada em reinstalação sobre configuração antiga quebrada.'
+          }
+
+      - name: Publicar manifesto oficial do instalador
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $stableFile='SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd'
+          $betaFile='SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd'
+          $stablePath=Join-Path 'dist' $stableFile
+          $betaPath=Join-Path 'dist' $betaFile
+          $stableSha=(Get-FileHash -Algorithm SHA256 $stablePath).Hash.ToLowerInvariant()
+          $betaSha=(Get-FileHash -Algorithm SHA256 $betaPath).Hash.ToLowerInvariant()
+          $stableSize=(Get-Item $stablePath).Length
+          $betaSize=(Get-Item $betaPath).Length
+          $now=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
+          $m=[ordered]@{
+            format='SRSTUDIO_INSTALLER_1'
+            product='SR Studio'
+            version='4.0.16-setup2'
+            published_at=$now
+            launcher_version='4.0.1-hybrid.base2.5'
+            zero_admin=$true
+            install_root='%LOCALAPPDATA%\SRStudio'
+            stable=[ordered]@{
+              target_version='4.0.16-hybrid.stable4'
+              file=$stableFile
+              url="https://github.com/${{ github.repository }}/releases/download/v4.0.16-installer2/$stableFile"
+              sha256=$stableSha
+              size=[int64]$stableSize
+            }
+            beta=[ordered]@{
+              target_version='4.0.16-hybrid.beta19'
+              file=$betaFile
+              url="https://github.com/${{ github.repository }}/releases/download/v4.0.16-installer2/$betaFile"
+              sha256=$betaSha
+              size=[int64]$betaSize
+            }
+            fixes=@(
+              'Suporte do Launcher ao SRSTUDIO_HYBRID_BUNDLE_1',
+              'Manifesto de autoatualização do Launcher corrigido',
+              'Canal Stable/Beta forçado corretamente na reinstalação',
+              'Alias inválido do Python em WindowsApps removido automaticamente'
+            )
+          }
+          New-Item -ItemType Directory -Path installer -Force | Out-Null
+          [IO.File]::WriteAllText('installer/manifest.json',(($m|ConvertTo-Json -Depth 20)+"`n"),(New-Object Text.UTF8Encoding($false)))
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add installer/manifest.json
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Finaliza instalador SR Studio 4.0.16 Setup 2'
+            git push origin HEAD:main
+          }
