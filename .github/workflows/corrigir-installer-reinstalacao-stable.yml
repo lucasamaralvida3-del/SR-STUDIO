@@ -1,0 +1,74 @@
+name: Corrigir reinstalacao Stable apos Beta
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/corrigir-installer-reinstalacao-stable.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Aplicar reset de estado Beta no instalador
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('installer/professional/SRStudioSetup.cs')
+          s = p.read_text(encoding='utf-8-sig')
+
+          s = s.replace('[assembly: AssemblyVersion("1.0.0.0")]', '[assembly: AssemblyVersion("1.1.0.0")]')
+          s = s.replace('[assembly: AssemblyFileVersion("1.0.0.0")]', '[assembly: AssemblyFileVersion("1.1.0.0")]')
+
+          marker = '''        internal static void WriteStableConfig()\n        {\n'''
+          if 'ResetForStableInstall' not in s:
+              method = '''        internal static void ResetForStableInstall()\n        {\n            PrepareDirectories();\n\n            // Uma instalacao Stable nunca deve herdar autorizacao/canal/estado Beta.\n            // Preserva apenas o runtime Python/cache grande para evitar downloads desnecessarios.\n            string[] stateFiles = new string[]\n            {\n                Path.Combine(ConfigDir, "beta_access.json"),\n                Path.Combine(ConfigDir, "launcher.json"),\n                Path.Combine(ConfigDir, "installed.json"),\n                Path.Combine(ConfigDir, "integrity.json"),\n                Path.Combine(CacheDir, "beta_access_manifest.json"),\n                Path.Combine(CacheDir, "last_manifest.json"),\n                Path.Combine(CacheDir, "last_manifest.repaired.json")\n            };\n            foreach (string file in stateFiles)\n            {\n                try { if (File.Exists(file)) File.Delete(file); } catch { }\n            }\n\n            string[] resetDirs = new string[]\n            {\n                Path.Combine(Root, "App"),\n                Path.Combine(Root, "Staging"),\n                Path.Combine(Root, "Backups")\n            };\n            foreach (string dir in resetDirs)\n            {\n                try { if (Directory.Exists(dir)) Directory.Delete(dir, true); } catch { }\n            }\n\n            Directory.CreateDirectory(ConfigDir);\n            Directory.CreateDirectory(CacheDir);\n        }\n\n'''
+              if marker not in s:
+                  raise SystemExit('Ponto WriteStableConfig nao encontrado')
+              s = s.replace(marker, method + marker, 1)
+
+          old = '''                SetProgress(15, "Preparando a instalação local...");\n                await Task.Run(delegate { OnlineInstaller.PrepareDirectories(); });\n\n                SetProgress(25, "Baixando Bootstrap oficial...");\n'''
+          new = '''                SetProgress(15, "Preparando instalação Stable limpa...");\n                await Task.Run(delegate\n                {\n                    OnlineInstaller.PrepareDirectories();\n                    OnlineInstaller.ResetForStableInstall();\n                });\n\n                SetProgress(25, "Baixando Bootstrap oficial...");\n'''
+          if old not in s and 'Preparando instalação Stable limpa' not in s:
+              raise SystemExit('Sequencia de instalacao nao encontrada')
+          s = s.replace(old, new, 1)
+
+          old_un = '''                string desktop = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory), "SR Studio.lnk");\n'''
+          if 'beta_access.json' not in s[s.find('internal static int UninstallInteractive'):s.find('internal static string ReadInstalledVersion')]:
+              pre = '''                // Remove primeiro credenciais/estado Beta para impedir qualquer heranca em uma reinstalacao.\n                try { File.Delete(Path.Combine(ConfigDir, "beta_access.json")); } catch { }\n                try { File.Delete(Path.Combine(CacheDir, "beta_access_manifest.json")); } catch { }\n                try { File.Delete(Path.Combine(ConfigDir, "launcher.json")); } catch { }\n                try { File.Delete(Path.Combine(ConfigDir, "installed.json")); } catch { }\n                try { File.Delete(Path.Combine(ConfigDir, "integrity.json")); } catch { }\n                try { File.Delete(Path.Combine(CacheDir, "last_manifest.json")); } catch { }\n                try { File.Delete(Path.Combine(CacheDir, "last_manifest.repaired.json")); } catch { }\n\n'''
+              pos = s.find('internal static int UninstallInteractive')
+              idx = s.find(old_un, pos)
+              if idx < 0:
+                  raise SystemExit('Ponto do uninstall nao encontrado')
+              s = s[:idx] + pre + s[idx:]
+
+          p.write_text(s, encoding='utf-8')
+
+      - name: Validar patch
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p='installer/professional/SRStudioSetup.cs'
+          Select-String -LiteralPath $p -SimpleMatch -Pattern 'ResetForStableInstall' | Out-Null
+          Select-String -LiteralPath $p -SimpleMatch -Pattern 'beta_access.json' | Out-Null
+          Select-String -LiteralPath $p -SimpleMatch -Pattern 'AssemblyVersion("1.1.0.0")' | Out-Null
+
+      - name: Publicar codigo corrigido
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add installer/professional/SRStudioSetup.cs
+          if(-not (git diff --cached --quiet)) {
+            git commit -m 'Corrige reinstalacao Stable apos ativacao Beta'
+            git push origin HEAD:main
+          }
