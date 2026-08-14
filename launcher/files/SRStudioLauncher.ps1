@@ -10,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 # GitHub and Python.org require modern TLS on Windows PowerShell 5.1.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$LauncherVersion = '4.0.1-hybrid.base2.8'
+$LauncherVersion = '4.0.1-hybrid.base2.9'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir      = Join-Path $SrHomeRoot 'App'
 $DataDir     = Join-Path $SrHomeRoot 'Data'
@@ -565,13 +565,16 @@ function Ensure-SrPythonRuntime {
         $tmpOut = Join-Path $LogDir 'python_candidate.out.log'
         $tmpErr = Join-Path $LogDir 'python_candidate.err.log'
         Remove-Item -LiteralPath $tmpOut,$tmpErr -Force -ErrorAction SilentlyContinue
-        $proc = Start-Process -FilePath $exe -ArgumentList @('-c',"import sys; print('%d.%d.%d' % sys.version_info[:3])") -Wait -PassThru -RedirectStandardOutput $tmpOut -RedirectStandardError $tmpErr -WindowStyle Hidden
+        $probe = Join-Path $LogDir 'python_candidate_probe.py'
+        [IO.File]::WriteAllText($probe,"import sys`nprint('%d.%d.%d' % sys.version_info[:3])`n",(New-Object Text.UTF8Encoding($false)))
+        & $exe $probe 1> $tmpOut 2> $tmpErr
+        $candidateExit = $LASTEXITCODE
         $ver = ''
         if(Test-Path $tmpOut) { $ver = (Get-Content -Raw -LiteralPath $tmpOut).Trim() }
-        if($proc.ExitCode -ne 0 -or -not $ver) {
+        if($candidateExit -ne 0 -or -not $ver) {
           $errText=''
           if(Test-Path $tmpErr) { try { $errText=(Get-Content -Raw -LiteralPath $tmpErr).Trim() } catch { } }
-          Write-SrLog ('Python candidate rejected. Exit=' + $proc.ExitCode + ' Path=' + $exe + $(if($errText){' Error=' + $errText}else{''}))
+          Write-SrLog ('Python candidate rejected. Exit=' + $candidateExit + ' Path=' + $exe + $(if($errText){' Error=' + $errText}else{''}))
           continue
         }
         if($ver -notmatch '^3\.12\.') { Write-SrLog ('Python candidate wrong version ' + $ver + ': ' + $exe); continue }
@@ -669,7 +672,10 @@ function Ensure-SrPythonRuntime {
     $stageErr = Join-Path $LogDir 'portable_python_start.err.log'
     Remove-Item -LiteralPath $stageOut,$stageErr -Force -ErrorAction SilentlyContinue
     try {
-      $stageProc = Start-Process -FilePath $stagePython -ArgumentList @('-c',"import sys; print('%d.%d.%d' % sys.version_info[:3])") -Wait -PassThru -RedirectStandardOutput $stageOut -RedirectStandardError $stageErr -WindowStyle Hidden
+      $stageProbe = Join-Path $LogDir 'portable_python_start_probe.py'
+      [IO.File]::WriteAllText($stageProbe,"import sys`nprint('%d.%d.%d' % sys.version_info[:3])`n",(New-Object Text.UTF8Encoding($false)))
+      & $stagePython $stageProbe 1> $stageOut 2> $stageErr
+      $stageExit = $LASTEXITCODE
     } catch {
       throw ('Runtime Python portatil nao conseguiu iniciar processo: ' + $_.Exception.Message)
     }
@@ -677,19 +683,22 @@ function Ensure-SrPythonRuntime {
     if(Test-Path $stageOut) { try { $stageVersion=(Get-Content -Raw -LiteralPath $stageOut).Trim() } catch { } }
     $stageError=''
     if(Test-Path $stageErr) { try { $stageError=(Get-Content -Raw -LiteralPath $stageErr).Trim() } catch { } }
-    Write-SrLog ('Portable Python startup exit=' + $stageProc.ExitCode + ' version=' + $stageVersion + $(if($stageError){' stderr=' + $stageError}else{''}))
-    if($stageProc.ExitCode -ne 0 -or $stageVersion -notmatch '^3\.12\.') {
-      throw ('Runtime Python portatil nao iniciou corretamente. Exit=' + $stageProc.ExitCode + $(if($stageError){' / ' + $stageError}else{''}))
+    Write-SrLog ('Portable Python startup exit=' + $stageExit + ' version=' + $stageVersion + $(if($stageError){' stderr=' + $stageError}else{''}))
+    if($stageExit -ne 0 -or $stageVersion -notmatch '^3\.12\.') {
+      throw ('Runtime Python portatil nao iniciou corretamente. Exit=' + $stageExit + $(if($stageError){' / ' + $stageError}else{''}))
     }
 
     $importOut = Join-Path $LogDir 'portable_python_imports.out.log'
     $importErr = Join-Path $LogDir 'portable_python_imports.err.log'
     Remove-Item -LiteralPath $importOut,$importErr -Force -ErrorAction SilentlyContinue
-    $importProc = Start-Process -FilePath $stagePython -ArgumentList @('-c',"import tkinter, openpyxl, pypdf, PIL, numpy, cv2, tkinterdnd2; print('SR_RUNTIME_OK')") -Wait -PassThru -RedirectStandardOutput $importOut -RedirectStandardError $importErr -WindowStyle Hidden
-    if($importProc.ExitCode -ne 0) {
+    $importProbe = Join-Path $LogDir 'portable_python_imports_probe.py'
+    [IO.File]::WriteAllText($importProbe,"import tkinter, openpyxl, pypdf, PIL, numpy, cv2, tkinterdnd2`nprint('SR_RUNTIME_OK')`n",(New-Object Text.UTF8Encoding($false)))
+    & $stagePython $importProbe 1> $importOut 2> $importErr
+    $importExit = $LASTEXITCODE
+    if($importExit -ne 0) {
       $importError=''
       if(Test-Path $importErr) { try { $importError=(Get-Content -Raw -LiteralPath $importErr).Trim() } catch { } }
-      throw ('Runtime Python portatil esta incompleto. Exit=' + $importProc.ExitCode + $(if($importError){' / ' + $importError}else{''}))
+      throw ('Runtime Python portatil esta incompleto. Exit=' + $importExit + $(if($importError){' / ' + $importError}else{''}))
     }
 
     Remove-Item -LiteralPath $pythonRoot -Recurse -Force -ErrorAction SilentlyContinue
