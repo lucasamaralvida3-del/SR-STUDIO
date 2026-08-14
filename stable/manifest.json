@@ -2,13 +2,13 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "stable",
-  "version": "4.0.16-hybrid.stable3",
-  "created_at": "2026-08-14T11:36:32-03:00",
+  "version": "4.0.16-hybrid.stable4",
+  "created_at": "2026-08-14T11:41:39-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-hybrid.stable3/SR_STUDIO_4.0.16_STABLE3_LOGO_OFICIAL.zip",
-    "sha256": "b30b03e45f9fdf85646a142e785f2d93aaa7d21f2ec12849885bb6699e1958cb",
-    "size": 2526472,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-hybrid.stable4/SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip",
+    "sha256": "4ac83d3e1a704caab3c77ae21270d74bbe56182d9b22c7ae1b445f83a30089d6",
+    "size": 2526714,
     "member_prefix": "files/"
   },
   "repair": {
@@ -22,5 +22,5 @@
     "Encartes5_beta11.js",
     "Encartes6_beta12.js"
   ],
-  "notes": "Stable 3: nova logo oficial SR aplicada na abertura, menu principal e ícone do aplicativo."
+  "notes": "Stable 4: o SR Studio abre sempre maximizado na área útil da tela; logo oficial e recursos anteriores preservados."
 }

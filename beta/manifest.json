@@ -2,13 +2,13 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.16-hybrid.beta18",
-  "created_at": "2026-08-14T11:36:32-03:00",
+  "version": "4.0.16-hybrid.beta19",
+  "created_at": "2026-08-14T11:41:39-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-hybrid.beta18/SR_STUDIO_4.0.16_BETA18_LOGO_OFICIAL.zip",
-    "sha256": "e2f8e85edffec4761b60b26c5af3d9d61f6b69edfc29f9124ddfe79b9ada5bcb",
-    "size": 2526480,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-hybrid.beta19/SR_STUDIO_4.0.16_BETA19_MAXIMIZADO.zip",
+    "sha256": "954050b80ddd993a518edd42a9377933ed4e1def95abe0f286d722e48376e7fa",
+    "size": 2526702,
     "member_prefix": "files/"
   },
   "repair": {
@@ -22,5 +22,5 @@
     "Encartes5_beta11.js",
     "Encartes6_beta12.js"
   ],
-  "notes": "Beta 18 sincronizada com Stable 3: mesma base e mesma nova logo oficial SR; muda apenas a identificação do canal."
+  "notes": "Beta 19 sincronizada com Stable 4: mesma base e abertura sempre maximizada; muda apenas a identificação do canal."
 }
