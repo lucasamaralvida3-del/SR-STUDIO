@@ -10,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 # GitHub and Python.org require modern TLS on Windows PowerShell 5.1.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$LauncherVersion = '4.0.1-hybrid.base2.5'
+$LauncherVersion = '4.0.1-hybrid.base2.6'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir      = Join-Path $SrHomeRoot 'App'
 $DataDir     = Join-Path $SrHomeRoot 'Data'
@@ -501,19 +501,87 @@ function Apply-SrBundleManifest($Source,$Manifest) {
 
 function Ensure-SrPythonRuntime {
   $pythonRoot = Join-Path $RuntimeDir 'python'
-  $pythonExe = Join-Path $pythonRoot 'python.exe'
-  $pythonwExe = Join-Path $pythonRoot 'pythonw.exe'
-  if(-not (Test-Path $pythonExe) -or -not (Test-Path $pythonwExe)) {
-    Write-SrLog 'Python runtime is not present. Preparing private per-user runtime (ZERO ADMIN).'
-    New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+  New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+
+  $candidateList = New-Object 'System.Collections.Generic.List[string]'
+  function Add-SrPythonCandidate([string]$Candidate) {
+    if(-not $Candidate) { return }
+    try { $expanded = Expand-SrEnv $Candidate } catch { $expanded = $Candidate }
+    if(-not $expanded) { return }
+    if($expanded -match '\\WindowsApps\\') { return }
+    if((Test-Path -LiteralPath $expanded -PathType Leaf) -and -not $candidateList.Contains($expanded)) {
+      $candidateList.Add($expanded)
+    }
+  }
+
+  # Primeiro, reutiliza Python 3.12 real ja existente. Nao força instalacao privada.
+  Add-SrPythonCandidate (Join-Path $pythonRoot 'pythonw.exe')
+  Add-SrPythonCandidate (Join-Path $pythonRoot 'python.exe')
+  Add-SrPythonCandidate ([string](Get-SrProperty $cfg 'python_command' ''))
+  Add-SrPythonCandidate (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\pythonw.exe')
+  Add-SrPythonCandidate (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe')
+  if($env:ProgramFiles) {
+    Add-SrPythonCandidate (Join-Path $env:ProgramFiles 'Python312\pythonw.exe')
+    Add-SrPythonCandidate (Join-Path $env:ProgramFiles 'Python312\python.exe')
+  }
+  try {
+    $pyCmd = Get-Command py.exe -ErrorAction SilentlyContinue
+    if($pyCmd -and $pyCmd.Source -notmatch '\\WindowsApps\\') {
+      $resolved = (& $pyCmd.Source -3.12 -c "import sys; print(sys.executable)" 2>$null | Select-Object -First 1)
+      if($resolved) { Add-SrPythonCandidate (([string]$resolved).Trim()) }
+    }
+  } catch { }
+  foreach($cmdName in @('pythonw.exe','python.exe')) {
+    try {
+      $cmd = Get-Command $cmdName -ErrorAction SilentlyContinue
+      if($cmd) { Add-SrPythonCandidate $cmd.Source }
+    } catch { }
+  }
+
+  function Resolve-SrPythonPair($Candidates) {
+    foreach($candidate in @($Candidates)) {
+      $leaf = [IO.Path]::GetFileName($candidate).ToLowerInvariant()
+      $dir = Split-Path $candidate -Parent
+      if($leaf -eq 'pythonw.exe') {
+        $wexe = $candidate
+        $exe = Join-Path $dir 'python.exe'
+      } else {
+        $exe = $candidate
+        $wexe = Join-Path $dir 'pythonw.exe'
+      }
+      if(-not (Test-Path -LiteralPath $exe -PathType Leaf)) { continue }
+      try {
+        $ver = (& $exe -c "import sys; print('%d.%d.%d' % sys.version_info[:3])" 2>$null | Select-Object -First 1)
+        if($LASTEXITCODE -ne 0 -or -not $ver) { continue }
+        if((([string]$ver).Trim()) -notmatch '^3\.12\.') { continue }
+        if(-not (Test-Path -LiteralPath $wexe -PathType Leaf)) { $wexe = $exe }
+        return @{ python=$exe; pythonw=$wexe; version=(([string]$ver).Trim()) }
+      } catch { }
+    }
+    return $null
+  }
+
+  $resolvedPair = Resolve-SrPythonPair $candidateList
+
+  if($null -eq $resolvedPair) {
+    Write-SrLog 'Python 3.12 real nao encontrado. Instalando Python oficial por usuario (ZERO ADMIN).'
     $installer = Join-Path $CacheDir 'python-3.12.10-amd64.exe'
     if(-not (Test-Path $installer)) {
       Invoke-SrDownload 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' $installer 300 3
     }
+
+    # So executa o instalador oficial se a assinatura digital for valida.
+    $sig = Get-AuthenticodeSignature -LiteralPath $installer
+    if($sig.Status -ne 'Valid') {
+      throw ('Python installer authenticity check failed. Signature status: ' + $sig.Status)
+    }
+    Write-SrLog ('Python installer signature valid: ' + $sig.SignerCertificate.Subject)
+
+    # Usa o destino padrao por usuario. O Launcher anterior usava TargetDir privado e
+    # podia receber exit code 0 sem encontrar python.exe na pasta esperada.
     $arguments = @(
       '/quiet',
       'InstallAllUsers=0',
-      ('TargetDir=' + $pythonRoot),
       'Include_launcher=0',
       'InstallLauncherAllUsers=0',
       'PrependPath=0',
@@ -529,25 +597,43 @@ function Ensure-SrPythonRuntime {
       'Include_pip=1'
     )
     $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
-    if($process.ExitCode -ne 0 -or -not (Test-Path $pythonExe)) {
-      throw ('Private Python runtime installation failed. Exit code: ' + $process.ExitCode)
+    Write-SrLog ('Python installer exit code: ' + $process.ExitCode)
+    if($process.ExitCode -ne 0) {
+      throw ('Python per-user installation failed. Exit code: ' + $process.ExitCode)
     }
-    Write-SrLog 'Private Python runtime prepared successfully.'
+
+    $postInstall = New-Object 'System.Collections.Generic.List[string]'
+    foreach($c in @(
+      (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\pythonw.exe'),
+      (Join-Path $env:LOCALAPPDATA 'Programs\Python\Python312\python.exe')
+    )) {
+      if(Test-Path -LiteralPath $c -PathType Leaf) { $postInstall.Add($c) }
+    }
+    $resolvedPair = Resolve-SrPythonPair $postInstall
+    if($null -eq $resolvedPair) {
+      throw ('Python installer returned success (exit code 0), but Python 3.12 could not be located. Check antivirus quarantine and ' + $LogDir)
+    }
   }
+
+  $pythonExe = [string]$resolvedPair.python
+  $pythonwExe = [string]$resolvedPair.pythonw
+  Write-SrLog ('Using Python ' + [string]$resolvedPair.version + ': ' + $pythonExe)
 
   $requirementsPath = Join-Path $AppDir 'requirements.txt'
   if(Test-Path $requirementsPath) {
     $requirementsHash = Get-SrSha256 $requirementsPath
-    $marker = Join-Path $pythonRoot 'srstudio_requirements.sha256'
-    $installedHash = ''
-    if(Test-Path $marker) { try { $installedHash = (Get-Content -Raw -LiteralPath $marker).Trim() } catch { } }
-    if($installedHash -ne $requirementsHash) {
-      Write-SrLog 'Installing/updating SR Studio Python dependencies in the private runtime.'
+    $marker = Join-Path $RuntimeDir 'srstudio_requirements.sha256'
+    $markerValue = $requirementsHash + '|' + $pythonExe
+    $installedMarker = ''
+    if(Test-Path $marker) { try { $installedMarker = (Get-Content -Raw -LiteralPath $marker).Trim() } catch { } }
+    if($installedMarker -ne $markerValue) {
+      Write-SrLog 'Installing/updating SR Studio Python dependencies.'
       $pipLog = Join-Path $LogDir 'pip_runtime.log'
+      $pipErr = $pipLog + '.err'
       $pipArgs = @('-m','pip','install','--disable-pip-version-check','--no-warn-script-location','--upgrade','-r',$requirementsPath)
-      $proc = Start-Process -FilePath $pythonExe -ArgumentList $pipArgs -Wait -PassThru -RedirectStandardOutput $pipLog -RedirectStandardError ($pipLog + '.err')
-      if($proc.ExitCode -ne 0) { throw ('Python dependencies failed to install. See ' + $pipLog + '.err') }
-      [IO.File]::WriteAllText($marker,$requirementsHash,(New-Object Text.UTF8Encoding($false)))
+      $proc = Start-Process -FilePath $pythonExe -ArgumentList $pipArgs -Wait -PassThru -RedirectStandardOutput $pipLog -RedirectStandardError $pipErr
+      if($proc.ExitCode -ne 0) { throw ('Python dependencies failed to install. See ' + $pipErr) }
+      [IO.File]::WriteAllText($marker,$markerValue,(New-Object Text.UTF8Encoding($false)))
       Write-SrLog 'SR Studio Python dependencies are ready.'
     }
   }
