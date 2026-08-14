@@ -1,10 +1,10 @@
-name: Publicar SR Studio Beta 14 Ajuste Visual Canva
+name: Publicar SR Studio Beta 15 Editor PRO
 
 on:
   push:
     paths:
       - '.github/workflows/publicar-beta9-xlsx.yml'
-      - 'staging/beta14/**'
+      - 'staging/beta15/**'
 
 permissions:
   contents: write
@@ -15,42 +15,43 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Montar e validar Beta 14
+      - name: Montar e validar Beta 15
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           rm -rf work dist && mkdir -p work dist
-          gh release download v4.0.12-hybrid.beta13 -p 'SR_STUDIO_4.0.12_BETA13_IMAGENS_CANVA.zip' -D dist
-          unzip -q dist/SR_STUDIO_4.0.12_BETA13_IMAGENS_CANVA.zip -d work
-          python staging/beta14/assemble.py
+          gh release download v4.0.13-hybrid.beta14 -p 'SR_STUDIO_4.0.13_BETA14_AJUSTE_VISUAL_CANVA.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.13_BETA14_AJUSTE_VISUAL_CANVA.zip -d work
+          python staging/beta15/assemble.py
           python -m compileall -q work/files
           node --check work/files/Encartes7_beta13.js
           node --check work/files/Encartes8_beta14.js
-          PYTHONPATH=work/files python staging/beta14/test_beta14.py
-          test -s work/files/EncartesPPTXFields.py
-          test -s work/files/Encartes8_beta14.js
+          node --check work/files/Encartes9_beta15.js
+          python staging/beta15/test_beta15.py
+          test -s work/files/Encartes9_beta15.js
           grep -q 'Encartes8_beta14.js' work/files/Encartes3_index.html
-          grep -q '4.0.13-hybrid.beta14' work/files/version.json
+          grep -q 'Encartes9_beta15.js' work/files/Encartes3_index.html
+          grep -q '4.0.14-hybrid.beta15' work/files/version.json
           find work -type d -name __pycache__ -prune -exec rm -rf {} + || true
           find work -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.xlsx' -o -name '*.xls' -o -name '*.csv' \) -delete
 
-      - name: Criar release e ativar Beta 14
+      - name: Criar release e ativar Beta 15
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
-          FILE='SR_STUDIO_4.0.13_BETA14_AJUSTE_VISUAL_CANVA.zip'
-          TAG='v4.0.13-hybrid.beta14'
+          FILE='SR_STUDIO_4.0.14_BETA15_EDITOR_PRO.zip'
+          TAG='v4.0.14-hybrid.beta15'
           (cd work && zip -qr "../dist/$FILE" .)
           SHA=$(sha256sum "dist/$FILE" | awk '{print $1}')
           SIZE=$(stat -c%s "dist/$FILE")
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" "dist/$FILE" --clobber
           else
-            gh release create "$TAG" "dist/$FILE" --prerelease --title 'SR Studio 4.0.13 Beta 14 - Ajuste Visual Canva' --notes 'Beta 14: corrige hierarquia de camadas do PPTX Canva, mantendo a imagem do produto abaixo de nome e preço; adiciona recorte seguro dentro do slot, evita invasão da área de preço, aplica autoajuste de fonte para nome/R$/reais/centavos/unidade e preserva alinhamento horizontal e vertical do PowerPoint.'
+            gh release create "$TAG" "dist/$FILE" --prerelease --title 'SR Studio 4.0.14 Beta 15 - Editor PRO' --notes 'Beta 15: grande salto do Encartes Studio. Adiciona edição manual por partes (nome, imagem, R$, reais, centavos, unidade, limite e APP), mover/redimensionar, zoom e foco da imagem, guias inteligentes, camadas e bloqueio, reset por parte/produto/página, copiar ajustes para blocos semelhantes, trocar produto mantendo o bloco, preencher página, comparar original/preenchido, aprender e reaplicar mapeamento do template, backup completo e versões restauráveis do projeto.'
           fi
           export SHA SIZE FILE TAG
           python - <<'PY'
@@ -59,20 +60,20 @@ jobs:
           from pathlib import Path
           p=Path('beta/manifest.json')
           m=json.loads(p.read_text(encoding='utf-8'))
-          m['version']='4.0.13-hybrid.beta14'
+          m['version']='4.0.14-hybrid.beta15'
           m['created_at']=datetime.now(timezone(timedelta(hours=-3))).isoformat(timespec='seconds')
           m['bundle']={
             'url':f"https://github.com/${{ github.repository }}/releases/download/{os.environ['TAG']}/{os.environ['FILE']}",
             'sha256':os.environ['SHA'],'size':int(os.environ['SIZE']),'member_prefix':'files/'
           }
           m['delete']=['Encartes3_app.js','Encartes3_style.css','Encartes4_beta6.js','Encartes5_beta11.js','Encartes6_beta12.js']
-          m['notes']='Beta 14: ajuste visual do Canva com camadas corretas, imagem recortada dentro do slot, autoajuste de nome e preço e alinhamento fiel ao PPTX.'
+          m['notes']='Beta 15: Editor PRO com edição manual por partes, aprendizado de template, guias/camadas, imagem com zoom e foco, cópia de ajustes, backup e versões do projeto.'
           p.write_text(json.dumps(m,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
           PY
           git config user.name 'SR Studio Update Bot'
           git config user.email 'actions@users.noreply.github.com'
           git add beta/manifest.json
           if ! git diff --cached --quiet; then
-            git commit -m 'Ativa SR Studio 4.0.13 Beta 14'
+            git commit -m 'Ativa SR Studio 4.0.14 Beta 15'
             git push
           fi
