@@ -1,0 +1,129 @@
+name: Publicar SR Studio Stable 3 e Beta 18 - Logo Oficial
+
+on:
+  push:
+    paths:
+      - '.github/workflows/publicar-logo-stable3-beta18.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Montar e validar Stable 3 e Beta 18
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf base work work_beta dist && mkdir -p base dist
+          gh release download v4.0.16-hybrid.stable2 -p 'SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip -d base
+          cp -a base work
+          cp -a base work_beta
+
+          python staging/logo_update/assemble_logo.py stable work
+          python staging/logo_update/assemble_logo.py beta work_beta
+
+          python -m compileall -q work/files work_beta/files
+          node --check work/files/Encartes10_beta16.js
+          node --check work_beta/files/Encartes10_beta16.js
+
+          test -s work/files/assets/SR_logo.png
+          test -s work/files/assets/SR_Studio.ico
+          test -s work_beta/files/assets/SR_logo.png
+          test -s work_beta/files/assets/SR_Studio.ico
+
+          cmp staging/logo_update/source/SR_logo.png work/files/assets/SR_logo.png
+          cmp staging/logo_update/source/SR_logo.png work_beta/files/assets/SR_logo.png
+          cmp staging/logo_update/source/SR_Studio.ico work/files/assets/SR_Studio.ico
+          cmp staging/logo_update/source/SR_Studio.ico work_beta/files/assets/SR_Studio.ico
+
+          grep -q 'BRAND_LOGO = ASSETS / "SR_logo.png"' work/files/SR_Studio_Gerador.py
+          grep -q 'self.logo = _brand_photo(self.root, 78)' work/files/SR_Studio_Gerador.py
+          grep -q 'self.logo_img=_brand_photo(self, 58)' work/files/SR_Studio_Gerador.py
+          grep -q 'self.iconbitmap(str(BRAND_ICON))' work/files/SR_Studio_Gerador.py
+          grep -q '4.0.16-hybrid.stable3' work/files/version.json
+          grep -q '4.0.16 • Stable 3' work/files/Encartes10_beta16.js
+
+          grep -q 'BRAND_LOGO = ASSETS / "SR_logo.png"' work_beta/files/SR_Studio_Gerador.py
+          grep -q 'self.logo = _brand_photo(self.root, 78)' work_beta/files/SR_Studio_Gerador.py
+          grep -q 'self.logo_img=_brand_photo(self, 58)' work_beta/files/SR_Studio_Gerador.py
+          grep -q 'self.iconbitmap(str(BRAND_ICON))' work_beta/files/SR_Studio_Gerador.py
+          grep -q '4.0.16-hybrid.beta18' work_beta/files/version.json
+          grep -q '4.0.16 • Beta 18' work_beta/files/Encartes10_beta16.js
+
+          if grep -q 'Substitui a antiga imagem SR_logo.png' work/files/SR_Studio_Gerador.py; then
+            echo 'Bloco antigo de logo ainda presente' >&2; exit 1
+          fi
+
+          find work work_beta -type d -name __pycache__ -prune -exec rm -rf {} + || true
+          find work work_beta -type f \( -name '*.db' -o -name '*.sqlite' -o -name '*.sqlite3' -o -name '*.xlsx' -o -name '*.xls' -o -name '*.csv' \) -delete
+
+      - name: Criar releases e sincronizar manifestos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          STABLE_FILE='SR_STUDIO_4.0.16_STABLE3_LOGO_OFICIAL.zip'
+          STABLE_TAG='v4.0.16-hybrid.stable3'
+          BETA_FILE='SR_STUDIO_4.0.16_BETA18_LOGO_OFICIAL.zip'
+          BETA_TAG='v4.0.16-hybrid.beta18'
+
+          (cd work && zip -qr "../dist/$STABLE_FILE" .)
+          (cd work_beta && zip -qr "../dist/$BETA_FILE" .)
+
+          STABLE_SHA=$(sha256sum "dist/$STABLE_FILE" | awk '{print $1}')
+          STABLE_SIZE=$(stat -c%s "dist/$STABLE_FILE")
+          BETA_SHA=$(sha256sum "dist/$BETA_FILE" | awk '{print $1}')
+          BETA_SIZE=$(stat -c%s "dist/$BETA_FILE")
+
+          if gh release view "$STABLE_TAG" >/dev/null 2>&1; then
+            gh release upload "$STABLE_TAG" "dist/$STABLE_FILE" --clobber
+          else
+            gh release create "$STABLE_TAG" "dist/$STABLE_FILE" --title 'SR Studio 4.0.16 Stable 3 - Logo Oficial' --notes 'Stable 3: aplica a nova logo oficial SR anexada pelo projeto na tela de abertura, menu lateral e ícone da janela/aplicativo. Nenhuma funcionalidade foi removida ou alterada; base funcional permanece a Stable 2.'
+          fi
+
+          if gh release view "$BETA_TAG" >/dev/null 2>&1; then
+            gh release upload "$BETA_TAG" "dist/$BETA_FILE" --clobber
+          else
+            gh release create "$BETA_TAG" "dist/$BETA_FILE" --prerelease --title 'SR Studio 4.0.16 Beta 18 - Logo Oficial' --notes 'Beta 18 sincronizada com a Stable 3: mesma base funcional e a mesma nova logo oficial SR na abertura, menu lateral e ícone do aplicativo. Diferença apenas de identificação do canal.'
+          fi
+
+          export STABLE_FILE STABLE_TAG STABLE_SHA STABLE_SIZE BETA_FILE BETA_TAG BETA_SHA BETA_SIZE
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone, timedelta
+          from pathlib import Path
+          now=datetime.now(timezone(timedelta(hours=-3))).isoformat(timespec='seconds')
+          common_delete=['Encartes3_app.js','Encartes3_style.css','Encartes4_beta6.js','Encartes5_beta11.js','Encartes6_beta12.js']
+
+          sp=Path('stable/manifest.json'); sm=json.loads(sp.read_text(encoding='utf-8'))
+          sm.update(format='SRSTUDIO_HYBRID_BUNDLE_1',product='SR Studio Desktop Core',channel='stable',version='4.0.16-hybrid.stable3',created_at=now,min_launcher_version='4.0.0-hybrid.pro1.1')
+          sm['bundle']={'url':f"https://github.com/${{ github.repository }}/releases/download/{os.environ['STABLE_TAG']}/{os.environ['STABLE_FILE']}",'sha256':os.environ['STABLE_SHA'],'size':int(os.environ['STABLE_SIZE']),'member_prefix':'files/'}
+          sm['repair']={'mode':'local_hash_catalog','full_check_every_days':7}
+          sm['delete']=common_delete
+          sm['notes']='Stable 3: nova logo oficial SR aplicada na abertura, menu principal e ícone do aplicativo.'
+          sp.write_text(json.dumps(sm,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+
+          bp=Path('beta/manifest.json'); bm=json.loads(bp.read_text(encoding='utf-8'))
+          bm.update(format='SRSTUDIO_HYBRID_BUNDLE_1',product='SR Studio Desktop Core',channel='beta',version='4.0.16-hybrid.beta18',created_at=now,min_launcher_version='4.0.0-hybrid.pro1.1')
+          bm['bundle']={'url':f"https://github.com/${{ github.repository }}/releases/download/{os.environ['BETA_TAG']}/{os.environ['BETA_FILE']}",'sha256':os.environ['BETA_SHA'],'size':int(os.environ['BETA_SIZE']),'member_prefix':'files/'}
+          bm['repair']={'mode':'local_hash_catalog','full_check_every_days':7}
+          bm['delete']=common_delete
+          bm['notes']='Beta 18 sincronizada com Stable 3: mesma base e mesma nova logo oficial SR; muda apenas a identificação do canal.'
+          bp.write_text(json.dumps(bm,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
+          PY
+
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add stable/manifest.json beta/manifest.json
+          if ! git diff --cached --quiet; then
+            git commit -m 'Ativa Stable 3 e Beta 18 com nova logo oficial'
+            git push
+          fi
