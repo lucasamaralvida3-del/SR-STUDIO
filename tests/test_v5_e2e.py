@@ -10,7 +10,7 @@ from openpyxl import Workbook
 from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1]
-APP = ROOT / "src" / "sr_studio"
+APP = Path(os.environ.get("SR_STUDIO_APP_UNDER_TEST") or (ROOT / "src" / "sr_studio")).resolve()
 if str(APP) not in sys.path:
     sys.path.insert(0, str(APP))
 
