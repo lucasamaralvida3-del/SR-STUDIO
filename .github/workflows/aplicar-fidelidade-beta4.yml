@@ -30,7 +30,7 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           python build/rebuild_brand_assets.py
-          python - <<'PY'
+          @'
           from PIL import Image
           from pathlib import Path
           p=Path('src/sr_studio/assets/SR_logo.png')
@@ -38,7 +38,8 @@ jobs:
               print('LOGO_DIM',im.size)
               assert im.width==2048 and im.height==2048
           assert Path('src/sr_studio/assets/SR_Studio.ico').stat().st_size>10000
-          PY
+          '@ | Set-Content -LiteralPath 'verify_brand.py' -Encoding UTF8
+          python verify_brand.py
 
       - name: Ativar HiDPI e camada visual Beta 4
         shell: powershell
@@ -87,13 +88,14 @@ jobs:
           $env:PYTHONPATH=(Resolve-Path 'src/sr_studio').Path
           python -c "import SR_Studio_Gerador as app; assert getattr(app.App,'_SR5_VISUAL_INSTALLED',False); assert getattr(app.App,'_SR5_FIDELITY_INSTALLED',False); print('APP_FIDELITY_OK',app.APP_VERSION_INFO)"
 
-      - name: Verificar ausência dos ícones raster improvisados no novo shell
+      - name: Verificar ícones vetoriais e HiDPI
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           $f=Get-Content -Raw 'src/sr_studio/ui/studio5_fidelity.py'
           if($f -notmatch 'class VectorIcon'){ throw 'VectorIcon ausente' }
-          if($f -notmatch 'Per-Monitor'){ Write-Host 'HiDPI validado pelo módulo dedicado' }
+          $dpi=Get-Content -Raw 'src/sr_studio/ui/hidpi.py'
+          if($dpi -notmatch 'SetProcessDpiAwarenessContext'){ throw 'Per-Monitor V2 ausente' }
           $js=Get-Content -Raw 'src/sr_studio/Encartes13_fidelity.js'
           if($js -notmatch '<svg'){ throw 'SVG vetorial ausente no Encartes' }
 
@@ -101,7 +103,7 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          Remove-Item -LiteralPath 'apply_beta4.py' -Force -ErrorAction SilentlyContinue
+          Remove-Item -LiteralPath 'apply_beta4.py','verify_brand.py' -Force -ErrorAction SilentlyContinue
           git config user.name 'SR Studio Update Bot'
           git config user.email 'actions@users.noreply.github.com'
           git add src/sr_studio/SR_Studio_Gerador.py src/sr_studio/Encartes3_index.html src/sr_studio/assets/SR_logo.png src/sr_studio/assets/SR_Studio.ico
