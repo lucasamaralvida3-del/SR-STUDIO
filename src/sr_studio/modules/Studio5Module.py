@@ -665,3 +665,7 @@ class PreviewRowsDialog(tk.Toplevel):
         for i, row in enumerate(rows): tree.insert("", "end", iid=str(i), values=[row.get(c, "") for c in cols])
         tree.pack(fill="both", expand=True, padx=10, pady=10)
         tk.Label(self, text=f"{len(rows)} linha(s) na prévia • {len(data.get('issues') or [])} alerta(s)", fg="#667085").pack(anchor="w", padx=10, pady=(0, 10))
+
+# SR Studio 5.0 — aprimoramentos instalados após a definição completa da Central.
+from ui.studio5_enhancements import install_studio5_enhancements as _install_studio5_enhancements
+_install_studio5_enhancements(Studio5Panel)
