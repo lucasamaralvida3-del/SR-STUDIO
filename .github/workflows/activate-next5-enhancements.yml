@@ -1,0 +1,40 @@
+name: Ativar aprimoramentos da Central 5.0
+
+on:
+  push:
+    branches:
+      - next/5.0
+    paths:
+      - '.github/workflows/activate-next5-enhancements.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  ativar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Ativar módulos visuais e exportação por projeto
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python build/apply_studio5_enhancements.py src/sr_studio/modules/Studio5Module.py
+          python -m py_compile src/sr_studio/modules/Studio5Module.py src/sr_studio/ui/studio5_enhancements.py src/sr_studio/ui/template_mapping_visual.py src/sr_studio/services/project_export.py
+          node --check src/sr_studio/Encartes11_v5.js
+          $text=Get-Content -Raw 'src/sr_studio/modules/Studio5Module.py'
+          if(-not $text.Contains('_install_studio5_enhancements(Studio5Panel)')){ throw 'Aprimoramentos não ativados' }
+      - name: Commitar ativação
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Architecture Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/sr_studio/modules/Studio5Module.py
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Ativa mapeamento visual e exportação direta de projetos 5.0'
+            git pull --rebase origin next/5.0
+            git push origin HEAD:next/5.0
+          }
