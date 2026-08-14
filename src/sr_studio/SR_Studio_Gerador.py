@@ -4024,6 +4024,12 @@ class App(APP_TK_BASE):
         if thumb_tasks:threading.Thread(target=thumb_worker,daemon=True).start()
 
 
+# SR Studio 5.0 Beta 2 — nova identidade visual.
+# O patch é aplicado depois da definição completa de App, preservando o núcleo funcional.
+from ui.studio5_visual import install_studio5_visual as _install_studio5_visual
+_install_studio5_visual(App)
+
+
 if __name__=="__main__":
     run_startup_splash()
     App().mainloop()
