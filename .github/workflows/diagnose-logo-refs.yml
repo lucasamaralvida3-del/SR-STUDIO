@@ -1,0 +1,41 @@
+name: Diagnosticar referencias da logo
+
+on:
+  push:
+    paths:
+      - '.github/workflows/diagnose-logo-refs.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Localizar referências exatas
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work dist && mkdir -p work dist staging/logo_update
+          gh release download v4.0.16-hybrid.stable2 -p 'SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip' -D dist
+          unzip -q dist/SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip -d work
+          {
+            echo '### SR_logo.png'
+            grep -RniF 'SR_logo.png' work/files --include='*.py' --include='*.html' --include='*.js' --include='*.css' || true
+            echo '### SR_Studio.ico'
+            grep -RniF 'SR_Studio.ico' work/files --include='*.py' --include='*.ps1' --include='*.html' --include='*.js' --include='*.css' || true
+            echo '### iconphoto/iconbitmap'
+            grep -RniE 'iconphoto|iconbitmap' work/files --include='*.py' || true
+            echo '### splash'
+            grep -RniE 'splash|abertura|loading|carregando' work/files --include='*.py' | head -n 150 || true
+          } > staging/logo_update/references.txt
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add staging/logo_update/references.txt
+          if ! git diff --cached --quiet; then
+            git commit -m 'Mapeia referências da logo do SR Studio'
+            git push
+          fi
