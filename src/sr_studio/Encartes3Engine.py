@@ -15,6 +15,7 @@ import tkinter as tk
 from SRStudio21 import PRODUCT_DB, norm
 from ProductImages import get_image_info
 from EncartesPPTX import parse_pptx, save_font, list_fonts, font_path, asset_path
+from services.project_store import load_project, save_project, snapshot_project, list_projects
 
 APP_DIR = Path(__file__).resolve().parent
 EDITOR_HTML = APP_DIR / 'Encartes3_index.html'
@@ -24,6 +25,7 @@ REQUIRED_EDITOR_FILES = (
     APP_DIR / 'Encartes8_beta14.js',
     APP_DIR / 'Encartes9_beta15.js',
     APP_DIR / 'Encartes10_beta16.js',
+    APP_DIR / 'Encartes11_v5.js',
     APP_DIR / 'EncartesPPTX.py',
     APP_DIR / 'xlsx.full.min.js',
 )
@@ -63,9 +65,9 @@ def _lookup_product(con,item):
     if path.is_file(): image='/api/encartes/product-image?identity='+quote(identity,safe='')
     elif info.get('official_url'): image=str(info.get('official_url'))
     return {'found':True,'match_method':method,'identity_key':identity,'codigo':d.get('codigo') or '',
-            'codigo_ciss':d.get('codigo_ciss') or '','canonical_name':d.get('canonical_name') or name,
+            'codigo_ciss':d.get('codigo_ciss') or '','canonical_name':d.get('commercial_name') or d.get('canonical_name') or name,
             'unidade':d.get('unidade') or '','categoria':d.get('categoria') or info.get('category') or '',
-            'image':image,'has_official_image':bool(image)}
+            'ean':d.get('ean') or '','image':image,'has_official_image':bool(image)}
 
 
 def _resolve_products(items):
@@ -78,6 +80,17 @@ def _resolve_products(items):
             except Exception as exc: out.append({'found':False,'error':str(exc)})
     return out
 
+
+def _v5_project_state(project):
+    state=project.get('state') or {}
+    enc=state.get('encartes_state')
+    if isinstance(enc,dict): return enc
+    return {
+        'products':state.get('products') or [],'pages':state.get('pages') or [],'pageIndex':0,'selected':None,
+        'grid':True,'snap':True,'zoom':.75,'categoryFilter':'TODAS','fonts':[],
+        'projectName':project.get('name') or 'Projeto SR Studio','partEditMode':True,'proSelection':[],
+        'cropKey':None,'proGroups':{}
+    }
 
 
 class _QuietHandler(SimpleHTTPRequestHandler):
@@ -101,6 +114,28 @@ class _QuietHandler(SimpleHTTPRequestHandler):
             if path=='/api/encartes/font-upload':
                 raw=self._body(40*1024*1024); name=(qs.get('name') or ['fonte.ttf'])[0]
                 return self._json({'ok':True,'font':save_font(name,raw)})
+            if path=='/api/v5/project/save':
+                project_id=(qs.get('id') or [''])[0].strip()
+                if not project_id: return self._json({'ok':False,'error':'PROJECT_ID_AUSENTE'},400)
+                raw=self._body(60*1024*1024); data=json.loads(raw.decode('utf-8')) if raw else {}
+                state=data.get('state') if isinstance(data,dict) else None
+                if not isinstance(state,dict): return self._json({'ok':False,'error':'STATE_INVALIDO'},400)
+                autosave=str((qs.get('autosave') or ['0'])[0]).lower() in {'1','true','sim','yes'}
+                project=load_project(project_id,prefer_autosave=False)
+                project.setdefault('state',{})['encartes_state']=state
+                project['state']['products']=state.get('products') or []
+                project['state']['pages']=state.get('pages') or []
+                project['name']=str(state.get('projectName') or project.get('name') or 'Projeto SR Studio')
+                saved=save_project(project,autosave=autosave)
+                if not autosave:
+                    try: snapshot_project(project_id,'Salvamento manual',is_auto=False)
+                    except Exception: pass
+                return self._json({'ok':True,'project_id':project_id,'autosave':autosave,'revision':saved.get('revision',0),'saved_at':saved.get('autosave_at') or saved.get('updated_at')})
+            if path=='/api/v5/project/snapshot':
+                project_id=(qs.get('id') or [''])[0].strip(); raw=self._body(1024*1024); data=json.loads(raw.decode('utf-8')) if raw else {}
+                if not project_id:return self._json({'ok':False,'error':'PROJECT_ID_AUSENTE'},400)
+                item=snapshot_project(project_id,str(data.get('label') or 'Versão manual'),is_auto=False)
+                return self._json({'ok':True,'snapshot':item})
             return self._json({'ok':False,'error':'ROTA_NAO_ENCONTRADA'},404)
         except Exception as exc:
             return self._json({'ok':False,'error':str(exc)},500)
@@ -109,7 +144,20 @@ class _QuietHandler(SimpleHTTPRequestHandler):
         p=Path(p);raw=p.read_bytes();self.send_response(200);self.send_header('Content-Type',mimetypes.guess_type(str(p))[0] or 'application/octet-stream');self.send_header('Content-Length',str(len(raw)));self.send_header('Cache-Control',cache);self.end_headers();self.wfile.write(raw)
     def do_GET(self):
         parsed=urlparse(self.path);qs=parse_qs(parsed.query)
-        if parsed.path=='/api/encartes/health': return self._json({'ok':True,'product_db':PRODUCT_DB.is_file(),'version':'4.0.16-stable2'})
+        if parsed.path=='/api/encartes/health': return self._json({'ok':True,'product_db':PRODUCT_DB.is_file(),'version':'5.0.0-next'})
+        if parsed.path=='/api/v5/projects':
+            try:
+                items=[{'id':x.get('id'),'name':x.get('name'),'campaign':x.get('campaign'),'updated_at':x.get('updated_at')} for x in list_projects()]
+                return self._json({'ok':True,'projects':items})
+            except Exception as exc:return self._json({'ok':False,'error':str(exc)},500)
+        if parsed.path=='/api/v5/project':
+            project_id=(qs.get('id') or [''])[0].strip()
+            if not project_id:return self._json({'ok':False,'error':'PROJECT_ID_AUSENTE'},400)
+            try:
+                prefer=str((qs.get('autosave') or ['0'])[0]).lower() in {'1','true','sim','yes'}
+                project=load_project(project_id,prefer_autosave=prefer)
+                return self._json({'ok':True,'project_id':project_id,'project':project,'state':_v5_project_state(project)})
+            except Exception as exc:return self._json({'ok':False,'error':str(exc)},404)
         if parsed.path=='/api/encartes/fonts': return self._json({'ok':True,'fonts':list_fonts()})
         if parsed.path=='/api/encartes/font-file': return self._serve_file(font_path((qs.get('name') or [''])[0]),'public, max-age=3600')
         if parsed.path=='/api/encartes/pptx-asset': return self._serve_file(asset_path((qs.get('session') or [''])[0],(qs.get('name') or [''])[0]))
@@ -150,10 +198,10 @@ _AUTO_OPENED=False
 class Encartes3Panel(tk.Frame):
     def __init__(self,parent,app=None,pal=None):
         self.app=app;self.pal=pal or {};bg=self.pal.get('APP_BG',self.pal.get('BG','#0E141D'));fg=self.pal.get('TEXT','#F3F6FA');muted=self.pal.get('MUTED','#9EABBC');blue=self.pal.get('BLUE2','#82B0FF')
-        super().__init__(parent,bg=bg);self.status=tk.StringVar(value='Abrindo o novo Encartes Studio...');self.url=''
+        super().__init__(parent,bg=bg);self.status=tk.StringVar(value='Abrindo o Encartes Studio 5.0...');self.url=''
         body=tk.Frame(self,bg=bg);body.pack(fill='both',expand=True,padx=30,pady=30)
         tk.Label(body,text='ENCARTES STUDIO',bg=bg,fg=fg,font=('Segoe UI',20,'bold')).pack(pady=(80,8))
-        tk.Label(body,text='STABLE 2 • EDITOR VISUAL + CORRETOR ORTOGRÁFICO',bg=bg,fg=blue,font=('Segoe UI',10,'bold')).pack()
+        tk.Label(body,text='SR STUDIO 5.0 • EDITOR VISUAL + PROJETOS + AUTOSAVE',bg=bg,fg=blue,font=('Segoe UI',10,'bold')).pack()
         tk.Label(body,textvariable=self.status,bg=bg,fg=muted,font=('Segoe UI',10)).pack(pady=18)
         tk.Button(body,text='ABRIR EDITOR',command=self.open_editor,bg=self.pal.get('BLUE','#1769aa'),fg='white',bd=0,padx=28,pady=12,font=('Segoe UI',10,'bold')).pack()
         self.after(180,self._auto_open)
@@ -161,12 +209,12 @@ class Encartes3Panel(tk.Frame):
         missing=_missing_editor_files()
         if missing:self.status.set('● ERRO — arquivos ausentes: '+', '.join(missing));return False
         try:
-            self.url=local_editor_url();urllib.request.urlopen(self.url,timeout=2).close();self.status.set('● PRONTO — novo editor local disponível');return True
+            self.url=local_editor_url();urllib.request.urlopen(self.url,timeout=2).close();self.status.set('● PRONTO — editor local 5.0 disponível');return True
         except Exception as exc:self.status.set('● ERRO — '+str(exc));return False
     def _auto_open(self):
         global _AUTO_OPENED
         if not _AUTO_OPENED and self.check():_AUTO_OPENED=True;self.open_editor()
     def open_editor(self):
         if not self.check():return
-        try:_open_app(self.url);self.status.set('● ABERTO — novo editor iniciado')
+        try:_open_app(self.url);self.status.set('● ABERTO — editor iniciado')
         except Exception as exc:self.status.set('● ERRO AO ABRIR — '+str(exc))
