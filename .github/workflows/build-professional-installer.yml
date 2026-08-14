@@ -107,9 +107,14 @@ jobs:
           - Cria atalhos com a identidade visual oficial do SR Studio.
           - Nas proximas aberturas, Bootstrap e Launcher continuam sincronizando o repositorio.
           "@
-          if(gh release view $tag *> $null) {
+          cmd /c "gh release view $tag >nul 2>&1"
+          $exists = ($LASTEXITCODE -eq 0)
+          if($exists) {
             gh release upload $tag 'dist/SR_Studio_Setup.exe' 'dist/SR_Studio_Setup.sha256.txt' --clobber
+            if($LASTEXITCODE -ne 0) { throw 'Falha ao substituir assets da release.' }
             gh release edit $tag --title $title --notes $notes --latest=false
+            if($LASTEXITCODE -ne 0) { throw 'Falha ao atualizar release.' }
           } else {
             gh release create $tag 'dist/SR_Studio_Setup.exe' 'dist/SR_Studio_Setup.sha256.txt' --title $title --notes $notes --latest=false
+            if($LASTEXITCODE -ne 0) { throw 'Falha ao criar release do instalador.' }
           }
