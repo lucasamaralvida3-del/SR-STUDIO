@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -67,7 +68,7 @@ _sr5_require_official_launcher()
 
 def patch_launcher() -> None:
     text = LAUNCHER_FILE.read_text(encoding="utf-8-sig")
-    text = text.replace("$LauncherVersion = '4.0.1-hybrid.base3.1'", "$LauncherVersion = '4.0.1-hybrid.base3.2'", 1)
+    text = re.sub(r"\$LauncherVersion\s*=\s*'4\.0\.1-hybrid\.base3\.1'", "$LauncherVersion = '4.0.1-hybrid.base3.2'", text, count=1)
     if LAUNCHER_MARKER not in text:
         anchor = "function Start-SrDesktop {\n"
         if anchor not in text:
@@ -97,7 +98,18 @@ function Start-SrDesktop {
 '''
         text = text.replace(anchor, helper, 1)
         text = text.replace("Start-Process -FilePath $entry -WorkingDirectory $AppDir", "Start-SrGuardedProcess $entry @() $AppDir")
-        text = text.replace("Start-Process -FilePath $pythonPath -ArgumentList @('\\\"' + $entry + '\\\"') -WorkingDirectory $AppDir", "Start-SrGuardedProcess $pythonPath @('\\\"' + $entry + '\\\"') $AppDir")
+        text, count_py = re.subn(
+            r"Start-Process\s+-FilePath\s+\$pythonPath\s+-ArgumentList\s+@\((.*?)\)\s+-WorkingDirectory\s+\$AppDir",
+            r"Start-SrGuardedProcess $pythonPath @(\1) $AppDir",
+            text,
+            count=1,
+        )
+        if count_py != 1:
+            raise RuntimeError("Chamada Python do Launcher nao foi substituida")
+    if "Start-Process -FilePath $pythonPath" in text:
+        raise RuntimeError("Launcher ainda possui abertura Python sem guard")
+    if text.count("Start-SrGuardedProcess $entry @() $AppDir") < 2:
+        raise RuntimeError("Aberturas EXE/fallback nao foram protegidas")
     LAUNCHER_FILE.write_text(text, encoding="utf-8")
 
 
@@ -110,6 +122,7 @@ def main() -> None:
     assert "SR_STUDIO_LAUNCHED_BY_UPDATER" in app
     assert LAUNCHER_MARKER in launcher
     assert "4.0.1-hybrid.base3.2" in launcher
+    assert "Start-SrGuardedProcess $pythonPath" in launcher
     print("BETA6_UPDATE_GUARD_APPLIED")
 
 
