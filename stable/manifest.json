@@ -2,19 +2,25 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "stable",
-  "version": "4.0.0-hybrid.stable1",
-  "created_at": "2026-08-13T10:36:00-03:00",
-  "min_launcher_version": "4.0.0-hybrid.base2.3",
+  "version": "4.0.16-hybrid.stable2",
+  "created_at": "2026-08-14T10:49:02-03:00",
+  "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/SR_STUDIO_4.0_HYBRID_BETA1_PUBLICO.zip",
-    "sha256": "dbe4ef57bae0bafad7e3f9f908ebda642afa89d9a8ca719933cf01bfdc423b32",
-    "size": 2215825,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-hybrid.stable2/SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip",
+    "sha256": "f79813c5606bfd7b56c415256b32b75b0286958a6649b065f05c941f4652d0aa",
+    "size": 2567164,
     "member_prefix": "files/"
   },
   "repair": {
     "mode": "local_hash_catalog",
     "full_check_every_days": 7
   },
-  "delete": [],
-  "notes": "Stable 1 promovido a partir do Beta 1 validado. Instalacao e reparo por bundle SHA-256."
+  "delete": [
+    "Encartes3_app.js",
+    "Encartes3_style.css",
+    "Encartes4_beta6.js",
+    "Encartes5_beta11.js",
+    "Encartes6_beta12.js"
+  ],
+  "notes": "Stable 2: versão completa até a Beta 16 + corretor ortográfico local para geração de cartazes."
 }
