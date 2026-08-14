@@ -1,0 +1,1 @@
+A publicação Beta 5 deve usar a logo oficial íntegra preservada na biblioteca do projeto, e não extrair a cópia PNG corrompida de releases antigas.
