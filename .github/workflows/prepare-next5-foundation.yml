@@ -37,54 +37,19 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $zip='.next5/base/SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip'
-          $expanded='.next5/expanded'
-          Remove-Item -LiteralPath $expanded -Recurse -Force -ErrorAction SilentlyContinue
-          Expand-Archive -LiteralPath $zip -DestinationPath $expanded -Force
-          $source=Join-Path $expanded 'files'
-          if(-not (Test-Path -LiteralPath $source)){ throw 'Prefixo files/ não encontrado no pacote Stable 4' }
-          Remove-Item -LiteralPath 'src/sr_studio' -Recurse -Force -ErrorAction SilentlyContinue
-          New-Item -ItemType Directory -Path 'src/sr_studio' -Force | Out-Null
-          Get-ChildItem -LiteralPath $source -Force | ForEach-Object {
-            Copy-Item -LiteralPath $_.FullName -Destination 'src/sr_studio' -Recurse -Force
-          }
-          Get-ChildItem -LiteralPath 'src/sr_studio' -Directory -Recurse -Filter '__pycache__' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-          Get-ChildItem -LiteralPath 'src/sr_studio' -File -Recurse -Include '*.pyc','*.pyo' -ErrorAction SilentlyContinue | Remove-Item -Force -ErrorAction SilentlyContinue
-          foreach($required in @('SR_Studio_Gerador.py','assets/SR_logo.png','assets/SR_Studio.ico','version.json','Encartes10_beta16.js','requirements.txt')){
-            if(-not (Test-Path -LiteralPath (Join-Path 'src/sr_studio' $required))){ throw "Arquivo canônico ausente: $required" }
-          }
+          python build/materialize_baseline.py '.next5/base/SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip' 'src/sr_studio' --metadata 'build/foundation.json'
 
       - name: Validar fonte canônica
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File | ForEach-Object { python -m py_compile $_.FullName }
-          $version=Get-Content -Raw 'src/sr_studio/version.json' | ConvertFrom-Json
-          $dist=[string]($version.distribution_version)
-          if(-not $dist){ $dist=[string]($version.version) }
-          if($dist -ne '4.0.16-hybrid.stable4'){ throw "A fonte canônica não corresponde à Stable 4: $dist" }
-          $count=(Get-ChildItem -LiteralPath 'src/sr_studio' -File -Recurse).Count
-          if($count -ne 65){ throw "Base extraída inesperada: $count arquivos; esperado 65" }
-          "Fonte canônica validada: $count arquivos"
-
-      - name: Gravar metadados da fundação
-        shell: powershell
-        run: |
-          $ErrorActionPreference='Stop'
-          New-Item -ItemType Directory -Path 'build' -Force | Out-Null
-          @'
-          {
-            "format": "SRSTUDIO_NEXT_FOUNDATION_1",
-            "target_major": "5.0.0",
-            "source_of_truth": "src/sr_studio",
-            "baseline": "4.0.16-hybrid.stable4",
-            "baseline_tag": "v4.0.16-hybrid.stable4",
-            "baseline_sha256": "4ac83d3e1a704caab3c77ae21270d74bbe56182d9b22c7ae1b445f83a30089d6",
-            "canonical_file_count": 65,
-            "status": "foundation",
-            "public_release": false
+          $meta=Get-Content -Raw 'build/foundation.json' | ConvertFrom-Json
+          if([string]$meta.baseline -ne '4.0.16-hybrid.stable4'){ throw 'Baseline incorreta' }
+          if([int]$meta.canonical_file_count -ne 65){ throw 'Quantidade canônica incorreta' }
+          foreach($required in @('SR_Studio_Gerador.py','AtacadoModule.py','ManualModule.py','Encartes10_beta16.js','assets/SR_logo.png','modelos/ATACADO.pptx','version.json')){
+            if(-not (Test-Path -LiteralPath (Join-Path 'src/sr_studio' $required))){ throw "Arquivo canônico ausente: $required" }
           }
-          '@ | Set-Content -LiteralPath 'build/foundation.json' -Encoding UTF8
 
       - name: Commitar base canônica
         shell: powershell
