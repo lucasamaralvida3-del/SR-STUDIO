@@ -1,0 +1,65 @@
+name: Restaurar Launcher Base 3.3 Consolidada
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/restaurar-launcher-base3.3.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  restore:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Restaurar Base 3.1 consolidada como Base 3.3
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $oldBlob='53a5245419506d4e9e5517ed34caa7ee70bc6a3a'
+          cmd /c "git cat-file blob $oldBlob > launcher\files\SRStudioLauncher.ps1"
+          if($LASTEXITCODE -ne 0) { throw 'Falha ao restaurar Launcher consolidado.' }
+
+          $path='launcher/files/SRStudioLauncher.ps1'
+          $text=[IO.File]::ReadAllText((Resolve-Path $path))
+          $text=$text.Replace("4.0.1-hybrid.base3.1","4.0.1-hybrid.base3.3")
+          [IO.File]::WriteAllText((Resolve-Path $path),$text,(New-Object Text.UTF8Encoding($false)))
+
+          $required=@(
+            'function Assert-SrBetaAccess',
+            'function Repair-SrBundleManifest',
+            'SRSTUDIO_PYTHON_RUNTIME_1',
+            'srstudio_python_runtime.zip',
+            'Portable Python startup exit=',
+            'AUTO-REPAIR:',
+            '4.0.1-hybrid.base3.3'
+          )
+          foreach($marker in $required) {
+            if($text -notlike ('*'+$marker+'*')) { throw ('Protecao obrigatoria ausente: '+$marker) }
+          }
+          if($text -like '*python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe*') {
+            throw 'Regressao detectada: Launcher voltou a instalar Python pelo EXE oficial.'
+          }
+
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $path),[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors.Count -gt 0) { $errors | Format-List | Out-String | Write-Host; throw 'Launcher Base 3.3 possui erro de sintaxe.' }
+
+          Write-Host "Launcher Base 3.3 validado. Tamanho: $((Get-Item $path).Length) bytes"
+
+      - name: Publicar Base 3.3 no repositorio
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add launcher/files/SRStudioLauncher.ps1
+          git commit -m 'Restaura Launcher Base 3.3 consolidada com runtime portatil e protecoes'
+          git push origin HEAD:main
