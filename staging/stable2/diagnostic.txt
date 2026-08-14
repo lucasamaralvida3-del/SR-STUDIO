@@ -1,0 +1,414 @@
+### ManualModule.py score=6
+8: from ui_v2 import choose_palette, add_tooltip, print_pdf, default_printer_name, center_toplevel
+10: from SRStudio21 import dated_output_dir, smart_pdf_name, unique_path, record_reprint, record_product_jobs, PRODUCT_DB, norm
+21: # Cache leve usado pelo Cartaz Venda. É carregado durante a abertura do SR Studio
+22: # para que a seleção de produtos não precise consultar/processar o banco ao entrar na tela.
+90: class ManualPanel(tk.Frame):
+91:     def __init__(self,master,app,promo_generate,promo_preview):
+93:         self.app=app; self.promo_generate=promo_generate; self.promo_preview=promo_preview
+94:         self.kind=tk.StringVar(value="Promoção - 1 preço")
+95:         self.product=tk.StringVar(); self.headline=tk.StringVar(value="OFERTA"); self.promo=tk.StringVar(); self.club=tk.StringVar(); self.unit=tk.StringVar(value="UN")
+100:         self.status=tk.StringVar(value="Preencha os dados para gerar um cartaz manual.")
+102:         self.busy=False; self.build(); self.kind.trace_add("write",lambda *_:self.render_fields())
+110:         tk.Label(outer,text="Geração Manual",bg=APP_BG,fg=TEXT,font=("Segoe UI",20,"bold")).pack(anchor="w",padx=26,pady=(18,10))
+113:         combo=ttk.Combobox(select,textvariable=self.kind,state="readonly",values=["Promoção - 1 preço","Promoção - 2 preços","Clube Exclusivo","Atacado","Cartaz Venda"],width=32)
+114:         combo.pack(side="left",padx=(0,16),pady=10); add_tooltip(combo,"Selecione o tipo de cartaz. A tela mostra somente os campos necessários para o modelo escolhido.")
+124:         self.save_btn=tk.Button(bar,text="SALVAR PDF",command=lambda:self.generate("save"),bg=BLUE,fg="white",relief="flat",font=("Segoe UI",8,"bold"),padx=14,pady=8);self.save_btn.pack(side="right",padx=(5,0))
+127:         self.render_fields()
+134:     def render_fields(self):
+140:             self.render_atacado_selector(card)
+142:         if kind=="Cartaz Venda":
+143:             self.render_sale_selector(card)
+145:         self.field(card,"Produto",self.product,0,0,width=2)
+147:         if kind in {"Promoção - 1 preço","Promoção - 2 preços"}:
+148:             en=self.field(card,"Enunciado do cartaz",self.headline,1,0,width=2)
+151:         if kind=="Promoção - 2 preços":
+152:             self.field(card,"Preço promoção",self.promo,row0,0);self.field(card,"Preço Clube",self.club,row0,1)
+156:             self.field(card,"Preço promoção",self.promo,row0,0);self.field(card,"Unidade",self.unit,row0,1,UNIT_OPTIONS)
+159:     def render_atacado_selector(self,card):
+162:         tk.Label(info,text="Selecione um produto do Atacado",bg=CARD,fg=TEXT,font=("Segoe UI",11,"bold")).pack(anchor="w")
+169:         cols=("produto","varejo","qtd","unit","atacado","total","status")
+171:         specs=(("produto","Produto",330),("varejo","Varejo",80),("qtd","Qtd.",65),("unit","Unid.",55),("atacado","Atacado",80),("total","Total",80),("status","Status",105))
+172:         for c,label,w in specs:self.atacado_tree.heading(c,text=label);self.atacado_tree.column(c,width=w,anchor="w" if c=="produto" else "center")
+179:         self.atacado_summary=tk.Label(action,text="Nenhum produto selecionado.",bg=CARD,fg=MUTED,font=("Segoe UI",8),justify="left",anchor="w",wraplength=570)
+183:     def render_sale_selector(self,card):
+186:         tk.Label(info,text="Selecione um produto do Banco de Dados",bg=CARD,fg=TEXT,font=("Segoe UI",11,"bold")).pack(anchor="w")
+187:         hint=tk.Label(info,text="ⓘ Nome + preço de venda + unidade",bg=CARD,fg=BLUE2,font=("Segoe UI",8,"bold"));hint.pack(anchor="w",pady=(2,0));add_tooltip(hint,"O restante do modelo Cartaz Venda permanece fixo. A unid
+
+### SR_Studio_Gerador.py score=6
+29: import ManualModule as _manual_mod
+31: from ManualModule import ManualPanel, preload_sale_catalog
+32: from PromotionLibrary import PromotionLibraryPanel, preload_library_cache
+34: from PromotionBuilder import PromotionBuilderPanel, mark_campaign_status_from_jobs, preload_builder_catalog, invalidate_builder_catalog_cache
+40:                    apply_scaling, default_printer_name, print_pdf, center_toplevel, cache_key, file_signature, install_parented_filedialogs, SRDialog)
+43:     validate_promo_jobs, verification_counts, PreGenerationDialog,
+46:     smart_queue_jobs, record_reprint, reprint_items, dated_output_dir, smart_pdf_name, unique_path,
+47:     list_printers, load_print_profiles, save_print_profiles, print_with_profile, pdf_with_copies,
+54:     from pypdf import PdfReader, PdfWriter
+134: MODEL_SALE = MODELS / "CARTAZ_VENDA.pptx"
+247: OUTPUT_OPTIONS = ["PDF ÚNICO", "SEPARADO POR CAMPANHA"]
+355:     """Quebra o nome do produto em no máximo 2 linhas, buscando equilíbrio visual."""
+389:     rendered = job.get("produto_render") or wrap_product_name(job.get("produto", ""))
+390:     lines = max(1, rendered.count("\r") + 1)
+391:     length = len(str(job.get("produto", "")))
+402: def merge_pdfs(files, output):
+403:     writer = PdfWriter()
+405:         reader = PdfReader(str(f))
+425:         if ("PRODUTO" in vals or "PRODUTOS" in vals) and ("PROMOCAO" in vals or "CLUBE" in vals):
+483:             cp = headers.get("PRODUTO") or headers.get("PRODUTOS")
+489:             cpromo = headers.get("PROMOCAO")
+507:                 promo = ws.cell(r, cpromo).value if cpromo else None
+521:                 if np in {"PRODUTO","PRODUTOS","CERVEJAS","BEBIDAS","BEBDAS","SCANTECH"} or np.startswith("OFERTA"):
+524:                 promo_present = promo is not None and str(promo).strip()!=""
+526:                 if promo_present and not clube_present:
+528:                     promo_out = money_str(promo)
+530:                 elif promo_present and clube_present:
+531:                     tipo = 1 if same_price(promo, clube) else 2
+532:                     promo_out = money_str(promo)
+534:                 elif (not promo_present) and clube_present:
+536:                     promo_out = ""
+552:                     "produto_original": product_original,
+553:                     "produto": normalize_product_name(product),
+554:                     "produto_render": wrap_product_name(normalize_product_name(product)),
+557:                     "promocao": promo_out,
+
+### AtacadoModule.py score=5
+22: from pypdf import PdfReader, PdfWriter
+23: from ui_v2 import choose_palette, center_toplevel, add_tooltip, print_pdf, default_printer_name, cache_key, file_signature, ask_string
+24: from SRStudio21 import dated_output_dir, smart_pdf_name, unique_path, record_product_jobs, record_reprint, pdf_with_copies
+122:             total_produtos INTEGER DEFAULT 0,
+143:         CREATE TABLE IF NOT EXISTS cartazes_relatorio(
+145:             cartaz_chave TEXT NOT NULL,
+157:             PRIMARY KEY(relatorio_id,cartaz_chave),
+160:         CREATE TABLE IF NOT EXISTS produtos(
+171:             nome_cartaz TEXT,
+200:     """Detecta a unidade comercial usada no cartaz Atacado.
+221:     reader=PdfReader(str(path))
+232:             # formato extraído pelo pypdf: DESCRIÇÃO 19,64Preço Varejo:
+259:             progress(pi,total_pages,f"Lendo página {pi} de {total_pages} • {len(items)} produtos encontrados")
+261:     if "782-Listagem de Produtos Atacarejo" not in full:
+262:         raise RuntimeError("O PDF não é o relatório 782 - Listagem de Produtos Atacarejo.")
+268:         raise RuntimeError("Nenhum produto Atacarejo foi identificado no relatório.")
+317:         rows=con.execute("SELECT codigo,ignorado,nunca_agrupar,unidade_preferida FROM produtos").fetchall()
+374:         if rule and rule.get("nome_cartaz"):
+375:             name=rule["nome_cartaz"]
+391:             "cartaz_chave":"G:"+base_key,
+405:                 "cartaz_chave":"P:"+it["codigo"],"nome":it["descricao"],
+416:             con.execute("""INSERT INTO regras_agrupamento(chave_base,complemento,nome_cartaz,atualizado_em)
+419:                            nome_cartaz=COALESCE(regras_agrupamento.nome_cartaz,excluded.nome_cartaz),
+449:         rows=con.execute("SELECT * FROM cartazes_relatorio WHERE relatorio_id=?",(report_id,)).fetchall()
+452:         out[r["cartaz_chave"]]=dict(r)
+481:             rows=con.execute("SELECT * FROM cartazes_relatorio WHERE relatorio_id=? ORDER BY nome COLLATE NOCASE",(rid,)).fetchall()
+493:     """Retorna os cartazes do relatório Atacado mais recente para seleção na Geração Manual."""
+506:         prev=previous.get(p["cartaz_chave"])
+508:             p["status"]="NOVO"; p["motivo"]="Produto/cartaz novo"
+534:     removed=[k for k in previous.keys() if k not in {p["cartaz_chave"] for p in posters}]
+546:             s=stored.get(p["cartaz_chave"])
+561:                     data_importacao,total_produtos,novos,alterados,removidos,agrupados,alertas)
+571:             con.execute("""INSERT INTO produtos(codigo,ultimo_nome,atualizado_em) VALUES(?,?,?)
+575:             con.execute("""INSERT INTO cartazes_relatorio VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+576:                         (rid,p["cartaz_chave"],p["nome"],p["varejo"],p["quantidade"],p["unidade"],p["atacado"],p["total"],
+
+### Encartes7_beta13.js score=5
+63: A.rowProduct=row=>{const name=A.pick(row,['PRODUTO','PRODUTOS','NOME','DESCRICAO','DESCRIÇÃO','ITEM','DESCRICAO PRODUTO']);const code=A.pick(row,['EAN','CODIGO','CÓDIGO','COD','COD BARRAS','CODIGO DE BARRAS']);const pric
+64: A.headerIndex=rows=>{let best=0,score=-1;for(let i=0;i<Math.min(rows.length,20);i++){let s=0;for(const x of rows[i]||[]){const v=A.norm(x);if(/EAN|CODIGO|COD\b|PRODUTO|DESCRICAO|ITEM|PROMOCAO|PRECO|VENDA|LIMITE|ENTRADA/.
+66: A.resolveBank=async products=>{const response=await fetch('/api/encartes/resolve-products',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({items:products.map(p=>({code:p.code,name:p.name})
+67: A.importSheet=async file=>{if(!file)return{total:0,found:0};let rows=[];if(/\.csv$|\.txt$/i.test(file.name)){const wb=XLSX.read(await file.text(),{type:'string'});rows=A.rowsFromSheet(wb.Sheets[wb.SheetNames[0]])}else{co
+80:     if(!(pg.elements||[]).length)out.push({severity:'warn',message:label+': página sem produtos.'});
+84:       if(!p){out.push({severity:'error',message:label+': produto vinculado não existe.'});continue}
+87:       if(!p.name)out.push({severity:'error',message:label+': produto sem nome.'});
+91:       if(!p.bankFound)out.push({severity:'warn',message:label+': '+p.name+' não localizado no Banco de Produtos.'});
+105:       if(ix*iy>Math.min(a.w*a.h,b.w*b.h)*.18)out.push({severity:'warn',message:label+': produtos sobrepostos.'});
+126: const zoom=E('select');zoom.id='zoom';for(const [v,t] of [['.55','55%'],['.65','65%'],['.75','75%'],['.9','90%'],['1','100%']]){const o=E('option','',t);o.value=v;if(v==String(A.state.zoom))o.selected=true;zoom.appendChi
+129: left.appendChild(E('div','title','Produtos'));const row=E('div','row');left.appendChild(row);const manual=E('button','btn','+ Produto');manual.dataset.action='manual';const clear=E('button','btn','Limpar');clear.dataset.
+130: const search=E('input','input');search.id='search';search.placeholder='Buscar produto...';left.appendChild(search);const category=E('select','input');category.id='category';left.appendChild(category);A.productsNode=E('di
+136: A.renderCategories=()=>{const current=A.state.categoryFilter;category.replaceChildren();for(const c of A.categories()){const o=E('option','',c);o.value=c;if(c===current)o.selected=true;category.appendChild(o)}};
+137: A.renderProducts=()=>{const q=A.norm(search.value),cat=A.state.categoryFilter,used=A.usedIds();A.productsNode.replaceChildren();const rows=A.state.products.filter(p=>(!q||A.norm(p.name).includes(q)||String(p.code).includ
+138: A.renderPages=()=>{A.pagesNode.replaceChildren();A.state.pages.forEach((p,i)=>{const b=E('button','page-tab'+(i===A.state.pageIndex?' active':''),p.name||('Página '+(i+1)));b.dataset.pageIndex=String(i);A.pagesNode.appen
+139: A.renderKPIs=()=>{A.kpiNode.replaceChildren();const all=A.validate(),errors=all.filter(x=>x.severity==='error').length,warns=all.filter(x=>x.severity==='warn').length;for(const [v,t] of [[A.page().elements.length,'ITENS'
+160:     if(role==='IMAGEM'){if(!p.image)continue;const img=E('img','slot-field image');img.src=p.image;img.alt=p.name||'Produto';img.style.zIndex='20';pos(img,f);A.pageNode.appendChild(img)}
+167:   const imageBox=E('div','card-img');if(p.image){const img=E('img');img.src=p.image;img.alt=p.name||'Produto';imageBox.appendChild(img)}else imageBox.appendChild(E('div','missing','SEM IMAGEM OFICIAL'));
+169:   const body=E('div','card-body');body.style.fontFamily=e.fontFamily||'Segoe UI';body.appendChild(E('div','card-name',p.name||'PRODUTO SEM NOME'));
+175:   card.addEventListener('pointerdown',ev=>{if(ev.button!==0)return;A.state.selected=e.id;A.renderInspector();A.snapshot();if(ev.offsetX>card.clientWidth-20&&ev.offsetY>card.clientHeight-20)return;moving=true;moved=false;
+180: A.renderCanvas=()=>{
+183:   for(const slot of pg.templateSlots||[])if(!filled.has(slot.id)){const empty=E('div','slot-empty','PRODUTO '+slot.index);empty.style.zIndex='30';pos(empty,slot);A.pageNode.appendChild(empty)}
+207: A.renderInspector=()=>{
+212:     A.inspectorNode.appendChild(E('div','help','Clique ou arraste um produto para o encarte. Se houver um PPTX do Canva, o primeiro bloco vazio será preenchido automaticamente.'));
+216:   A.inspectorNode.appendChild(E('div','title','Produto selecionado'));
+224:   const row=E('div','row'),dup=E('button','btn','Duplicar produto'),del=E('button','btn danger','Excluir');dup.dataset.action='dupSelected';del.dataset.action='delSelected';row.append(dup,del);A.inspectorNode.appendChild
+232: A.renderAll=()=>{A.renderCategories();A.renderProducts();A.renderPages();A.renderCanvas();A.renderKPIs();A.renderInspector()};
+233: A.onChange(A.renderAll);
+241: function manualProduct(){A.snapshot();A.state.products.push({id:A.uid('p'),name:'NOVO PRODUTO',code:'',price:'0,00',app:'',limit:'',unit:'UN',image:'',category:'SEM CATEGORIA',bankFound:false,matchMethod:'MANUAL'});A.com
+243: function preparePrint(){const old=A.state.pageIndex;printHost.replaceChildren();for(let i=0;i<A.state.pages.length;i++){A.state.pageIndex=i;A.renderCanvas();const copy=A.pageNode.cloneNode(true);copy.classList.remove('gr
+246:   A.setStatus('Analisando PPTX do Canva e renderizando design...');
+250:   const full=data.visualMode==='powerpoint-render';
+252:   else{const warning=data.visualWarning||'Design completo não pôde ser renderizado.';A.setStatus('PPTX em modo estrutural · '+(data.slotCount||0)+' bloco(s)');A.toast(warning);setTimeout(()=>alert('PPTX importado em modo
+259:     if(action==='sheet')sheet.click();else if(action==='pptx')pptx.click();else if(action==='fonts')fonts.click();else if(action==='undo')A.undo();else if(action==='redo')A.redo();else if(action==='auto'){const mode=A.au
+262: sheet.addEventListener('change',async()=>{const file=sheet.files[0];if(!file)return;try{A.setStatus('Importando planilha e consultando Banco...');const r=await A.importSheet(file);A.setStatus('Banco: '+r.found+' encontra
+
+### PromotionBuilder.py score=5
+2: """Montador de Promoções do SR Studio 4.0.4.
+4: Cria campanhas sem depender de uma planilha externa e reaproveita o Banco de Produtos,
+15: from PromoExcelTemplates import export_campaign_xlsx, profile_choices, detect_profile, PROFILE_LABELS
+19: DB_PATH = LOCAL_DATA / "promotion_builder.db"
+20: STATUSES = ("RASCUNHO", "EM REVISÃO", "APROVADA", "CARTAZES GERADOS", "FINALIZADA")
+102:             produto TEXT NOT NULL,
+106:             promocao TEXT,
+148:     A promoção/Clube continuam sendo definidos pelo usuário; apenas custo/varejo são
+159:         if not r:r=by_norm.get(norm(x.get("produto") or x.get("canonical_name") or ""))
+180:         "last_promo": r.get("promocao") or "",
+182:         # O relatório 208 vira a fonte atual de custo/varejo; histórico promocional é fallback.
+200:     promo = dec(item.get("promocao")); club = dec(item.get("clube")); cost = dec(item.get("custo")); varejo = dec(item.get("varejo"))
+201:     chosen = club if club is not None else promo
+206:     snap = history_snapshot(item.get("codigo"), item.get("produto"), item.get("identity_key"))
+211:             if datetime.now()-d < timedelta(days=21): tags.append("PROMO RECENTE")
+223:     name = str(name or "NOVA PROMOÇÃO").strip().upper()
+240:             rows.append((cid,x.get("identity_key",""),x.get("codigo",""),x.get("produto",""),x.get("categoria",""),x.get("custo",""),x.get("varejo",""),x.get("promocao",""),x.get("clube",""),x.get("unidade","UN"),x.get("
+242:             con.executemany("""INSERT INTO builder_items(campaign_id,identity_key,codigo,produto,categoria,custo,varejo,promocao,clube,unidade,limite,copies,image_path,tags,sort_order)
+267: def mark_campaign_status_from_jobs(jobs, status="CARTAZES GERADOS"):
+276:         hist = [dict(r) for r in con.execute("SELECT codigo,produto,produto_norm,campanha,gerado_em FROM history WHERE TRIM(campanha)<>'' ORDER BY gerado_em DESC").fetchall()]
+282:         key=str(r.get("codigo") or "") or str(r.get("produto_norm") or "")
+284:         s=stats.setdefault(key,{"vezes":0,"ultima":"","codigo":r.get("codigo","") or "","produto_norm":r.get("produto_norm","") or ""})
+292:         p=bycode.get(s["codigo"]) if s["codigo"] else byname.get(s["produto_norm"])
+311:         r=dict(r); key=str(r.get("codigo") or "") or r.get("produto_norm")
+319:                 c=con.execute("SELECT * FROM catalog_products WHERE canonical_norm=? LIMIT 1",(r["produto_norm"],)).fetchone()
+322:             "identity_key":c.get("identity_key",""),"codigo":r.get("codigo",""),"produto":c.get("canonical_name") or r.get("produto",""),
+323:             "categoria":c.get("categoria") or guess_category(r.get("produto")) or "SEM CATEGORIA","custo":r.get("custo",""),"varejo":r.get("varejo",""),
+324:             "promocao":r.get("promocao",""),"clube":r.get("clube",""),"unidade":r.get("unidade") or "UN","limite":r.get("limite","") or "","copies":1,
+334:         promo=str(x.get("promocao") or "").strip(); club=str(x.get("clube") or "").strip()
+335:         if not promo and not club: continue
+336:         if promo and club:
+337:             tipo=1 if dec(promo)==dec(club) else 2
+342:             "id":idx,"campanha":str(campaign or "PROMOÇÃO").strip().upper(),"codigo":str(x.get("codigo") or ""),
+343:             "produto_original":x.get("produto",""),"produto":normalize_product_name(x.get("produto","")),"produto_render":normalize_product_name(x.get("produto","")),
+344:             "custo":str(x.get("custo") or ""),"varejo":str(x.get("varejo") or ""),"promocao":promo,"clube":club,"validade":str(validity or ""),"tipo":tipo,
+
+### SRIAEngine.py score=5
+8: - contexto local controlado (somente leitura) do Banco de Produtos, Promoções e Encartes;
+42:     "allow_promotions": True,
+65: Seu foco é ajudar exclusivamente nas funções do programa: Banco de Produtos, Promoções, Atacado, Cartazes, CISS, Encartes Intelligence e suporte/diagnóstico do SR Studio. Pedidos gerais fora desse escopo são bloqueados l
+66: Use apenas os dados locais enviados no contexto quando falar de preços, custos, códigos, produtos ou campanhas. Nunca invente valores que não estejam no contexto.
+76:     "produtos": ("produto", "produtos", "ean", "codigo", "código", "banco", "cadastro", "imagem", "imagens", "embalagem", "unidade", "kg", "limite"),
+77:     "promocoes": ("promocao", "promoção", "promocoes", "promoções", "campanha", "oferta", "preco", "preço", "custo", "margem", "clube", "validade"),
+79:     "cartazes": ("cartaz", "cartazes", "placa", "pdf", "impressao", "impressão", "powerpoint", "pptx"),
+180:         return "Não encontrei produto correspondente no Banco de Produtos. Esta busca foi feita localmente e não consumiu créditos da OpenAI."
+181:     lines = ["Busca local no Banco de Produtos — nenhuma chamada à OpenAI foi necessária:"]
+192:     if "produtos" in areas:
+200:                 return "Resumo local do Banco de Produtos — zero créditos OpenAI:\n" + "\n".join("• " + x for x in parts)
+201:     if "promocoes" in areas and any(x in norm for x in ("mostrar", "mostre", "listar", "lista", "resumo")) and not any(_norm_scope_text(w) in norm for w in _ANALYSIS_WORDS):
+202:         ctx = _promotion_context(text, limit=12)
+219:         return {"action": "block", "text": "Pedido bloqueado antes de chamar a OpenAI. A SR IA é exclusiva para funções do SR Studio (Produtos, Promoções, Atacado, Cartazes, CISS, Encartes e suporte do sistema). Esta men
+439:     # Palavras mais longas primeiro tendem a representar marca/produto.
+461: def _promotion_context(prompt, limit=10):
+463:         from PromotionBuilder import campaign_rows, load_campaign
+488:                             "produto": x.get("produto") or "",
+492:                             "promocao": x.get("promocao") or "",
+521:             "banco_produtos": bool(settings.get("allow_products", True)),
+522:             "promocoes": bool(settings.get("allow_promotions", True)),
+528:         context["banco_produtos"] = _product_context(prompt)
+529:     if settings.get("allow_promotions", True):
+530:         context["promocoes"] = _promotion_context(prompt)
+669:     allow_promos = tk.BooleanVar(value=bool(settings.get("allow_promotions", True)))
+671:     for text, var in [("Banco de Produtos", allow_products), ("Promoções", allow_promos), ("Encartes", allow_enc)]:
+678:         st["allow_promotions"] = bool(allow_promos.get())
+777:             ("RESUMO DO BANCO", "Faça um resumo do meu Banco de Produtos e diga o que merece atenção."),
+778:             ("PROMOÇÕES", "Mostre um resumo das promoções/campanhas atuais disponíveis no SR Studio."),
+804:         tk.Label(card, text="Beta 5 • Proteção de créditos ativa • Fora do escopo = ZERO chamada à OpenAI • Imagens de produtos = importação manual.", bg=p["CARD"], fg=p["MUTED"], font=("Segoe UI", 7)).pack(anchor="w", p
+
+### SRStudio21.py score=5
+14: CORRECTIONS_FILE=LOCAL_DATA/"correcoes_produtos.json"
+102: # Histórico por produto / busca global
+108:             codigo TEXT, produto TEXT NOT NULL, produto_norm TEXT NOT NULL,
+109:             campanha TEXT, tipo TEXT, promocao TEXT, clube TEXT, custo TEXT,
+114:         con.execute("CREATE INDEX IF NOT EXISTS idx_hist_prod ON history(produto_norm)")
+118: def record_product_jobs(jobs,origem="Promoções",arquivo_saida="",recorded_at=None,replace_source=False):
+119:     """Registra histórico. A biblioteca pode preservar a data original da promoção."""
+123:         prod=str(j.get("produto") or j.get("nome") or "").strip()
+126:         tipo_txt="Clube Exclusivo" if tipo==3 else "Promo + Clube" if tipo==2 else "Promoção" if tipo==1 else str(tipo or origem)
+129:                      str(j.get("promocao") or ""),str(j.get("clube") or ""),str(j.get("custo") or ""),
+136:         con.executemany("""INSERT INTO history(codigo,produto,produto_norm,campanha,tipo,promocao,clube,custo,varejo,unidade,limite,origem,arquivo_saida,gerado_em)
+149:         rows=con.execute("""SELECT * FROM history WHERE codigo LIKE ? OR produto_norm LIKE ? OR campanha LIKE ?
+153: def product_history(codigo="",produto="",limit=50):
+159:             rows=con.execute("SELECT * FROM history WHERE produto_norm=? ORDER BY gerado_em DESC,id DESC LIMIT ?",(norm(produto),limit)).fetchall()
+167:             "produto":job.get("produto",""),"codigo":job.get("codigo",""),"field":field}
+170:     prod=norm(job.get("produto"));unit=str(job.get("unidade_exibicao") or "").upper()
+172:         return "Produto indica 'A GRANEL', mas a unidade do cartaz não está como KG."
+174:         return "Produto está marcado como KG, mas a descrição contém medida em ML/L."
+177: def validate_promo_jobs(jobs):
+183:         if j.get("promocao"):prices.append(("PROMOÇÃO",dec(j.get("promocao")),"promocao"))
+197:                     issues.append(_issue("PROMO_ACIMA_VENDA","ATENÇÃO",f"{label} R$ {money(p)} está acima do preço de venda R$ {money(venda)}.",j,field))
+198:         promo=dec(j.get("promocao"));club=dec(j.get("clube"))
+199:         if promo is not None and club is not None and club>promo:
+200:             issues.append(_issue("CLUBE_MAIOR_PROMO","ATENÇÃO",f"Preço Clube R$ {money(club)} está maior que a Promoção R$ {money(promo)}.",j,"clube"))
+203:         identity=str(j.get("codigo") or "").strip() or norm(j.get("produto"))
+206:                 issues.append(_issue("DUPLICADO","ATENÇÃO",f"Produto/código duplicado na geração. Também aparece em '{seen[identity].get('campanha','')}'.",j,"produto"))
+209:         hist=product_history(str(j.get("codigo") or ""),j.get("produto",""),1)
+211:             prev=dec(hist[0].get("clube") or hist[0].get("promocao"))
+212:             cur=club or promo
+241:         tk.Label(head,text=f"{selected} cartazes • {status}",bg=p["CARD"],fg=color,font=("Segoe UI",10,"bold")).pack(anchor="w",padx=20,pady=(0,15))
+243:         vals=[("Cartazes",selected),("Abaixo do custo",c["cost"]),("Preço fora do padrão",c["outlier"]),("Duplicados",c["duplicates"]),("Unidade suspeita",c["unit"])]
+248:         cols=("sev","produto","problema");self.tree=ttk.Treeview(body,columns=cols,show="headings",selectmode="browse")
+249:         for col,title,width in [("sev","Nível",90),("produto","Produto",280),("problema","Verificação",570)]:self.tree.heading(col,text=title);self.tree.column(col,width=width,anchor="w")
+251:         for i,x in enumerate(self.issues):self.tree.insert("","end",iid=str(i),values=(x["severity"],x["produto"],x["message"]))
+308:     s=re.sub(r'[<>:"/\\|?*]+','_',str(s or ""));s=re.sub(r"\s+"," ",s).strip();return s[:100] or "CARTAZ"
+
+### ProductOrganizer.py score=4
+2: """Organizador inteligente do Banco de Produtos do SR Studio.
+5: - produtos únicos;
+25: # Palavras pouco úteis para construir assinatura de produto.
+45: # toda vez que o Banco de Produtos é aberto ou filtrado.
+210:         raw=str(r["produto"] or "").strip()
+212:     if not names:return "PRODUTO SEM NOME"
+221:     corrected=apply_learned_correction(r["produto"] or "")
+279:         rows=con.execute("SELECT id,codigo,produto,unidade,gerado_em FROM history ORDER BY id").fetchall()
+290:     if progress:progress(18,"Consolidando produtos repetidos...")
+358:     if progress:progress(76,"Atualizando Banco de Produtos...")
+374:     # Reaplica os produtos/preços atuais do CISSPoder depois de cada reorganização.
+385:         from PromotionBuilder import invalidate_builder_catalog_cache, preload_builder_catalog
+389:         from ManualModule import preload_sale_catalog
+467:             # O vínculo CISS passa a apontar para o produto comercial/EAN e o stub desaparece.
+473:                     con.execute("""UPDATE ciss_product_links SET identity_key=?,link_method='MANUAL_DUPLICATE',confirmed=1,confidence=1.0,updated_at=? WHERE ciss_code=?""",
+498:     """Revisão sequencial dos itens selecionados no Banco de Produtos."""
+505:         self.title("Banco de Produtos • Revisar Todos")
+513:         self.render_current()
+550:     def render_current(self):
+555:         self.progress_text.set(f"Item {self.index+1} de {len(self.items)} • as decisões são salvas no Banco de Produtos")
+561:             lines=[f"Tipo: {r['family_type']}",f"Confiança: {r['confidence']*100:.0f}%",f"Produtos/variações: {len(members)}",f"Ocorrências: {r['occurrence_count']}",""]
+574:                                            "Escolha se os dois registros representam o mesmo produto ou devem permanecer separados."))
+575:             tk.Button(self.actions,text="É O MESMO PRODUTO",command=lambda:self.duplicate_decision("MERGE"),bg=p["GREEN"],fg=p["GREEN_TXT"],relief="flat",font=("Segoe UI",9,"bold"),pady=8).pack(fill="x",pady=2)
+579:             self.kind_label.config(text="PRODUTO")
+591:         else:self.render_current()
+594:         if self.index>0:self.index-=1;self.render_current()
+633:                 messagebox.showerror("Banco de Produtos",str(e),parent=self);return
+641:              f"Produtos revisados: {self.summary['kept']}\n"
+645:         if total:messagebox.showinfo("Banco de Produtos",msg,parent=self.parent)
+652:         self.view_var=tk.StringVar(value="PRODUTOS");self.status_var=tk.StringVar(value="Banco pronto.");self.progress_var=tk.DoubleVar(value=0)
+659:         tk.Label(hrow,text="Banco de Produtos",bg=p["APP_BG"],fg=p["TEXT"],font=("Segoe UI",20,"bold")).pack(side="left")
+661:         add_tooltip(tip,"Cadastros, EAN/CISS, imagens, famílias e histórico. A tabela mostra somente o essencial; os detalhes aparecem ao selecionar um produto.")
+665:         defs=[("unique","Produtos"),("families","Famílias"),("review","Revisar")]
+677:         self.view=ttk.Combobox(bar,textvariable=self.view_var,state="readonly",values=["PRODUTOS","FAMÍLIAS","DUPLICIDADES"],width=15);self.view.pack(side="left",padx=4);self.view.bind("<<ComboboxSelected>>",lambda e:sel
+689:         for c,t,w in [("codigo","Código",105),("nome","Produto",330),("unidade","Unid.",62),("varejo","Venda",78),("status","Status",90)]:self.tree.heading(c,text=t);self.tree.column(c,width=w,anchor="w" if c=="nome" els
+
+### CISSProductSync.py score=3
+2: """Sincronização do Banco de Produtos do SR Studio com o relatório 208 do CISSPoder.
+9: não ambígua. Produtos ainda sem EAN permanecem utilizáveis no banco com identidade CISS.
+20: from pypdf import PdfReader
+26: # pypdf entrega cada produto em uma linha estável neste relatório.
+53:     juntar produtos parecidos de embalagens diferentes.
+92:     """Normaliza o formato do PDF para texto decimal brasileiro sem R$."""
+189: def parse_report_208(pdf_path, progress=None):
+190:     """Lê o PDF 208 e retorna metadados + produtos, sem alterar o banco."""
+191:     pdf_path = Path(pdf_path)
+192:     if not pdf_path.exists():
+193:         raise FileNotFoundError(str(pdf_path))
+194:     reader = PdfReader(str(pdf_path))
+196:         raise RuntimeError("O PDF está vazio.")
+240:         raise RuntimeError("Nenhum produto foi reconhecido no relatório 208.")
+242:         "source_file": str(pdf_path),
+319:             # Vínculo confirmado com produto real sempre vence qualquer heurística.
+405:             confidence = 1.0 if method in {"AUTO_NOME_EXATO", "MANUAL_DUPLICATE"} else 0.99 if method == "AUTO_ASSINATURA" else 0.0
+408:                 progress(82 + min(13, int(idx / max(1, len(ciss_rows)) * 13)), f"Vinculando produtos CISS • {idx:,} de {len(ciss_rows):,}".replace(",", "."))
+471: def import_report_208(pdf_path, progress=None):
+476:     parsed = parse_report_208(pdf_path, progress)
+481:         progress(62, f"Comparando {len(rows):,} produtos com o banco atual...".replace(",", "."))
+515:                 parsed.get("empresa") or "", parsed.get("report_datetime") or "", str(Path(pdf_path)), first_seen, now,
+543:         progress(78, "Atualizando vínculos Código CISS ↔ Banco de Produtos...")
+553:                 str(Path(pdf_path)), parsed.get("empresa") or "", parsed.get("report_datetime") or "", now, len(rows),
+559:         progress(100, "Banco de Produtos atualizado pelo CISSPoder.")
+584:     """Retorna preço/custo atuais do relatório 208 para um produto do catálogo."""
+
+### Encartes9_beta15.js score=3
+24: A.learnTemplate=()=>{const mem=A.loadTemplateMemory();let saved=0;for(const pg of A.state.pages||[]){const key=A.templateKey(pg);if(!key)continue;const model=mem[key]||{savedAt:'',slots:{},types:{}};for(const e of pg.ele
+25: A.applyTemplateMemory=()=>{A.snapshot();let n=0;for(const pg of A.state.pages||[])for(const e of pg.elements||[])if(A.applyRememberedToElement(pg,e))n++;A.commit();A.toast(n?('Padrão aplicado em '+n+' produto(s).'):'Nenh
+27: A.copyProductAdjustmentsToSimilar=()=>{const pg=A.page(),e=A.selectedElement(),slot=A.selectedSlot();if(!e||!slot||!e.partEdits)return 0;const type=A.slotType(pg,slot);A.snapshot();let n=0;for(const x of pg.elements||[])
+32: A.fillCurrentPage=()=>{const pg=A.page(),used=A.usedIds(),slots=(pg.templateSlots||[]).filter(s=>!(pg.elements||[]).some(e=>e.slotId===s.id));if(!slots.length){A.toast('Não há blocos vazios nesta página.');return 0}const
+35: const oldValidate=A.validate;A.validate=()=>{const issues=oldValidate();for(const pg of A.state.pages||[]){for(const e of pg.elements||[]){if(!e.slotId||!e.partEdits)continue;const slot=(pg.templateSlots||[]).find(s=>s.i
+41: const A=window.SR11,E=A.E;if(!A||A.__BETA15_RENDER__)return;A.__BETA15_RENDER__=true;
+42: const previous=A.renderCanvas;
+47: function fitText(n,role,f){const s=f.style||{},manual=Number(s.fontSize||0),base=manual||20;let min,max;if(role==='NOME'){min=Math.max(6,base*.38);max=Math.max(base,Math.min(base*1.25,f.h*.95));n.style.whiteSpace='normal
+51: function bindPart(node,e,role,base,pg){if(!A.state.partEditMode)return;const edit=A.ensurePart(e,role);node.style.pointerEvents='auto';node.classList.toggle('part-locked',Boolean(edit.locked));node.addEventListener('poin
+53: function addImage(pg,slot,e,p,base){if(!p.image)return;const b=imageSafe(slot,e,base),edit=A.ensurePart(e,'IMAGEM'),wrap=E('div','pro-part image-part'+(A.state.selected===e.id&&A.state.selectedPart==='IMAGEM'?' part-sele
+55: function renderTemplate(pg){const bg=E('img','tpl-img');bg.src=pg.backgroundUrl;bg.alt='Design original do Canva';bg.style.objectFit='fill';bg.style.pointerEvents='none';bg.style.zIndex='1';pos(bg,{x:0,y:0,w:pg.width,h:p
+56: function renderSlot(pg,e,p,slot){if(slot.fields?.IMAGEM)addImage(pg,slot,e,p,slot.fields.IMAGEM);for(const r of ['NOME','PRECO_RS','PRECO_REAIS','PRECO_CENTAVOS','UNIDADE','LIMITE','PRECO_APP'])if(slot.fields?.[r])addTex
+57: A.renderCanvas=()=>{const pg=A.page();if(!pg?.backgroundUrl)return previous();A.pageNode.replaceChildren();A.pageNode.classList.toggle('part-edit-mode',A.state.partEditMode);A.pageNode.classList.toggle('compare-original'
+58: console.info('[SR Studio] Beta 15 editor manual por partes ativo');
+69: function addTopControls(){const top=document.querySelector('.top');if(!top||document.getElementById('sr15-edit'))return;const spacer=top.querySelector('.spacer');const edit=button('✥ Editar partes',()=>{A.state.partEditM
+70: function appendGeneralTools(host){const {pg,e,slot}=selectedContext(),bar=E('div','pro-toolbar');bar.append(button(A.state.partEditMode?'✓ Editando partes':'Editar partes',()=>{A.state.partEditMode=!A.state.partEditMode;
+71: function appendReplace(host){const {e,p}=selectedContext();if(!e||!p)return;host.appendChild(E('div','title','Trocar produto mantendo o bloco'));const s=E('select','input');for(const x of A.state.products){const o=E('opt
+76: const actions=E('div','pro-toolbar');actions.append(button('Resetar parte',()=>A.resetSelectedPart()),button('Copiar parte → semelhantes',()=>A.copyPartToSimilar()),button('Copiar produto → semelhantes',()=>A.copyProduct
+77: host.appendChild(E('div','title','Camadas do produto'));for(const r of roles){const mm=A.ensurePart(e,r),row=E('div','layer-row');const name=button((A.state.selectedPart===r?'● ':'')+A.partLabel(r),()=>{A.state.selectedP
+78: const oldInspector=A.renderInspector;A.renderInspector=()=>{oldInspector();appendGeneralTools(A.inspectorNode);appendPartEditor(A.inspectorNode);appendReplace(A.inspectorNode)};
+95: function modal(){const bg=E('div','modal-bg'),box=E('div','modal');box.appendChild(E('h2','','Versões do projeto'));const name=E('input','input');name.placeholder='Nome da versão (ex.: Quinta Filé aprovado)';const save=E
+
+### ProductImages.py score=3
+5: - Banco de imagens mantido manualmente pelo usuário.
+35: # Palavras que descrevem o tipo do produto, mas normalmente não são a marca.
+38: PRODUTO EMBALAGEM PACOTE PCT PT UN UND CX CAIXA LATA GARRAFA PET SACHE SACHET PO
+51: BANNER ENCARTES ENCARTE PANFLETO FLYER PROMOCAO PROMOÇÃO OFERTA OFERTAS INSTAGRAM FACEBOOK
+127:         meaningful=[t for t in lexical if len(t)>=4 and t not in {'PRODUTO','EMBALAGEM'}]
+188:     if .20<=cov<=.82: score+=9; reasons.append('produto bem enquadrado')
+189:     elif cov<.08: score-=13; reasons.append('produto muito pequeno')
+192:     for t in ('produto','product','packshot','embalagem','package','pacote','pack','catalog','catalogo','supermerc','loja','shop','ecommerce'):
+211:     """Compara o resultado do Google com o cadastro do produto antes de aceitar a imagem."""
+226:     if cat_terms and any(t in toks for t in cat_terms): score+=10; reasons.append('tipo do produto compatível')
+236:     if any(x in low for x in ('supermerc','atacad','mercado','ecommerce','produto','catalog','loja','shop')): score+=8
+284:         score += 10; reasons.append('tipo do produto lido na embalagem')
+305:     """Cria consultas que imitam uma busca manual no Google Imagens."""
+319:             qs.append((core_text,'PRODUTO + MARCA + MEDIDA'))
+341:     """Confirma produto/marca/medida sem usar o HTML global do Google."""
+374:         hard_ok=False; reasons.append('tipo do produto não confirmado')
+538:         # Fallback sem título: só passa depois se URL/OCR confirmarem o produto.
+566:     raise RuntimeError('Pesquisa automática de imagens desativada. Use a importação manual do Banco de Produtos.')
+607:     qprio={'GOOGLE EXATO':4,'FRASE EXATA':3,'PRODUTO + MARCA + MEDIDA':2,'EAN':5}
+707:         self.title('Banco de Produtos • Imagens do Produto')
+720:         self.status = tk.StringVar(value='Banco de imagens manual. Selecione uma imagem do computador para definir como oficial.')
+728:         tk.Label(top, text='Imagens do Produto', bg=p['APP_BG'], fg=p['TEXT'], font=('Segoe UI', 18, 'bold')).pack(anchor='w')
+729:         tk.Label(top, text='Importação manual: escolha a imagem correta no seu computador. O SR Studio não pesquisa imagens na internet e não usa créditos da SR IA para isso.', bg=p['APP_BG'], fg=p['MUTED'], font=('Segoe
+739:         tk.Button(btns, text='IMPORTAR IMAGEM MANUALMENTE', command=self.import_manual_image, bg=p['BLUE'], fg='white', relief='flat', font=('Segoe UI',8,'bold'), padx=12, pady=8).pack(fill='x', pady=2)
+745:         tk.Label(right, text='1. Localize a imagem correta do produto no seu computador.\n\n2. Clique em IMPORTAR IMAGEM MANUALMENTE.\n\n3. O SR Studio copia a imagem para o banco oficial e vincula ao produto.\n\n4. Nas 
+758:         self.info_label.config(text=(f"Produto: {r.get('canonical_name') or '—'}\n"
+769:     def import_manual_image(self):
+772:             title='Selecionar imagem do produto',
+783:             messagebox.showerror('Imagens do Produto', 'A imagem selecionada não foi encontrada.', parent=self)
+786:             messagebox.showerror('Imagens do Produto', 'Formato não suportado. Use PNG, JPG, JPEG, WEBP ou BMP.', parent=self)
+793:                 'source_name': 'Importação manual',
+794:                 'confidence': 'MANUAL',
+805:             messagebox.showerror('Imagens do Produto', f'Não foi possível importar a imagem.\n\n{e}', parent=self)
+808:         messagebox.showinfo('Imagens do Produto', 'A pesquisa automática/online foi desativada. Importe a imagem manualmente para montar o Banco de Imagens SR.', parent=self)
+811:         self.import_manual_image()
+
+### PromotionLibrary.py score=3
+2: """Biblioteca histórica de planilhas promocionais do SR Studio."""
+16: DB_PATH=LOCAL_DATA/"promotion_library.db"
+24:     root=docs/"SR Studio"/"Lista de Promocoes"
+28:         root=LOCAL_DATA/"Lista_de_Promocoes";root.mkdir(parents=True,exist_ok=True)
+91:             defaults=["Segunda da Limpeza","Terça Verde","Quarta Café","Quinta Filé","Fim de Semana","Clube SR","Aniversário","Outras Promoções"]
+270:         # Cada produto histórico recebe a data da própria campanha/validade quando possível.
+282: class PromotionLibraryPanel(tk.Frame):
+295:         tk.Label(self,text="Lista de Promoções",bg=p["APP_BG"],fg=p["TEXT"],font=("Segoe UI",20,"bold")).pack(anchor="w",padx=24,pady=(16,9))
+297:         stat_defs=[("files","Planilhas"),("folders","Pastas"),("unique","Produtos únicos"),("families","Famílias"),("records","Registros históricos"),("review","Revisar")]
+321:         cols=("arquivo","pasta","periodo","campanhas","produtos","status")
+323:         for c,t,w in [("arquivo","Planilha",250),("pasta","Pasta",135),("periodo","Período",150),("campanhas","Campanhas",250),("produtos","Produtos",70),("status","Status",80)]:self.tree.heading(c,text=t);self.tree.colu
+339:         cur=self.selected_folder;self.folder_tree.delete(*self.folder_tree.get_children());self.folder_tree.insert("","end",iid="all",text="▤  Todas as Promoções",open=True);self.folder_tree.insert("","end",iid="root",te
+364:         except Exception as e:messagebox.showerror("Lista de Promoções",str(e),parent=self)
+368:         if not fid:messagebox.showinfo("Lista de Promoções","Selecione uma pasta criada por você.",parent=self);return
+372:         except Exception as e:messagebox.showerror("Lista de Promoções",str(e),parent=self)
+376:         if not fid:messagebox.showinfo("Lista de Promoções","Selecione uma pasta criada por você.",parent=self);return
+379:         except Exception as e:messagebox.showerror("Lista de Promoções",str(e),parent=self)
+385:         except Exception:messagebox.showinfo("Lista de Promoções",str(path),parent=self)
+388:         files=filedialog.askopenfilenames(title="Adicionar planilhas à Lista de Promoções",filetypes=[("Planilhas Excel","*.xlsx *.xlsm")],parent=self)
+400:         d=filedialog.askdirectory(title="Importar pasta de promoções",parent=self)
+414:         if not items:messagebox.showinfo("Lista de Promoções","Nenhuma planilha .xlsx/.xlsm foi encontrada.",parent=self);return
+442:                 "Lista de Promoções",
+448:                 "Lista de Promoções",
+449:                 f"Importação concluída.\n\n{ok} planilha(s) adicionada(s)\n{products} registro(s) incluído(s) no histórico\n{dup} duplicada(s) ignorada(s).\n\nO Banco de Produtos será reorganizado em segundo plano.",
+458:         self.status_var.set("Organizando produtos únicos e variações...")
+469:         self.status_var.set(f"Banco organizado • {c['unique']} produtos únicos • {c['families']} famílias • {c['records']} registros históricos")
+475:         if not p.exists():messagebox.showwarning("Lista de Promoções","O arquivo não existe mais na biblioteca.",parent=self);return
+477:         except Exception:messagebox.showinfo("Lista de Promoções",str(p),parent=self)
+483:         if not p.exists():messagebox.showwarning("Lista de Promoções","O arquivo não foi encontrado.",parent=self);return
+484:         self.app.navigate("promo");self.app.after(150,lambda:self.app.import_file(str(p)))
+490:         if not p.exists():messagebox.showwarning("Lista de Promoções","O arquivo não foi encontrado.",parent=self);return
+508:         messagebox.showinfo("Lista de Promoções","Banco histórico atualizado. A organização será recalculada.",parent=self)
+510:     def _reprocess_error(self,e):self.busy=False;self.app.busy=False;self.status_var.set(str(e));messagebox.showerror("Lista de Promoções",str(e),parent=self)
+515:         if not messagebox.askyesno("Remover da Lista de Promoções","Remover esta planilha da biblioteca?\n\nEla também será retirada do histórico importado pela Lista de Promoções. PDFs gerados anteriormente não serão ap
