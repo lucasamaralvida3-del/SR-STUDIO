@@ -1,0 +1,51 @@
+name: Diagnosticar pacote base 5.0
+
+on:
+  push:
+    branches:
+      - next/5.0
+    paths:
+      - '.github/workflows/diagnose-next5-zip.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  diagnosticar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Baixar e listar pacote Stable 4
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path '.diag' -Force | Out-Null
+          gh release download 'v4.0.16-hybrid.stable4' -p 'SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip' -D '.diag' --clobber
+          $zip='.diag/SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip'
+          $sha=(Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          if($sha -ne '4ac83d3e1a704caab3c77ae21270d74bbe56182d9b22c7ae1b445f83a30089d6'){ throw 'SHA inválido' }
+          Expand-Archive -LiteralPath $zip -DestinationPath '.diag/expanded' -Force
+          New-Item -ItemType Directory -Path 'diagnostic' -Force | Out-Null
+          $root=(Resolve-Path '.diag/expanded').Path
+          $lines=@()
+          $lines += "ROOT=$root"
+          $lines += ""
+          Get-ChildItem -LiteralPath $root -Recurse | Sort-Object FullName | ForEach-Object {
+            $rel=$_.FullName.Substring($root.Length).TrimStart('\')
+            if($_.PSIsContainer){ $lines += "DIR  $rel" } else { $lines += ("FILE {0} [{1}]" -f $rel,$_.Length) }
+          }
+          [IO.File]::WriteAllLines('diagnostic/next5_zip_listing.txt',$lines,(New-Object Text.UTF8Encoding($false)))
+      - name: Publicar diagnóstico
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Architecture Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add diagnostic/next5_zip_listing.txt
+          git commit -m 'Registra estrutura real do pacote Stable 4'
+          git pull --rebase origin next/5.0
+          git push origin HEAD:next/5.0
