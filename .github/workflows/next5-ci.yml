@@ -47,7 +47,7 @@ jobs:
           Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File -Recurse | ForEach-Object {
             python -m py_compile $_.FullName
           }
-          python -m py_compile build/materialize_baseline.py build/package_app.py build/integrate_studio5.py build/apply_studio5_enhancements.py tests/test_foundation.py tests/test_v5_services.py tests/test_v5_http_bridge.py
+          python -m py_compile build/materialize_baseline.py build/package_app.py build/integrate_studio5.py build/apply_studio5_enhancements.py tests/test_foundation.py tests/test_v5_services.py tests/test_v5_http_bridge.py tests/test_v5_export_render.py
 
       - name: Validar JavaScript do Encartes
         shell: powershell
@@ -74,6 +74,12 @@ jobs:
         run: |
           $ErrorActionPreference='Stop'
           python -m unittest tests.test_v5_http_bridge -v
+
+      - name: Testar renderização e exportação real no Edge
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m unittest tests.test_v5_export_render -v
 
       - name: Smoke import do aplicativo completo
         shell: powershell
