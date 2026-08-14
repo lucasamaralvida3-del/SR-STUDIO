@@ -1,4 +1,4 @@
-﻿param(
+param(
   [switch]$RepairOnly,
   [switch]$NoLaunch,
   [switch]$FullRepair
@@ -10,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 # GitHub and Python.org require modern TLS on Windows PowerShell 5.1.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$LauncherVersion = '4.0.1-hybrid.base3.0'
+$LauncherVersion = '4.0.1-hybrid.base3.1'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir      = Join-Path $SrHomeRoot 'App'
 $DataDir     = Join-Path $SrHomeRoot 'Data'
@@ -237,7 +237,7 @@ function Resolve-SrManifest {
     if(-not (Test-SrUrlAllowed $baseUrl)) {
       throw 'Repository URL must use HTTPS. HTTP is accepted only for localhost tests.'
     }
-    $url = $baseUrl + '/' + $channel + '/manifest.json'
+    $url = $baseUrl + '/' + $channel + '/manifest.json?ts=' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
     $tmp = Join-Path $StageDir ('manifest_' + $channel + '.json')
     try {
       Write-SrLog ('Checking online repository: ' + $url)
@@ -493,7 +493,55 @@ function Test-SrIntegrityCatalog($Catalog) {
   return $true
 }
 
+function Repair-SrBundleManifest($Source,$Manifest) {
+  if($null -eq $Manifest) { throw 'Repository manifest is empty.' }
+  $bundleInfo = Get-SrProperty $Manifest 'bundle' $null
+  $legacyUrl = [string](Get-SrProperty $Manifest 'bundle_url' '')
+  if(-not $legacyUrl) { $legacyUrl = [string](Get-SrProperty $Manifest 'url' '') }
+  $legacySha = ([string](Get-SrProperty $Manifest 'sha256' '')).ToLowerInvariant()
+  $legacySize = [int64](Get-SrProperty $Manifest 'size' 0)
+  $legacyPrefix = [string](Get-SrProperty $Manifest 'member_prefix' 'files/')
+  if(-not $legacyPrefix) { $legacyPrefix = 'files/' }
+  $changed = $false
+
+  if($null -eq $bundleInfo) {
+    if($legacyUrl -and $legacySha) {
+      $bundleInfo = [pscustomobject][ordered]@{ url=$legacyUrl; sha256=$legacySha; size=$legacySize; member_prefix=$legacyPrefix }
+      $Manifest | Add-Member -NotePropertyName bundle -NotePropertyValue $bundleInfo -Force
+      $changed = $true
+      Write-SrLog 'AUTO-REPAIR: manifesto bundle legado detectado; bloco bundle reconstruido automaticamente.'
+    } else {
+      throw 'Bundle manifest does not contain bundle information and cannot be repaired automatically.'
+    }
+  } else {
+    $bundleUrlNow = [string](Get-SrProperty $bundleInfo 'url' '')
+    $bundleShaNow = ([string](Get-SrProperty $bundleInfo 'sha256' '')).ToLowerInvariant()
+    $bundleSizeNow = [int64](Get-SrProperty $bundleInfo 'size' 0)
+    $bundlePrefixNow = [string](Get-SrProperty $bundleInfo 'member_prefix' '')
+    if(-not $bundleUrlNow -and $legacyUrl) { $bundleInfo | Add-Member -NotePropertyName url -NotePropertyValue $legacyUrl -Force; $changed=$true }
+    if(-not $bundleShaNow -and $legacySha) { $bundleInfo | Add-Member -NotePropertyName sha256 -NotePropertyValue $legacySha -Force; $changed=$true }
+    if($bundleSizeNow -le 0 -and $legacySize -gt 0) { $bundleInfo | Add-Member -NotePropertyName size -NotePropertyValue $legacySize -Force; $changed=$true }
+    if(-not $bundlePrefixNow) { $bundleInfo | Add-Member -NotePropertyName member_prefix -NotePropertyValue $legacyPrefix -Force; $changed=$true }
+    if($changed) { Write-SrLog 'AUTO-REPAIR: bloco bundle incompleto foi completado usando campos de compatibilidade.' }
+  }
+
+  $finalUrl = [string](Get-SrProperty $bundleInfo 'url' '')
+  $finalSha = ([string](Get-SrProperty $bundleInfo 'sha256' '')).ToLowerInvariant()
+  if(-not $finalUrl -or -not (Test-SrUrlAllowed $finalUrl)) { throw 'Auto-repair could not produce a safe bundle URL.' }
+  if($finalSha -and $finalSha.Length -ne 64) { throw 'Auto-repair found an invalid bundle SHA256.' }
+
+  if($changed) {
+    try {
+      $repairPath = Join-Path $CacheDir 'last_manifest.repaired.json'
+      Save-SrJson $Manifest $repairPath
+      Write-SrLog ('AUTO-REPAIR: copia reparada salva em ' + $repairPath)
+    } catch { Write-SrLog ('AUTO-REPAIR: nao foi possivel salvar copia local: ' + $_.Exception.Message) }
+  }
+  return $Manifest
+}
+
 function Apply-SrBundleManifest($Source,$Manifest) {
+  $Manifest = Repair-SrBundleManifest $Source $Manifest
   $targetVersion = [string]$Manifest.version
   $installedState = Get-SrInstalledState
   $installedVersion = ''
@@ -539,7 +587,20 @@ function Apply-SrBundleManifest($Source,$Manifest) {
     $extractDir = Join-Path $stage 'extracted'
     Expand-Archive -LiteralPath $bundleZip -DestinationPath $extractDir -Force
     $sourceRoot = Join-Path $extractDir ($memberPrefix.Trim('/').Replace('/','\\'))
-    if(-not (Test-Path $sourceRoot)) { throw ('Bundle member prefix not found: ' + $memberPrefix) }
+    if(-not (Test-Path $sourceRoot)) {
+      $fallbackFiles = Join-Path $extractDir 'files'
+      if(Test-Path $fallbackFiles) {
+        $sourceRoot = $fallbackFiles
+        $memberPrefix = 'files/'
+        Write-SrLog 'AUTO-REPAIR: member_prefix invalido; pasta files/ detectada automaticamente.'
+      } else {
+        $topDirs = @(Get-ChildItem -LiteralPath $extractDir -Directory -ErrorAction SilentlyContinue)
+        if($topDirs.Count -eq 1) {
+          $sourceRoot = $topDirs[0].FullName
+          Write-SrLog ('AUTO-REPAIR: member_prefix inferido automaticamente: ' + $topDirs[0].Name)
+        } else { throw ('Bundle member prefix not found: ' + $memberPrefix) }
+      }
+    }
 
     $newCatalog = New-SrIntegrityCatalog $sourceRoot $targetVersion
     if(@($newCatalog.files).Count -eq 0) { throw 'Desktop Core bundle contains no distributable files.' }
