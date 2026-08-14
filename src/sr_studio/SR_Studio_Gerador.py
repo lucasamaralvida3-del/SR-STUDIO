@@ -44,6 +44,7 @@ from UpdateManager import inspect_update, apply_update
 from ui_v2 import (choose_palette, install_centered_messageboxes, add_tooltip, ToastManager, add_hover,
                    apply_scaling, default_printer_name, print_pdf, center_toplevel, cache_key, file_signature, install_parented_filedialogs, SRDialog)
 from SRSpellCheck import correct_campaign_text
+from modules.Studio5Module import Studio5Panel
 from SRStudio21 import (
     normalize_product_name, apply_learned_correction, learn_correction, corrections,
     validate_promo_jobs, verification_counts, PreGenerationDialog,
@@ -1883,7 +1884,7 @@ class App(APP_TK_BASE):
         self.nav_holder.pack(fill="x",pady=(2,0))
         self.nav_buttons={}
         self.nav_defs=[
-            ("home","⌂","Início"),("sria","✦","SR IA"),("builder","◆","Montador"),("encartes","▥","Encartes Studio"),("promo","▣","Promoções"),("promo_list","▤","Lista de Promoções"),("products","◫","Banco de Produtos"),
+            ("home","⌂","Início"),("studio5","★","Central 5.0"),("sria","✦","SR IA"),("builder","◆","Montador"),("encartes","▥","Encartes Studio"),("promo","▣","Promoções"),("promo_list","▤","Lista de Promoções"),("products","◫","Banco de Produtos"),
             ("atacado","▦","Atacado"),("manual","＋","Geração Manual"),("queue","≡","Fila"),
             ("reprint","↻","Reimpressão"),("historico","◷","Histórico"),("modelos","▧","Modelos"),
             ("config","⚙","Configurações"),
@@ -2004,6 +2005,7 @@ class App(APP_TK_BASE):
         elif key == "reprint": self.show_reprint_center()
         elif key == "historico": self.show_history()
         elif key == "modelos": self.show_models()
+        elif key == "studio5": self.show_studio5()
         elif key == "config": self.show_config()
         elif key == "home": self.show_home()
         else: self.show_placeholder(key)
@@ -2528,6 +2530,16 @@ class App(APP_TK_BASE):
                      fg="white" if k=="sria" else "#DCE7F7")
         self.sria_panel=SRIAPanel(self.content,self,self.palette)
         self.sria_panel.pack(fill="both",expand=True)
+
+    def show_studio5(self):
+        self.clear_content()
+        self.page_title.config(text="Central SR Studio 5.0")
+        pal=self.palette
+        for k,b in self.nav_buttons.items():
+            b.config(bg=pal["SIDEBAR_HOVER"] if k=="studio5" else pal["SIDEBAR"],
+                     fg="white" if k=="studio5" else "#DCE7F7")
+        self.studio5_panel=Studio5Panel(self.content,self,pal)
+        self.studio5_panel.pack(fill="both",expand=True)
 
     def show_encartes(self):
         self.clear_content()
