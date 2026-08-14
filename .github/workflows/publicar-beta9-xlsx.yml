@@ -4,6 +4,7 @@ on:
   push:
     paths:
       - '.github/workflows/publicar-beta9-xlsx.yml'
+      - 'staging/beta13/**'
 
 permissions:
   contents: write
