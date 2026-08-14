@@ -1,0 +1,74 @@
+name: E2E Windows SR Studio 5.0
+
+on:
+  push:
+    branches:
+      - next/5.0
+    paths:
+      - 'tests/test_v5_e2e.py'
+      - '.github/workflows/next5-e2e.yml'
+      - 'src/sr_studio/services/**'
+      - 'src/sr_studio/data/**'
+      - 'src/sr_studio/modules/Studio5Module.py'
+      - 'build/package_app.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  e2e:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dependências E2E
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check "openpyxl>=3.1.2" "Pillow>=10.0.0" "pypdf>=4.0.0" "tkinterdnd2>=0.4.2"
+
+      - name: E2E contra fonte canônica
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP 'srstudio-v5-e2e-source'
+          Remove-Item -LiteralPath $env:LOCALAPPDATA -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          Remove-Item Env:SR_STUDIO_APP_UNDER_TEST -ErrorAction SilentlyContinue
+          python -m unittest tests.test_v5_e2e -v
+
+      - name: Empacotar Beta 5.0 candidata
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path '.e2e-dist' -Force | Out-Null
+          python build/package_app.py --version '5.0.0-hybrid.beta1' --channel beta --release-label 'Beta 1' --output '.e2e-dist/SR_STUDIO_5.0.0_BETA1_E2E.zip' --metadata '.e2e-dist/metadata.json'
+          Expand-Archive -LiteralPath '.e2e-dist/SR_STUDIO_5.0.0_BETA1_E2E.zip' -DestinationPath '.e2e-dist/unpacked' -Force
+          if(-not (Test-Path '.e2e-dist/unpacked/files/SR_Studio_Gerador.py')){ throw 'Pacote não contém aplicação' }
+          $v=Get-Content -Raw '.e2e-dist/unpacked/files/version.json' | ConvertFrom-Json
+          if([string]$v.version -ne '5.0.0-hybrid.beta1'){ throw "Versão empacotada incorreta: $($v.version)" }
+          if([string]$v.channel -ne 'beta'){ throw 'Canal empacotado incorreto' }
+
+      - name: E2E contra o ZIP empacotado
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:LOCALAPPDATA=Join-Path $env:RUNNER_TEMP 'srstudio-v5-e2e-package'
+          Remove-Item -LiteralPath $env:LOCALAPPDATA -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          $env:SR_STUDIO_APP_UNDER_TEST=(Resolve-Path '.e2e-dist/unpacked/files').Path
+          python -m unittest tests.test_v5_e2e -v
+
+      - name: Verificar que dados não foram gravados dentro da aplicação
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $app=(Resolve-Path '.e2e-dist/unpacked/files').Path
+          $forbidden=@(
+            (Join-Path $app 'v5/srstudio5.db'),
+            (Join-Path $app 'projects'),
+            (Join-Path $app 'autosave')
+          )
+          foreach($p in $forbidden){ if(Test-Path $p){ throw "Persistência indevida dentro do pacote: $p" } }
+          Write-Host 'E2E 5.0 concluído: fonte e pacote validados.'
