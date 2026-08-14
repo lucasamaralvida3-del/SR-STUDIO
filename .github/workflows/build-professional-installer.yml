@@ -1,0 +1,109 @@
+name: Build SR Studio Professional Installer
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'installer/professional/**'
+      - 'staging/logo_update/source/SR_Studio.ico'
+      - '.github/workflows/build-professional-installer.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validar identidade visual
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if(-not (Test-Path 'staging/logo_update/source/SR_Studio.ico')) { throw 'Logo SR_Studio.ico nao encontrada.' }
+          if((Get-Item 'staging/logo_update/source/SR_Studio.ico').Length -lt 1000) { throw 'Logo ICO invalida.' }
+
+      - name: Compilar SR_Studio_Setup.exe
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Force -Path dist | Out-Null
+          $csc = 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\Roslyn\csc.exe'
+          if(-not (Test-Path $csc)) { throw "Roslyn csc nao encontrado: $csc" }
+          $ref = 'C:\Program Files (x86)\Reference Assemblies\Microsoft\Framework\.NETFramework\v4.8'
+          $args = @(
+            '/nologo',
+            '/target:winexe',
+            '/platform:anycpu',
+            '/optimize+',
+            '/deterministic+',
+            '/langversion:7.3',
+            '/win32icon:staging/logo_update/source/SR_Studio.ico',
+            '/out:dist/SR_Studio_Setup.exe',
+            "/reference:$ref\mscorlib.dll",
+            "/reference:$ref\System.dll",
+            "/reference:$ref\System.Core.dll",
+            "/reference:$ref\System.Drawing.dll",
+            "/reference:$ref\System.Windows.Forms.dll",
+            "/reference:$ref\System.Web.Extensions.dll",
+            "/reference:$ref\Microsoft.CSharp.dll",
+            'installer/professional/SRStudioSetup.cs'
+          )
+          & $csc @args
+          if($LASTEXITCODE -ne 0) { throw "Falha na compilacao. Codigo $LASTEXITCODE" }
+          if(-not (Test-Path 'dist/SR_Studio_Setup.exe')) { throw 'EXE nao foi gerado.' }
+          Write-Host "EXE gerado: $((Get-Item 'dist/SR_Studio_Setup.exe').Length) bytes"
+
+      - name: Testar consulta online Stable
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $p = Start-Process -FilePath (Resolve-Path 'dist/SR_Studio_Setup.exe') -ArgumentList '/selftest' -Wait -PassThru
+          if($p.ExitCode -ne 0) { throw "Self-test do instalador falhou: $($p.ExitCode)" }
+          $stable = Invoke-RestMethod -Uri ('https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/stable/manifest.json?x='+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -Headers @{'Cache-Control'='no-cache'}
+          if([string]$stable.format -ne 'SRSTUDIO_HYBRID_BUNDLE_1') { throw 'Manifesto Stable invalido.' }
+          if($null -eq $stable.bundle -or -not [string]$stable.bundle.url) { throw 'Stable sem bundle.' }
+          Write-Host "Installer detecta Stable: $($stable.version)"
+
+      - name: Gerar SHA-256
+        shell: powershell
+        run: |
+          $hash=(Get-FileHash -Algorithm SHA256 'dist/SR_Studio_Setup.exe').Hash.ToLowerInvariant()
+          "$hash  SR_Studio_Setup.exe" | Set-Content -Encoding ascii 'dist/SR_Studio_Setup.sha256.txt'
+          Write-Host "SHA-256: $hash"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR_Studio_Setup
+          path: |
+            dist/SR_Studio_Setup.exe
+            dist/SR_Studio_Setup.sha256.txt
+          if-no-files-found: error
+
+      - name: Publicar instalador oficial fixo
+        shell: powershell
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='setup-latest'
+          $title='SR Studio - Instalador Oficial Online'
+          $notes=@"
+          Instalador profissional online do SR Studio.
+
+          - O EXE nao contem uma versao fixa do SR Studio.
+          - Na hora de instalar, consulta stable/manifest.json no repositorio oficial.
+          - Baixa e valida o Launcher atual por SHA-256.
+          - Instala sempre a Stable publicada naquele momento.
+          - Cria atalhos com a identidade visual oficial do SR Studio.
+          - Nas proximas aberturas, Bootstrap e Launcher continuam sincronizando o repositorio.
+          "@
+          if(gh release view $tag *> $null) {
+            gh release upload $tag 'dist/SR_Studio_Setup.exe' 'dist/SR_Studio_Setup.sha256.txt' --clobber
+            gh release edit $tag --title $title --notes $notes --latest=false
+          } else {
+            gh release create $tag 'dist/SR_Studio_Setup.exe' 'dist/SR_Studio_Setup.sha256.txt' --title $title --notes $notes --latest=false
+          }
