@@ -2,19 +2,23 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.9-hybrid.beta10",
-  "created_at": "2026-08-13T17:05:00-03:00",
+  "version": "4.0.10-hybrid.beta11",
+  "created_at": "2026-08-13T22:48:28-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.9-hybrid.beta10/SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip",
-    "sha256": "b17ed08adcd127cb191e777540a75d6e253cc3c1a7ed7a1a5785215200d9fc6a",
-    "size": 2577365,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.10-hybrid.beta11/SR_STUDIO_4.0.10_BETA11_NOVO_ENCARTES_PPTX_CANVA.zip",
+    "sha256": "09c4103608c46bbb4aa12ab93b4e8f32946f71d07561ca5309acf52de5661faf",
+    "size": 2536458,
     "member_prefix": "files/"
   },
   "repair": {
     "mode": "local_hash_catalog",
     "full_check_every_days": 7
   },
-  "delete": [],
-  "notes": "Beta 10: Encartes consulta automaticamente o Banco de Produtos durante a importação de planilhas."
+  "delete": [
+    "Encartes3_app.js",
+    "Encartes3_style.css",
+    "Encartes4_beta6.js"
+  ],
+  "notes": "Beta 11: novo Encartes oficial com PPTX Canva, Banco automático, preço profissional separado, fontes manuais, destaque, categorias, layout automático, múltiplas páginas, duplicar página, desfazer/refazer e validação completa. Imagens somente oficiais cadastradas."
 }
