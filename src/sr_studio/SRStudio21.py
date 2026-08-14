@@ -233,6 +233,15 @@ class PreGenerationDialog(tk.Toplevel):
         super().__init__(parent);self.parent=parent;self.jobs=jobs;self.issues=issues;self.on_correct=on_correct;self.result=False
         self.pal=palette or {"APP_BG":"#F4F7FB","CARD":"white","TEXT":"#152033","MUTED":"#6F7F95","LINE":"#DDE5EF","BLUE":"#0B2F6B","GREEN":"#E9F7EE","GREEN_TXT":"#267A43","RED":"#FDECEC","RED_TXT":"#A63C3C","ORANGE":"#FFF2DD","ORANGE_TXT":"#A46200","ROW_ALT":"#F8FAFD"}
         self.title("SR Studio - Verificações antes de gerar");self.configure(bg=self.pal["APP_BG"]);self.transient(parent);self.grab_set();self.minsize(860,560)
+        # SR5_BETA5_INITIAL_REVIEW_REFRESH: popular a revisão já na primeira abertura.
+        def _sr5_initial_review_refresh():
+            try:
+                self.build()
+                self.update_idletasks()
+            except Exception:
+                pass
+        self.after_idle(_sr5_initial_review_refresh)
+        self.after(100, _sr5_initial_review_refresh)
         self.protocol("WM_DELETE_WINDOW",self.cancel);self.build();self.center(1040,680)
     def center(self,w,h):
         self.update_idletasks();x=self.parent.winfo_rootx()+(self.parent.winfo_width()-w)//2;y=self.parent.winfo_rooty()+(self.parent.winfo_height()-h)//2;self.geometry(f"{w}x{h}+{max(0,x)}+{max(0,y)}")

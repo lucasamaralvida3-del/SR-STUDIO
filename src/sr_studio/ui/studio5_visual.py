@@ -192,7 +192,7 @@ def _build_layout(self):
     self.sidebar.pack(side="left", fill="y")
     self.sidebar.pack_propagate(False)
 
-    brand = tk.Frame(self.sidebar, bg=pal["SIDEBAR"], height=100)
+    brand = tk.Frame(self.sidebar, bg=pal["SIDEBAR"], height=82)
     brand.pack(fill="x", padx=16, pady=(10, 2)); brand.pack_propagate(False)
     self.logo_img = None
     try:
@@ -209,14 +209,39 @@ def _build_layout(self):
     if not self.sidebar_collapsed:
         self.brand_text.pack(side="left", padx=(10, 0))
 
-    nav_canvas = tk.Canvas(self.sidebar, bg=pal["SIDEBAR"], highlightthickness=0, bd=0)
-    nav_scroll = ttk.Scrollbar(self.sidebar, orient="vertical", command=nav_canvas.yview)
+    # Beta 5: navegação lateral realmente rolável em telas menores.
+    nav_stage = tk.Frame(self.sidebar, bg=pal["SIDEBAR"], bd=0)
+    nav_stage.pack(fill="both", expand=True)
+    nav_canvas = tk.Canvas(nav_stage, bg=pal["SIDEBAR"], highlightthickness=0, bd=0)
+    nav_scroll = ttk.Scrollbar(nav_stage, orient="vertical", command=nav_canvas.yview)
     nav_canvas.configure(yscrollcommand=nav_scroll.set)
-    nav_canvas.pack(fill="both", expand=True, padx=(0, 0))
+    nav_scroll.pack(side="right", fill="y", pady=(2, 2))
+    nav_canvas.pack(side="left", fill="both", expand=True, padx=(0, 0))
+    self.nav_canvas = nav_canvas
+    self.nav_scroll = nav_scroll
     self.nav_holder = tk.Frame(nav_canvas, bg=pal["SIDEBAR"])
     nav_window = nav_canvas.create_window((0, 0), window=self.nav_holder, anchor="nw")
     self.nav_holder.bind("<Configure>", lambda e: nav_canvas.configure(scrollregion=nav_canvas.bbox("all")))
     nav_canvas.bind("<Configure>", lambda e: nav_canvas.itemconfigure(nav_window, width=e.width))
+    # SR5_BETA5_NAV_MOUSEWHEEL: rolagem pelo mouse em toda a área do menu.
+    def _sr5_nav_wheel(event):
+        try:
+            steps = int(-1 * (event.delta / 120))
+            nav_canvas.yview_scroll(steps if steps else (-1 if event.delta > 0 else 1), "units")
+            return "break"
+        except Exception:
+            return None
+    def _sr5_nav_bind(_event=None):
+        nav_canvas.bind_all("<MouseWheel>", _sr5_nav_wheel)
+    def _sr5_nav_unbind(_event=None):
+        try:
+            nav_canvas.unbind_all("<MouseWheel>")
+        except Exception:
+            pass
+    nav_canvas.bind("<Enter>", _sr5_nav_bind)
+    nav_canvas.bind("<Leave>", _sr5_nav_unbind)
+    self.nav_holder.bind("<Enter>", _sr5_nav_bind)
+    self.nav_holder.bind("<Leave>", _sr5_nav_unbind)
 
     groups = [
         ("PRINCIPAL", [
@@ -239,18 +264,26 @@ def _build_layout(self):
     for group, items in groups:
         gl = tk.Label(self.nav_holder, text="" if self.sidebar_collapsed else group, bg=pal["SIDEBAR"], fg="#8FB1FF",
                       font=("Segoe UI", 7, "bold"), anchor="w")
-        gl.pack(fill="x", padx=22, pady=(13, 5)); self.nav_group_labels.append((gl, group))
+        gl.pack(fill="x", padx=22, pady=(9, 4)); self.nav_group_labels.append((gl, group))
         for key, icon, label in items:
             text = icon if self.sidebar_collapsed else f"{icon}    {label}"
             b = tk.Button(self.nav_holder, text=text, anchor="center" if self.sidebar_collapsed else "w",
                           bg=pal["SIDEBAR"], fg="#DCE6FF", activebackground=pal["SIDEBAR_HOVER"], activeforeground="white",
-                          relief="flat", bd=0, font=("Segoe UI", 9, "bold"), padx=18, pady=9, cursor="hand2",
+                          relief="flat", bd=0, font=("Segoe UI", 9, "bold"), padx=16, pady=6, cursor="hand2",
                           command=lambda k=key: self.navigate(k))
             b.pack(fill="x", padx=12, pady=2); self.nav_buttons[key] = b
 
     foot = tk.Frame(self.sidebar, bg=pal["SIDEBAR"]); foot.pack(side="bottom", fill="x", padx=12, pady=10)
     self.footer_credit = tk.Label(foot, text="" if self.sidebar_collapsed else "SR Studio • Feito por Lucas", bg=pal["SIDEBAR"], fg="#9DB8F5", font=("Segoe UI", 7))
     self.footer_credit.pack(pady=(0, 5))
+    # Configurações permanece acessível mesmo quando a lista do menu precisa rolar.
+    self.quick_config_btn = tk.Button(
+        foot, text="⚙" if self.sidebar_collapsed else "⚙  Configurações",
+        command=lambda: self.navigate("config"), bg=pal["SIDEBAR"], fg="#DCE6FF",
+        activebackground=pal["SIDEBAR_HOVER"], activeforeground="white",
+        relief="flat", bd=0, font=("Segoe UI Symbol", 8, "bold"), pady=6, cursor="hand2"
+    )
+    self.quick_config_btn.pack(fill="x", pady=(0, 5))
     self.collapse_btn = tk.Button(foot, text="»" if self.sidebar_collapsed else "«  Recolher menu", command=self.toggle_sidebar,
                                   bg="#0E3295", fg="#DCE6FF", activebackground=pal["SIDEBAR_HOVER"], activeforeground="white",
                                   relief="flat", bd=0, font=("Segoe UI", 8, "bold"), pady=7, cursor="hand2")
@@ -317,6 +350,10 @@ def _toggle_sidebar(self):
     except Exception:
         pass
     self.footer_credit.config(text="" if self.sidebar_collapsed else "SR Studio • Feito por Lucas")
+    try:
+        self.quick_config_btn.config(text="⚙" if self.sidebar_collapsed else "⚙  Configurações")
+    except Exception:
+        pass
     self.collapse_btn.config(text="»" if self.sidebar_collapsed else "«  Recolher menu")
     try:
         self.ui_settings["sidebar_collapsed"] = self.sidebar_collapsed
