@@ -67,6 +67,16 @@ new='                "cartaz_chave":"P:"+it["codigo"],"nome":apply_learned_corre
 if old not in text: raise SystemExit('nome individual Atacado não localizado')
 text=text.replace(old,new,1);p.write_text(text,encoding='utf-8')
 
+# Identidade visual interna do Encartes também passa a mostrar Stable 2.
+p=R/'Encartes10_beta16.js';text=p.read_text(encoding='utf-8')
+text=text.replace("A.VERSION='4.0.15 • Beta 16';","A.VERSION='4.0.16 • Stable 2';",1)
+p.write_text(text,encoding='utf-8')
+p=R/'Encartes3_index.html';text=p.read_text(encoding='utf-8').replace('4.0.15 — Encartes Studio','4.0.16 — Encartes Studio',1);p.write_text(text,encoding='utf-8')
+p=R/'Encartes3Engine.py';text=p.read_text(encoding='utf-8')
+text=text.replace("'version':'4.0.15-beta16'","'version':'4.0.16-stable2'",1)
+text=text.replace('BETA 16 • EDIÇÃO VISUAL ESTILO CANVA','STABLE 2 • EDITOR VISUAL + CORRETOR ORTOGRÁFICO',1)
+p.write_text(text,encoding='utf-8')
+
 # Versão Stable 2.
 vpath=R/'version.json';v=json.loads(vpath.read_text(encoding='utf-8'))
 v.update(distribution_version='4.0.16-hybrid.stable2',product_version='4.0.16',channel='stable',release_label='Stable 2',updated_at='2026-08-14T10:37:00-03:00')
