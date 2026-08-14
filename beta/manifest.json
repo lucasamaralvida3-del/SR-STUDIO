@@ -6,8 +6,8 @@
   "product_version": "5.0.0",
   "release_label": "Beta 4",
   "published_at": "2026-08-14T15:40:21-03:00",
-  "min_launcher": "4.0.1-hybrid.base3.0",
-  "min_launcher_version": "4.0.1-hybrid.base3.0",
+  "min_launcher": "4.0.1-hybrid.base3.1",
+  "min_launcher_version": "4.0.1-hybrid.base3.1",
   "bundle": {
     "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta4/SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip",
     "sha256": "d040084f30380351ba3884a08501c139be5cf682e6d927234d51c5ae5fb34004",
