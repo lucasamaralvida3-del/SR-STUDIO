@@ -1,0 +1,34 @@
+name: Extrair fontes Cartaz Stable 2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/extract-cartaz-stable2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  extrair:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Extrair módulos da Beta 16
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf work diag staging/stable2/base && mkdir -p work diag staging/stable2/base
+          gh release download v4.0.15-hybrid.beta16 -p 'SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip' -D diag
+          unzip -q diag/SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip -d work
+          for f in ManualModule.py SR_Studio_Gerador.py AtacadoModule.py SRStudio21.py requirements.txt; do
+            test -f "work/files/$f" && cp "work/files/$f" "staging/stable2/base/$f" || true
+          done
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add staging/stable2/base
+          if ! git diff --cached --quiet; then
+            git commit -m 'Extrai módulos-base para Stable 2'
+            git push
+          fi
