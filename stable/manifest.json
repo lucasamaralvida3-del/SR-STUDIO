@@ -2,13 +2,13 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "stable",
-  "version": "4.0.16-hybrid.stable2",
-  "created_at": "2026-08-14T10:49:02-03:00",
+  "version": "4.0.16-hybrid.stable3",
+  "created_at": "2026-08-14T11:36:32-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-hybrid.stable2/SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip",
-    "sha256": "f79813c5606bfd7b56c415256b32b75b0286958a6649b065f05c941f4652d0aa",
-    "size": 2567164,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.16-hybrid.stable3/SR_STUDIO_4.0.16_STABLE3_LOGO_OFICIAL.zip",
+    "sha256": "b30b03e45f9fdf85646a142e785f2d93aaa7d21f2ec12849885bb6699e1958cb",
+    "size": 2526472,
     "member_prefix": "files/"
   },
   "repair": {
@@ -22,5 +22,5 @@
     "Encartes5_beta11.js",
     "Encartes6_beta12.js"
   ],
-  "notes": "Stable 2: versão completa até a Beta 16 + corretor ortográfico local para geração de cartazes."
+  "notes": "Stable 3: nova logo oficial SR aplicada na abertura, menu principal e ícone do aplicativo."
 }
