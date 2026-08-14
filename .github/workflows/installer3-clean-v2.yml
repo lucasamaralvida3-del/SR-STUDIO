@@ -1,0 +1,70 @@
+name: SR Studio Installer 3 Clean v2
+
+on:
+  push:
+    paths:
+      - '.github/workflows/installer3-clean-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Gerar Launcher corrigido e instalador limpo
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python installer/build_installer3_clean.py
+          $launcher='launcher/files/SRStudioLauncher.ps1'
+          $tokens=$null; $errors=$null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path $launcher),[ref]$tokens,[ref]$errors) | Out-Null
+          if($errors -and $errors.Count -gt 0){ throw "Launcher PowerShell invalido: $($errors[0].Message)" }
+          if(-not (Select-String -LiteralPath $launcher -SimpleMatch "4.0.1-hybrid.base2.6")){ throw 'Launcher base2.6 ausente' }
+          if(-not (Select-String -LiteralPath $launcher -SimpleMatch 'Get-AuthenticodeSignature')){ throw 'Validacao da assinatura Python ausente' }
+          $clean=Get-Content -Raw 'dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd'
+          foreach($bad in @('FromBase64String','::BEGIN_','-ExecutionPolicy Bypass')){
+            if($clean.Contains($bad)){ throw "Padrao indesejado no instalador limpo: $bad" }
+          }
+
+      - name: Publicar Launcher corrigido
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add launcher/files/SRStudioLauncher.ps1 manifests/launcher.json
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Corrige runtime Python no Launcher base2.6'
+            git push origin HEAD:main
+          }
+
+      - name: Revalidar versao online
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Start-Sleep -Seconds 2
+          $url='https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/manifests/launcher.json?x=' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          $m=Invoke-RestMethod -Uri $url -Headers @{'Cache-Control'='no-cache'}
+          if([string]$m.version -ne '4.0.1-hybrid.base2.6'){ throw "Manifesto online ainda esta em $($m.version)" }
+
+      - name: Publicar release Installer 3
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='v4.0.16-installer3'
+          $cmd='dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd'
+          $zip='dist/SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.zip'
+          $notes='Instalador Stable limpo: sem payload Base64 e sem ExecutionPolicy Bypass. Launcher 4.0.1-hybrid.base2.6 prefere Python 3.12 ja instalado, ignora aliases WindowsApps, valida a assinatura digital do instalador oficial do Python e corrige o caso de exit code 0 sem python.exe na pasta privada.'
+          if(gh release view $tag 2>$null){
+            gh release upload $tag $cmd $zip --clobber
+          } else {
+            gh release create $tag $cmd $zip --title 'SR Studio 4.0.16 - Instalador Limpo' --notes $notes
+          }
