@@ -1,16 +1,23 @@
 {
-    "format":  "SRSTUDIO_HYBRID_BUNDLE_1",
-    "product":  "SR Studio",
-    "channel":  "beta",
-    "version":  "5.0.0-hybrid.beta2",
-    "product_version":  "5.0.0",
-    "release_label":  "Beta 2",
-    "published_at":  "2026-08-14T15:02:07-03:00",
-    "min_launcher":  "4.0.1-hybrid.base2.5",
-    "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta2/SR_STUDIO_5.0.0_BETA2_NOVA_INTERFACE.zip",
-    "bundle_url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta2/SR_STUDIO_5.0.0_BETA2_NOVA_INTERFACE.zip",
-    "sha256":  "58f9f882119ba3c58ec2efd592b4c29293eb9c03251d20f074c121fb097e82be",
-    "size":  3984230,
-    "member_prefix":  "files/",
-    "notes":  "SR Studio 5.0 Beta 2 â€” Nova Interface: redesign completo do shell, dashboard, menu, topbar, Central 5.0 e Encartes Studio; identidade azul e branca oficial; funÃ§Ãµes da Beta 1 preservadas."
+  "format": "SRSTUDIO_HYBRID_BUNDLE_1",
+  "product": "SR Studio",
+  "channel": "beta",
+  "version": "5.0.0-hybrid.beta2",
+  "product_version": "5.0.0",
+  "release_label": "Beta 2",
+  "published_at": "2026-08-14T15:02:07-03:00",
+  "min_launcher_version": "4.0.1-hybrid.base2.9",
+  "min_launcher": "4.0.1-hybrid.base2.9",
+  "bundle": {
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta2/SR_STUDIO_5.0.0_BETA2_NOVA_INTERFACE.zip",
+    "sha256": "58f9f882119ba3c58ec2efd592b4c29293eb9c03251d20f074c121fb097e82be",
+    "size": 3984230,
+    "member_prefix": "files/"
+  },
+  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta2/SR_STUDIO_5.0.0_BETA2_NOVA_INTERFACE.zip",
+  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta2/SR_STUDIO_5.0.0_BETA2_NOVA_INTERFACE.zip",
+  "sha256": "58f9f882119ba3c58ec2efd592b4c29293eb9c03251d20f074c121fb097e82be",
+  "size": 3984230,
+  "member_prefix": "files/",
+  "notes": "SR Studio 5.0 Beta 2 — Nova Interface: redesign completo do shell, dashboard, menu, topbar, Central 5.0 e Encartes Studio; identidade azul e branca oficial; funções da Beta 1 preservadas."
 }
