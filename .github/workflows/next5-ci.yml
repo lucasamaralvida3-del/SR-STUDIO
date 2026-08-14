@@ -1,0 +1,109 @@
+name: CI SR Studio 5.0
+
+on:
+  push:
+    branches:
+      - next/5.0
+    paths:
+      - 'src/sr_studio/**'
+      - 'tests/**'
+      - 'build/**'
+      - 'docs/**'
+      - 'README.md'
+      - '.github/workflows/next5-ci.yml'
+  pull_request:
+    branches:
+      - next/5.0
+
+permissions:
+  contents: read
+
+jobs:
+  validar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validar metadados da fundação
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $f=Get-Content -Raw 'build/foundation.json' | ConvertFrom-Json
+          if([string]$f.format -ne 'SRSTUDIO_NEXT_FOUNDATION_1'){ throw 'Formato de fundação inválido' }
+          if([string]$f.target_major -ne '5.0.0'){ throw 'Target major inválido' }
+          if([string]$f.source_of_truth -ne 'src/sr_studio'){ throw 'Fonte de verdade inválida' }
+          if([string]$f.baseline -ne '4.0.16-hybrid.stable4'){ throw 'Baseline inválida' }
+
+      - name: Compilar fontes Python
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.py' -File -Recurse | ForEach-Object {
+            python -m py_compile $_.FullName
+          }
+          python -m py_compile build/materialize_baseline.py build/package_app.py tests/test_foundation.py
+
+      - name: Validar JavaScript do Encartes
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          Get-ChildItem -LiteralPath 'src/sr_studio' -Filter '*.js' -File | ForEach-Object {
+            node --check $_.FullName
+          }
+
+      - name: Rodar testes da fundação
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m unittest tests.test_foundation -v
+
+      - name: Montar pacotes de fumaça Beta e Stable
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path '.ci-dist' -Force | Out-Null
+          python build/package_app.py --version '5.0.0-hybrid.beta1' --channel beta --release-label 'Beta 1' --output '.ci-dist/SR_STUDIO_5.0.0_BETA1_SMOKE.zip' --metadata '.ci-dist/beta.json'
+          python build/package_app.py --version '5.0.0-hybrid.stable1' --channel stable --release-label 'Stable 1' --output '.ci-dist/SR_STUDIO_5.0.0_STABLE1_SMOKE.zip' --metadata '.ci-dist/stable.json'
+
+      - name: Validar equivalência estrutural dos canais
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import json
+          import zipfile
+          from pathlib import Path
+
+          root = Path('.ci-dist')
+          beta = root / 'SR_STUDIO_5.0.0_BETA1_SMOKE.zip'
+          stable = root / 'SR_STUDIO_5.0.0_STABLE1_SMOKE.zip'
+
+          def members(path):
+              with zipfile.ZipFile(path) as z:
+                  return sorted(n for n in z.namelist() if not n.endswith('/'))
+
+          bm = members(beta)
+          sm = members(stable)
+          if bm != sm:
+              raise SystemExit('Beta e Stable possuem estruturas diferentes')
+          required = {
+              'files/SR_Studio_Gerador.py',
+              'files/AtacadoModule.py',
+              'files/ManualModule.py',
+              'files/Encartes10_beta16.js',
+              'files/assets/SR_logo.png',
+              'files/version.json',
+          }
+          missing = sorted(required - set(bm))
+          if missing:
+              raise SystemExit('Arquivos ausentes no pacote: ' + ', '.join(missing))
+
+          for meta_name, channel in [('beta.json', 'beta'), ('stable.json', 'stable')]:
+              data = json.loads((root / meta_name).read_text(encoding='utf-8'))
+              if data['channel'] != channel:
+                  raise SystemExit(f'Canal incorreto em {meta_name}')
+              if data['member_prefix'] != 'files/':
+                  raise SystemExit(f'Prefixo incorreto em {meta_name}')
+          print(f'Estrutura comum validada: {len(bm)} arquivos')
+          '@ | Set-Content -LiteralPath '.ci-dist/verify.py' -Encoding UTF8
+          python '.ci-dist/verify.py'
