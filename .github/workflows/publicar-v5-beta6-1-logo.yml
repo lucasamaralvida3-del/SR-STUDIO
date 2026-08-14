@@ -1,0 +1,174 @@
+name: Publicar SR Studio 5.0 Beta 6.1 - Logo Oficial
+
+on:
+  push:
+    branches: [next/5.0]
+    paths:
+      - '.github/workflows/publicar-v5-beta6-1-logo.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publicar:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: next/5.0
+          fetch-depth: 0
+
+      - name: Preparar Pillow
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python -m pip install --disable-pip-version-check "Pillow>=10.0.0"
+
+      - name: Gerar e validar logo oficial
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          python build/apply_beta61_logo.py
+          python -m py_compile src/sr_studio/SR_Studio_Gerador.py src/sr_studio/ui/splash_v5.py src/sr_studio/ui/studio5_visual.py src/sr_studio/ui/studio5_fidelity.py
+          node --check src/sr_studio/Encartes13_fidelity.js
+          $app=Get-Content -Raw src/sr_studio/SR_Studio_Gerador.py
+          $visual=Get-Content -Raw src/sr_studio/ui/studio5_visual.py
+          $fidelity=Get-Content -Raw src/sr_studio/ui/studio5_fidelity.py
+          $splash=Get-Content -Raw src/sr_studio/ui/splash_v5.py
+          foreach($t in @('BRAND_LOGO = ASSETS / "SR_logo.png"','def _brand_photo','SR5_BETA6_DIRECT_LAUNCH_GUARD')){if(-not $app.Contains($t)){throw "App sem $t"}}
+          if(-not $visual.Contains('_brand_photo(self, 48)')){throw 'Menu nao usa a fonte central da logo'}
+          if(-not $fidelity.Contains('_brand_photo(self,58)')){throw 'Sidebar fidelity nao usa a fonte central da logo'}
+          if(-not $fidelity.Contains('_brand_photo(self,92)')){throw 'Dashboard nao usa a fonte central da logo'}
+          if(-not $splash.Contains('brand_photo(self.root, size)')){throw 'Splash nao usa a fonte central da logo'}
+
+      - name: Registrar assets corrigidos na base 5.0
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/sr_studio/assets/SR_logo.png src/sr_studio/assets/SR_Studio.ico
+          git rm -f staging/beta61_logo/source_part01.txt staging/beta61_logo/source_part02.txt 2>$null
+          if(-not (git diff --cached --quiet)){
+            git commit -m 'Beta 6.1 - substitui logo corrompida pela marca oficial validada'
+            git push origin HEAD:next/5.0
+          }
+
+      - name: Montar pacote Beta 6.1
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          New-Item -ItemType Directory -Path dist -Force | Out-Null
+          python build/package_app.py --version '5.0.0-hybrid.beta6.1' --channel beta --release-label 'Beta 6.1' --output 'dist/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip' --metadata 'dist/package.json'
+
+      - name: Validar ZIP final e pixels da marca
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          @'
+          import io,json,zipfile
+          from pathlib import Path
+          from PIL import Image
+          p=Path('dist/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip')
+          assert p.stat().st_size>2_000_000,p.stat().st_size
+          with zipfile.ZipFile(p) as z:
+              names=set(z.namelist())
+              required={
+                  'files/SR_Studio_Gerador.py','files/SRStudio21.py','files/version.json',
+                  'files/assets/SR_logo.png','files/assets/SR_Studio.ico',
+                  'files/ui/splash_v5.py','files/ui/studio5_visual.py','files/ui/studio5_fidelity.py'
+              }
+              missing=required-names
+              assert not missing,missing
+              logo_bytes=z.read('files/assets/SR_logo.png')
+              with Image.open(io.BytesIO(logo_bytes)) as im:
+                  im.load(); rgb=im.convert('RGB')
+              assert rgb.size==(512,512),rgb.size
+              px=list(rgb.getdata()); n=len(px)
+              black=sum(1 for r,g,b in px if max(r,g,b)<20)/n
+              white=sum(1 for r,g,b in px if min(r,g,b)>245)/n
+              blue=sum(1 for r,g,b in px if b>120 and b>r*1.20 and b>g*1.05)/n
+              assert black<0.001,black
+              assert white>0.30,white
+              assert blue>0.35,blue
+              ico_bytes=z.read('files/assets/SR_Studio.ico')
+              with Image.open(io.BytesIO(ico_bytes)) as ico:
+                  ico.load(); sizes=set(ico.ico.sizes())
+              expected={(16,16),(24,24),(32,32),(48,48),(64,64),(96,96),(128,128),(256,256)}
+              assert expected.issubset(sizes),(expected-sizes)
+              app=z.read('files/SR_Studio_Gerador.py').decode('utf-8-sig')
+              assert 'SR5_BETA6_DIRECT_LAUNCH_GUARD' in app
+              menu=z.read('files/ui/studio5_visual.py').decode('utf-8-sig')
+              assert 'SR5_BETA5_NAV_MOUSEWHEEL' in menu and 'self.quick_config_btn' in menu
+              review=z.read('files/SRStudio21.py').decode('utf-8-sig')
+              assert 'SR5_BETA5_INITIAL_REVIEW_REFRESH' in review
+              v=json.loads(z.read('files/version.json').decode('utf-8-sig'))
+              assert v.get('distribution_version')=='5.0.0-hybrid.beta6.1',v
+              assert v.get('release_label')=='Beta 6.1',v
+          print('BETA61_ZIP_OK',p.stat().st_size,'black',black,'white',white,'blue',blue,'ico',sorted(sizes))
+          '@ | Set-Content dist/check_beta61.py -Encoding UTF8
+          python dist/check_beta61.py
+
+      - name: Publicar release Beta 6.1
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $tag='v5.0.0-hybrid.beta6.1'
+          $asset='dist/SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip'
+          $notes='Beta 6.1 - Logo Oficial. Substitui definitivamente o asset de marca que aparecia preto/corrompido na abertura, menu lateral, dashboard e icone da janela. A nova fonte foi validada por pixels antes do empacotamento e o ICO foi regenerado em multiplas resolucoes. Preserva integralmente a atualizacao garantida da Beta 6, o menu rolavel e a revisao de produtos corrigida.'
+          cmd /c "gh release view $tag >nul 2>&1"
+          if($LASTEXITCODE -eq 0){
+            gh release upload $tag $asset --clobber
+            gh release edit $tag --prerelease --title 'SR Studio 5.0.0 Beta 6.1 - Logo Oficial' --notes $notes
+          } else {
+            gh release create $tag $asset --target next/5.0 --prerelease --title 'SR Studio 5.0.0 Beta 6.1 - Logo Oficial' --notes $notes
+          }
+
+      - name: Atualizar somente o manifesto Beta oficial
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $meta=Get-Content -Raw dist/package.json|ConvertFrom-Json
+          $now=[DateTimeOffset]::UtcNow.ToOffset([TimeSpan]::FromHours(-3)).ToString('yyyy-MM-ddTHH:mm:sszzz')
+          $asset='SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip'
+          $url="https://github.com/${{ github.repository }}/releases/download/v5.0.0-hybrid.beta6.1/$asset"
+          $beta=[ordered]@{
+            format='SRSTUDIO_HYBRID_BUNDLE_1';product='SR Studio';channel='beta';version='5.0.0-hybrid.beta6.1';product_version='5.0.0';release_label='Beta 6.1';published_at=$now;
+            min_launcher='4.0.1-hybrid.base3.2';min_launcher_version='4.0.1-hybrid.base3.2';
+            bundle=[ordered]@{url=$url;sha256=[string]$meta.sha256;size=[int64]$meta.size;member_prefix='files/'};
+            url=$url;bundle_url=$url;sha256=[string]$meta.sha256;size=[int64]$meta.size;member_prefix='files/';
+            notes='SR Studio 5.0 Beta 6.1 - logo oficial corrigida em splash, menu, dashboard e icone; demais recursos da Beta 6 preservados.'
+          }
+          git fetch origin main
+          $work=Join-Path $env:RUNNER_TEMP 'sr-main-beta61-logo'
+          if(Test-Path $work){Remove-Item $work -Recurse -Force}
+          git worktree add $work origin/main
+          New-Item -ItemType Directory -Force -Path (Join-Path $work 'beta')|Out-Null
+          [IO.File]::WriteAllText((Join-Path $work 'beta/manifest.json'),(($beta|ConvertTo-Json -Depth 20)+"`n"),(New-Object Text.UTF8Encoding($false)))
+          Push-Location $work
+          git config user.name 'SR Studio Update Bot';git config user.email 'actions@users.noreply.github.com'
+          git add beta/manifest.json
+          git commit -m 'Publica SR Studio 5.0 Beta 6.1 - Logo Oficial'
+          git push origin HEAD:main
+          Pop-Location
+
+      - name: Verificar publicação pública final
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop';Start-Sleep 4
+          $local=Get-Content -Raw dist/package.json|ConvertFrom-Json
+          $r=gh api repos/${{ github.repository }}/releases/tags/v5.0.0-hybrid.beta6.1|ConvertFrom-Json
+          if(-not $r.prerelease){throw 'Beta 6.1 nao esta marcada como prerelease'}
+          $a=$r.assets|Where-Object name -eq 'SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip'|Select-Object -First 1
+          if(-not $a){throw 'Asset Beta 6.1 ausente'}
+          if([int64]$a.size -ne [int64]$local.size){throw 'Tamanho da release divergente'}
+          $stamp=[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+          $m=Invoke-RestMethod -Uri ("https://raw.githubusercontent.com/${{ github.repository }}/main/beta/manifest.json?ts="+$stamp) -Headers @{'Cache-Control'='no-cache'}
+          if([string]$m.version -ne '5.0.0-hybrid.beta6.1'){throw "Manifesto Beta incorreto: $($m.version)"}
+          if([string]$m.sha256 -ne [string]$local.sha256){throw 'SHA do manifesto divergente'}
+          if([int64]$m.size -ne [int64]$local.size){throw 'Tamanho do manifesto divergente'}
+          Write-Host "BETA61_PUBLICADA $($m.version) $($m.sha256) $($m.size)"
