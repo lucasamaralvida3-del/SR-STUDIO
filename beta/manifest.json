@@ -2,13 +2,13 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio Desktop Core",
   "channel": "beta",
-  "version": "4.0.13-hybrid.beta14",
-  "created_at": "2026-08-14T08:22:33-03:00",
+  "version": "4.0.14-hybrid.beta15",
+  "created_at": "2026-08-14T09:49:49-03:00",
   "min_launcher_version": "4.0.0-hybrid.pro1.1",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.13-hybrid.beta14/SR_STUDIO_4.0.13_BETA14_AJUSTE_VISUAL_CANVA.zip",
-    "sha256": "2f31013222bebf556a9e5a9b9f0d35d068845d5856dd26ad471e6103e545225d",
-    "size": 2543697,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v4.0.14-hybrid.beta15/SR_STUDIO_4.0.14_BETA15_EDITOR_PRO.zip",
+    "sha256": "6a541239b1049e50cb235648b40de0da9409e55bc43f3dce2a416507c2b1f8b2",
+    "size": 2553431,
     "member_prefix": "files/"
   },
   "repair": {
@@ -22,5 +22,5 @@
     "Encartes5_beta11.js",
     "Encartes6_beta12.js"
   ],
-  "notes": "Beta 14: ajuste visual do Canva com camadas corretas, imagem recortada dentro do slot, autoajuste de nome e preço e alinhamento fiel ao PPTX."
+  "notes": "Beta 15: Editor PRO com edição manual por partes, aprendizado de template, guias/camadas, imagem com zoom e foco, cópia de ajustes, backup e versões do projeto."
 }
