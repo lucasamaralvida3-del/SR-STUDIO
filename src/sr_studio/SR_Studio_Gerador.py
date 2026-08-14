@@ -30,6 +30,9 @@ try:
 except Exception:
     APP_TK_BASE=tk.Tk
 
+from ui.hidpi import enable_hidpi
+enable_hidpi()
+
 import AtacadoModule as _atacado_mod
 import ManualModule as _manual_mod
 from AtacadoModule import AtacadoPanel, reports_history, run_engine as atacado_run_engine, mark_posters_generated, preload_atacado_catalog
@@ -4028,6 +4031,10 @@ class App(APP_TK_BASE):
 # O patch é aplicado depois da definição completa de App, preservando o núcleo funcional.
 from ui.studio5_visual import install_studio5_visual as _install_studio5_visual
 _install_studio5_visual(App)
+
+# SR Studio 5.0 Beta 4 â€” fidelidade visual e Ã­cones vetoriais.
+from ui.studio5_fidelity import install_studio5_fidelity as _install_studio5_fidelity
+_install_studio5_fidelity(App)
 
 # SR Studio 5.0 Beta 3 â€” abertura animada real.
 # MantÃ©m o boot funcional existente e substitui apenas a apresentaÃ§Ã£o da Splash.
