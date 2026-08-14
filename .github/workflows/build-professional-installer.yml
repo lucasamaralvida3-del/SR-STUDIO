@@ -106,6 +106,7 @@ jobs:
           - Instala sempre a Stable publicada naquele momento.
           - Cria atalhos com a identidade visual oficial do SR Studio.
           - Nas proximas aberturas, Bootstrap e Launcher continuam sincronizando o repositorio.
+          - Reinstalacoes Stable limpam automaticamente qualquer estado Beta antigo.
           "@
           cmd /c "gh release view $tag >nul 2>&1"
           $exists = ($LASTEXITCODE -eq 0)
