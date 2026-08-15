@@ -120,6 +120,7 @@ class SRStudioStagedPosters(base.SRStudioPosterProfessional):
 
     def __init__(self) -> None:
         self._staging_generation = 0
+        self._staging_active = False
         self._poster_staging = PosterStagingService()
         self._staging_events: queue.Queue[tuple] = queue.Queue()
         self._staging_poll_after = None
@@ -146,6 +147,7 @@ class SRStudioStagedPosters(base.SRStudioPosterProfessional):
         total = len(products)
         if not total:
             return
+        self._staging_active = True
         self.toast.show(
             f"Preparando {total} cartaz(es) em qualidade final no segundo plano...",
             "info",
@@ -190,12 +192,12 @@ class SRStudioStagedPosters(base.SRStudioPosterProfessional):
                 self._staging_progress(done, total)
             elif kind == "finished":
                 _, _, total, generated, reused, failed = event
+                self._staging_active = False
                 self._staging_finished(total, generated, reused, failed)
-        if not self._staging_events.empty() or threading.active_count() > 1:
+        if self._staging_active or not self._staging_events.empty():
             self._staging_poll_after = self.after(180, self._poll_staging_events)
 
     def _staging_progress(self, done: int, total: int) -> None:
-        # Avoid flooding notifications: first, last and every fifth item are enough.
         if done == 1 or done == total or done % 5 == 0:
             self.toast.show(f"Cartazes pré-renderizados: {done}/{total} prontos.", "info", 1400)
 
@@ -215,8 +217,6 @@ class SRStudioStagedPosters(base.SRStudioPosterProfessional):
 
 
 def run() -> None:
-    # The existing shell looks these classes up in its module globals. Replacing only
-    # the concrete poster views preserves navigation/design while adding staging.
     base.PromotionPosterModule = StagedPromotionPosterModule
     base.WholesalePosterModule = StagedWholesalePosterModule
     app = SRStudioStagedPosters()
