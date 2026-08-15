@@ -135,3 +135,10 @@ def test_staging_signature_ignores_ui_render_state(tmp_path: Path) -> None:
     product.metadata["edited"] = True
     after = service.signature(product, PosterKind.PROMOTION)
     assert before == after
+
+
+def test_advanced_poster_workspace_imports_without_starting_ui() -> None:
+    from srstudio.app.advanced_posters import AdvancedPromotionPosterModule, SRStudioAdvancedPosters
+
+    assert AdvancedPromotionPosterModule.__name__ == "AdvancedPromotionPosterModule"
+    assert SRStudioAdvancedPosters.__name__ == "SRStudioAdvancedPosters"
