@@ -64,7 +64,7 @@ jobs:
           if (!(Test-Path $atacadoA) -and !(Test-Path $atacadoB)) { throw "Engine oficial de Atacado ausente do executável." }
           $pdfium = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "pdfium.dll" | Select-Object -First 1
           if ($null -eq $pdfium) { throw "PDFium nativo ausente do executável." }
-          python -c "import pypdfium2; from srstudio.posters.legacy_batch import LegacyBatchRenderer; from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; assert poster_pane_ratio(1500) == (68, 32); print(LegacyBatchRenderer.__name__, SRStudioTurboPosters.__name__)"
+          python -c "import pypdfium2; from srstudio.posters.legacy_batch import LegacyBatchRenderer; from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; from srstudio.importers.pptx.reader import PptxImporter; from srstudio.importers.pptx.semantic import SemanticMapper; from srstudio.images.library import ImageLibrary; from srstudio.images.canva_training import CanvaTrainingService; from srstudio.templates.corpus import LayoutCorpus; from srstudio.app.image_bank_view import ImageBankView; from srstudio.app.layout_corpus_view import LayoutCorpusView; assert poster_pane_ratio(1500) == (68, 32); print(LegacyBatchRenderer.__name__, SRStudioTurboPosters.__name__, PptxImporter.__name__, SemanticMapper.__name__, ImageLibrary.__name__, CanvaTrainingService.__name__, LayoutCorpus.__name__, ImageBankView.__name__, LayoutCorpusView.__name__)"
 
       - name: Assemble launcher-compatible hybrid bundle
         shell: pwsh
@@ -151,12 +151,26 @@ jobs:
 
           Atualização do SR Studio 5 Professional no canal Beta oficial.
           Versão: $env:DIST_VERSION
-          Renderização rápida refeita sem alterar a automação antiga do PowerPoint.
-          PowerPointEngine.ps1 e AtacadoEngine.ps1 geram os PDFs oficiais exatamente como nas versões anteriores; o SR Studio usa PDFium local para criar as prévias PNG sem abrir PowerPoint novamente.
-          PDFs e prévias ficam em cache por produto/modelo/dados comerciais. Reimportar dados iguais não chama Office novamente; alterar um item invalida apenas esse cartaz.
-          O PDF final junta os PDFs vetoriais já preparados, sem nova renderização.
-          Se o lote histórico falhar em um item, apenas os ausentes caem para o renderer normal comprovado.
-          Layout responsivo, grade editável e diagnóstico Custo/Venda/Clube continuam preservados.
+
+          ENCARTES STUDIO / CANVA V2
+          - Importador PPTX reconhece imagens do Canva em Freeform/Shape com preenchimento de imagem, crop, rotação, flip, transparência, z-order e transformações de grupos/subgrupos.
+          - Preços divididos em objetos R$ + reais + centavos + unidade passam a formar um único campo semântico de preço.
+          - Nome, imagem, preço, centavos e unidade são reunidos em cards editáveis preservando regiões e estilo do projeto importado.
+          - Prévia e exportação usam a mesma camada de renderização para reduzir diferença visual entre editor e arquivo final.
+
+          BANCO DE IMAGENS APRENDIDO
+          - Projetos Canva podem alimentar localmente o banco nome↔imagem com confiança e origem.
+          - Deduplicação por SHA-256 + perceptual hash, aliases, busca aproximada, imagem preferida e contagem de uso.
+          - Associações de baixa confiança ficam pendentes para revisão; aprovadas podem preencher imagens automaticamente ao importar Excel.
+          - Nova tela Banco de Imagens permite aprovar, rejeitar, renomear, substituir e escolher imagem principal.
+
+          TREINAMENTO E LAYOUTS SR
+          - Treinamento em segundo plano aceita PPTX ou ZIP inteiro sem carregar centenas de páginas no projeto atual.
+          - Corpus determinístico aprende quantidade/posição dos cards, campanha, paleta e tipografia; o nome do arquivo não é usado como verdade quando o conteúdo da página contradiz.
+          - Área Modelos lista padrões aprendidos e permite criar nova página usando a grade média do padrão.
+
+          Promoções, Atacado, renderização PDFium, cache seletivo, layout responsivo e engines históricos continuam preservados.
+          Os arquivos Canva e imagens privadas do usuário não são incluídos na distribuição; o aprendizado é local na instalação do Studio.
 
           Compatível com o Launcher Beta Base 3.4 através do shim SR_Studio_Gerador.py.
           "@
@@ -205,7 +219,7 @@ jobs:
             size = [int64]$env:BETA_SIZE
             member_prefix = "files/"
             previous_version = $previousVersion
-            notes = "SR Studio $env:RELEASE_LABEL - engine antigo intacto para PDF + PDFium local para prévias rápidas e cache seletivo."
+            notes = "SR Studio $env:RELEASE_LABEL - Canva Importer V2, banco local de imagens aprendido, treinamento PPTX/ZIP e layouts SR reutilizáveis."
           }
           $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
