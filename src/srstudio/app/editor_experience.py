@@ -34,6 +34,44 @@ class StudioCanvasExperience(PremiumFlyerCanvas):
         self.bind("<Motion>", self._update_cursor, add="+")
         self.bind("<Control-MouseWheel>", self._wheel_zoom, add="+")
 
+    def redraw(self) -> None:
+        """Desenha o editor na ordem correta: papel, grid, conteúdo, régua e seleção."""
+        self.delete("all")
+        self._photos.clear()
+        transform = self.transform()
+        bounds = transform.page_bounds()
+        self.create_rectangle(
+            bounds.x - 6,
+            bounds.y - 6,
+            bounds.right + 6,
+            bounds.bottom + 6,
+            fill="#C9D3E0",
+            outline="",
+        )
+        self.create_rectangle(
+            bounds.x,
+            bounds.y,
+            bounds.right,
+            bounds.bottom,
+            fill=self.controller.page.background,
+            outline="#C8D2E1",
+        )
+        if self.show_grid:
+            self._draw_grid(transform)
+        elements = sorted(
+            self.controller.page.elements,
+            key=lambda item: int(item.get("z_index", 0)),
+        )
+        for index, element in enumerate(elements):
+            if not bool(element.get("hidden", False)):
+                self._draw_element(transform, element, f"element-{index}")
+        for card in sorted(self.controller.page.cards, key=lambda item: item.z_index):
+            if not bool(card.overrides.get("hidden", False)):
+                self._draw_card(transform, card)
+        if self.show_rulers:
+            self._draw_rulers(transform)
+        self._draw_selection(transform)
+
     def _draw_card(self, transform, card) -> None:
         rotation = float(getattr(card, "rotation", 0.0) or 0.0) % 360.0
         if not rotation:
