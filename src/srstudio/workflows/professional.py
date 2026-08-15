@@ -5,11 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from srstudio.core.models import StudioProject
-from srstudio.export.service import CampaignExportService
+from srstudio.export.service import ExportService
 from srstudio.importers.pipeline import UnifiedImportPipeline
 from srstudio.projects.session import ProjectSession
 from srstudio.validation.engine import ValidationEngine
-from srstudio.validation.preflight import PreflightEngine
+from srstudio.validation.preflight import PreflightInspector
 from srstudio.validation.quality import QualityInspector
 
 
@@ -22,7 +22,7 @@ class WorkflowResult:
 
 
 class ProfessionalWorkflow:
-    """Orquestra o fluxo real sem acoplar a UI aos motores internos."""
+    """Orquestra importação, revisão, preflight, exportação e autosave."""
 
     def __init__(self, project: StudioProject, session: ProjectSession | None = None) -> None:
         self.project = project
@@ -30,8 +30,8 @@ class ProfessionalWorkflow:
         self.importer = UnifiedImportPipeline()
         self.validator = ValidationEngine()
         self.quality = QualityInspector()
-        self.preflight = PreflightEngine()
-        self.exporter = CampaignExportService()
+        self.preflight = PreflightInspector()
+        self.exporter = ExportService()
 
     def import_source(self, path: str | Path) -> WorkflowResult:
         summary = self.importer.import_file(path, self.project)
@@ -58,22 +58,25 @@ class ProfessionalWorkflow:
 
     def preflight_export(self) -> WorkflowResult:
         report = self.preflight.inspect(self.project)
-        blockers = [item for item in report.issues if getattr(item, "severity", "") == "error"]
         return WorkflowResult(
-            not blockers,
+            report.ready,
             "preflight",
-            "Projeto pronto para exportação." if not blockers else f"Exportação bloqueada por {len(blockers)} erro(s).",
-            {"report": report, "blockers": blockers},
+            "Projeto pronto para exportação." if report.ready else f"Exportação bloqueada por {report.errors} erro(s).",
+            {"report": report},
         )
 
     def export(self, destination: str | Path, profile_id: str = "print") -> WorkflowResult:
         gate = self.preflight_export()
         if not gate.ok:
             return gate
-        outputs = self.exporter.export(self.project, destination, profile_id=profile_id)
+        if profile_id in {"social", "instagram", "whatsapp"}:
+            result = self.exporter.export_social_variants(self.project, destination)
+        else:
+            scale = 2.0 if profile_id in {"print", "grafica", "high_quality"} else 1.0
+            result = self.exporter.export_images(self.project, destination, format_name="PNG", scale=scale)
         if self.session:
             self.session.snapshot("export")
-        return WorkflowResult(True, "export", f"Exportação concluída: {len(outputs)} arquivo(s).", {"outputs": outputs})
+        return WorkflowResult(True, "export", f"Exportação concluída: {len(result.files)} arquivo(s).", {"result": result})
 
     def autosave(self) -> WorkflowResult:
         if not self.session:
