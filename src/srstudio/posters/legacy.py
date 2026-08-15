@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal, ROUND_HALF_UP
 
 from srstudio.core.models import Product, to_decimal
-from srstudio.posters.core import PosterData, PosterEngine, PosterKind, PrintPosterService
+from srstudio.posters.core import PosterData, PosterEngine, PosterIssue, PosterKind, PrintPosterService
 
 
 class SRPosterData(PosterData):
@@ -77,6 +77,17 @@ class SRPosterData(PosterData):
 class SRPosterEngine(PosterEngine):
     """v5 commercial engine that preserves the Stable promotion/wholesale payload."""
 
+    @staticmethod
+    def unit_label(product: Product) -> str:
+        unit = (product.unit or "UN").upper().strip()
+        if unit == "KG":
+            return "O KG"
+        if unit in {"À LATA", "A LATA"}:
+            return "A LATA"
+        if unit in {"À GARRAFA", "A GARRAFA"}:
+            return "A GARRAFA"
+        return PosterEngine.unit_label(product)
+
     def promotion(self, product: Product, campaign: str = "") -> SRPosterData:
         base = super().promotion(product, campaign)
         poster_type = int(product.metadata.get("promotion_type", 0) or 0)
@@ -122,6 +133,16 @@ class SRPosterEngine(PosterEngine):
             retail_price=base.retail_price,
             wholesale_price=base.wholesale_price,
         )
+
+    def validate(self, data: PosterData) -> list[PosterIssue]:
+        if data.kind == PosterKind.PROMOTION and data.campaign.upper().startswith("CLUBE EXCLUSIVO"):
+            issues: list[PosterIssue] = []
+            if not data.name.strip():
+                issues.append(PosterIssue("error", "name", "Produto sem nome."))
+            if data.club_price is None:
+                issues.append(PosterIssue("error", "club_price", "Produto sem preço Clube Exclusivo."))
+            return issues
+        return super().validate(data)
 
 
 class SRPrintPosterService(PrintPosterService):
