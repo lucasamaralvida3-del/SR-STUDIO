@@ -25,12 +25,25 @@ jobs:
         shell: pwsh
         run: |
           pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src src/srstudio/app/main.py
-      - name: Smoke check artifact
+      - name: Smoke check executable
         shell: pwsh
         run: |
           if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Executável não foi gerado" }
+      - name: Create portable update package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          Compress-Archive -Path "dist/SR Studio 5/*" -DestinationPath "release/SR-Studio-5-Windows.zip" -Force
+          python build/create_update_manifest.py "release/SR-Studio-5-Windows.zip" "release/update-manifest.json"
+          if (!(Test-Path "release/update-manifest.json")) { throw "Manifesto não foi gerado" }
+      - name: Verify update manifest
+        shell: pwsh
+        run: |
+          python -c "from srstudio.updater.manifest import UpdateManifest; from pathlib import Path; m=UpdateManifest.load('release/update-manifest.json'); assert m.verify_package('release/SR-Studio-5-Windows.zip'); print(m.version, m.channel, m.sha256)"
       - uses: actions/upload-artifact@v4
         with:
           name: SR-Studio-5-Windows
-          path: dist/SR Studio 5/
+          path: |
+            release/SR-Studio-5-Windows.zip
+            release/update-manifest.json
           if-no-files-found: error
