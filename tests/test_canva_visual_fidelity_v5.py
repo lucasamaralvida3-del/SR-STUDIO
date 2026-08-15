@@ -196,7 +196,8 @@ def test_pipeline_recovers_approved_bank_image_and_preserves_white_text(tmp_path
 
     currency = next(element for element in page.elements if element.get("slot_role") == "price_currency")
     assert currency["canva_no_wrap"] is True
-    assert currency["width"] > 34 / 1000 * page.width
+    assert currency["canva_fit_inside_box"] is True
+    assert currency["width"] == 34 / 1000 * page.width
 
 
 def test_canva_font_helpers_keep_price_tokens_single_line():
