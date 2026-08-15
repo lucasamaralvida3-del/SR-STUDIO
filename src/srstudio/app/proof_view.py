@@ -5,6 +5,7 @@ from tkinter import ttk
 
 from PIL import ImageTk
 
+from srstudio.app.components import card, page_header, pill
 from srstudio.app.design import COLORS, FONT
 from srstudio.core.models import StudioProject
 from srstudio.export.renderer import FlyerRenderer
@@ -25,30 +26,30 @@ class ProofView(tk.Frame):
         self._build()
 
     def _build(self) -> None:
-        header = tk.Frame(self, bg=COLORS.bg)
-        header.pack(fill="x", pady=(0, 14))
-        tk.Label(
-            header,
-            text="Modo Prova",
-            bg=COLORS.bg,
-            fg=COLORS.text,
-            font=(FONT["family"], 24, "bold"),
-        ).pack(side="left")
+        header = page_header(
+            self,
+            "Modo Prova",
+            "Revise a campanha visualmente e aprove cada página antes da exportação final.",
+        )
+        header.pack(fill="x", pady=(0, 18))
         self.summary = tk.Label(
             header,
             bg=COLORS.bg,
             fg=COLORS.text_muted,
-            font=(FONT["family"], 10, "bold"),
+            font=(FONT["family"], FONT["small"], "bold"),
+            padx=10,
+            pady=5,
         )
         self.summary.pack(side="right")
 
         outer = tk.Frame(self, bg=COLORS.bg)
         outer.pack(fill="both", expand=True)
-        canvas = tk.Canvas(outer, bg=COLORS.bg, highlightthickness=0)
+        canvas = tk.Canvas(outer, bg=COLORS.bg, highlightthickness=0, bd=0)
         scroll = ttk.Scrollbar(outer, orient="vertical", command=canvas.yview)
         self.body = tk.Frame(canvas, bg=COLORS.bg)
+        window = canvas.create_window((0, 0), window=self.body, anchor="nw")
         self.body.bind("<Configure>", lambda _e: canvas.configure(scrollregion=canvas.bbox("all")))
-        canvas.create_window((0, 0), window=self.body, anchor="nw")
+        canvas.bind("<Configure>", lambda event: canvas.itemconfigure(window, width=event.width))
         canvas.configure(yscrollcommand=scroll.set)
         canvas.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
@@ -61,49 +62,69 @@ class ProofView(tk.Frame):
         columns = 3
         for column in range(columns):
             self.body.columnconfigure(column, weight=1)
+
         for index, page in enumerate(self.project.pages):
             approval = self.proof.state.approvals.get(page.id)
             approved = bool(approval and approval.approved)
-            card = tk.Frame(self.body, bg=COLORS.surface, highlightbackground=COLORS.border, highlightthickness=1)
-            card.grid(row=index // columns, column=index % columns, sticky="nsew", padx=7, pady=7)
+            item = card(self.body)
+            item.grid(row=index // columns, column=index % columns, sticky="nsew", padx=7, pady=7)
+
+            preview_shell = tk.Frame(item, bg="#E5EAF1")
+            preview_shell.pack(fill="x", padx=10, pady=(10, 8))
             image = self.renderer.render_page(self.project, page, scale=0.22)
-            image.thumbnail((260, 320))
+            image.thumbnail((270, 330))
             photo = ImageTk.PhotoImage(image)
             self._photos.append(photo)
-            tk.Label(card, image=photo, bg="#EFF3F8").pack(fill="x", padx=10, pady=(10, 7))
-            status_color = COLORS.success if approved else COLORS.warning
-            status_text = "✓ Aprovada" if approved else "● Pendente"
+            tk.Label(preview_shell, image=photo, bg="#E5EAF1").pack(padx=9, pady=9)
+
+            meta = tk.Frame(item, bg=COLORS.surface)
+            meta.pack(fill="x", padx=12)
+            title = tk.Frame(meta, bg=COLORS.surface)
+            title.pack(fill="x")
             tk.Label(
-                card,
+                title,
                 text=f"{index + 1}. {page.name}",
                 bg=COLORS.surface,
                 fg=COLORS.text,
-                font=(FONT["family"], 10, "bold"),
-            ).pack(anchor="w", padx=12)
+                font=(FONT["family"], FONT["body"], "bold"),
+            ).pack(side="left")
+            pill(title, "APROVADA" if approved else "PENDENTE", "success" if approved else "warning").pack(side="right")
             tk.Label(
-                card,
-                text=status_text,
+                meta,
+                text=f"{int(page.width)} × {int(page.height)} px",
                 bg=COLORS.surface,
-                fg=status_color,
-                font=(FONT["family"], 9, "bold"),
-            ).pack(anchor="w", padx=12, pady=(2, 6))
-            buttons = tk.Frame(card, bg=COLORS.surface)
+                fg=COLORS.text_subtle,
+                font=(FONT["family"], FONT["micro"]),
+            ).pack(anchor="w", pady=(4, 8))
+
+            buttons = tk.Frame(item, bg=COLORS.surface)
             buttons.pack(fill="x", padx=10, pady=(0, 10))
             ttk.Button(
                 buttons,
-                text="Aprovar",
+                text="✓  Aprovar",
+                style="Secondary.TButton" if approved else "Primary.TButton",
                 command=lambda page_id=page.id: self._approve(page_id),
-            ).pack(side="left", fill="x", expand=True, padx=(0, 3))
+            ).pack(side="left", fill="x", expand=True, padx=(0, 4))
             ttk.Button(
                 buttons,
-                text="Revisar",
+                text="Solicitar revisão",
+                style="Ghost.TButton",
                 command=lambda page_id=page.id: self._reject(page_id),
-            ).pack(side="left", fill="x", expand=True, padx=(3, 0))
+            ).pack(side="left", fill="x", expand=True, padx=(4, 0))
+
         pending = len(self.proof.pending_pages())
-        self.summary.configure(
-            text="Todas as páginas aprovadas" if pending == 0 else f"{pending} página(s) pendente(s)",
-            fg=COLORS.success if pending == 0 else COLORS.warning,
-        )
+        if pending == 0:
+            self.summary.configure(
+                text="✓  Todas aprovadas",
+                fg=COLORS.success,
+                bg=COLORS.success_soft,
+            )
+        else:
+            self.summary.configure(
+                text=f"●  {pending} pendente(s)",
+                fg=COLORS.warning,
+                bg=COLORS.warning_soft,
+            )
 
     def _approve(self, page_id: str) -> None:
         self.proof.approve(page_id, reviewer="SR Studio")
