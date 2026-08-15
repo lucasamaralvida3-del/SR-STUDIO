@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import zipfile
 from pathlib import Path
 
 from PIL import Image
@@ -119,3 +120,59 @@ def test_publication_builder_exports_only_approved_product_images(tmp_path):
     assert payload["assets"][0]["product_name"] == "LEITE TRIANGULO 1L"
     assert payload["assets"][0]["url"].startswith("https://images.example.com/sr/assets/")
     assert len(list((tmp_path / "publish" / "assets").iterdir())) == 1
+    assert Path(result.base_bundle_path).is_file()
+    assert payload["base_bundle"]["sha256"] == _sha(Path(result.base_bundle_path))
+    with zipfile.ZipFile(result.base_bundle_path) as archive:
+        assert len([name for name in archive.namelist() if name.startswith("assets/")]) == 1
+
+
+def test_first_sync_can_seed_from_verified_base_bundle_without_individual_downloads(tmp_path):
+    remote_image = _png(tmp_path / "seed.png", 190)
+    asset_id = "leite-001"
+    bundle = tmp_path / "base-v3.zip"
+    with zipfile.ZipFile(bundle, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.write(remote_image, f"assets/{asset_id}.png")
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "format": "SR_IMAGE_BANK_1",
+                "bank_version": 3,
+                "base_bundle": {"version": 3, "url": bundle.as_uri(), "sha256": _sha(bundle)},
+                "assets": [
+                    {
+                        "id": asset_id,
+                        "product_name": "LEITE TRIANGULO 1L",
+                        "product_key": "LEITE TRIANGULO 1L",
+                        "filename": f"{asset_id}.png",
+                        "url": "file:///this/path/must/not/be-needed.png",
+                        "sha256": _sha(remote_image),
+                        "status": "approved",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    library = ImageLibrary(tmp_path / "library")
+    sync = ImageBankCloudSync(library, tmp_path / "cloud", manifest_url=manifest.as_uri())
+    result = sync.sync()
+    assert result.state == "updated"
+    assert result.downloaded == 0
+    assert result.reused == 1
+    assert "Pacote-base instalado" in result.details
+    assert library.find_best_for_product("LEITE TRIANGULO 1L") is not None
+
+
+def test_bootstrap_manifest_can_redirect_clients_to_future_https_endpoint(tmp_path, monkeypatch):
+    library = ImageLibrary(tmp_path / "library")
+    sync = ImageBankCloudSync(library, tmp_path / "cloud", manifest_url="https://bootstrap.example/manifest.json")
+    payloads = {
+        "https://bootstrap.example/manifest.json": {"redirect_manifest_url": "https://cdn.example/sr/manifest.json"},
+        "https://cdn.example/sr/manifest.json": {"format": "SR_IMAGE_BANK_1", "bank_version": 9, "assets": []},
+    }
+    monkeypatch.setattr(sync, "_fetch_json", lambda url: dict(payloads[url]))
+    result = sync.sync()
+    assert result.state == "updated"
+    assert result.remote_version == 9
+    assert sync.local_version() == 9
