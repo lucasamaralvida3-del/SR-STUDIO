@@ -10,6 +10,7 @@ from srstudio.app.professional import PRIMARY_WORKFLOWS, SRStudioProfessional, _
 from srstudio.core.models import Product
 from srstudio.importers.excel.reader import ExcelImporter
 from srstudio.posters import PosterKind
+from srstudio.posters.importers import PromotionWorkbookImporter, WholesaleReportImporter
 from srstudio.pricing.engine import PriceEngine
 
 
@@ -39,6 +40,10 @@ class _PosterQueueMixin:
                 second = product.app_price
             first_text = price_engine.split(first, "").formatted.replace("/", "") if first is not None else "—"
             second_text = price_engine.split(second, "").formatted.replace("/", "") if second is not None else "—"
+            poster_type = int(product.metadata.get("promotion_type", 0) or 0)
+            if not self.is_wholesale and poster_type == 3:
+                first_text = price_engine.split(product.price, "").formatted.replace("/", "") if product.price else "—"
+                second_text = "CLUBE EXCLUSIVO"
             self.tree.insert(
                 "",
                 "end",
@@ -125,78 +130,106 @@ class SRStudioPosterProfessional(SRStudioProfessional):
         view_cls(
             self.content,
             self.project,
-            on_import=self._import_poster_sheet,
+            on_import=self._import_poster_source,
             on_changed=self._mark_changed,
             toast=self.toast,
         )
 
-    def _import_poster_sheet(self, kind: PosterKind) -> int:
-        path = filedialog.askopenfilename(
-            title="Importar planilha para cartazes",
-            filetypes=[("Planilha Excel", "*.xlsx *.xlsm"), ("Todos", "*.*")],
-        )
+    def _import_poster_source(self, kind: PosterKind) -> int:
+        if kind == PosterKind.WHOLESALE:
+            path = filedialog.askopenfilename(
+                title="Importar Atacado",
+                filetypes=[
+                    ("Relatório 782 Atacarejo", "*.pdf"),
+                    ("Planilha Excel", "*.xlsx *.xlsm"),
+                    ("Todos", "*.*"),
+                ],
+            )
+        else:
+            path = filedialog.askopenfilename(
+                title="Importar planilha de Promoções",
+                filetypes=[("Planilha Excel", "*.xlsx *.xlsm"), ("Todos", "*.*")],
+            )
         if not path:
             return 0
         try:
-            parsed = ExcelImporter().import_file(path)
-            critical = [issue for issue in parsed.issues if issue.severity == "critical"]
-            if critical:
-                raise RuntimeError("\n".join(issue.message for issue in critical))
+            source = Path(path)
+            if kind == PosterKind.PROMOTION:
+                imported = PromotionWorkbookImporter().import_file(source)
+            elif source.suffix.lower() == ".pdf":
+                imported = WholesaleReportImporter().import_file(source)
+            else:
+                imported = self._generic_wholesale_excel(source)
 
+            if imported.errors:
+                raise RuntimeError("\n".join(imported.errors))
             queues = self.project.settings.setdefault("poster_queues", {})
             old_ids = set(queues.get(kind.value, []))
             if old_ids:
                 self.project.products[:] = [product for product in self.project.products if product.id not in old_ids]
 
-            imported: list[Product] = []
-            for item in parsed.products:
-                product = Product(
+            self.project.products.extend(imported.products)
+            queues[kind.value] = [product.id for product in imported.products]
+            self.project.settings["last_poster_source"] = str(source)
+            if imported.campaigns:
+                self.project.settings["poster_campaigns"] = imported.campaigns
+                self.project.settings["poster_campaign"] = ""
+            if imported.metadata:
+                self.project.settings[f"{kind.value}_import_metadata"] = imported.metadata
+            self._mark_changed()
+
+            if self.workflow.product_sync is not None:
+                self.workflow.product_sync.sync_project(self.project)
+
+            message = f"{len(imported.products)} produto(s) carregados no módulo de cartazes."
+            if imported.campaigns:
+                message += f" {len(imported.campaigns)} campanha(s) reconhecida(s)."
+            if imported.warnings:
+                message += f" {len(imported.warnings)} aviso(s) para revisar."
+            self.toast.show(message, "success", 4600)
+            if imported.warnings:
+                messagebox.showwarning("Importação concluída com avisos", "\n".join(imported.warnings[:15]))
+            return len(imported.products)
+        except Exception as exc:
+            title = "Importar Atacado" if kind == PosterKind.WHOLESALE else "Importar Promoções"
+            messagebox.showerror(title, f"Não foi possível importar.\n\n{exc}")
+            return 0
+
+    @staticmethod
+    def _generic_wholesale_excel(path: Path):
+        parsed = ExcelImporter().import_file(path)
+        from srstudio.posters.importers import PosterImportResult
+
+        result = PosterImportResult(metadata={"source_file": str(path), "source_type": "excel"})
+        critical = [issue for issue in parsed.issues if issue.severity == "critical"]
+        if critical:
+            result.errors.extend(issue.message for issue in critical)
+            return result
+        for item in parsed.products:
+            result.products.append(
+                Product(
                     code=str(item.get("code") or ""),
                     ean=str(item.get("ean") or ""),
                     original_name=str(item.get("name") or ""),
                     price=item.get("promo_price") or item.get("retail_price"),
-                    app_price=item.get("app_price"),
-                    retail_price=item.get("retail_price"),
+                    retail_price=item.get("retail_price") or item.get("promo_price"),
                     wholesale_price=item.get("wholesale_price"),
                     quantity=str(item.get("quantity") or ""),
                     unit=str(item.get("unit") or "UN"),
                     cpf_limit=str(item.get("limit") or ""),
                     category=str(item.get("category") or ""),
                     validity=str(item.get("validity") or ""),
-                    campaign=(
-                        str(self.project.settings.get("poster_campaign") or "")
-                        if kind == PosterKind.PROMOTION
-                        else "Atacado"
-                    ),
-                    source="poster_excel",
-                    metadata={
-                        "source_row": item.get("source_row"),
-                        "source_file": str(Path(path)),
-                        "poster_kind": kind.value,
-                    },
+                    campaign="Atacado",
+                    source="atacado_excel",
+                    metadata={"poster_kind": "wholesale", "source_file": str(path)},
                 )
-                imported.append(product)
-            self.project.products.extend(imported)
-            queues[kind.value] = [product.id for product in imported]
-            self.project.settings["last_poster_sheet"] = str(path)
-            self._mark_changed()
-
-            if self.workflow.product_sync is not None:
-                self.workflow.product_sync.sync_project(self.project)
-
-            warnings = [issue.message for issue in parsed.issues if issue.severity != "critical"]
-            message = f"{len(imported)} produto(s) carregados no módulo de cartazes."
-            if warnings:
-                message += f" {len(warnings)} aviso(s) para revisar."
-            self.toast.show(message, "success", 4200)
-            return len(imported)
-        except Exception as exc:
-            messagebox.showerror("Importar planilha de cartazes", f"Não foi possível importar.\n\n{exc}")
-            return 0
+            )
+        result.warnings.extend(issue.message for issue in parsed.issues if issue.severity != "critical")
+        return result
 
     def import_source(self, _event=None) -> str:
         # Global import remains the Encartes/content workflow. Poster modules use
-        # _import_poster_sheet so importing a poster list never creates Encartes cards.
+        # _import_poster_source so a poster list never creates Encartes cards.
         path = filedialog.askopenfilename(
             filetypes=[("Excel / Canva PPTX", "*.xlsx *.xlsm *.pptx"), ("Todos", "*.*")]
         )
