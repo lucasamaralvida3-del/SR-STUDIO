@@ -64,7 +64,7 @@ jobs:
           if (!(Test-Path $atacadoA) -and !(Test-Path $atacadoB)) { throw "Engine oficial de Atacado ausente do executável." }
           $pdfium = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "pdfium.dll" | Select-Object -First 1
           if ($null -eq $pdfium) { throw "PDFium nativo ausente do executável." }
-          python -c "import pypdfium2; from srstudio.posters.legacy_batch import LegacyBatchRenderer; from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; from srstudio.importers.pptx.reader import PptxImporter; from srstudio.importers.pptx.semantic import SemanticMapper; from srstudio.images.library import ImageLibrary; from srstudio.images.canva_training import CanvaTrainingService; from srstudio.templates.corpus import LayoutCorpus; from srstudio.app.image_bank_view import ImageBankView; from srstudio.app.layout_corpus_view import LayoutCorpusView; assert poster_pane_ratio(1500) == (68, 32); print(LegacyBatchRenderer.__name__, SRStudioTurboPosters.__name__, PptxImporter.__name__, SemanticMapper.__name__, ImageLibrary.__name__, CanvaTrainingService.__name__, LayoutCorpus.__name__, ImageBankView.__name__, LayoutCorpusView.__name__)"
+          python -c "import pypdfium2; from srstudio.posters.legacy_batch import LegacyBatchRenderer; from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; from srstudio.importers.pptx.reader import PptxImporter; from srstudio.importers.pptx.semantic import SemanticMapper; from srstudio.images.library import ImageLibrary; from srstudio.images.canva_training import CanvaTrainingService; from srstudio.templates.corpus import LayoutCorpus; from srstudio.app.image_bank_view import ImageBankView; from srstudio.app.layout_corpus_view import LayoutCorpusView; from srstudio.images.cloud_sync import ImageBankCloudSync; from srstudio.images.cloud_publish import ImageBankPublicationBuilder; from srstudio.images.r2_publish import R2Config, R2Publisher; from srstudio.app.cloud_image_bank_view import CloudImageBankView; assert poster_pane_ratio(1500) == (68, 32); print(LegacyBatchRenderer.__name__, SRStudioTurboPosters.__name__, PptxImporter.__name__, SemanticMapper.__name__, ImageLibrary.__name__, CanvaTrainingService.__name__, LayoutCorpus.__name__, ImageBankView.__name__, LayoutCorpusView.__name__, ImageBankCloudSync.__name__, ImageBankPublicationBuilder.__name__, R2Config.__name__, R2Publisher.__name__, CloudImageBankView.__name__)"
 
       - name: Assemble launcher-compatible hybrid bundle
         shell: pwsh
@@ -152,25 +152,26 @@ jobs:
           Atualização do SR Studio 5 Professional no canal Beta oficial.
           Versão: $env:DIST_VERSION
 
+          SR IMAGE CLOUD SYNC
+          - O Banco de Imagens oficial é verificado automaticamente em segundo plano ao iniciar o Studio, sem bloquear a abertura.
+          - Em uma instalação nova, o cliente pode baixar um pacote-base único verificado por SHA-256 e depois somente os deltas que faltarem.
+          - Nas próximas aberturas, arquivos válidos são reaproveitados do cache e apenas imagens novas/alteradas são baixadas.
+          - Sem internet, o Studio continua funcionando com o banco local já sincronizado.
+          - Imagens pessoais/manuais permanecem separadas e nunca são removidas pelo sincronizador oficial.
+          - O manifesto inicial usa um bootstrap redirecionável, permitindo migrar o banco para R2/CDN sem exigir nova versão do Studio.
+          - Banco de Imagens ganhou Sincronizar agora e preparação de pacote de publicação.
+          - A publicação direta no Cloudflare R2 só é habilitada em instalações administrativas com credenciais externas; nenhuma chave de escrita é embutida no executável.
+          - Publicação R2 envia assets e pacote-base primeiro e ativa o manifest.json por último.
+          - O banco oficial começa vazio até a primeira publicação de imagens aprovadas.
+
           ENCARTES STUDIO / CANVA V2
           - Importador PPTX reconhece imagens do Canva em Freeform/Shape com preenchimento de imagem, crop, rotação, flip, transparência, z-order e transformações de grupos/subgrupos.
-          - Preços divididos em objetos R$ + reais + centavos + unidade passam a formar um único campo semântico de preço.
-          - Nome, imagem, preço, centavos e unidade são reunidos em cards editáveis preservando regiões e estilo do projeto importado.
-          - Prévia e exportação usam a mesma camada de renderização para reduzir diferença visual entre editor e arquivo final.
-
-          BANCO DE IMAGENS APRENDIDO
-          - Projetos Canva podem alimentar localmente o banco nome↔imagem com confiança e origem.
-          - Deduplicação por SHA-256 + perceptual hash, aliases, busca aproximada, imagem preferida e contagem de uso.
-          - Associações de baixa confiança ficam pendentes para revisão; aprovadas podem preencher imagens automaticamente ao importar Excel.
-          - Nova tela Banco de Imagens permite aprovar, rejeitar, renomear, substituir e escolher imagem principal.
-
-          TREINAMENTO E LAYOUTS SR
-          - Treinamento em segundo plano aceita PPTX ou ZIP inteiro sem carregar centenas de páginas no projeto atual.
-          - Corpus determinístico aprende quantidade/posição dos cards, campanha, paleta e tipografia; o nome do arquivo não é usado como verdade quando o conteúdo da página contradiz.
-          - Área Modelos lista padrões aprendidos e permite criar nova página usando a grade média do padrão.
+          - Preços divididos em objetos R$ + reais + centavos + unidade formam um único campo semântico de preço.
+          - Projetos PPTX/ZIP podem treinar localmente o banco nome↔imagem e os layouts SR.
+          - Associações de baixa confiança ficam pendentes; somente imagens aprovadas podem preencher produtos automaticamente.
 
           Promoções, Atacado, renderização PDFium, cache seletivo, layout responsivo e engines históricos continuam preservados.
-          Os arquivos Canva e imagens privadas do usuário não são incluídos na distribuição; o aprendizado é local na instalação do Studio.
+          Arquivos Canva e imagens privadas não são incluídos na distribuição pública automaticamente.
 
           Compatível com o Launcher Beta Base 3.4 através do shim SR_Studio_Gerador.py.
           "@
@@ -219,7 +220,7 @@ jobs:
             size = [int64]$env:BETA_SIZE
             member_prefix = "files/"
             previous_version = $previousVersion
-            notes = "SR Studio $env:RELEASE_LABEL - Canva Importer V2, banco local de imagens aprendido, treinamento PPTX/ZIP e layouts SR reutilizáveis."
+            notes = "SR Studio $env:RELEASE_LABEL - SR Image Cloud Sync automático, cache offline, pacote-base/deltas, publicação R2 administrativa e Canva Importer V2."
           }
           $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
