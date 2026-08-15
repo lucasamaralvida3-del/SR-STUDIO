@@ -6,10 +6,13 @@ from typing import Any
 
 from srstudio.core.models import StudioProject
 from srstudio.export.service import ExportService
+from srstudio.images.canva_training import CanvaTrainingService, TrainingProgress
+from srstudio.images.library import ImageLibrary
 from srstudio.importers.pipeline import UnifiedImportPipeline
 from srstudio.products.database import ProductDatabase
 from srstudio.products.sync import ProductKnowledgeSync
 from srstudio.projects.session import ProjectSession
+from srstudio.templates.corpus import LayoutCorpus
 from srstudio.validation.engine import ValidationEngine
 from srstudio.validation.preflight import PreflightInspector
 from srstudio.validation.quality import QualityInspector
@@ -24,32 +27,51 @@ class WorkflowResult:
 
 
 class ProfessionalWorkflow:
-    """Orquestra importação, conhecimento local, revisão, preflight, exportação e autosave."""
+    """Orchestrate import, learned assets/layouts, validation, export and autosave."""
 
     def __init__(
         self,
         project: StudioProject,
         session: ProjectSession | None = None,
         product_database: ProductDatabase | None = None,
+        image_library: ImageLibrary | None = None,
+        layout_corpus: LayoutCorpus | None = None,
     ) -> None:
         self.project = project
         self.session = session
-        self.importer = UnifiedImportPipeline()
+        data_root = session.autosave_dir.parent if session is not None else Path.home() / ".srstudio5"
+        if product_database is None and session is not None:
+            product_database = ProductDatabase(data_root / "products.sqlite3")
+        self.image_library = image_library or ImageLibrary(data_root / "images")
+        self.layout_corpus = layout_corpus or LayoutCorpus(data_root / "layout-corpus.json")
+        self.importer = UnifiedImportPipeline(self.image_library, self.layout_corpus)
+        self.training = CanvaTrainingService(
+            self.image_library,
+            self.layout_corpus,
+            data_root / "canva-training",
+        )
         self.validator = ValidationEngine()
         self.quality = QualityInspector()
         self.preflight = PreflightInspector()
         self.exporter = ExportService()
-        if product_database is None and session is not None:
-            product_database = ProductDatabase(session.autosave_dir.parent / "products.sqlite3")
         self.product_sync = ProductKnowledgeSync(product_database) if product_database is not None else None
 
     def import_source(self, path: str | Path) -> WorkflowResult:
-        summary = self.importer.import_file(path, self.project)
+        source = Path(path)
+        if source.suffix.lower() == ".zip":
+            return self.train_canva(source)
+        summary = self.importer.import_file(source, self.project)
         if self.session:
             self.session.mark_dirty()
         sync_result = self.product_sync.sync_project(self.project) if self.product_sync else None
         issues = self.validator.validate_project(self.project)
         message = f"Importação concluída: {summary.products_added} produto(s), {summary.cards_added} card(s)."
+        if summary.images_matched:
+            message += f" {summary.images_matched} imagem(ns) recuperada(s) do banco."
+        if summary.images_learned:
+            message += f" {summary.images_learned} imagem(ns) aprendida(s) do Canva."
+        if summary.layouts_learned:
+            message += f" {summary.layouts_learned} página(s) ensinada(s) ao corpus de layouts."
         if sync_result is not None:
             message += f" Banco local atualizado com {sync_result.products} produto(s)."
         return WorkflowResult(
@@ -57,6 +79,31 @@ class ProfessionalWorkflow:
             "import",
             message,
             {"summary": summary, "issues": issues, "product_sync": sync_result},
+        )
+
+    def train_canva(
+        self,
+        path: str | Path,
+        *,
+        on_progress: TrainingProgress | None = None,
+    ) -> WorkflowResult:
+        result = self.training.train(path, on_progress=on_progress)
+        stats = self.image_library.stats()
+        corpus = self.layout_corpus.stats()
+        message = (
+            f"Treinamento concluído: {result.files} projeto(s), {result.slides} página(s), "
+            f"{result.cards} card(s), {result.images_learned} associação(ões) de imagem e "
+            f"{result.layouts_observed} observação(ões) de layout. "
+            f"Banco: {stats['accepted']} aprovada(s), {stats['pending']} pendente(s). "
+            f"Layouts SR: {corpus['profiles']} padrão(ões) em {corpus['samples']} amostra(s)."
+        )
+        if result.warnings:
+            message += f" {len(result.warnings)} aviso(s) ficaram registrados."
+        return WorkflowResult(
+            True,
+            "train",
+            message,
+            {"training": result, "image_stats": stats, "layout_stats": corpus},
         )
 
     def review(self) -> WorkflowResult:
