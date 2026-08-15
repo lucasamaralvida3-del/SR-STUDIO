@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import posixpath
 import re
 import zipfile
@@ -30,6 +31,8 @@ class PptxElement:
 @dataclass(slots=True)
 class PptxSlide:
     index: int
+    width: int = 12192000
+    height: int = 6858000
     elements: list[PptxElement] = field(default_factory=list)
 
 
@@ -40,30 +43,40 @@ class PptxImportResult:
 
 
 class PptxImporter:
-    """Leitor nativo mínimo de PPTX para preservar geometria, texto e imagens.
+    """Leitor estrutural de PPTX com geometria, texto, grupos e mídia persistente."""
 
-    Não renderiza efeitos complexos ainda; sua função é criar uma representação
-    estrutural para o Semantic Mapper do Encartes Studio.
-    """
-
-    def import_file(self, path: str | Path) -> PptxImportResult:
+    def import_file(self, path: str | Path, media_dir: str | Path | None = None) -> PptxImportResult:
+        source = Path(path)
         result = PptxImportResult()
-        with zipfile.ZipFile(Path(path)) as zf:
+        target_media = Path(media_dir) if media_dir else None
+        if target_media:
+            target_media.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(source) as zf:
+            slide_width, slide_height = self._presentation_size(zf)
+            media_map = self._extract_media(zf, target_media) if target_media else {}
             slides = sorted(
                 (name for name in zf.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)),
                 key=self._slide_number,
             )
             for idx, slide_path in enumerate(slides, start=1):
                 try:
-                    result.slides.append(self._read_slide(zf, slide_path, idx))
+                    result.slides.append(self._read_slide(zf, slide_path, idx, slide_width, slide_height, media_map))
                 except Exception as exc:
                     result.warnings.append(f"Slide {idx}: {exc}")
         return result
 
-    def _read_slide(self, zf: zipfile.ZipFile, slide_path: str, index: int) -> PptxSlide:
+    def _read_slide(
+        self,
+        zf: zipfile.ZipFile,
+        slide_path: str,
+        index: int,
+        slide_width: int,
+        slide_height: int,
+        media_map: dict[str, str],
+    ) -> PptxSlide:
         root = ET.fromstring(zf.read(slide_path))
         rels = self._relationships(zf, slide_path)
-        slide = PptxSlide(index=index)
+        slide = PptxSlide(index=index, width=slide_width, height=slide_height)
         sp_tree = root.find(f".//{{{P_NS}}}spTree")
         if sp_tree is None:
             return slide
@@ -72,30 +85,30 @@ class PptxImporter:
             if tag == "sp":
                 slide.elements.append(self._shape(child))
             elif tag == "pic":
-                slide.elements.append(self._picture(child, rels))
+                slide.elements.append(self._picture(child, rels, media_map))
             elif tag == "graphicFrame":
                 slide.elements.append(self._graphic(child))
             elif tag == "grpSp":
-                slide.elements.extend(self._group(child))
+                slide.elements.extend(self._group(child, rels, media_map))
         return slide
 
     def _shape(self, node: ET.Element) -> PptxElement:
         x, y, w, h = self._geometry(node)
         texts = [t.text or "" for t in node.findall(f".//{{{A_NS}}}t")]
-        name = self._name(node)
-        return PptxElement("text" if texts else "shape", x, y, w, h, "".join(texts).strip(), name=name)
+        return PptxElement("text" if texts else "shape", x, y, w, h, "".join(texts).strip(), name=self._name(node))
 
-    def _picture(self, node: ET.Element, rels: dict[str, str]) -> PptxElement:
+    def _picture(self, node: ET.Element, rels: dict[str, str], media_map: dict[str, str]) -> PptxElement:
         x, y, w, h = self._geometry(node)
         blip = node.find(f".//{{{A_NS}}}blip")
         rid = blip.get(f"{{{R_NS}}}embed", "") if blip is not None else ""
-        return PptxElement("image", x, y, w, h, media_path=rels.get(rid, ""), name=self._name(node))
+        internal = rels.get(rid, "")
+        return PptxElement("image", x, y, w, h, media_path=media_map.get(internal, internal), name=self._name(node))
 
     def _graphic(self, node: ET.Element) -> PptxElement:
         x, y, w, h = self._geometry(node)
         return PptxElement("graphic", x, y, w, h, name=self._name(node))
 
-    def _group(self, node: ET.Element) -> list[PptxElement]:
+    def _group(self, node: ET.Element, rels: dict[str, str], media_map: dict[str, str]) -> list[PptxElement]:
         items: list[PptxElement] = []
         for child in list(node):
             tag = child.tag.rsplit("}", 1)[-1]
@@ -104,8 +117,14 @@ class PptxImporter:
                 item.metadata["grouped"] = True
                 items.append(item)
             elif tag == "pic":
-                x, y, w, h = self._geometry(child)
-                items.append(PptxElement("image", x, y, w, h, name=self._name(child), metadata={"grouped": True}))
+                item = self._picture(child, rels, media_map)
+                item.metadata["grouped"] = True
+                items.append(item)
+            elif tag == "grpSp":
+                nested = self._group(child, rels, media_map)
+                for item in nested:
+                    item.metadata["grouped"] = True
+                items.extend(nested)
         return items
 
     def _relationships(self, zf: zipfile.ZipFile, slide_path: str) -> dict[str, str]:
@@ -119,6 +138,32 @@ class PptxImporter:
             target = rel.get("Target", "")
             rels[rel.get("Id", "")] = posixpath.normpath(posixpath.join(directory, target))
         return rels
+
+    @staticmethod
+    def _presentation_size(zf: zipfile.ZipFile) -> tuple[int, int]:
+        try:
+            root = ET.fromstring(zf.read("ppt/presentation.xml"))
+            node = root.find(f".//{{{P_NS}}}sldSz")
+            if node is not None:
+                return int(node.get("cx", 12192000)), int(node.get("cy", 6858000))
+        except (KeyError, ET.ParseError, ValueError):
+            pass
+        return 12192000, 6858000
+
+    @staticmethod
+    def _extract_media(zf: zipfile.ZipFile, target: Path) -> dict[str, str]:
+        mapping: dict[str, str] = {}
+        for internal in zf.namelist():
+            if not internal.startswith("ppt/media/") or internal.endswith("/"):
+                continue
+            data = zf.read(internal)
+            digest = hashlib.sha256(data).hexdigest()[:16]
+            suffix = Path(internal).suffix.lower()
+            destination = target / f"{digest}{suffix}"
+            if not destination.exists():
+                destination.write_bytes(data)
+            mapping[internal] = str(destination)
+        return mapping
 
     @staticmethod
     def _geometry(node: ET.Element) -> tuple[int, int, int, int]:
