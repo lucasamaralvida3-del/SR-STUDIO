@@ -4,6 +4,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
 
+from srstudio.assets.font_fallbacks import pillow_font_candidates
 from srstudio.core.models import Page, StudioProject
 from srstudio.editor.product_cards import ProductCardRegistry
 
@@ -221,18 +222,7 @@ class FlyerRenderer:
 
     @staticmethod
     def _font(size: int, bold: bool = False, family: str = "") -> ImageFont.ImageFont:
-        candidates: list[str] = []
-        family = family.strip()
-        if family and not family.startswith("+"):
-            candidates.extend((family, f"{family}.ttf", f"{family}.otf"))
-        candidates.extend(
-            [
-                "arialbd.ttf" if bold else "arial.ttf",
-                "segoeuib.ttf" if bold else "segoeui.ttf",
-                "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
-            ]
-        )
-        for name in candidates:
+        for name in pillow_font_candidates(family, bold=bold):
             try:
                 return ImageFont.truetype(name, size=max(1, int(size)))
             except OSError:
@@ -298,13 +288,36 @@ class FlyerRenderer:
         font = cls._font(font_size, bool(element.get("bold")), str(element.get("font_name") or ""))
         text = str(element.get("text", ""))
         color = cls._safe_color(element.get("fill"), "#162033")
+        align = str(element.get("align") or "").lower()
+
         if not rotation and opacity >= 0.999:
-            draw.text((x, y), text, fill=color, font=font)
+            cls._draw_aligned_text(draw, text, font, color, x, y, w, align)
             return
         layer = Image.new("RGBA", (max(1, round(w)), max(1, round(h))), (0, 0, 0, 0))
         local = ImageDraw.Draw(layer)
-        local.text((0, 0), text, fill=color, font=font)
+        cls._draw_aligned_text(local, text, font, color, 0, 0, layer.width, align)
         cls._paste_rotated(canvas, layer, x, y, w, h, rotation, opacity)
+
+    @staticmethod
+    def _draw_aligned_text(
+        draw: ImageDraw.ImageDraw,
+        text: str,
+        font: ImageFont.ImageFont,
+        color: str,
+        x: float,
+        y: float,
+        width: float,
+        align: str,
+    ) -> None:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        text_width = max(0, bbox[2] - bbox[0])
+        if align in {"ctr", "center"}:
+            text_x = x + (width - text_width) / 2
+        elif align in {"r", "right"}:
+            text_x = x + width - text_width
+        else:
+            text_x = x
+        draw.text((text_x, y), text, fill=color, font=font)
 
     @classmethod
     def _render_image_element(
