@@ -30,10 +30,21 @@ class LegacyPosterPreviewService:
     def available() -> bool:
         return LegacyPosterBridge.assets_available() and LegacyPosterBridge.windows_available()
 
-    def render(self, product: Product, kind: PosterKind, campaign: str = "") -> Path:
+    def render(
+        self,
+        product: Product,
+        kind: PosterKind,
+        campaign: str = "",
+        *,
+        width: int = 900,
+        height: int | None = None,
+        cache_namespace: str = "preview-v3",
+    ) -> Path:
         if not self.available():
             raise RuntimeError("Prévia oficial requer Windows, Microsoft PowerPoint e os modelos SR instalados.")
-        destination = self.cache_dir / f"{self._cache_key(product, kind, campaign)}.png"
+        if height is None:
+            height = 1260 if kind == PosterKind.WHOLESALE else 1250
+        destination = self.cache_dir / f"{self._cache_key(product, kind, campaign, width, height, cache_namespace)}.png"
         if destination.is_file() and destination.stat().st_size > 1024:
             return destination
 
@@ -76,26 +87,25 @@ class LegacyPosterPreviewService:
                 ]
             job_path.write_text(json.dumps(job, ensure_ascii=False, indent=2), encoding="utf-8-sig")
             destination.unlink(missing_ok=True)
-            self._run(script, arguments)
+            self._run(script, arguments, width=width, height=height)
 
         if not destination.is_file() or destination.stat().st_size <= 1024:
             raise RuntimeError("O PowerPoint encerrou sem gerar a prévia oficial.")
         return destination
 
     @classmethod
-    def _run(cls, script: Path, arguments: list[str]) -> None:
+    def _run(cls, script: Path, arguments: list[str], *, width: int, height: int) -> None:
         shell = shutil.which("powershell.exe") or shutil.which("pwsh.exe")
         if not shell or os.name != "nt":
             raise RuntimeError("PowerShell do Windows não disponível.")
 
-        # The historical preview scripts intentionally made PowerPoint visible so they
-        # could be debugged by hand. For Studio preview we preserve the script/model
-        # logic but execute a temporary copy with the application kept hidden. The
-        # original print engines/assets remain untouched.
         with tempfile.TemporaryDirectory(prefix="srstudio-silent-preview-") as temp_name:
             silent_script = Path(temp_name) / script.name
             source = script.read_text(encoding="utf-8-sig")
-            silent_script.write_text(cls._silent_script_source(source), encoding="utf-8-sig")
+            silent_script.write_text(
+                cls._silent_script_source(source, width=width, height=height),
+                encoding="utf-8-sig",
+            )
 
             startupinfo = None
             creationflags = 0
@@ -128,18 +138,35 @@ class LegacyPosterPreviewService:
             raise RuntimeError(detail[-4000:])
 
     @staticmethod
-    def _silent_script_source(source: str) -> str:
+    def _silent_script_source(source: str, *, width: int = 900, height: int = 1250) -> str:
         replacement = "try { $ppt.Visible = 0 } catch { }"
-        return re.sub(r"\$ppt\.Visible\s*=\s*-1", replacement, source, flags=re.IGNORECASE)
+        result = re.sub(r"\$ppt\.Visible\s*=\s*-1", replacement, source, flags=re.IGNORECASE)
+        result = re.sub(
+            r"\.Export\(\$OutputPng\s*,\s*[\"']PNG[\"']\s*,\s*\d+\s*,\s*\d+\s*\)",
+            f'.Export($OutputPng, "PNG", {int(width)}, {int(height)})',
+            result,
+            flags=re.IGNORECASE,
+        )
+        return result
 
     @staticmethod
-    def _cache_key(product: Product, kind: PosterKind, campaign: str) -> str:
+    def _cache_key(
+        product: Product,
+        kind: PosterKind,
+        campaign: str,
+        width: int,
+        height: int,
+        namespace: str,
+    ) -> str:
         payload = {
             "kind": kind.value,
             "campaign": campaign,
             "product": product.to_dict(),
             "poster_type": product.metadata.get("promotion_type"),
-            "engine": "legacy-preview-v2-silent",
+            "engine": "legacy-preview-v3-silent-resizable",
+            "width": width,
+            "height": height,
+            "namespace": namespace,
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
-        return hashlib.sha256(raw).hexdigest()[:32]
+        return hashlib.sha256(raw).hexdigest()[:40]
