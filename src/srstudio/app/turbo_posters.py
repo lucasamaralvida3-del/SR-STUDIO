@@ -6,11 +6,53 @@ import srstudio.app.advanced_posters as advanced
 import srstudio.app.responsive_posters as responsive
 from srstudio.app.layout_corpus_view import LayoutCorpusView
 from srstudio.app.professional import _show_splash
+from srstudio.images.cloud_sync import ImageBankCloudSync
 from srstudio.posters import PosterKind
 
 
 class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
     """Responsive poster shell plus the professional Encartes Studio experience."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._image_bank_sync_active = False
+        self._image_bank_cloud = ImageBankCloudSync(
+            self.image_library,
+            self.data_dir / "image-bank-cloud",
+        )
+        self.after(900, self._start_image_bank_cloud_sync)
+
+    def _start_image_bank_cloud_sync(self) -> None:
+        if self._image_bank_sync_active:
+            return
+        self._image_bank_sync_active = True
+        if hasattr(self, "sidebar_status"):
+            self.sidebar_status.configure(text="Banco SR · verificando...")
+
+        def worker() -> None:
+            result = self._image_bank_cloud.sync()
+            self.after(0, lambda: self._finish_image_bank_cloud_sync(result))
+
+        threading.Thread(target=worker, name="sr-image-bank-cloud-sync", daemon=True).start()
+
+    def _finish_image_bank_cloud_sync(self, result) -> None:
+        self._image_bank_sync_active = False
+        if hasattr(self, "sidebar_status"):
+            if result.state == "offline":
+                self.sidebar_status.configure(text="Banco SR offline · cache local")
+            else:
+                self.sidebar_status.configure(
+                    text=f"Banco SR v{result.remote_version or result.local_version} · {result.total} imagens"
+                )
+        if result.downloaded:
+            self.toast.show(
+                f"Banco de Imagens atualizado · {result.downloaded} nova(s) imagem(ns).",
+                "success",
+                4200,
+            )
+        elif result.state == "offline":
+            # Offline is non-blocking; only surface a subtle status in the sidebar.
+            return
 
     def navigate(self, name: str) -> None:
         super().navigate(name)
