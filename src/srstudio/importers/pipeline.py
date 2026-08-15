@@ -9,6 +9,7 @@ from srstudio.images.library import ImageLibrary
 from srstudio.importers.excel.reader import ExcelImporter
 from srstudio.importers.pptx.reader import PptxElement, PptxImporter
 from srstudio.importers.pptx.semantic import SemanticCard, SemanticMapper
+from srstudio.importers.pptx.slot_validation import SmartSlotValidator
 from srstudio.templates.corpus import LayoutCorpus
 
 
@@ -98,6 +99,7 @@ class UnifiedImportPipeline:
         parsed = self.pptx_importer.import_file(path, media_dir=media_dir)
         summary = ImportSummary(str(path), warnings=list(parsed.warnings))
         learned_profiles: list[str] = []
+        slot_stats: list[dict[str, int]] = []
 
         for slide in parsed.slides:
             while len(project.pages) < slide.index:
@@ -112,6 +114,20 @@ class UnifiedImportPipeline:
             page.elements.clear()
 
             mapped = self.semantic_mapper.map_slide(slide)
+            safe_mapped, validation = SmartSlotValidator.select(mapped, slide)
+            slot_stats.append(
+                {
+                    "slide": slide.index,
+                    "detected": validation.detected,
+                    "accepted": validation.accepted,
+                    "rejected": validation.rejected,
+                }
+            )
+            if validation.rejected:
+                summary.warnings.append(
+                    f"Slide {slide.index}: {validation.rejected} associação(ões) ambígua(s) ignorada(s) para proteger o layout."
+                )
+
             if self.layout_corpus is not None:
                 profile = self.layout_corpus.observe(slide, mapped, str(path))
                 if profile is not None:
@@ -119,7 +135,7 @@ class UnifiedImportPipeline:
                     summary.layouts_learned += 1
 
             slot_bindings: dict[int, tuple[str, str]] = {}
-            for candidate in mapped:
+            for candidate in safe_mapped:
                 semantic_elements = self._semantic_elements(candidate)
                 if not semantic_elements or candidate.bounds is None:
                     continue
@@ -145,6 +161,7 @@ class UnifiedImportPipeline:
                                 "source_file": str(path),
                                 "card_bounds": list(candidate.bounds),
                                 "crop": dict(image_element.metadata.get("crop") or {}) if image_element else {},
+                                "smart_slot_validated": True,
                             },
                         )
                         image_path = asset.path
@@ -168,6 +185,7 @@ class UnifiedImportPipeline:
                         "image_bank_asset_id": image_asset_id,
                         "canva_import_v2": True,
                         "canva_native_visual": True,
+                        "smart_slot_validated": True,
                         "price_split": bool(candidate.price_cluster and candidate.price_cluster.complete is None),
                     },
                 )
@@ -178,11 +196,13 @@ class UnifiedImportPipeline:
                     y=(top / max(slide.height, 1)) * page.height,
                     width=max(24.0, ((right - left) / max(slide.width, 1)) * page.width),
                     height=max(24.0, ((bottom - top) / max(slide.height, 1)) * page.height),
+                    locked=True,
                     z_index=min((int(item.metadata.get("z_index", 0)) for item in semantic_elements), default=0),
                     overrides={
                         "imported_from_canva": True,
                         "canva_native_visual": True,
                         "slot_detected": True,
+                        "slot_validated": True,
                         "slot_filled": False,
                         "slot_template_product_id": product.id,
                         "hidden": True,
@@ -196,9 +216,9 @@ class UnifiedImportPipeline:
                 summary.cards_added += 1
 
             # Preserve the complete Canva slide as the visual layer. Semantic cards are
-            # hidden hit regions, while each semantic source element is tagged with the
-            # slot and role it belongs to. Filling a slot can therefore replace content
-            # without changing Canva geometry, typography, crop, z-order or decoration.
+            # locked/hidden hit regions. Only validated local associations receive a
+            # slot binding, so replacing one product can never rewrite a large unrelated
+            # region of the slide.
             for element in slide.elements:
                 converted = self._pptx_element(element, slide.width, slide.height, page.width, page.height)
                 if not converted:
@@ -217,9 +237,11 @@ class UnifiedImportPipeline:
 
         project.settings["pptx_source"] = str(path)
         project.settings["pptx_media_dir"] = str(media_dir)
-        project.settings["canva_import_version"] = 4
+        project.settings["canva_import_version"] = 5
         project.settings["canva_native_visual"] = True
         project.settings["canva_smart_slots"] = True
+        project.settings["canva_slot_detector_version"] = 2
+        project.settings["canva_slot_stats"] = slot_stats
         if learned_profiles:
             project.settings["canva_layout_profiles"] = list(dict.fromkeys(learned_profiles))
         return summary
@@ -332,14 +354,19 @@ class UnifiedImportPipeline:
                 "flip_v": bool(metadata.get("flip_v", False)),
             }
         if element.kind == "shape":
-            fill = str(metadata.get("fill") or "")
-            outline = str(metadata.get("outline") or "")
+            raw_fill = str(metadata.get("fill") or "")
+            raw_outline = str(metadata.get("outline") or "")
+            fill = raw_fill if raw_fill.startswith("#") else ""
+            outline = raw_outline if raw_outline.startswith("#") else ""
+            # Canva frequently exports transparent/no-fill helper shapes. The old
+            # fallback painted them white, which created the large white blocks seen
+            # over product cards after import.
             if not fill and not outline:
                 return None
             return {
                 **common,
                 "type": "rect",
-                "fill": fill if fill.startswith("#") else "#FFFFFF",
-                "outline": outline if outline.startswith("#") else "",
+                "fill": fill,
+                "outline": outline,
             }
         return None
