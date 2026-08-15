@@ -1,16 +1,13 @@
 from __future__ import annotations
 
-import shutil
-import subprocess
 from pathlib import Path
 
-import pytest
 from PIL import Image
 from pypdf import PdfReader, PdfWriter
 
 from srstudio.core.models import Product
 from srstudio.posters import PosterKind
-from srstudio.posters.legacy_bridge import legacy_engines_root
+from srstudio.posters.legacy_batch import LegacyBatchRenderResult, LegacyBatchRenderer
 from srstudio.posters.staging import PosterStagingService, StagedPoster
 
 
@@ -23,66 +20,63 @@ def _product(name: str, price: str) -> Product:
     )
 
 
-def test_fast_batch_wrappers_delegate_to_proven_legacy_engines():
-    engines = legacy_engines_root()
-    promo = (engines / "FastPromotionBatch.ps1").read_text(encoding="utf-8-sig")
-    atacado = (engines / "FastAtacadoBatch.ps1").read_text(encoding="utf-8-sig")
-
-    assert "PowerPointEngine.ps1" in promo
-    assert "output_png" in promo
-    assert "output_pdf" in promo
-    assert "ShowWindow" in promo
-    assert "TurboPromotionPreview.ps1" not in promo
-
-    assert "AtacadoEngine" in atacado
-    assert "output_png" in atacado
-    assert "output_pdf" in atacado
-    assert "ShowWindow" in atacado
-    assert "TurboAtacadoPreview.ps1" not in atacado
+def _blank_pdf(path: Path) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    writer = PdfWriter()
+    writer.add_blank_page(width=432, height=604)
+    with path.open("wb") as handle:
+        writer.write(handle)
+    return path
 
 
-def test_fast_batch_wrappers_have_valid_powershell_syntax():
-    shell = shutil.which("pwsh.exe") or shutil.which("powershell.exe")
-    if shell is None:
-        pytest.skip("PowerShell indisponível neste ambiente")
-
-    for name in ("FastPromotionBatch.ps1", "FastAtacadoBatch.ps1"):
-        path = legacy_engines_root() / name
-        escaped = str(path).replace("'", "''")
-        command = (
-            "$tokens=$null;$errors=$null;"
-            f"[System.Management.Automation.Language.Parser]::ParseFile('{escaped}',[ref]$tokens,[ref]$errors)|Out-Null;"
-            "if($errors.Count -gt 0){$errors | ForEach-Object { Write-Error $_.Message }; exit 1}"
-        )
-        completed = subprocess.run(
-            [shell, "-NoProfile", "-NonInteractive", "-Command", command],
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=30,
-        )
-        assert completed.returncode == 0, completed.stderr or completed.stdout
+def test_fast_path_calls_untouched_historical_engines_directly(tmp_path):
+    renderer = LegacyBatchRenderer()
+    promo_script, _ = renderer._engine_command(
+        PosterKind.PROMOTION,
+        tmp_path / "jobs.json",
+        tmp_path / "out",
+    )
+    atacado_script, _ = renderer._engine_command(
+        PosterKind.WHOLESALE,
+        tmp_path / "jobs.json",
+        tmp_path / "out",
+    )
+    assert promo_script.name == "PowerPointEngine.ps1"
+    assert atacado_script.name == "AtacadoEngine.ps1"
+    assert "FastPromotionBatch" not in str(promo_script)
+    assert "TurboPromotionPreview" not in str(promo_script)
+    assert "FastAtacadoBatch" not in str(atacado_script)
+    assert "TurboAtacadoPreview" not in str(atacado_script)
 
 
-def test_staging_fast_renders_uncached_items_in_one_batch_and_reuses_cache(tmp_path, monkeypatch):
+def test_pdfium_rasterizes_official_pdf_without_powerpoint(tmp_path):
+    source = _blank_pdf(tmp_path / "cartaz.pdf")
+    destination = tmp_path / "cartaz.png"
+    LegacyBatchRenderer.rasterize_pdf(source, destination, width=1772, height=2480)
+    assert destination.is_file()
+    with Image.open(destination) as image:
+        assert image.size == (1772, 2480)
+
+
+def test_staging_fast_renders_uncached_items_in_one_old_engine_batch_and_reuses_cache(tmp_path, monkeypatch):
     service = PosterStagingService(tmp_path / "cache")
     products = [_product("ARROZ 5KG", "24,90"), _product("FEIJAO 1KG", "7,99")]
     calls: list[list[str]] = []
 
-    def fake_render_many(products_arg, kind, outputs, campaign="", *, width, height, on_progress=None):
+    def fake_render_pdfs(products_arg, kind, output_dir, campaign="", *, on_progress=None):
         items = list(products_arg)
         calls.append([item.id for item in items])
+        result = LegacyBatchRenderResult()
         for index, item in enumerate(items, start=1):
             if on_progress is not None:
-                on_progress("start", index, "")
-            path = Path(outputs[item.id])
-            path.parent.mkdir(parents=True, exist_ok=True)
-            Image.new("RGB", (width, height), "white").save(path, "PNG")
+                on_progress("stage", index, "ABRINDO_MODELO")
+            pdf = _blank_pdf(Path(output_dir) / f"{index:03d}_{item.name}.pdf")
+            result.files[index] = pdf
             if on_progress is not None:
-                on_progress("ok", index, str(path))
-        return {item.id: Path(outputs[item.id]) for item in items}
+                on_progress("ok", index, str(pdf))
+        return result
 
-    monkeypatch.setattr(service.renderer, "render_many_to", fake_render_many)
+    monkeypatch.setattr(service.batch_renderer, "render_pdfs", fake_render_pdfs)
     events: list[tuple[str, int, bool, str]] = []
     first = service.stage_many_turbo(
         products,
@@ -97,14 +91,31 @@ def test_staging_fast_renders_uncached_items_in_one_batch_and_reuses_cache(tmp_p
     assert first.reused == 0
     assert first.failed == 0
     assert all(artifact.valid for artifact in first.artifacts)
+    assert all(service.ready_pdf_artifact(product, PosterKind.PROMOTION) for product in products)
     assert sum(1 for event in events if event[0] == "done") == 2
 
-    events.clear()
     second = service.stage_many_turbo(products, PosterKind.PROMOTION)
     assert len(calls) == 1, "cache válido não deve abrir PowerPoint novamente"
     assert second.generated == 0
     assert second.reused == 2
     assert second.failed == 0
+
+
+def test_cached_pdf_rebuilds_missing_preview_without_opening_powerpoint(tmp_path, monkeypatch):
+    service = PosterStagingService(tmp_path / "cache")
+    product = _product("ARROZ 5KG", "24,90")
+    pdf = service.pdf_artifact_path(product, PosterKind.PROMOTION)
+    _blank_pdf(pdf)
+
+    monkeypatch.setattr(
+        service.batch_renderer,
+        "render_pdfs",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("PowerPoint não deve ser chamado")),
+    )
+    result = service.stage_many_turbo([product], PosterKind.PROMOTION)
+    assert result.reused == 1
+    assert result.failed == 0
+    assert service.ready_artifact(product, PosterKind.PROMOTION) is not None
 
 
 def test_fast_signature_invalidates_only_changed_product(tmp_path, monkeypatch):
@@ -113,20 +124,20 @@ def test_fast_signature_invalidates_only_changed_product(tmp_path, monkeypatch):
     second = _product("FEIJAO 1KG", "7,99")
     calls: list[list[str]] = []
 
-    def fake_render_many(products_arg, kind, outputs, campaign="", *, width, height, on_progress=None):
+    def fake_render_pdfs(products_arg, kind, output_dir, campaign="", *, on_progress=None):
         items = list(products_arg)
         calls.append([item.id for item in items])
+        result = LegacyBatchRenderResult()
         for index, item in enumerate(items, start=1):
             if on_progress is not None:
-                on_progress("start", index, "")
-            path = Path(outputs[item.id])
-            path.parent.mkdir(parents=True, exist_ok=True)
-            Image.new("RGB", (width, height), "white").save(path, "PNG")
+                on_progress("stage", index, "ABRINDO_MODELO")
+            pdf = _blank_pdf(Path(output_dir) / f"{index:03d}_{item.name}.pdf")
+            result.files[index] = pdf
             if on_progress is not None:
-                on_progress("ok", index, str(path))
-        return {item.id: Path(outputs[item.id]) for item in items}
+                on_progress("ok", index, str(pdf))
+        return result
 
-    monkeypatch.setattr(service.renderer, "render_many_to", fake_render_many)
+    monkeypatch.setattr(service.batch_renderer, "render_pdfs", fake_render_pdfs)
     service.stage_many_turbo([first, second], PosterKind.PROMOTION)
     first.price = "23,90"
     service.stage_many_turbo([first, second], PosterKind.PROMOTION)
@@ -134,18 +145,20 @@ def test_fast_signature_invalidates_only_changed_product(tmp_path, monkeypatch):
     assert calls[1] == [first.id]
 
 
-def test_per_item_fast_errors_are_retried_with_proven_renderer(tmp_path, monkeypatch):
+def test_old_engine_batch_failure_is_retried_with_proven_normal_renderer(tmp_path, monkeypatch):
     service = PosterStagingService(tmp_path / "cache")
     products = [_product("ARROZ 5KG", "24,90"), _product("FEIJAO 1KG", "7,99")]
     fallback_ids: list[str] = []
 
-    def broken_fast(products_arg, kind, outputs, campaign="", *, width, height, on_progress=None):
+    def broken_batch(products_arg, kind, output_dir, campaign="", *, on_progress=None):
         items = list(products_arg)
+        result = LegacyBatchRenderResult(batch_error="Falha no lote antigo")
         for index, _item in enumerate(items, start=1):
             if on_progress is not None:
-                on_progress("start", index, "")
-                on_progress("err", index, "Office recusou o modo rápido")
-        return {}
+                on_progress("stage", index, "ABRINDO_MODELO")
+                on_progress("err", index, "Falha simulada")
+            result.errors[index] = "Falha simulada"
+        return result
 
     def proven_fallback(product, kind, campaign=""):
         fallback_ids.append(product.id)
@@ -161,7 +174,7 @@ def test_per_item_fast_errors_are_retried_with_proven_renderer(tmp_path, monkeyp
             True,
         )
 
-    monkeypatch.setattr(service.renderer, "render_many_to", broken_fast)
+    monkeypatch.setattr(service.batch_renderer, "render_pdfs", broken_batch)
     monkeypatch.setattr(service, "stage_one", proven_fallback)
 
     result = service.stage_many_turbo(products, PosterKind.PROMOTION)
@@ -181,11 +194,7 @@ def test_final_pdf_prefers_cached_vector_pdfs(tmp_path, monkeypatch):
         png = service.artifact_path(product, PosterKind.PROMOTION)
         png.parent.mkdir(parents=True, exist_ok=True)
         Image.new("RGB", (service.PRINT_WIDTH, service.PRINT_HEIGHT), "white").save(png, "PNG")
-        pdf = service.pdf_artifact_path(product, PosterKind.PROMOTION)
-        writer = PdfWriter()
-        writer.add_blank_page(width=432, height=604)
-        with pdf.open("wb") as handle:
-            writer.write(handle)
+        _blank_pdf(service.pdf_artifact_path(product, PosterKind.PROMOTION))
 
     monkeypatch.setattr(
         "srstudio.posters.staging.Image.open",
