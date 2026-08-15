@@ -4,6 +4,7 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, ttk
 
+from srstudio.app.components import card, page_header, pill
 from srstudio.app.design import COLORS, FONT
 from srstudio.core.models import StudioProject
 from srstudio.export.service import ExportService
@@ -20,38 +21,175 @@ class ExportView(tk.Frame):
         self._build()
 
     def _build(self) -> None:
-        tk.Label(self, text="Exportação", bg=COLORS.bg, fg=COLORS.text, font=(FONT["family"], 24, "bold")).pack(anchor="w")
-        tk.Label(
+        page_header(
             self,
-            text="Perfis profissionais de impressão e canais digitais usando o mesmo motor de renderização.",
-            bg=COLORS.bg,
-            fg=COLORS.text_muted,
-            font=(FONT["family"], 10),
-        ).pack(anchor="w", pady=(4, 16))
+            "Exportação",
+            "Gere arquivos consistentes para impressão, redes sociais e distribuição interna.",
+        ).pack(fill="x", pady=(0, 18))
+
         report = self.preflight.inspect(self.project)
-        gate = tk.Frame(self, bg=COLORS.surface, highlightbackground=COLORS.border, highlightthickness=1)
+        gate = card(self, bg=COLORS.success_soft if report.ready else COLORS.danger_soft)
+        gate.configure(
+            highlightbackground=COLORS.success if report.ready else COLORS.danger,
+            highlightthickness=1,
+        )
         gate.pack(fill="x", pady=(0, 14))
-        color = COLORS.success if report.ready else COLORS.danger
-        title = "✓ Projeto pronto para exportar" if report.ready else f"⚠ Exportação possui {report.errors} erro(s) bloqueador(es)"
-        tk.Label(gate, text=title, bg=COLORS.surface, fg=color, font=(FONT["family"], 11, "bold")).pack(anchor="w", padx=16, pady=(14, 4))
-        tk.Label(gate, text=f"{report.warnings} aviso(s) adicionais.", bg=COLORS.surface, fg=COLORS.text_muted, font=(FONT["family"], 9)).pack(anchor="w", padx=16, pady=(0, 14))
+        icon = "✓" if report.ready else "!"
+        icon_box = tk.Label(
+            gate,
+            text=icon,
+            bg=COLORS.success if report.ready else COLORS.danger,
+            fg="white",
+            font=(FONT["family"], 13, "bold"),
+            padx=10,
+            pady=7,
+        )
+        icon_box.pack(side="left", padx=14, pady=13)
+        text = tk.Frame(gate, bg=COLORS.success_soft if report.ready else COLORS.danger_soft)
+        text.pack(side="left", fill="x", expand=True, pady=11)
+        tk.Label(
+            text,
+            text="Projeto pronto para exportar" if report.ready else "Projeto precisa de revisão antes da saída final",
+            bg=COLORS.success_soft if report.ready else COLORS.danger_soft,
+            fg=COLORS.success if report.ready else COLORS.danger,
+            font=(FONT["family"], FONT["body"], "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            text,
+            text=(
+                f"Preflight aprovado · {report.warnings} aviso(s) não bloqueador(es)."
+                if report.ready
+                else f"{report.errors} erro(s) bloqueador(es) · {report.warnings} aviso(s)."
+            ),
+            bg=COLORS.success_soft if report.ready else COLORS.danger_soft,
+            fg=COLORS.text_muted,
+            font=(FONT["family"], FONT["small"]),
+        ).pack(anchor="w", pady=(2, 0))
+        pill(gate, "LIBERADA" if report.ready else "BLOQUEADA", "success" if report.ready else "danger").pack(
+            side="right",
+            padx=14,
+        )
 
         grid = tk.Frame(self, bg=COLORS.bg)
         grid.pack(fill="both", expand=True)
-        for col in range(2):
-            grid.columnconfigure(col, weight=1)
-        cards = (
-            ("PDF para impressão", "PDF multipágina em alta qualidade, 300 dpi.", "Gerar PDF", self._pdf),
-            ("PNG alta qualidade", "Todas as páginas em PNG com renderização 2×.", "Gerar PNG", self._png),
-            ("Kit digital", "Original + Instagram 4:5 + Status 9:16 + quadrado 1:1.", "Gerar digital", self._social),
-            ("Pacote completo", "PDF de impressão + PNG alta + todas as variantes digitais.", "Gerar pacote", self._package),
+        for column in range(2):
+            grid.columnconfigure(column, weight=1)
+            grid.rowconfigure(column, weight=1)
+
+        formats = (
+            (
+                "PDF para impressão",
+                "PDF multipágina em alta qualidade, preparado a 300 dpi para impressão e gráfica.",
+                "PDF",
+                "300 DPI",
+                "▤",
+                "primary",
+                "Gerar PDF",
+                self._pdf,
+            ),
+            (
+                "PNG alta qualidade",
+                "Todas as páginas renderizadas em PNG 2× para uso interno, conferência e impressão rápida.",
+                "PNG",
+                "2×",
+                "▣",
+                "success",
+                "Gerar PNG",
+                self._png,
+            ),
+            (
+                "Kit digital",
+                "Cria versões para Instagram 4:5, Status 9:16, quadrado 1:1 e mantém o original.",
+                "DIGITAL",
+                "4 FORMATOS",
+                "◇",
+                "purple",
+                "Gerar kit digital",
+                self._social,
+            ),
+            (
+                "Pacote completo",
+                "PDF para impressão + PNG em alta + todas as variantes digitais em uma única saída.",
+                "PACOTE",
+                "COMPLETO",
+                "⇧",
+                "primary",
+                "Gerar pacote",
+                self._package,
+            ),
         )
-        for index, (title, detail, button, command) in enumerate(cards):
-            card = tk.Frame(grid, bg=COLORS.surface, highlightbackground=COLORS.border, highlightthickness=1)
-            card.grid(row=index // 2, column=index % 2, sticky="nsew", padx=6, pady=6)
-            tk.Label(card, text=title, bg=COLORS.surface, fg=COLORS.text, font=(FONT["family"], 13, "bold")).pack(anchor="w", padx=18, pady=(18, 5))
-            tk.Label(card, text=detail, bg=COLORS.surface, fg=COLORS.text_muted, font=(FONT["family"], 9), wraplength=420, justify="left").pack(anchor="w", padx=18)
-            ttk.Button(card, text=button, style="Primary.TButton", command=command).pack(anchor="w", padx=18, pady=18)
+        for index, (title, detail, badge, spec, icon, tone, button, command) in enumerate(formats):
+            self._format_card(
+                grid,
+                row=index // 2,
+                column=index % 2,
+                title=title,
+                detail=detail,
+                badge=badge,
+                spec=spec,
+                icon=icon,
+                tone=tone,
+                button=button,
+                command=command,
+            )
+
+    @staticmethod
+    def _format_card(
+        parent: tk.Widget,
+        *,
+        row: int,
+        column: int,
+        title: str,
+        detail: str,
+        badge: str,
+        spec: str,
+        icon: str,
+        tone: str,
+        button: str,
+        command,
+    ) -> None:
+        fg = COLORS.purple if tone == "purple" else COLORS.success if tone == "success" else COLORS.primary
+        soft = COLORS.purple_soft if tone == "purple" else COLORS.success_soft if tone == "success" else COLORS.primary_soft
+        item = card(parent)
+        item.grid(
+            row=row,
+            column=column,
+            sticky="nsew",
+            padx=(0 if column == 0 else 7, 7 if column == 0 else 0),
+            pady=(0 if row == 0 else 7, 7 if row == 0 else 0),
+        )
+        top = tk.Frame(item, bg=COLORS.surface)
+        top.pack(fill="x", padx=18, pady=(18, 12))
+        tk.Label(
+            top,
+            text=icon,
+            bg=soft,
+            fg=fg,
+            font=(FONT["family"], 15, "bold"),
+            padx=10,
+            pady=8,
+        ).pack(side="left")
+        tags = tk.Frame(top, bg=COLORS.surface)
+        tags.pack(side="right")
+        pill(tags, badge, tone).pack(side="left", padx=(0, 5))
+        pill(tags, spec, "neutral").pack(side="left")
+        tk.Label(
+            item,
+            text=title,
+            bg=COLORS.surface,
+            fg=COLORS.text,
+            font=(FONT["family"], 15, "bold"),
+        ).pack(anchor="w", padx=18)
+        tk.Label(
+            item,
+            text=detail,
+            bg=COLORS.surface,
+            fg=COLORS.text_muted,
+            font=(FONT["family"], FONT["small"]),
+            wraplength=460,
+            justify="left",
+        ).pack(anchor="w", padx=18, pady=(6, 14))
+        ttk.Button(item, text=button, style="Primary.TButton", command=command).pack(anchor="w", padx=18, pady=(0, 18))
 
     def _ensure_ready(self) -> bool:
         report = self.preflight.inspect(self.project)
@@ -92,6 +230,9 @@ class ExportView(tk.Frame):
     @staticmethod
     def _finish(result) -> None:
         if result.files:
-            messagebox.showinfo("Exportação concluída", f"{len(result.files)} arquivo(s) gerado(s).\n\n{Path(result.files[0]).parent}")
+            messagebox.showinfo(
+                "Exportação concluída",
+                f"{len(result.files)} arquivo(s) gerado(s).\n\n{Path(result.files[0]).parent}",
+            )
         else:
             messagebox.showwarning("Exportação", "Nenhum arquivo foi gerado.")
