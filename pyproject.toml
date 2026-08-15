@@ -17,7 +17,7 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
-sr-studio-5 = "srstudio.app.workspace:run"
+sr-studio-5 = "srstudio.app.professional:run"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
