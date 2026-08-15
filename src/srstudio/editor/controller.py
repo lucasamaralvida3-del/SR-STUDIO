@@ -112,3 +112,117 @@ class EditorController:
             card.product_id = previous
 
         self.history.execute(LambdaCommand("Substituir produto", do, undo))
+
+    def rotate_selected(self, delta: float, snap: float | None = 15.0) -> None:
+        selected = self.scene.selected()
+        if not selected:
+            return
+        before = {card.id: card.rotation for card in selected}
+
+        def do() -> None:
+            self.scene.rotate_selected(delta, snap=snap)
+
+        def undo() -> None:
+            for card in self.page.cards:
+                if card.id in before:
+                    card.rotation = before[card.id]
+
+        self.history.execute(LambdaCommand("Rotacionar seleção", do, undo))
+
+    def align_selected(self, mode: str) -> None:
+        selected = self.scene.selected()
+        if len(selected) < 2:
+            return
+        before = {card.id: (card.x, card.y) for card in selected}
+
+        def do() -> None:
+            self.scene.align_selected(mode)
+
+        def undo() -> None:
+            for card in self.page.cards:
+                if card.id in before:
+                    card.x, card.y = before[card.id]
+
+        self.history.execute(LambdaCommand(f"Alinhar seleção: {mode}", do, undo))
+
+    def distribute_selected(self, axis: str) -> None:
+        selected = self.scene.selected()
+        if len(selected) < 3:
+            return
+        before = {card.id: (card.x, card.y) for card in selected}
+
+        def do() -> None:
+            self.scene.distribute_selected(axis)
+
+        def undo() -> None:
+            for card in self.page.cards:
+                if card.id in before:
+                    card.x, card.y = before[card.id]
+
+        self.history.execute(LambdaCommand(f"Distribuir seleção: {axis}", do, undo))
+
+    def set_locked_selected(self, value: bool) -> None:
+        selected = self.scene.selected()
+        if not selected:
+            return
+        before = {card.id: card.locked for card in selected}
+
+        def do() -> None:
+            self.scene.lock_selected(value)
+
+        def undo() -> None:
+            for card in self.page.cards:
+                if card.id in before:
+                    card.locked = before[card.id]
+
+        self.history.execute(LambdaCommand("Bloquear seleção" if value else "Desbloquear seleção", do, undo))
+
+    def set_hidden_selected(self, value: bool) -> None:
+        selected = self.scene.selected()
+        if not selected:
+            return
+        before = {card.id: bool(card.overrides.get("hidden", False)) for card in selected}
+
+        def do() -> None:
+            self.scene.hide_selected(value)
+
+        def undo() -> None:
+            for card in self.page.cards:
+                if card.id in before:
+                    card.overrides["hidden"] = before[card.id]
+
+        self.history.execute(LambdaCommand("Ocultar seleção" if value else "Mostrar seleção", do, undo))
+
+    def bring_selected_to_front(self) -> None:
+        selected = self.scene.selected()
+        if not selected:
+            return
+        before = {card.id: card.z_index for card in self.page.cards}
+
+        def do() -> None:
+            self.scene.bring_selected_to_front()
+
+        def undo() -> None:
+            for card in self.page.cards:
+                if card.id in before:
+                    card.z_index = before[card.id]
+            self.page.cards.sort(key=lambda item: item.z_index)
+
+        self.history.execute(LambdaCommand("Trazer para frente", do, undo))
+
+    def send_selected_to_back(self) -> None:
+        selected = self.scene.selected()
+        if not selected:
+            return
+        before = {card.id: card.z_index for card in self.page.cards}
+
+        def do() -> None:
+            self.scene.send_selected_to_back()
+
+        def undo() -> None:
+            for card in self.page.cards:
+                if card.id in before:
+                    card.z_index = before[card.id]
+            self.page.cards.sort(key=lambda item: item.z_index)
+
+        self.history.execute(LambdaCommand("Enviar para trás", do, undo))
