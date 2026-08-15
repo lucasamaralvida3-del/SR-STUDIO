@@ -93,6 +93,29 @@ def test_legacy_jobs_keep_historical_contract_and_auto_types() -> None:
     }
 
 
+def test_manual_one_price_override_is_explicit_and_drops_limit_when_model_has_none() -> None:
+    product = _product(poster_type=2, club="8.49", limit="6CX")
+    job = LegacyPosterBridge()._promotion_jobs(
+        [product],
+        "",
+        "SEGUNDA_DA_LIMPEZA_1_PRECO.pptx",
+    )[0]
+    assert job["tipo"] == 1
+    assert job["clube"] == ""
+    assert job["limite"] == ""
+
+
+def test_manual_limit_model_keeps_limit() -> None:
+    product = _product(poster_type=1, limit="4UN")
+    job = LegacyPosterBridge()._promotion_jobs(
+        [product],
+        "",
+        "SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx",
+    )[0]
+    assert job["tipo"] == 1
+    assert job["limite"] == "4UN"
+
+
 def test_inference_keeps_old_projects_automatic() -> None:
     product = Product(
         original_name="CERVEJA LATA",
