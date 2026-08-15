@@ -7,6 +7,7 @@ import shutil
 import tempfile
 import urllib.error
 import urllib.request
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -91,6 +92,17 @@ class ImageBankCloudSync:
             return status
 
         status.state = "syncing"
+        if status.local_version == 0 and manifest.get("base_bundle"):
+            try:
+                status.message = "Banco de imagens · baixando pacote inicial..."
+                self._emit(status, on_progress)
+                bundle_bytes = self._install_base_bundle(dict(manifest["base_bundle"]))
+                status.bytes_downloaded += bundle_bytes
+                status.details.append("Pacote-base instalado")
+            except Exception as exc:
+                # Base bundle is an optimization only; incremental download remains authoritative.
+                status.details.append(f"Pacote-base ignorado: {exc}")
+
         for index, item in enumerate(assets, start=1):
             asset_id = str(item["id"])
             suffix = Path(str(item.get("filename") or item.get("url") or ".webp")).suffix.lower() or ".webp"
@@ -139,6 +151,26 @@ class ImageBankCloudSync:
         redirected["_bootstrap_url"] = url
         redirected["_resolved_manifest_url"] = redirect
         return redirected
+
+    def _install_base_bundle(self, bundle: dict) -> int:
+        url = str(bundle.get("url") or "")
+        expected = str(bundle.get("sha256") or "").lower()
+        if not url or not expected:
+            raise ValueError("Pacote-base incompleto")
+        target = self.cache_dir / "image-bank-base.zip"
+        size = self._download(url, target, expected)
+        with zipfile.ZipFile(target) as archive:
+            for info in archive.infolist():
+                name = info.filename.replace("\\", "/")
+                if info.is_dir() or not name.startswith("assets/"):
+                    continue
+                relative = Path(name).relative_to("assets")
+                if relative.is_absolute() or ".." in relative.parts or len(relative.parts) != 1:
+                    raise ValueError("Caminho inseguro no pacote-base")
+                destination = self.official_dir / relative.name
+                with archive.open(info) as source, destination.open("wb") as output:
+                    shutil.copyfileobj(source, output)
+        return size
 
     def _register_official(self, path: Path, item: dict) -> None:
         asset = self.library.import_image(
@@ -220,6 +252,9 @@ class ImageBankCloudSync:
             raise ValueError("Formato do manifesto do Banco SR não reconhecido")
         if not isinstance(payload.get("assets", []), list):
             raise ValueError("Lista de imagens do Banco SR inválida")
+        bundle = payload.get("base_bundle")
+        if bundle is not None and not isinstance(bundle, dict):
+            raise ValueError("Pacote-base do Banco SR inválido")
         for item in payload.get("assets", []):
             if item.get("status", "approved") != "approved":
                 continue
