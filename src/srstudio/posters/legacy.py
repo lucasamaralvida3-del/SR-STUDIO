@@ -174,7 +174,14 @@ class SRPrintPosterService(PrintPosterService):
             bridge = LegacyPosterBridge()
             try:
                 kind = PosterKind.WHOLESALE if legacy_engine == "wholesale" else PosterKind.PROMOTION
-                return bridge.generate_pdf(products, kind, destination, campaign)
+                forced_model = str(template.metadata.get("legacy_model") or "")
+                return bridge.generate_pdf(
+                    products,
+                    kind,
+                    destination,
+                    campaign,
+                    forced_model=forced_model,
+                )
             except Exception as exc:
                 fallback = PosterTemplate(
                     id=f"{template.id}-fallback",
