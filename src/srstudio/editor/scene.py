@@ -82,6 +82,49 @@ class Scene:
         card.width = min(max(min_size, width), self.page.width - card.x)
         card.height = min(max(min_size, height), self.page.height - card.y)
 
+    def resize_from_handle(
+        self,
+        card_id: str,
+        handle: str,
+        x: float,
+        y: float,
+        min_size: float = 32.0,
+    ) -> None:
+        """Redimensiona um card por qualquer uma das oito alças."""
+        card = self.card(card_id)
+        if card is None or card.locked:
+            return
+        left, top = card.x, card.y
+        right, bottom = card.x + card.width, card.y + card.height
+
+        if "w" in handle:
+            left = min(max(0.0, x), right - min_size)
+        if "e" in handle:
+            right = max(min(self.page.width, x), left + min_size)
+        if "n" in handle:
+            top = min(max(0.0, y), bottom - min_size)
+        if "s" in handle:
+            bottom = max(min(self.page.height, y), top + min_size)
+
+        card.x = left
+        card.y = top
+        card.width = right - left
+        card.height = bottom - top
+
+    def rotate(self, card_id: str, angle: float, snap: float | None = 15.0) -> None:
+        card = self.card(card_id)
+        if card is None or card.locked:
+            return
+        value = float(angle) % 360.0
+        if snap and snap > 0:
+            value = round(value / snap) * snap
+        card.rotation = value % 360.0
+
+    def rotate_selected(self, delta: float, snap: float | None = 15.0) -> None:
+        for card in self.selected():
+            if not card.locked:
+                self.rotate(card.id, card.rotation + delta, snap=snap)
+
     def bring_forward(self, card_id: str) -> None:
         card = self.card(card_id)
         if card is None:
@@ -96,9 +139,81 @@ class Scene:
         card.z_index = min((item.z_index for item in self.cards), default=0) - 1
         self.cards.sort(key=lambda item: item.z_index)
 
+    def bring_selected_to_front(self) -> None:
+        selected = self.selected()
+        if not selected:
+            return
+        start = max((item.z_index for item in self.cards), default=0) + 1
+        for offset, card in enumerate(selected):
+            card.z_index = start + offset
+        self.cards.sort(key=lambda item: item.z_index)
+
+    def send_selected_to_back(self) -> None:
+        selected = self.selected()
+        if not selected:
+            return
+        start = min((item.z_index for item in self.cards), default=0) - len(selected)
+        for offset, card in enumerate(selected):
+            card.z_index = start + offset
+        self.cards.sort(key=lambda item: item.z_index)
+
     def lock_selected(self, value: bool = True) -> None:
         for card in self.selected():
             card.locked = value
+
+    def hide_selected(self, value: bool = True) -> None:
+        for card in self.selected():
+            card.overrides["hidden"] = bool(value)
+
+    def align_selected(self, mode: str) -> None:
+        cards = [card for card in self.selected() if not card.locked]
+        if len(cards) < 2:
+            return
+        left = min(card.x for card in cards)
+        right = max(card.x + card.width for card in cards)
+        top = min(card.y for card in cards)
+        bottom = max(card.y + card.height for card in cards)
+        center_x = (left + right) / 2
+        center_y = (top + bottom) / 2
+
+        for card in cards:
+            if mode == "left":
+                card.x = left
+            elif mode == "center_x":
+                card.x = center_x - card.width / 2
+            elif mode == "right":
+                card.x = right - card.width
+            elif mode == "top":
+                card.y = top
+            elif mode == "center_y":
+                card.y = center_y - card.height / 2
+            elif mode == "bottom":
+                card.y = bottom - card.height
+
+    def distribute_selected(self, axis: str) -> None:
+        cards = [card for card in self.selected() if not card.locked]
+        if len(cards) < 3:
+            return
+        if axis == "horizontal":
+            cards.sort(key=lambda item: item.x)
+            start = cards[0].x
+            end = cards[-1].x + cards[-1].width
+            content = sum(card.width for card in cards)
+            gap = max(0.0, (end - start - content) / (len(cards) - 1))
+            cursor = start
+            for card in cards:
+                card.x = cursor
+                cursor += card.width + gap
+        elif axis == "vertical":
+            cards.sort(key=lambda item: item.y)
+            start = cards[0].y
+            end = cards[-1].y + cards[-1].height
+            content = sum(card.height for card in cards)
+            gap = max(0.0, (end - start - content) / (len(cards) - 1))
+            cursor = start
+            for card in cards:
+                card.y = cursor
+                cursor += card.height + gap
 
     def copy_selected(self) -> None:
         self.clipboard = [
