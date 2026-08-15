@@ -66,7 +66,7 @@ class ImageBankCloudSync:
         )
         self._emit(status, on_progress)
         try:
-            manifest = self._fetch_json(self.manifest_url)
+            manifest = self._resolve_manifest(self.manifest_url)
             self._validate_manifest(manifest)
         except Exception as exc:
             status.state = "offline"
@@ -124,6 +124,21 @@ class ImageBankCloudSync:
 
     def check(self) -> CloudBankStatus:
         return self.sync()
+
+    def local_version(self) -> int:
+        return int(self._state().get("version", 0) or 0)
+
+    def _resolve_manifest(self, url: str) -> dict:
+        first = self._fetch_json(url)
+        redirect = str(first.get("redirect_manifest_url") or "").strip()
+        if not redirect:
+            return first
+        if not redirect.startswith("https://"):
+            raise ValueError("Redirecionamento do Banco SR deve usar HTTPS")
+        redirected = self._fetch_json(redirect)
+        redirected["_bootstrap_url"] = url
+        redirected["_resolved_manifest_url"] = redirect
+        return redirected
 
     def _register_official(self, path: Path, item: dict) -> None:
         asset = self.library.import_image(
