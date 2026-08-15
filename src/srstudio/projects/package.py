@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 import zipfile
+from copy import deepcopy
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -23,7 +24,7 @@ class ProjectPackage:
         target.parent.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory() as tmp:
             root = Path(tmp)
-            project_copy = StudioProject.from_dict(project.to_dict())
+            project_copy = deepcopy(project)
             assets = root / "assets"
             assets.mkdir()
             copied: dict[str, str] = {}
