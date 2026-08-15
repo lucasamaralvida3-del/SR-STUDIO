@@ -80,7 +80,9 @@ class ImageBankCloudSync:
         assets = [item for item in manifest.get("assets", []) if item.get("status", "approved") == "approved"]
         status.remote_version = remote_version
         status.total = len(assets)
+        remote_ids = {str(item["id"]) for item in assets}
         if remote_version <= status.local_version and self._official_files_valid(assets):
+            self._deactivate_missing(remote_ids)
             status.state = "current"
             status.reused = len(assets)
             status.message = f"Banco de imagens atualizado · {len(assets)} imagens oficiais"
@@ -89,10 +91,8 @@ class ImageBankCloudSync:
             return status
 
         status.state = "syncing"
-        remote_ids = set()
         for index, item in enumerate(assets, start=1):
             asset_id = str(item["id"])
-            remote_ids.add(asset_id)
             suffix = Path(str(item.get("filename") or item.get("url") or ".webp")).suffix.lower() or ".webp"
             destination = self.official_dir / f"{asset_id}{suffix}"
             expected = str(item["sha256"]).lower()
@@ -107,11 +107,10 @@ class ImageBankCloudSync:
             self._register_official(destination, item)
 
         for file in self.official_dir.iterdir():
-            if not file.is_file():
-                continue
-            if file.stem not in remote_ids:
+            if file.is_file() and file.stem not in remote_ids:
                 file.unlink(missing_ok=True)
                 status.removed += 1
+        self._deactivate_missing(remote_ids)
 
         now = datetime.now(timezone.utc).isoformat()
         self._write_manifest_cache(manifest)
@@ -119,10 +118,7 @@ class ImageBankCloudSync:
         status.state = "updated"
         status.local_version = remote_version
         status.updated_at = now
-        status.message = (
-            f"Banco SR atualizado · {len(assets)} imagens · "
-            f"{status.downloaded} nova(s)"
-        )
+        status.message = f"Banco SR atualizado · {len(assets)} imagens · {status.downloaded} nova(s)"
         self._emit(status, on_progress)
         return status
 
@@ -144,6 +140,7 @@ class ImageBankCloudSync:
             preferred=bool(item.get("preferred", False)),
             metadata={
                 "official": True,
+                "official_active": True,
                 "cloud_asset_id": str(item.get("id") or ""),
                 "cloud_version": int(item.get("version", 1) or 1),
                 "ean": str(item.get("ean") or ""),
@@ -153,6 +150,19 @@ class ImageBankCloudSync:
         )
         if item.get("preferred") and not asset.preferred:
             self.library.set_preferred(asset.id, True)
+
+    def _deactivate_missing(self, remote_ids: set[str]) -> None:
+        for asset in self.library.all():
+            if asset.source != "cloud":
+                continue
+            cloud_id = str(asset.metadata.get("cloud_asset_id") or "")
+            if cloud_id and cloud_id not in remote_ids and asset.review_status != "rejected":
+                self.library.update_metadata(
+                    asset.id,
+                    review_status="rejected",
+                    preferred=False,
+                    metadata={**asset.metadata, "official_active": False},
+                )
 
     def _download(self, url: str, destination: Path, expected_sha: str) -> int:
         request = urllib.request.Request(url, headers={"User-Agent": "SR-Studio/5 ImageBankSync"})
