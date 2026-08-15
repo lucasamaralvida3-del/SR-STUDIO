@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.16 Professional
-Banco de Imagens: revisão segura e layout corrigido.
-Corrige o painel lateral do Banco de Imagens para manter APROVAR e RECUSAR sempre visíveis dentro do layout, com detalhes roláveis separadamente. Imagens iguais ou visualmente equivalentes encontradas em produtos diferentes agora são obrigatoriamente enviadas para PENDENTES com alerta de revisão e lista dos produtos conflitantes, mesmo com alta confiança. Associações pendentes não podem preencher produtos automaticamente. O auto-match por similaridade também ficou mais rigoroso para evitar que apenas uma marca em comum aplique imagem no produto errado. Mantém SR Image Cloud Sync, Canva V2, layouts aprendidos, Promoções, Atacado, PDFium e engines históricos preservados.
-Triggered: 2026-08-15T14:55:00-03:00
+SR Studio 5.0 Beta 7.17 Professional
+Banco de Imagens: revisão em lote e atalhos A/R.
+Adiciona seleção múltipla no Banco de Imagens, Selecionar todas/Desmarcar todas, contador de seleção, aprovação em lote e recusa em lote com exclusão real do registro e do arquivo local pertencente ao banco. Atalhos: A aprova seleção, R abre confirmação de recusa/exclusão, R novamente confirma a exclusão, Ctrl+A seleciona todas as imagens visíveis e Esc cancela/limpa seleção. A confirmação também aceita Enter e mantém proteção contra apagar arquivos externos ao diretório do banco. O módulo BatchImageBankView é integrado ao CloudImageBankView e validado no smoke check do executável. Mantém correções de conflito visual, SR Image Cloud Sync, Canva V2, layouts aprendidos, Promoções, Atacado, PDFium e engines históricos preservados.
+Triggered: 2026-08-15T15:17:00-03:00
