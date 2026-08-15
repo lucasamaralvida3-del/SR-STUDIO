@@ -37,7 +37,7 @@ jobs:
           if (!(Test-Path $atacadoA) -and !(Test-Path $atacadoB)) { throw "Engine de Atacado não foi empacotado" }
           $pdfium = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "pdfium.dll" | Select-Object -First 1
           if ($null -eq $pdfium) { throw "PDFium nativo não foi empacotado" }
-          python -c "import pypdfium2; from srstudio.posters.legacy_batch import LegacyBatchRenderer; from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; from srstudio.importers.pptx.reader import PptxImporter; from srstudio.importers.pptx.semantic import SemanticMapper; from srstudio.images.library import ImageLibrary; from srstudio.images.canva_training import CanvaTrainingService; from srstudio.templates.corpus import LayoutCorpus; from srstudio.app.image_bank_view import ImageBankView; from srstudio.app.layout_corpus_view import LayoutCorpusView; assert poster_pane_ratio(1500) == (68, 32); print(LegacyBatchRenderer.__name__, SRStudioTurboPosters.__name__, PptxImporter.__name__, SemanticMapper.__name__, ImageLibrary.__name__, CanvaTrainingService.__name__, LayoutCorpus.__name__, ImageBankView.__name__, LayoutCorpusView.__name__)"
+          python -c "import pypdfium2; from srstudio.posters.legacy_batch import LegacyBatchRenderer; from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; from srstudio.importers.pptx.reader import PptxImporter; from srstudio.importers.pptx.semantic import SemanticMapper; from srstudio.images.library import ImageLibrary; from srstudio.images.canva_training import CanvaTrainingService; from srstudio.templates.corpus import LayoutCorpus; from srstudio.app.image_bank_view import ImageBankView; from srstudio.app.layout_corpus_view import LayoutCorpusView; from srstudio.images.cloud_sync import ImageBankCloudSync; from srstudio.images.cloud_publish import ImageBankPublicationBuilder; from srstudio.images.r2_publish import R2Config, R2Publisher; from srstudio.app.cloud_image_bank_view import CloudImageBankView; assert poster_pane_ratio(1500) == (68, 32); print(LegacyBatchRenderer.__name__, SRStudioTurboPosters.__name__, PptxImporter.__name__, SemanticMapper.__name__, ImageLibrary.__name__, CanvaTrainingService.__name__, LayoutCorpus.__name__, ImageBankView.__name__, LayoutCorpusView.__name__, ImageBankCloudSync.__name__, ImageBankPublicationBuilder.__name__, R2Config.__name__, R2Publisher.__name__, CloudImageBankView.__name__)"
       - name: Read application version
         shell: pwsh
         run: |
@@ -55,7 +55,7 @@ jobs:
         shell: pwsh
         run: |
           $hash = (Get-FileHash "release\SR-Studio-5-Setup.exe" -Algorithm SHA256).Hash.ToLower()
-          "sha256=$hash" | Set-Content "release\SR-Studio-5-Setup.sha256.txt"
+          "sha256=$hash" | Set-Content "release/SR-Studio-5-Setup.sha256.txt"
       - uses: actions/upload-artifact@v4
         with:
           name: SR-Studio-5-Installer
