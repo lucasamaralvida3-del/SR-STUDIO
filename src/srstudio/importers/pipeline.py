@@ -8,8 +8,9 @@ from srstudio.core.models import Page, Product, ProductCard, StudioProject
 from srstudio.images.library import ImageLibrary
 from srstudio.importers.excel.reader import ExcelImporter
 from srstudio.importers.pptx.reader import PptxElement, PptxImporter
-from srstudio.importers.pptx.semantic import SemanticCard, SemanticMapper
+from srstudio.importers.pptx.semantic import SemanticCard
 from srstudio.importers.pptx.slot_validation import SmartSlotValidator
+from srstudio.importers.pptx.smart_semantic import SmartSlotSemanticMapper
 from srstudio.templates.corpus import LayoutCorpus
 
 
@@ -37,7 +38,7 @@ class UnifiedImportPipeline:
         self.image_library = image_library
         self.layout_corpus = layout_corpus
         self.pptx_importer = PptxImporter()
-        self.semantic_mapper = SemanticMapper()
+        self.semantic_mapper = SmartSlotSemanticMapper()
 
     def import_file(self, path: str | Path, project: StudioProject) -> ImportSummary:
         source = Path(path)
