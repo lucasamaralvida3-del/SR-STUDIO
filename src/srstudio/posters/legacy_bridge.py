@@ -146,8 +146,6 @@ class LegacyPosterBridge:
                     "validade": product.validity,
                     "unidade_exibicao": self._legacy_unit(product.unit),
                     "limite": product.cpf_limit,
-                    "modelo_detectado": decision.filename,
-                    "modelo_rotulo": decision.label,
                 }
             )
         return jobs
@@ -165,7 +163,6 @@ class LegacyPosterBridge:
                     "total": fields["total"],
                     "quantidade_texto": fields["quantidade_texto"],
                     "quantidade_2_texto": fields["quantidade_2_texto"],
-                    "modelo_detectado": "ATACADO.pptx",
                 }
             )
         return jobs
