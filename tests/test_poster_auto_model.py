@@ -72,7 +72,7 @@ def test_auto_model_wholesale_is_atacado() -> None:
     assert decision.short_label == "ATACADO"
 
 
-def test_legacy_jobs_use_same_model_decision() -> None:
+def test_legacy_jobs_keep_historical_contract_and_auto_types() -> None:
     products = [
         _product(poster_type=1),
         _product(poster_type=2, club="8.49", limit="4UN"),
@@ -80,11 +80,17 @@ def test_legacy_jobs_use_same_model_decision() -> None:
     ]
     jobs = LegacyPosterBridge()._promotion_jobs(products, "")
     assert [job["tipo"] for job in jobs] == [1, 2, 3]
-    assert [job["modelo_detectado"] for job in jobs] == [
-        "SEGUNDA_DA_LIMPEZA_1_PRECO.pptx",
-        "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx",
-        "CLUBE_EXCLUSIVO_COM_LIMITE.pptx",
-    ]
+    assert set(jobs[0]) == {
+        "tipo",
+        "campanha",
+        "produto",
+        "promocao",
+        "clube",
+        "validade_rotulo",
+        "validade",
+        "unidade_exibicao",
+        "limite",
+    }
 
 
 def test_inference_keeps_old_projects_automatic() -> None:
