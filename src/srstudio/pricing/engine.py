@@ -30,6 +30,10 @@ class PriceEngine:
         self.currency = currency
         self.default_unit = default_unit
 
+    @staticmethod
+    def parse(value: Any) -> Decimal | None:
+        return to_decimal(value)
+
     def split(self, value: Any, unit: str | None = None) -> PriceParts:
         amount = to_decimal(value)
         final_unit = (unit or self.default_unit or "").upper().strip()
