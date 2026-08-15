@@ -9,11 +9,11 @@ from srstudio.posters.core import (
     PosterEngine,
     PosterKind,
     PosterTemplate,
-    PosterTemplateAnalyzer,
     PosterTemplateLibrary,
     PrintPosterService,
 )
 from srstudio.posters.legacy import SRPosterData, SRPosterEngine, SRPrintPosterService
+from srstudio.posters.template_analyzer import SRPosterTemplateAnalyzer, SRPosterTemplateAnalyzer as PosterTemplateAnalyzer
 
 __all__ = [
     "PosterBatchResult",
@@ -27,4 +27,5 @@ __all__ = [
     "SRPosterData",
     "SRPosterEngine",
     "SRPrintPosterService",
+    "SRPosterTemplateAnalyzer",
 ]
