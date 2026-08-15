@@ -20,7 +20,7 @@ class Colors:
     primary_soft: str = "#EAF1FF"
     primary_soft_hover: str = "#DCE8FF"
 
-    # High-frequency production modes
+    # High-frequency production modules
     promotion: str = "#1767E8"
     promotion_hover: str = "#0F56C9"
     promotion_soft: str = "#EAF2FF"
@@ -122,11 +122,17 @@ NAV_SECTIONS = (
 NAV_ICONS = dict(NAVIGATION)
 
 PAGE_META = {
-    "Promoções": ("Cartazes de Promoção", "Geração rápida de ofertas e campanhas promocionais"),
-    "Atacado": ("Cartazes de Atacado", "Geração de cartazes com varejo, atacado e quantidade"),
+    "Promoções": (
+        "Gerador de Cartazes de Promoção",
+        "Cartazes unitários para impressão · 1 preço, 2 preços e Clube Exclusivo",
+    ),
+    "Atacado": (
+        "Gerador de Cartazes de Atacado",
+        "Cartazes Atacarejo para impressão · varejo, atacado, quantidade e histórico",
+    ),
     "Início": ("Início", "Visão geral do projeto e atalhos rápidos"),
     "Central 5.0": ("Central 5.0", "Saúde, integridade e operação do projeto"),
-    "Encartes Studio": ("Encartes Studio", "Editor visual da campanha"),
+    "Encartes Studio": ("Encartes Studio", "Editor visual de encartes e artes livres"),
     "Banco de Produtos": ("Banco de Produtos", "Catálogo e memória local de produtos"),
     "Planilhas": ("Planilhas", "Importação e leitura de dados comerciais"),
     "Modelos": ("Modelos", "Templates SR e layouts aprendidos"),
