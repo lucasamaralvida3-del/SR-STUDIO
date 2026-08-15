@@ -26,6 +26,8 @@ class ImportSummary:
 class UnifiedImportPipeline:
     """Convert Excel/Canva PPTX into the same editable SR Studio project model."""
 
+    MIN_FUZZY_IMAGE_SCORE = 0.88
+
     def __init__(
         self,
         image_library: ImageLibrary | None = None,
@@ -76,6 +78,11 @@ class UnifiedImportPipeline:
             return
         match = self.image_library.find_best_for_product(product.name)
         if match is None or match.asset.review_status != "accepted":
+            return
+        if match.reason == "similaridade" and match.score < self.MIN_FUZZY_IMAGE_SCORE:
+            summary.warnings.append(
+                f"Imagem não aplicada automaticamente em {product.name}: similaridade insuficiente ({round(match.score * 100)}%)."
+            )
             return
         product.image_path = match.asset.path
         product.metadata["image_bank_asset_id"] = match.asset.id
