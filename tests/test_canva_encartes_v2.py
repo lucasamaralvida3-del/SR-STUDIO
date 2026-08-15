@@ -5,8 +5,10 @@ from pathlib import Path
 
 from PIL import Image
 
-from srstudio.core.models import Product, ProductCard
+from srstudio.core.models import Page, Product, ProductCard, StudioProject
+from srstudio.editor.controller import EditorController
 from srstudio.editor.product_cards import ProductCardRegistry
+from srstudio.export.renderer import FlyerRenderer
 from srstudio.images.canva_training import CanvaTrainingService
 from srstudio.images.library import ImageLibrary
 from srstudio.importers.pptx.reader import PptxElement, PptxImportResult, PptxImporter, PptxSlide
@@ -144,7 +146,6 @@ def test_layout_corpus_merges_similar_sr_pages(tmp_path):
     mapper = SemanticMapper()
     first_slide = _semantic_slide(image_path)
     second_slide = _semantic_slide(image_path)
-    # Tiny normal layout drift should be learned as the same pattern.
     for element in second_slide.elements:
         if element.kind in {"text", "image"} and element.y > 80:
             element.x += 4
@@ -179,25 +180,51 @@ def test_training_service_populates_image_bank_and_layouts_without_loading_proje
     assert corpus.stats()["profiles"] == 1
 
 
-def test_imported_canva_card_uses_transparent_learned_style():
-    registry = ProductCardRegistry()
-    product = Product(original_name="ARROZ 5KG", price="15,21", unit="UN")
-    card = ProductCard(
+def _imported_card(product: Product, image_path: str = "") -> ProductCard:
+    product.image_path = image_path
+    return ProductCard(
         product_id=product.id,
+        width=320,
+        height=380,
         overrides={
             "imported_from_canva": True,
             "imported_style": {
                 "image_region": {"x": 0.05, "y": 0.05, "width": 0.55, "height": 0.55},
                 "name_region": {"x": 0.04, "y": 0.62, "width": 0.82, "height": 0.12},
                 "price_region": {"x": 0.04, "y": 0.74, "width": 0.62, "height": 0.22},
-                "name_style": {"font_name": "Anton", "fill": "#105594"},
-                "price_style": {"font_name": "Anton", "fill": "#105594"},
+                "name_style": {"font_name": "Anton", "fill": "#105594", "font_size_pt": 18.0},
+                "price_style": {"font_name": "Anton", "fill": "#105594", "font_size_pt": 34.0},
+                "cents_style": {"font_name": "Anton", "fill": "#105594", "font_size_pt": 16.0},
                 "image_fit": "cover",
             },
         },
     )
+
+
+def test_imported_canva_card_uses_transparent_learned_style():
+    registry = ProductCardRegistry()
+    product = Product(original_name="ARROZ 5KG", price="15,21", unit="UN")
+    card = _imported_card(product)
     vm = registry.view_model(card, product)
     assert vm.style.metadata["transparent_background"] is True
     assert vm.style.metadata["name_style"]["font_name"] == "Anton"
     assert vm.style.image_fit == "cover"
     assert vm.style.text_color == "#105594"
+
+
+def test_imported_canva_card_renderer_produces_rgba_layer(tmp_path):
+    image_path = _png(tmp_path / "arroz.png")
+    product = Product(original_name="ARROZ 5KG", price="15,21", unit="UN")
+    card = _imported_card(product, str(image_path))
+    layer = FlyerRenderer().render_card_layer(card, product, scale=1.0)
+    assert layer.mode == "RGBA"
+    assert layer.size == (320, 380)
+    assert layer.getbbox() is not None
+
+
+def test_editor_controller_reopens_active_learned_page():
+    first = Page(name="Página 1")
+    second = Page(name="Layout aprendido")
+    project = StudioProject(name="Treino", pages=[first, second], settings={"active_page_index": 1})
+    controller = EditorController(project)
+    assert controller.page is second
