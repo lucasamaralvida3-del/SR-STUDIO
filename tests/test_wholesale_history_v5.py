@@ -69,3 +69,29 @@ def test_duplicate_report_reuses_existing_history(tmp_path: Path):
     assert second.duplicate is True
     assert second.report_id == first.report_id
     assert second_products[0].metadata["atacado_status"] == "NOVO"
+
+
+def test_report_782_absolute_discount_does_not_create_false_alert():
+    product = Product(
+        code="101",
+        original_name="CERVEJA AMSTEL LATA 350ML",
+        retail_price="3,99",
+        wholesale_price="3,18",
+        quantity="12",
+        unit="À LATA",
+        metadata={"discount": "0,81"},
+    )
+    assert "Desconto divergente" not in WholesaleHistoryStore.alert_for(product)
+
+
+def test_report_782_inconsistent_absolute_discount_is_flagged():
+    product = Product(
+        code="101",
+        original_name="CERVEJA AMSTEL LATA 350ML",
+        retail_price="3,99",
+        wholesale_price="3,18",
+        quantity="12",
+        unit="À LATA",
+        metadata={"discount": "0,50"},
+    )
+    assert "Desconto divergente" in WholesaleHistoryStore.alert_for(product)
