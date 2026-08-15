@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import tempfile
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -14,6 +15,7 @@ from pypdf import PdfReader, PdfWriter
 from srstudio.core.models import Product
 from srstudio.posters.auto_model import PosterAutoModelResolver
 from srstudio.posters.core import PosterKind
+from srstudio.posters.legacy_batch import LegacyBatchRenderer
 from srstudio.posters.preview import LegacyPosterPreviewService
 
 
@@ -41,7 +43,12 @@ class StagingBatchResult:
 
 
 class PosterStagingService:
-    """Pre-render official posters once, then reuse them for preview/final delivery."""
+    """Prepare official posters once and reuse PDF/PNG artifacts thereafter.
+
+    The fast path deliberately leaves the historical PowerPoint engines untouched:
+    they generate vector PDFs exactly as in the previous SR Studio versions. PDFium
+    converts those PDFs to preview PNGs without any extra PowerPoint automation.
+    """
 
     PRINT_WIDTH = 1772
     PRINT_HEIGHT = 2480
@@ -50,6 +57,7 @@ class PosterStagingService:
         self.root = Path(root) if root is not None else Path.home() / ".srstudio5" / "cache" / "poster-staging"
         self.root.mkdir(parents=True, exist_ok=True)
         self.renderer = LegacyPosterPreviewService(self.root / "render-cache")
+        self.batch_renderer = LegacyBatchRenderer()
         self.model_resolver = PosterAutoModelResolver()
         self._model_hashes: dict[str, str] = {}
 
@@ -72,7 +80,7 @@ class PosterStagingService:
             "promotion_type": product.metadata.get("promotion_type"),
             "model": decision.filename,
             "model_revision": self._model_revision(decision.path),
-            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v5-fast-legacy-batch",
+            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v6-untouched-engine-pdfium",
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()[:40]
@@ -109,6 +117,14 @@ class PosterStagingService:
         if valid:
             return StagedPoster(product.id, signature, destination, width, height, True)
 
+        # If the vector PDF is already cached, rebuilding the preview never touches Office.
+        cached_pdf = self.ready_pdf_artifact(product, kind, campaign)
+        if cached_pdf is not None:
+            artifact = self._poster_from_pdf(product, kind, campaign, cached_pdf)
+            if artifact.valid:
+                return artifact
+
+        # Proven compatibility fallback: the exact single-item preview renderer from 7.8.
         try:
             with _POWERPOINT_STAGE_LOCK:
                 rendered = self.renderer.render(
@@ -117,7 +133,7 @@ class PosterStagingService:
                     campaign,
                     width=self.PRINT_WIDTH,
                     height=self.PRINT_HEIGHT,
-                    cache_namespace="staging-print-v5-fast-legacy-fallback",
+                    cache_namespace="staging-print-v6-normal-fallback",
                 )
             if rendered != destination:
                 shutil.copy2(rendered, destination)
@@ -134,119 +150,180 @@ class PosterStagingService:
         *,
         on_progress: StageProgress | None = None,
     ) -> StagingBatchResult:
-        """Fast batch using the proven legacy engines, with per-item safe fallback.
+        """Fast path: untouched old batch engine -> vector PDF -> PDFium preview.
 
-        The method name is kept for compatibility with the UI, but the experimental
-        Turbo COM renderer is no longer used. Missing posters are sent to the old
-        PowerPointEngine/AtacadoEngine lifecycle in one batch. Every item that still
-        fails is retried through the proven single-item preview renderer.
+        The method name remains for UI/backward compatibility only. No experimental
+        Turbo PowerPoint automation is used here.
         """
         selected = list(products)
         total = len(selected)
         result = StagingBatchResult()
         artifacts: dict[str, StagedPoster] = {}
-        missing: list[tuple[int, Product, Path, str]] = []
+        missing: list[tuple[int, Product, str]] = []
 
+        # Reuse PNG immediately; if only PDF exists, recreate PNG locally with PDFium.
         for index, product in enumerate(selected, start=1):
             signature = self.signature(product, kind, campaign)
             destination = self.artifact_path(product, kind, campaign)
             valid, width, height, _ = self._validate_image(destination)
             if valid:
-                artifact = StagedPoster(product.id, signature, destination, width, height, True)
-                artifacts[product.id] = artifact
+                artifacts[product.id] = StagedPoster(product.id, signature, destination, width, height, True)
                 result.reused += 1
                 if on_progress is not None:
                     on_progress("start", index, total, product, True, "cache")
                     on_progress("done", index, total, product, True, "cache")
-            else:
-                missing.append((index, product, destination, signature))
+                continue
+
+            pdf = self.ready_pdf_artifact(product, kind, campaign)
+            if pdf is not None:
+                if on_progress is not None:
+                    on_progress("start", index, total, product, True, "pdf-cache")
+                artifact = self._poster_from_pdf(product, kind, campaign, pdf)
+                if artifact.valid:
+                    artifacts[product.id] = artifact
+                    result.reused += 1
+                    if on_progress is not None:
+                        on_progress("done", index, total, product, True, "PDF cache · prévia local")
+                    continue
+            missing.append((index, product, signature))
 
         if missing:
-            outputs = {product.id: destination for _, product, destination, _ in missing}
             by_batch_index = {batch_index: item for batch_index, item in enumerate(missing, start=1)}
-            fast_success: set[str] = set()
+            completed_fast: set[str] = set()
             fast_errors: dict[str, str] = {}
+            started: set[str] = set()
 
-            def fast_progress(event: str, batch_index: int, detail: str) -> None:
-                item = by_batch_index.get(batch_index)
-                if item is None:
-                    return
-                original_index, product, destination, signature = item
-                if event == "start":
-                    if on_progress is not None:
-                        on_progress("start", original_index, total, product, False, "fast-legacy")
-                    return
-                if event == "ok":
-                    valid, width, height, error = self._validate_image(destination)
-                    if valid:
-                        artifacts[product.id] = StagedPoster(
-                            product.id, signature, destination, width, height, True
+            with tempfile.TemporaryDirectory(prefix="srstudio-proven-batch-") as temp_name:
+                output_dir = Path(temp_name) / "pdfs"
+                output_dir.mkdir(parents=True, exist_ok=True)
+
+                def engine_progress(event: str, batch_index: int, detail: str) -> None:
+                    item = by_batch_index.get(batch_index)
+                    if item is None:
+                        return
+                    original_index, product, _signature = item
+                    if event == "stage":
+                        if product.id not in started:
+                            started.add(product.id)
+                            if on_progress is not None:
+                                on_progress(
+                                    "start",
+                                    original_index,
+                                    total,
+                                    product,
+                                    False,
+                                    "engine histórico em lote",
+                                )
+                        return
+                    if event == "err":
+                        fast_errors[product.id] = detail or "falha no engine histórico em lote"
+                        return
+                    if event != "ok":
+                        return
+
+                    # The old engine has completed the official vector PDF. Copy it to
+                    # the persistent signature cache, then rasterize locally with PDFium.
+                    source_pdf = Path(detail)
+                    if not source_pdf.is_file():
+                        fast_errors[product.id] = "engine informou PDF, mas o arquivo não existe"
+                        return
+                    pdf_destination = self.pdf_artifact_path(product, kind, campaign)
+                    try:
+                        shutil.copy2(source_pdf, pdf_destination)
+                        artifact = self._poster_from_pdf(product, kind, campaign, pdf_destination)
+                    except Exception as exc:
+                        fast_errors[product.id] = str(exc)
+                        return
+                    if artifact.valid:
+                        artifacts[product.id] = artifact
+                        completed_fast.add(product.id)
+                        result.generated += 1
+                        if on_progress is not None:
+                            on_progress(
+                                "done",
+                                original_index,
+                                total,
+                                product,
+                                True,
+                                "PDF oficial + prévia PDFium",
+                            )
+                    else:
+                        fast_errors[product.id] = artifact.error
+
+                batch_error = ""
+                try:
+                    with _POWERPOINT_STAGE_LOCK:
+                        batch = self.batch_renderer.render_pdfs(
+                            [product for _, product, _ in missing],
+                            kind,
+                            output_dir,
+                            campaign,
+                            on_progress=engine_progress,
                         )
-                        if product.id not in fast_success:
-                            fast_success.add(product.id)
+                    batch_error = batch.batch_error
+
+                    # Recover PDFs discovered after process exit that were not observed
+                    # through stdout (for example Office buffering output).
+                    for batch_index, source_pdf in batch.files.items():
+                        item = by_batch_index.get(batch_index)
+                        if item is None:
+                            continue
+                        original_index, product, _signature = item
+                        if product.id in completed_fast:
+                            continue
+                        try:
+                            pdf_destination = self.pdf_artifact_path(product, kind, campaign)
+                            shutil.copy2(source_pdf, pdf_destination)
+                            artifact = self._poster_from_pdf(product, kind, campaign, pdf_destination)
+                        except Exception as exc:
+                            fast_errors[product.id] = str(exc)
+                            continue
+                        if artifact.valid:
+                            artifacts[product.id] = artifact
+                            completed_fast.add(product.id)
                             result.generated += 1
                             if on_progress is not None:
-                                on_progress("done", original_index, total, product, True, "fast-legacy")
-                    else:
-                        fast_errors[product.id] = error or "renderização rápida gerou arquivo inválido"
-                elif event == "err":
-                    fast_errors[product.id] = detail or "falha na renderização rápida"
+                                on_progress(
+                                    "done",
+                                    original_index,
+                                    total,
+                                    product,
+                                    True,
+                                    "PDF oficial + prévia PDFium",
+                                )
+                        else:
+                            fast_errors[product.id] = artifact.error
+                    for batch_index, detail in batch.errors.items():
+                        item = by_batch_index.get(batch_index)
+                        if item is not None:
+                            fast_errors[item[1].id] = detail
+                except Exception as exc:
+                    batch_error = str(exc)
 
-            batch_error = ""
-            try:
-                with _POWERPOINT_STAGE_LOCK:
-                    self.renderer.render_many_to(
-                        [product for _, product, _, _ in missing],
-                        kind,
-                        outputs,
-                        campaign,
-                        width=self.PRINT_WIDTH,
-                        height=self.PRINT_HEIGHT,
-                        on_progress=fast_progress,
-                    )
-            except Exception as exc:
-                batch_error = str(exc)
-
-            for original_index, product, destination, signature in missing:
-                if product.id in fast_success:
+            # Compatibility fallback only for products the untouched batch engine did not finish.
+            for original_index, product, signature in missing:
+                if product.id in completed_fast:
                     continue
-
-                valid, width, height, validation_error = self._validate_image(destination)
-                if valid:
-                    artifacts[product.id] = StagedPoster(
-                        product.id, signature, destination, width, height, True
-                    )
-                    result.generated += 1
-                    fast_success.add(product.id)
-                    if on_progress is not None:
-                        on_progress("done", original_index, total, product, True, "fast-legacy")
-                    continue
-
                 if on_progress is not None:
-                    on_progress("start", original_index, total, product, False, "fallback")
+                    on_progress("start", original_index, total, product, False, "modo compatível")
                 fallback = self.stage_one(product, kind, campaign)
                 if fallback.valid:
                     artifacts[product.id] = fallback
                     result.generated += 1
                     if on_progress is not None:
-                        on_progress("done", original_index, total, product, True, "fallback")
+                        on_progress("done", original_index, total, product, True, "modo compatível")
                     continue
 
-                parts = [
-                    fast_errors.get(product.id, ""),
-                    batch_error,
-                    validation_error,
-                    fallback.error,
-                ]
+                parts = [fast_errors.get(product.id, ""), batch_error, fallback.error]
                 detail = " | ".join(dict.fromkeys(part.strip() for part in parts if part and part.strip()))
                 final = StagedPoster(
                     product.id,
                     signature,
-                    destination,
+                    self.artifact_path(product, kind, campaign),
                     fallback.width,
                     fallback.height,
                     False,
-                    detail or "Renderização rápida e fallback não conseguiram gerar o cartaz.",
+                    detail or "Engine histórico em lote e modo compatível não conseguiram gerar o cartaz.",
                 )
                 artifacts[product.id] = final
                 result.failed += 1
@@ -286,8 +363,7 @@ class PosterStagingService:
         output = Path(destination)
         output.parent.mkdir(parents=True, exist_ok=True)
 
-        # Fast path: if the batch renderer already left vector PDFs for every item,
-        # final generation is only validation + merge. No PowerPoint or raster pass.
+        # Preferred path: merge the official vector PDFs already produced by the old engine.
         cached_pdfs: list[Path] = []
         for product in selected:
             pdf = self.ready_pdf_artifact(product, kind, campaign)
@@ -305,7 +381,7 @@ class PosterStagingService:
                 writer.write(handle)
             return output
 
-        # Compatibility path for items produced by the normal single-item renderer.
+        # Compatibility path for items produced only by the normal preview renderer.
         paths: list[Path] = []
         for product in selected:
             path = self.ready_artifact(product, kind, campaign)
@@ -330,6 +406,29 @@ class PosterStagingService:
             for page in pages:
                 page.close()
         return output
+
+    def _poster_from_pdf(
+        self,
+        product: Product,
+        kind: PosterKind,
+        campaign: str,
+        pdf_path: Path,
+    ) -> StagedPoster:
+        signature = self.signature(product, kind, campaign)
+        destination = self.artifact_path(product, kind, campaign)
+        if not self._validate_pdf(pdf_path):
+            return StagedPoster(product.id, signature, destination, 0, 0, False, "PDF temporário inválido")
+        try:
+            self.batch_renderer.rasterize_pdf(
+                pdf_path,
+                destination,
+                width=self.PRINT_WIDTH,
+                height=self.PRINT_HEIGHT,
+            )
+        except Exception as exc:
+            return StagedPoster(product.id, signature, destination, 0, 0, False, str(exc))
+        valid, width, height, error = self._validate_image(destination)
+        return StagedPoster(product.id, signature, destination, width, height, valid, error)
 
     @classmethod
     def _validate_image(cls, path: Path) -> tuple[bool, int, int, str]:
