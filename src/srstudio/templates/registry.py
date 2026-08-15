@@ -24,9 +24,10 @@ class TemplateDefinition:
 class TemplateRegistry:
     """Biblioteca de templates SR com persistência simples e versionada."""
 
-    def __init__(self, root: str | Path) -> None:
-        self.root = Path(root)
+    def __init__(self, root: str | Path | None = None) -> None:
+        self.root = Path(root) if root is not None else Path.home() / ".srstudio5" / "templates"
         self.root.mkdir(parents=True, exist_ok=True)
+        self.seed_defaults()
 
     def save(self, template: TemplateDefinition) -> Path:
         path = self.root / f"{template.id}.json"
@@ -51,6 +52,9 @@ class TemplateRegistry:
                 continue
             templates.append(item)
         return templates
+
+    def all(self) -> tuple[TemplateDefinition, ...]:
+        return tuple(self.list())
 
     def duplicate(self, template_id: str, new_id: str, new_name: str) -> TemplateDefinition:
         original = self.load(template_id)
