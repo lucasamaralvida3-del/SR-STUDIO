@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import sys
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -41,39 +42,39 @@ class PosterModelCatalog:
     GROUP_VERSION = "Versões"
 
     _MODEL_INFO: dict[str, tuple[str, PosterKind, str, bool]] = {
-        "ATACADO.pptx": ("Atacado · Oficial", PosterKind.WHOLESALE, "atacado", True),
-        "CARTAZ_VENDA.pptx": ("Cartaz Venda", PosterKind.PROMOTION, "venda", False),
-        "CLUBE_EXCLUSIVO.pptx": (
+        "ATACADO.PPTX": ("Atacado · Oficial", PosterKind.WHOLESALE, "atacado", True),
+        "CARTAZ_VENDA.PPTX": ("Cartaz Venda", PosterKind.PROMOTION, "venda", False),
+        "CLUBE_EXCLUSIVO.PPTX": (
             "Clube Exclusivo",
             PosterKind.PROMOTION,
             "clube_exclusivo",
             False,
         ),
-        "CLUBE_EXCLUSIVO_COM_LIMITE.pptx": (
+        "CLUBE_EXCLUSIVO_COM_LIMITE.PPTX": (
             "Clube Exclusivo · com limite",
             PosterKind.PROMOTION,
             "clube_exclusivo_limite",
             False,
         ),
-        "SEGUNDA_DA_LIMPEZA_1_PRECO.pptx": (
+        "SEGUNDA_DA_LIMPEZA_1_PRECO.PPTX": (
             "Promoção · 1 preço",
             PosterKind.PROMOTION,
             "1_preco",
             True,
         ),
-        "SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx": (
+        "SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.PPTX": (
             "Promoção · 1 preço · com limite",
             PosterKind.PROMOTION,
             "1_preco_limite",
             False,
         ),
-        "SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx": (
+        "SEGUNDA_DA_LIMPEZA_2_PRECOS.PPTX": (
             "Promoção · 2 preços",
             PosterKind.PROMOTION,
             "2_precos",
             True,
         ),
-        "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx": (
+        "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.PPTX": (
             "Promoção · 2 preços · com limite",
             PosterKind.PROMOTION,
             "2_precos_limite",
@@ -87,8 +88,10 @@ class PosterModelCatalog:
         self.custom_root = self.root / "personalizados"
         self.versions_root = self.root / "versoes"
         self.catalog_path = self.root / "catalog.json"
+        self.custom_kind_path = self.root / "custom-kinds.json"
         for folder in (self.root, self.originals_root, self.custom_root, self.versions_root):
             folder.mkdir(parents=True, exist_ok=True)
+        self.migrate_legacy_folders()
         self.seed_originals()
         self.reindex()
 
@@ -96,12 +99,43 @@ class PosterModelCatalog:
     def official_root(self) -> Path:
         return legacy_models_root()
 
+    def migrate_legacy_folders(self) -> int:
+        """Import models left beside older launchers/installations without overwriting new data."""
+        copied = 0
+        for candidate in self._legacy_candidates():
+            try:
+                if candidate.resolve() == self.root.resolve() or not candidate.is_dir():
+                    continue
+            except OSError:
+                continue
+
+            for source in sorted(candidate.glob("*.pptx")):
+                if source.name.upper() in self._MODEL_INFO:
+                    destination = self.originals_root / source.name
+                else:
+                    destination = self.custom_root / source.name
+                    self._set_custom_kind(source.name, self._infer_kind(source.name))
+                copied += int(self._copy_if_missing(source, destination))
+
+            old_originals = candidate / "originais"
+            if old_originals.is_dir():
+                for source in sorted(old_originals.glob("*.pptx")):
+                    copied += int(self._copy_if_missing(source, self.originals_root / source.name))
+
+            old_versions = candidate / "versoes"
+            if old_versions.is_dir():
+                for source in sorted(old_versions.glob("**/*.pptx")):
+                    relative = source.relative_to(old_versions)
+                    copied += int(self._copy_if_missing(source, self.versions_root / relative))
+        return copied
+
     def seed_originals(self, *, force: bool = False) -> int:
         copied = 0
         for source in sorted(self.official_root.glob("*.pptx")):
             destination = self.originals_root / source.name
             if destination.exists() and not force:
                 continue
+            destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(source, destination)
             copied += 1
         return copied
@@ -168,12 +202,13 @@ class PosterModelCatalog:
         if destination.exists():
             self._backup_existing(destination)
         shutil.copy2(source_path, destination)
+        selected_kind = kind or self._infer_kind(source_path.name)
+        self._set_custom_kind(destination.name, selected_kind)
         self.reindex()
-        entries = [item for item in self.list(kind, include_versions=False) if Path(item.path) == destination]
+        entries = [item for item in self.list(selected_kind, include_versions=False) if Path(item.path) == destination]
         if entries:
             return entries[0]
-        inferred = self._entry_for(destination, self.GROUP_CUSTOM, read_only=False, forced_kind=kind)
-        return inferred
+        return self._entry_for(destination, self.GROUP_CUSTOM, read_only=False, forced_kind=selected_kind)
 
     def backup_custom(self, path: str | Path) -> Path:
         source = Path(path)
@@ -205,7 +240,7 @@ class PosterModelCatalog:
                 "recommended": entry.recommended,
             }
         )
-        if entry.filename in self._MODEL_INFO:
+        if entry.filename.upper() in self._MODEL_INFO:
             template.metadata["legacy_engine"] = entry.kind.value
             template.metadata["legacy_model"] = entry.filename
         return template
@@ -255,7 +290,8 @@ class PosterModelCatalog:
         if known is not None:
             display_name, kind, variant, recommended = known
         else:
-            kind = forced_kind or self._infer_kind(path.name)
+            stored_kind = self._custom_kind_for(path.name) if group == self.GROUP_CUSTOM else None
+            kind = forced_kind or stored_kind or self._infer_kind(path.name)
             variant = "personalizado" if group != self.GROUP_VERSION else "versao"
             display_name = self._friendly_name(path.stem)
             recommended = False
@@ -319,6 +355,51 @@ class PosterModelCatalog:
             except (TypeError, ValueError):
                 continue
         return result
+
+    def _custom_kind_for(self, filename: str) -> PosterKind | None:
+        mapping = self._read_custom_kinds()
+        raw = mapping.get(filename.casefold())
+        if not raw:
+            return None
+        try:
+            return PosterKind(raw)
+        except ValueError:
+            return None
+
+    def _set_custom_kind(self, filename: str, kind: PosterKind) -> None:
+        mapping = self._read_custom_kinds()
+        mapping[filename.casefold()] = kind.value
+        temporary = self.custom_kind_path.with_suffix(".json.tmp")
+        temporary.write_text(json.dumps(mapping, ensure_ascii=False, indent=2), encoding="utf-8")
+        temporary.replace(self.custom_kind_path)
+
+    def _read_custom_kinds(self) -> dict[str, str]:
+        if not self.custom_kind_path.is_file():
+            return {}
+        try:
+            raw = json.loads(self.custom_kind_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            return {}
+        return {str(key): str(value) for key, value in raw.items()} if isinstance(raw, dict) else {}
+
+    def _legacy_candidates(self) -> tuple[Path, ...]:
+        candidates = {
+            Path.cwd() / "modelos",
+            Path(sys.argv[0]).resolve().parent / "modelos",
+            Path(sys.executable).resolve().parent / "modelos",
+        }
+        return tuple(sorted(candidates, key=lambda item: str(item).casefold()))
+
+    @staticmethod
+    def _copy_if_missing(source: Path, destination: Path) -> bool:
+        if destination.exists():
+            return False
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            shutil.copy2(source, destination)
+        except OSError:
+            return False
+        return True
 
     @staticmethod
     def _infer_kind(filename: str) -> PosterKind:
