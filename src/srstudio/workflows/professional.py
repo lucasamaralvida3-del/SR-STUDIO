@@ -39,6 +39,8 @@ class ProfessionalWorkflow:
         self.quality = QualityInspector()
         self.preflight = PreflightInspector()
         self.exporter = ExportService()
+        if product_database is None and session is not None:
+            product_database = ProductDatabase(session.autosave_dir.parent / "products.sqlite3")
         self.product_sync = ProductKnowledgeSync(product_database) if product_database is not None else None
 
     def import_source(self, path: str | Path) -> WorkflowResult:
