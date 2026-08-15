@@ -7,6 +7,8 @@ from typing import Any
 from srstudio.core.models import StudioProject
 from srstudio.export.service import ExportService
 from srstudio.importers.pipeline import UnifiedImportPipeline
+from srstudio.products.database import ProductDatabase
+from srstudio.products.sync import ProductKnowledgeSync
 from srstudio.projects.session import ProjectSession
 from srstudio.validation.engine import ValidationEngine
 from srstudio.validation.preflight import PreflightInspector
@@ -22,9 +24,14 @@ class WorkflowResult:
 
 
 class ProfessionalWorkflow:
-    """Orquestra importação, revisão, preflight, exportação e autosave."""
+    """Orquestra importação, conhecimento local, revisão, preflight, exportação e autosave."""
 
-    def __init__(self, project: StudioProject, session: ProjectSession | None = None) -> None:
+    def __init__(
+        self,
+        project: StudioProject,
+        session: ProjectSession | None = None,
+        product_database: ProductDatabase | None = None,
+    ) -> None:
         self.project = project
         self.session = session
         self.importer = UnifiedImportPipeline()
@@ -32,17 +39,22 @@ class ProfessionalWorkflow:
         self.quality = QualityInspector()
         self.preflight = PreflightInspector()
         self.exporter = ExportService()
+        self.product_sync = ProductKnowledgeSync(product_database) if product_database is not None else None
 
     def import_source(self, path: str | Path) -> WorkflowResult:
         summary = self.importer.import_file(path, self.project)
         if self.session:
             self.session.mark_dirty()
+        sync_result = self.product_sync.sync_project(self.project) if self.product_sync else None
         issues = self.validator.validate_project(self.project)
+        message = f"Importação concluída: {summary.products_added} produto(s), {summary.cards_added} card(s)."
+        if sync_result is not None:
+            message += f" Banco local atualizado com {sync_result.products} produto(s)."
         return WorkflowResult(
             True,
             "import",
-            f"Importação concluída: {summary.products_added} produto(s), {summary.cards_added} card(s).",
-            {"summary": summary, "issues": issues},
+            message,
+            {"summary": summary, "issues": issues, "product_sync": sync_result},
         )
 
     def review(self) -> WorkflowResult:
@@ -71,6 +83,10 @@ class ProfessionalWorkflow:
             return gate
         if profile_id in {"social", "instagram", "whatsapp"}:
             result = self.exporter.export_social_variants(self.project, destination)
+        elif profile_id in {"package", "complete"}:
+            result = self.exporter.export_campaign_package(self.project, destination)
+        elif profile_id == "pdf":
+            result = self.exporter.export_pdf(self.project, destination)
         else:
             scale = 2.0 if profile_id in {"print", "grafica", "high_quality"} else 1.0
             result = self.exporter.export_images(self.project, destination, format_name="PNG", scale=scale)
@@ -82,4 +98,9 @@ class ProfessionalWorkflow:
         if not self.session:
             return WorkflowResult(False, "autosave", "Sessão de projeto não configurada.")
         path = self.session.autosave(force=True)
-        return WorkflowResult(path is not None, "autosave", "Autosave concluído." if path else "Autosave não necessário.", {"path": path})
+        return WorkflowResult(
+            path is not None,
+            "autosave",
+            "Autosave concluído." if path else "Autosave não necessário.",
+            {"path": path},
+        )
