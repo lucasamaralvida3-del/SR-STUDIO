@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.2 Professional
-Dedicated print-poster correction: Promoções and Atacado restored as independent production modules, separate from Encartes Studio.
-Includes historical SR PPTX/PowerPoint engines, Promotion 1-price/2-price/Club Exclusive flows, Atacado report 782, history/change detection, and real-template analysis improvements.
-Triggered: 2026-08-15T08:16:00-03:00
+SR Studio 5.0 Beta 7.3 Professional
+Poster model library restoration: all programmed Promotion/Atacado PPTX models are visible again in the generators and in the Models center.
+Adds automatic reindexing, protected originals, custom-model backups/version history, legacy-folder migration, and persistence outside application updates.
+Triggered: 2026-08-15T08:34:00-03:00
