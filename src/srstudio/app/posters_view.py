@@ -10,8 +10,17 @@ from PIL import ImageTk
 
 from srstudio.app.design import COLORS, FONT
 from srstudio.core.models import StudioProject
-from srstudio.posters import PosterKind, PosterTemplate, PosterTemplateAnalyzer, PosterTemplateLibrary, PrintPosterService
+from srstudio.posters import (
+    PosterKind,
+    PosterTemplate,
+    PosterTemplateAnalyzer,
+    PosterTemplateLibrary,
+    SRPrintPosterService,
+)
 from srstudio.pricing.engine import PriceEngine
+
+
+CAMPAIGN_FROM_SHEET = "DA PLANILHA"
 
 
 class PosterGeneratorView(tk.Frame):
@@ -33,7 +42,7 @@ class PosterGeneratorView(tk.Frame):
         self.on_import = on_import
         self.on_changed = on_changed
         self.toast = toast
-        self.service = PrintPosterService()
+        self.service = SRPrintPosterService()
         self.analyzer = PosterTemplateAnalyzer()
         self.templates: list[PosterTemplate] = PosterTemplateLibrary.for_kind(kind)
         self._preview_photo = None
@@ -51,9 +60,9 @@ class PosterGeneratorView(tk.Frame):
         header.pack(fill="x", padx=24, pady=(20, 10))
         title = "Cartazes de Atacado" if self.is_wholesale else "Cartazes de Promoção"
         subtitle = (
-            "Módulo de impressão em lote · varejo + atacado + quantidade · independente do Encartes Studio"
+            "Módulo de impressão em lote · Relatório 782/Excel · varejo + atacado + quantidade · separado do Encartes"
             if self.is_wholesale
-            else "Módulo de impressão em lote · campanhas, Clube SR, limite e validade · independente do Encartes Studio"
+            else "Módulo de impressão em lote · campanhas da planilha · 1 preço, 2 preços e Clube Exclusivo · separado do Encartes"
         )
         tk.Label(
             header,
@@ -77,7 +86,8 @@ class PosterGeneratorView(tk.Frame):
             highlightthickness=1,
         )
         controls.pack(fill="x", padx=24, pady=(0, 10))
-        ttk.Button(controls, text="＋ Importar planilha", style="Primary.TButton", command=self._import_products).pack(
+        import_text = "＋ Importar Relatório 782 / Excel" if self.is_wholesale else "＋ Importar planilha de Promoções"
+        ttk.Button(controls, text=import_text, style="Primary.TButton", command=self._import_products).pack(
             side="left", padx=(14, 7), pady=12
         )
         ttk.Button(controls, text="▣ Importar modelo PPTX", style="Ghost.TButton", command=self._import_template).pack(
@@ -117,12 +127,13 @@ class PosterGeneratorView(tk.Frame):
                 fg=COLORS.text_subtle,
                 font=(FONT["family"], 7, "bold"),
             ).pack(anchor="w")
-            current = str(self.project.settings.get("poster_campaign") or self.project.campaign or "Economia")
+            stored = str(self.project.settings.get("poster_campaign") or "").strip()
+            current = stored or CAMPAIGN_FROM_SHEET
             self.campaign_var = tk.StringVar(value=current)
             campaign = ttk.Combobox(
                 campaign_box,
                 textvariable=self.campaign_var,
-                values=PosterTemplateLibrary.PROMOTION_CAMPAIGNS,
+                values=(CAMPAIGN_FROM_SHEET, *PosterTemplateLibrary.PROMOTION_CAMPAIGNS),
                 width=24,
             )
             campaign.pack(anchor="e", pady=(2, 0))
@@ -165,9 +176,9 @@ class PosterGeneratorView(tk.Frame):
             "code": ("Código", 75),
             "name": ("Produto", 300),
             "price1": ("Varejo" if self.is_wholesale else "Promoção", 90),
-            "price2": ("Atacado" if self.is_wholesale else "Clube/App", 90),
-            "quantity": ("Quantidade", 90),
-            "unit": ("Un.", 55),
+            "price2": ("Atacado" if self.is_wholesale else "Clube/App", 100),
+            "quantity": ("Qtd. mínima", 90),
+            "unit": ("Un.", 65),
             "limit": ("Limite", 90),
         }
         for key, (text, width) in headers.items():
@@ -304,8 +315,14 @@ class PosterGeneratorView(tk.Frame):
         self.on_import(self.kind)
         self.refresh_products()
 
-    def _campaign_changed(self) -> None:
+    def _campaign_override(self) -> str:
         value = self.campaign_var.get().strip()
+        if value.upper() == CAMPAIGN_FROM_SHEET:
+            return ""
+        return value
+
+    def _campaign_changed(self) -> None:
+        value = self._campaign_override()
         self.project.settings["poster_campaign"] = value
         if self.on_changed:
             self.on_changed()
@@ -353,12 +370,14 @@ class PosterGeneratorView(tk.Frame):
     def _refresh_preview(self) -> None:
         product = self._current_product()
         if product is None or not self.templates:
-            self.preview.configure(image="", text="Importe uma planilha para começar")
+            source_hint = "relatório 782/Excel" if self.is_wholesale else "planilha de promoções"
+            self.preview.configure(image="", text=f"Importe {source_hint} para começar")
             self.info_label.configure(text="O módulo gera um cartaz de impressão por produto selecionado.")
             return
         template = self._current_template()
+        campaign = self._campaign_override()
         try:
-            image = self.service.preview(product, template, self.campaign_var.get(), dpi=72)
+            image = self.service.preview(product, template, campaign, dpi=72)
             image.thumbnail((440, 590))
             self._preview_photo = ImageTk.PhotoImage(image)
             self.preview.configure(image=self._preview_photo, text="")
@@ -366,11 +385,19 @@ class PosterGeneratorView(tk.Frame):
             self.preview.configure(image="", text=f"Prévia indisponível\n{exc}")
         source = "PPTX importado · fidelidade via PowerPoint ao gerar" if template.uses_pptx else "Renderer interno 300 dpi"
         self.template_status.configure(text=source)
-        data = self.service.data_for(product, self.kind, self.campaign_var.get())
+        data = self.service.data_for(product, self.kind, campaign)
         issues = self.service.engine.validate(data)
         issue_text = " · ".join(issue.message for issue in issues) if issues else "Dados comerciais completos para este modelo."
+        legacy_detail = ""
+        if self.is_wholesale and hasattr(data, "wholesale_total"):
+            legacy_detail = f"\nTotal do lote: R$ {data.wholesale_total()} · {data.quantity_text(short=False)}"
+        elif not self.is_wholesale:
+            poster_type = int(product.metadata.get("promotion_type", 0) or 0)
+            labels = {1: "1 PREÇO", 2: "2 PREÇOS", 3: "CLUBE EXCLUSIVO"}
+            if poster_type:
+                legacy_detail = f"\nTipo automático: {labels.get(poster_type, 'PROMOÇÃO')} · Campanha: {data.campaign}"
         self.info_label.configure(
-            text=f"{template.width_mm:.0f} × {template.height_mm:.0f} mm · {template.dpi} dpi\n{issue_text}"
+            text=f"{template.width_mm:.0f} × {template.height_mm:.0f} mm · {template.dpi} dpi\n{issue_text}{legacy_detail}"
         )
 
     def _generate_pdf(self) -> None:
@@ -389,7 +416,7 @@ class PosterGeneratorView(tk.Frame):
         self.status_label.configure(text="Gerando PDF em alta qualidade...")
         self.update_idletasks()
         try:
-            result = self.service.generate_pdf(products, self._current_template(), path, self.campaign_var.get())
+            result = self.service.generate_pdf(products, self._current_template(), path, self._campaign_override())
         except Exception as exc:
             self.status_label.configure(text="Falha ao gerar PDF.")
             messagebox.showerror("Gerar cartazes", str(exc))
@@ -417,7 +444,7 @@ class PosterGeneratorView(tk.Frame):
                 products,
                 self._current_template(),
                 directory,
-                self.campaign_var.get(),
+                self._campaign_override(),
             )
         except Exception as exc:
             messagebox.showerror("Gerar PNGs", str(exc))
