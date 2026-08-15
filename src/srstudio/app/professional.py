@@ -6,8 +6,8 @@ from tkinter import filedialog, messagebox
 
 from srstudio import __version__
 from srstudio.app.design import COLORS, FONT, PAGE_META
-from srstudio.app.premium_editor import PremiumEncartesStudioView
-from srstudio.app.ui_kit import ToastManager
+from srstudio.app.editor_experience import StudioEditorExperience
+from srstudio.app.ui_kit import ToastManager, Tooltip
 from srstudio.app.workspace import SRStudioWorkspace
 
 
@@ -17,6 +17,8 @@ class SRStudioProfessional(SRStudioWorkspace):
     def __init__(self) -> None:
         super().__init__()
         self.toast = ToastManager(self)
+        for label, button in self.nav_buttons.items():
+            Tooltip(button, PAGE_META[label][1], delay=520)
 
     def navigate(self, name: str) -> None:
         if name != "Encartes Studio":
@@ -37,7 +39,7 @@ class SRStudioProfessional(SRStudioWorkspace):
         self.topbar_title.configure(text=title)
         self.topbar_subtitle.configure(text=subtitle)
         self._clear()
-        PremiumEncartesStudioView(self.content, self.project)
+        StudioEditorExperience(self.content, self.project)
 
     def save_project(self, _event=None) -> str:
         path = self.session.state.project_path
