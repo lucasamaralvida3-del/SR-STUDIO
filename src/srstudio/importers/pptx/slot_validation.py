@@ -30,6 +30,9 @@ class SmartSlotValidator:
     MAX_NAME_DY = 0.30
     MAX_IMAGE_DX = 0.18
     MAX_IMAGE_DY = 0.30
+    MIN_IMAGE_AREA = 0.002
+    MIN_IMAGE_WIDTH = 0.04
+    MIN_IMAGE_HEIGHT = 0.035
     MAX_IMAGE_AREA = 0.12
     MAX_IMAGE_WIDTH = 0.38
     MAX_IMAGE_HEIGHT = 0.42
@@ -131,10 +134,15 @@ class SmartSlotValidator:
         sw = max(slide.width, 1)
         sh = max(slide.height, 1)
         area = (element.width * element.height) / max(sw * sh, 1)
+        width_ratio = element.width / sw
+        height_ratio = element.height / sh
         return (
-            area > cls.MAX_IMAGE_AREA
-            or element.width / sw > cls.MAX_IMAGE_WIDTH
-            or element.height / sh > cls.MAX_IMAGE_HEIGHT
+            area < cls.MIN_IMAGE_AREA
+            or width_ratio < cls.MIN_IMAGE_WIDTH
+            or height_ratio < cls.MIN_IMAGE_HEIGHT
+            or area > cls.MAX_IMAGE_AREA
+            or width_ratio > cls.MAX_IMAGE_WIDTH
+            or height_ratio > cls.MAX_IMAGE_HEIGHT
         )
 
     @staticmethod
