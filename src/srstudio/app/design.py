@@ -5,7 +5,6 @@ from dataclasses import dataclass
 
 @dataclass(frozen=True, slots=True)
 class Colors:
-    # Brand / application chrome
     sidebar: str = "#082D67"
     sidebar_dark: str = "#061F49"
     sidebar_hover: str = "#103C7F"
@@ -13,14 +12,12 @@ class Colors:
     sidebar_text: str = "#EAF2FF"
     sidebar_muted: str = "#AFC7EA"
 
-    # Primary SR blue
     primary: str = "#1559D6"
     primary_hover: str = "#104AB7"
     primary_pressed: str = "#0C3C95"
     primary_soft: str = "#EAF1FF"
     primary_soft_hover: str = "#DCE8FF"
 
-    # High-frequency production modules
     promotion: str = "#1767E8"
     promotion_hover: str = "#0F56C9"
     promotion_soft: str = "#EAF2FF"
@@ -28,7 +25,6 @@ class Colors:
     wholesale_hover: str = "#0B3262"
     wholesale_soft: str = "#E9F0F8"
 
-    # Semantic tones
     success: str = "#169B62"
     success_soft: str = "#E9F8F1"
     warning: str = "#C98505"
@@ -40,7 +36,6 @@ class Colors:
     purple: str = "#7557C8"
     purple_soft: str = "#F0ECFF"
 
-    # Neutral canvas
     bg: str = "#F3F6FA"
     surface: str = "#FFFFFF"
     surface_alt: str = "#F8FAFD"
@@ -50,7 +45,6 @@ class Colors:
     border_strong: str = "#C9D4E3"
     shadow: str = "#DCE4EF"
 
-    # Typography
     text: str = "#152033"
     text_muted: str = "#657186"
     text_subtle: str = "#8C98AA"
@@ -102,6 +96,7 @@ NAVIGATION = (
     ("Central 5.0", "◈"),
     ("Encartes Studio", "▣"),
     ("Banco de Produtos", "◇"),
+    ("Banco de Imagens", "▧"),
     ("Planilhas", "▦"),
     ("Modelos", "▤"),
     ("Validação", "✓"),
@@ -114,7 +109,7 @@ NAVIGATION = (
 
 NAV_SECTIONS = (
     ("WORKSPACE", ("Início", "Encartes Studio", "Central 5.0")),
-    ("CONTEÚDO", ("Banco de Produtos", "Planilhas", "Modelos")),
+    ("CONTEÚDO", ("Banco de Produtos", "Banco de Imagens", "Planilhas", "Modelos")),
     ("FINALIZAÇÃO", ("Validação", "Exportação", "SR IA")),
     ("SISTEMA", ("Configurações",)),
 )
@@ -134,7 +129,8 @@ PAGE_META = {
     "Central 5.0": ("Central 5.0", "Saúde, integridade e operação do projeto"),
     "Encartes Studio": ("Encartes Studio", "Editor visual de encartes e artes livres"),
     "Banco de Produtos": ("Banco de Produtos", "Catálogo e memória local de produtos"),
-    "Planilhas": ("Planilhas", "Importação e leitura de dados comerciais"),
+    "Banco de Imagens": ("Banco de Imagens", "Imagens de produtos aprendidas, revisadas e reutilizáveis"),
+    "Planilhas": ("Planilhas", "Importação e treinamento de dados e projetos Canva"),
     "Modelos": ("Modelos", "Templates SR e layouts aprendidos"),
     "Validação": ("Validação", "Qualidade e preflight da campanha"),
     "Exportação": ("Exportação", "Arquivos para impressão e canais digitais"),
