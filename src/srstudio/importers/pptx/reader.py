@@ -9,6 +9,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
+from srstudio.assets.font_fallbacks import preferred_windows_display_family
+
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -296,11 +298,13 @@ class PptxImporter:
         latin = font_node.find(f"{{{A_NS}}}latin") if font_node is not None else None
         paragraph = node.find(f".//{{{A_NS}}}pPr")
         body = node.find(f".//{{{A_NS}}}bodyPr")
+        source_font = latin.get("typeface", "") if latin is not None else ""
         return {
             "fill": self._color(node.find(f".//{{{P_NS}}}spPr/{{{A_NS}}}solidFill")),
             "outline": self._color(node.find(f".//{{{P_NS}}}spPr/{{{A_NS}}}ln/{{{A_NS}}}solidFill")),
             "text_fill": self._text_color(node),
-            "font_name": latin.get("typeface", "") if latin is not None else "",
+            "font_name": preferred_windows_display_family(source_font),
+            "source_font_name": source_font,
             "font_size_pt": self._font_size(font_node),
             "bold": self._bool_attr(font_node, "b"),
             "italic": self._bool_attr(font_node, "i"),
