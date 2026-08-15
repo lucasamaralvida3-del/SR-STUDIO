@@ -59,12 +59,12 @@ jobs:
           $engineA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           $engineB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           if (!(Test-Path $engineA) -and !(Test-Path $engineB)) { throw "Engine oficial de Promoções ausente do executável." }
-          $turboPromoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/TurboPromotionPreview.ps1"
-          $turboPromoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/TurboPromotionPreview.ps1"
-          if (!(Test-Path $turboPromoA) -and !(Test-Path $turboPromoB)) { throw "Turbo Renderer de Promoções ausente do executável." }
-          $turboAtacadoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/TurboAtacadoPreview.ps1"
-          $turboAtacadoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/TurboAtacadoPreview.ps1"
-          if (!(Test-Path $turboAtacadoA) -and !(Test-Path $turboAtacadoB)) { throw "Turbo Renderer de Atacado ausente do executável." }
+          $fastPromoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/FastPromotionBatch.ps1"
+          $fastPromoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/FastPromotionBatch.ps1"
+          if (!(Test-Path $fastPromoA) -and !(Test-Path $fastPromoB)) { throw "Renderização rápida compatível de Promoções ausente do executável." }
+          $fastAtacadoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/FastAtacadoBatch.ps1"
+          $fastAtacadoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/FastAtacadoBatch.ps1"
+          if (!(Test-Path $fastAtacadoA) -and !(Test-Path $fastAtacadoB)) { throw "Renderização rápida compatível de Atacado ausente do executável." }
           python -c "from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; assert poster_pane_ratio(1500) == (68, 32); print(SRStudioTurboPosters.__name__)"
 
       - name: Assemble launcher-compatible hybrid bundle
@@ -134,12 +134,12 @@ jobs:
           $legacyEngineA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           $legacyEngineB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           if (!(Test-Path $legacyEngineA) -and !(Test-Path $legacyEngineB)) { throw "Bundle Beta sem engine oficial de Promoções." }
-          $turboPromoA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/engines/TurboPromotionPreview.ps1"
-          $turboPromoB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/engines/TurboPromotionPreview.ps1"
-          if (!(Test-Path $turboPromoA) -and !(Test-Path $turboPromoB)) { throw "Bundle Beta sem Turbo Renderer de Promoções." }
-          $turboAtacadoA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/engines/TurboAtacadoPreview.ps1"
-          $turboAtacadoB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/engines/TurboAtacadoPreview.ps1"
-          if (!(Test-Path $turboAtacadoA) -and !(Test-Path $turboAtacadoB)) { throw "Bundle Beta sem Turbo Renderer de Atacado." }
+          $fastPromoA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/engines/FastPromotionBatch.ps1"
+          $fastPromoB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/engines/FastPromotionBatch.ps1"
+          if (!(Test-Path $fastPromoA) -and !(Test-Path $fastPromoB)) { throw "Bundle Beta sem renderização rápida compatível de Promoções." }
+          $fastAtacadoA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/engines/FastAtacadoBatch.ps1"
+          $fastAtacadoB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/engines/FastAtacadoBatch.ps1"
+          if (!(Test-Path $fastAtacadoA) -and !(Test-Path $fastAtacadoB)) { throw "Bundle Beta sem renderização rápida compatível de Atacado." }
           $got = (Get-FileHash $env:BETA_ZIP -Algorithm SHA256).Hash.ToLower()
           if ($got -ne $env:BETA_SHA256) { throw "SHA-256 mudou após empacotamento." }
 
@@ -153,9 +153,11 @@ jobs:
 
           Atualização do SR Studio 5 Professional no canal Beta oficial.
           Versão: $env:DIST_VERSION
-          Turbo Renderer: os cartazes ausentes no cache agora são gerados em uma única sessão oculta do PowerPoint, mantendo os modelos PPTX carregados e duplicando o slide-base em memória.
-          O cache continua por produto/modelo/dados comerciais: somente cartazes novos ou alterados são renderizados; os demais ficam instantâneos.
-          Layout responsivo, grade editável, diagnóstico Custo/Venda/Clube, progresso e geração final em 300 dpi continuam preservados.
+          Renderização rápida refeita sobre os engines históricos comprovados PowerPointEngine/AtacadoEngine.
+          O lote mantém uma única instância do PowerPoint, usa o ciclo antigo de abrir/preencher/salvar/fechar cada modelo e gera PDF temporário + PNG de prévia na mesma passagem.
+          Se um item não aceitar o modo rápido, somente ele cai automaticamente para o renderer normal comprovado.
+          O PDF final usa os PDFs temporários vetoriais quando todos estiverem válidos, evitando nova renderização.
+          Layout responsivo, grade editável, diagnóstico Custo/Venda/Clube e cache seletivo continuam preservados.
 
           Compatível com o Launcher Beta Base 3.4 através do shim SR_Studio_Gerador.py.
           "@
@@ -204,7 +206,7 @@ jobs:
             size = [int64]$env:BETA_SIZE
             member_prefix = "files/"
             previous_version = $previousVersion
-            notes = "SR Studio $env:RELEASE_LABEL - Turbo Renderer em lote com uma sessão persistente do PowerPoint e cache seletivo."
+            notes = "SR Studio $env:RELEASE_LABEL - renderização rápida baseada nos engines históricos comprovados, com PDF + PNG temporários na mesma passagem e fallback por item."
           }
           $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
