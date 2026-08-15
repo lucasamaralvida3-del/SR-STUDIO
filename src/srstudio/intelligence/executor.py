@@ -20,7 +20,7 @@ class ActionOutcome:
 
 
 class IntelligenceExecutor:
-    """Executa apenas ações estruturadas e aprovadas através dos motores do Studio."""
+    """Executa somente ações estruturadas e passa dados críticos por revisão."""
 
     def __init__(self, project: StudioProject, editor: EditorController) -> None:
         self.project = project
@@ -32,7 +32,8 @@ class IntelligenceExecutor:
             return ActionOutcome(action.action, False, "Ação aguarda revisão humana.")
 
         if action.action == "auto_layout":
-            self.editor.apply_auto_layout(highlighted=sum(1 for card in self.editor.page.cards if card.highlighted))
+            highlighted = sum(1 for card in self.editor.page.cards if card.highlighted)
+            self.editor.apply_auto_layout(highlighted=highlighted)
             return ActionOutcome(action.action, True, "Layout reorganizado.")
 
         if action.action == "highlight_product":
@@ -56,21 +57,35 @@ class IntelligenceExecutor:
             return ActionOutcome(action.action, True, "Seleção alinhada.")
 
         if action.action == "duplicate_page":
-            manager = PageManager(self.project)
-            page = manager.duplicate(self.editor.page.id)
-            return ActionOutcome(action.action, page is not None, "Página duplicada." if page else "Página não encontrada.")
+            try:
+                index = self.project.pages.index(self.editor.page)
+            except ValueError:
+                return ActionOutcome(action.action, False, "Página ativa não encontrada.")
+            page = PageManager(self.project).duplicate(index)
+            return ActionOutcome(action.action, True, "Página duplicada.", {"page_id": page.id})
 
         if action.action == "add_page":
-            page = PageManager(self.project).add()
+            page = PageManager(self.project).add_page(copy_master_from=self.editor.page)
             return ActionOutcome(action.action, True, "Nova página adicionada.", {"page_id": page.id})
 
         if action.action == "validate_project":
             issues = ValidationEngine().validate_project(self.project)
-            return ActionOutcome(action.action, True, f"Validação concluída: {len(issues)} ocorrência(s).", {"issues": issues})
+            summary = ValidationEngine.summary(issues)
+            return ActionOutcome(
+                action.action,
+                True,
+                f"Validação concluída: {len(issues)} ocorrência(s).",
+                {"issues": issues, "summary": summary},
+            )
 
         if action.action == "inspect_quality":
-            report = QualityInspector().inspect_project(self.project)
-            return ActionOutcome(action.action, True, f"Qualidade geral: {report.score:.0f}/100.", {"report": report})
+            report = QualityInspector().inspect(self.project)
+            return ActionOutcome(
+                action.action,
+                True,
+                f"Qualidade geral: {report.total}/100.",
+                {"report": report},
+            )
 
         if action.action == "scale_price_style":
             percent = float(action.args.get("percent", 10))
