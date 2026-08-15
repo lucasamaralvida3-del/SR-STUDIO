@@ -299,12 +299,14 @@ class PptxImporter:
         return {
             "fill": self._color(node.find(f".//{{{P_NS}}}spPr/{{{A_NS}}}solidFill")),
             "outline": self._color(node.find(f".//{{{P_NS}}}spPr/{{{A_NS}}}ln/{{{A_NS}}}solidFill")),
+            "text_fill": self._text_color(node),
             "font_name": latin.get("typeface", "") if latin is not None else "",
             "font_size_pt": self._font_size(font_node),
             "bold": self._bool_attr(font_node, "b"),
             "italic": self._bool_attr(font_node, "i"),
             "align": paragraph.get("algn", "") if paragraph is not None else "",
             "vertical_anchor": body.get("anchor", "") if body is not None else "",
+            "body_wrap": body.get("wrap", "") if body is not None else "",
         }
 
     def _common_metadata(self, node: ET.Element, z_index: int) -> dict:
@@ -433,6 +435,21 @@ class PptxImporter:
             if found is not None:
                 return found
         return None
+
+    @classmethod
+    def _text_color(cls, node: ET.Element) -> str:
+        for path in (
+            f".//{{{A_NS}}}rPr",
+            f".//{{{A_NS}}}defRPr",
+            f".//{{{A_NS}}}endParaRPr",
+        ):
+            font_node = node.find(path)
+            if font_node is None:
+                continue
+            value = cls._color(font_node.find(f"{{{A_NS}}}solidFill"))
+            if value:
+                return value
+        return ""
 
     @staticmethod
     def _font_size(node: ET.Element | None) -> float:
