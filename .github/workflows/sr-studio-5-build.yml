@@ -24,11 +24,12 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src src/srstudio/app/professional.py
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" src/srstudio/app/professional.py
       - name: Smoke check executable
         shell: pwsh
         run: |
           if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Executável não foi gerado" }
+          if (!(Test-Path "dist/SR Studio 5/_internal/srstudio/assets/brand/SR_logo.png") -and !(Test-Path "dist/SR Studio 5/srstudio/assets/brand/SR_logo.png")) { throw "Logo oficial não foi empacotada" }
       - name: Create portable update package
         shell: pwsh
         run: |
