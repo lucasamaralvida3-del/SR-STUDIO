@@ -51,7 +51,7 @@ jobs:
       - name: Build SR Studio 5 Professional
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --paths src src/srstudio/app/professional.py
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --paths src src/srstudio/app/professional_posters.py
           if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Executável profissional não foi gerado." }
 
       - name: Assemble launcher-compatible hybrid bundle
@@ -128,7 +128,7 @@ jobs:
 
           Atualização do SR Studio 5 Professional no canal Beta oficial.
           Versão: $env:DIST_VERSION
-          Inclui o design e os fluxos profissionais validados no branch sr-studio-5-professional.
+          Cartazes de Promoção e Cartazes de Atacado são módulos dedicados de impressão, separados do Encartes Studio.
 
           Compatível com o Launcher Beta Base 3.4 através do shim SR_Studio_Gerador.py.
           "@
@@ -177,7 +177,7 @@ jobs:
             size = [int64]$env:BETA_SIZE
             member_prefix = "files/"
             previous_version = $previousVersion
-            notes = "SR Studio $env:RELEASE_LABEL - atualização profissional publicada no canal Beta oficial."
+            notes = "SR Studio $env:RELEASE_LABEL - módulos dedicados de Cartazes de Promoção e Atacado."
           }
           $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
