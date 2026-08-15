@@ -1,7 +1,8 @@
 """SR Studio 5.0 Professional core package."""
 
 # PEP 440 technical package version used by pip/setuptools.
-__version__ = "5.0.0b7.post1"
+# The hyphen keeps the existing publisher's product-version extraction compatible.
+__version__ = "5.0.0-beta7.post1"
 
 # User-facing release metadata and launcher distribution version.
 __channel__ = "beta"
