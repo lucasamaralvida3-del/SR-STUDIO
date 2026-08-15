@@ -59,6 +59,7 @@ class LegacyPosterBridge:
         kind: PosterKind,
         destination: str | Path,
         campaign: str = "",
+        forced_model: str = "",
     ) -> PosterBatchResult:
         selected = list(products)
         result = PosterBatchResult()
@@ -69,6 +70,7 @@ class LegacyPosterBridge:
         if not self.windows_available():
             raise RuntimeError("A geração exata por PowerPoint está disponível apenas no Windows.")
 
+        forced_spec = self._forced_promotion_spec(forced_model) if kind == PosterKind.PROMOTION else None
         valid: list[Product] = []
         for product in selected:
             data = (
@@ -77,6 +79,8 @@ class LegacyPosterBridge:
                 else self.engine.promotion(product, campaign)
             )
             errors = [issue for issue in self.engine.validate(data) if issue.severity == "error"]
+            if forced_spec is not None and forced_spec[1] and not str(product.cpf_limit or "").strip():
+                errors.append(type("ForcedModelIssue", (), {"message": "Modelo manual com limite exige LIMITE no produto."})())
             if errors:
                 result.skipped += 1
                 result.warnings.append(f"{product.name}: " + "; ".join(issue.message for issue in errors))
@@ -92,12 +96,16 @@ class LegacyPosterBridge:
             output_dir = temp / "pdfs"
             output_dir.mkdir(parents=True, exist_ok=True)
             jobs_path = temp / "jobs.json"
-            jobs = self._wholesale_jobs(valid) if kind == PosterKind.WHOLESALE else self._promotion_jobs(valid, campaign)
+            jobs = (
+                self._wholesale_jobs(valid)
+                if kind == PosterKind.WHOLESALE
+                else self._promotion_jobs(valid, campaign, forced_model)
+            )
             jobs_path.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8-sig")
             if kind == PosterKind.WHOLESALE:
                 self._run_wholesale(jobs_path, output_dir)
             else:
-                self._run_promotion(jobs_path, output_dir)
+                self._run_promotion(jobs_path, output_dir, forced_model)
             pdfs = self._manifest_files(output_dir)
             if not pdfs:
                 raise RuntimeError("O engine histórico terminou sem produzir arquivos PDF.")
@@ -118,16 +126,23 @@ class LegacyPosterBridge:
                         pass
         return result
 
-    def _promotion_jobs(self, products: list[Product], campaign_override: str) -> list[dict[str, object]]:
+    def _promotion_jobs(
+        self,
+        products: list[Product],
+        campaign_override: str,
+        forced_model: str = "",
+    ) -> list[dict[str, object]]:
         jobs: list[dict[str, object]] = []
+        forced_spec = self._forced_promotion_spec(forced_model)
         for product in products:
             decision = self.model_resolver.promotion(product)
-            poster_type = decision.poster_type
+            poster_type = forced_spec[0] if forced_spec is not None else decision.poster_type
+            forced_has_limit = forced_spec[1] if forced_spec is not None else None
             campaign = campaign_override or product.campaign or "OFERTA!!"
             promo = ""
             club = ""
             if poster_type == PosterAutoModelResolver.TYPE_CLUB_ONLY:
-                club = self._money(product.price or product.app_price)
+                club = self._money(product.app_price or product.price)
             else:
                 promo = self._money(product.price or product.retail_price)
                 club = (
@@ -135,6 +150,9 @@ class LegacyPosterBridge:
                     if poster_type == PosterAutoModelResolver.TYPE_TWO_PRICES
                     else ""
                 )
+            limit = product.cpf_limit
+            if forced_has_limit is False:
+                limit = ""
             jobs.append(
                 {
                     "tipo": poster_type,
@@ -145,7 +163,7 @@ class LegacyPosterBridge:
                     "validade_rotulo": self._validity_label(product.validity),
                     "validade": product.validity,
                     "unidade_exibicao": self._legacy_unit(product.unit),
-                    "limite": product.cpf_limit,
+                    "limite": limit,
                 }
             )
         return jobs
@@ -167,28 +185,52 @@ class LegacyPosterBridge:
             )
         return jobs
 
-    def _run_promotion(self, jobs: Path, output: Path) -> None:
+    def _run_promotion(self, jobs: Path, output: Path, forced_model: str = "") -> None:
         models = legacy_models_root()
         script = legacy_engines_root() / "PowerPointEngine.ps1"
+        paths = {
+            "model1": models / "SEGUNDA_DA_LIMPEZA_1_PRECO.pptx",
+            "model2": models / "SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx",
+            "model1_limit": models / "SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx",
+            "model2_limit": models / "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx",
+            "club": models / "CLUBE_EXCLUSIVO.pptx",
+            "club_limit": models / "CLUBE_EXCLUSIVO_COM_LIMITE.pptx",
+            "sale": models / "CARTAZ_VENDA.pptx",
+        }
+        spec = self._forced_promotion_spec(forced_model)
+        if spec is not None:
+            forced_path = models / Path(forced_model).name
+            if not forced_path.is_file():
+                raise RuntimeError(f"Modelo manual não encontrado: {forced_model}")
+            poster_type, has_limit = spec
+            if poster_type == PosterAutoModelResolver.TYPE_ONE_PRICE:
+                paths["model1_limit" if has_limit else "model1"] = forced_path
+            elif poster_type == PosterAutoModelResolver.TYPE_TWO_PRICES:
+                paths["model2_limit" if has_limit else "model2"] = forced_path
+            elif poster_type == PosterAutoModelResolver.TYPE_CLUB_ONLY:
+                paths["club_limit" if has_limit else "club"] = forced_path
+            else:
+                paths["sale"] = forced_path
+
         args = [
             "-JobsJson",
             str(jobs),
             "-OutputDir",
             str(output),
             "-Model1",
-            str(models / "SEGUNDA_DA_LIMPEZA_1_PRECO.pptx"),
+            str(paths["model1"]),
             "-Model2",
-            str(models / "SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx"),
+            str(paths["model2"]),
             "-Model1Limit",
-            str(models / "SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx"),
+            str(paths["model1_limit"]),
             "-Model2Limit",
-            str(models / "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx"),
+            str(paths["model2_limit"]),
             "-ClubModel",
-            str(models / "CLUBE_EXCLUSIVO.pptx"),
+            str(paths["club"]),
             "-ClubModelLimit",
-            str(models / "CLUBE_EXCLUSIVO_COM_LIMITE.pptx"),
+            str(paths["club_limit"]),
             "-SaleModel",
-            str(models / "CARTAZ_VENDA.pptx"),
+            str(paths["sale"]),
         ]
         self._run_script(script, args)
 
@@ -199,6 +241,22 @@ class LegacyPosterBridge:
             script,
             ["-JobsJson", str(jobs), "-OutputDir", str(output), "-Model", str(model)],
         )
+
+    @staticmethod
+    def _forced_promotion_spec(filename: str) -> tuple[int, bool] | None:
+        name = Path(str(filename or "")).name.upper()
+        if not name:
+            return None
+        mapping = {
+            "SEGUNDA_DA_LIMPEZA_1_PRECO.PPTX": (PosterAutoModelResolver.TYPE_ONE_PRICE, False),
+            "SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.PPTX": (PosterAutoModelResolver.TYPE_ONE_PRICE, True),
+            "SEGUNDA_DA_LIMPEZA_2_PRECOS.PPTX": (PosterAutoModelResolver.TYPE_TWO_PRICES, False),
+            "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.PPTX": (PosterAutoModelResolver.TYPE_TWO_PRICES, True),
+            "CLUBE_EXCLUSIVO.PPTX": (PosterAutoModelResolver.TYPE_CLUB_ONLY, False),
+            "CLUBE_EXCLUSIVO_COM_LIMITE.PPTX": (PosterAutoModelResolver.TYPE_CLUB_ONLY, True),
+            "CARTAZ_VENDA.PPTX": (PosterAutoModelResolver.TYPE_SALE, False),
+        }
+        return mapping.get(name)
 
     @staticmethod
     def _run_script(script: Path, args: list[str]) -> None:
