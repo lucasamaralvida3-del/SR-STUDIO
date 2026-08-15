@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=70", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "srstudio"
+version = "5.0.0a1"
+description = "SR Studio 5.0 Professional"
+requires-python = ">=3.11"
+dependencies = [
+  "openpyxl>=3.1.2",
+  "Pillow>=10.0.0",
+  "pypdf>=4.0.0"
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0", "ruff>=0.6"]
+
+[project.scripts]
+sr-studio-5 = "srstudio.app.main:run"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
