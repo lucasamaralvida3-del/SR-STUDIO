@@ -5,7 +5,10 @@ from pathlib import Path
 
 from srstudio.core.models import Product
 from srstudio.posters.core import PosterKind
-from srstudio.posters.legacy_bridge import legacy_models_root
+
+
+def programmed_models_root() -> Path:
+    return Path(__file__).resolve().parents[1] / "assets" / "poster_templates" / "legacy" / "models"
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +30,7 @@ class PosterModelDecision:
 
     @property
     def path(self) -> Path:
-        return legacy_models_root() / self.filename
+        return programmed_models_root() / self.filename
 
 
 class PosterAutoModelResolver:
