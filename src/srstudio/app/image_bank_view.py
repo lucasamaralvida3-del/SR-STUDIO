@@ -57,8 +57,8 @@ class ImageBankView(tk.Frame):
         body.pack(fill="both", expand=True)
         left = card(body)
         right = card(body)
-        body.add(left, minsize=650)
-        body.add(right, minsize=300, width=350)
+        body.add(left, minsize=620)
+        body.add(right, minsize=330, width=380)
 
         columns = ("product", "status", "confidence", "source", "size")
         self.tree = ttk.Treeview(left, columns=columns, show="headings", selectmode="browse")
@@ -78,8 +78,31 @@ class ImageBankView(tk.Frame):
         scrollbar.pack(side="right", fill="y", padx=(0, 10), pady=12)
         self.tree.bind("<<TreeviewSelect>>", self._selection_changed)
 
-        self.detail = tk.Frame(right, bg=COLORS.surface)
-        self.detail.pack(fill="both", expand=True, padx=14, pady=14)
+        self.review_actions = tk.Frame(right, bg=COLORS.surface)
+        self.review_actions.pack(side="bottom", fill="x", padx=14, pady=(6, 14))
+
+        detail_holder = tk.Frame(right, bg=COLORS.surface)
+        detail_holder.pack(side="top", fill="both", expand=True, padx=(14, 6), pady=(14, 0))
+        self.detail_canvas = tk.Canvas(
+            detail_holder,
+            bg=COLORS.surface,
+            highlightthickness=0,
+            bd=0,
+        )
+        detail_scroll = ttk.Scrollbar(detail_holder, orient="vertical", command=self.detail_canvas.yview)
+        self.detail_canvas.configure(yscrollcommand=detail_scroll.set)
+        self.detail_canvas.pack(side="left", fill="both", expand=True)
+        detail_scroll.pack(side="right", fill="y", padx=(4, 0))
+        self.detail = tk.Frame(self.detail_canvas, bg=COLORS.surface)
+        self._detail_window = self.detail_canvas.create_window((0, 0), window=self.detail, anchor="nw")
+        self.detail.bind(
+            "<Configure>",
+            lambda _e: self.detail_canvas.configure(scrollregion=self.detail_canvas.bbox("all")),
+        )
+        self.detail_canvas.bind(
+            "<Configure>",
+            lambda event: self.detail_canvas.itemconfigure(self._detail_window, width=max(1, event.width)),
+        )
         self._show_empty_detail()
 
     def _refresh(self) -> None:
@@ -114,11 +137,7 @@ class ImageBankView(tk.Frame):
         query = self.search_var.get().strip() if hasattr(self, "search_var") else ""
         assets = self.library.search(query, limit=1000) if query else self.library.all()
         selected_filter = self.filter_var.get() if hasattr(self, "filter_var") else "TODAS"
-        duplicate_ids = {
-            asset.id
-            for group in self.library.duplicate_groups()
-            for asset in group
-        }
+        duplicate_ids = {asset.id for group in self.library.duplicate_groups() for asset in group}
         visible: list[ImageAsset] = []
         for asset in assets:
             if selected_filter == "PENDENTES" and asset.review_status != "pending":
@@ -134,7 +153,9 @@ class ImageBankView(tk.Frame):
         status_text = {"accepted": "APROVADA", "pending": "PENDENTE", "rejected": "REJEITADA"}
         for asset in visible:
             product = asset.product_name or asset.original_name
-            if asset.preferred:
+            if asset.metadata.get("review_reason") == "same_image_multiple_products":
+                product = f"⚠ {product}"
+            elif asset.preferred:
                 product = f"★ {product}"
             self.tree.insert(
                 "",
@@ -153,6 +174,7 @@ class ImageBankView(tk.Frame):
         if selection and self.tree.exists(selection):
             self.tree.selection_set(selection)
             self.tree.focus(selection)
+            self._selection_changed()
         elif visible:
             self.tree.selection_set(visible[0].id)
             self.tree.focus(visible[0].id)
@@ -166,31 +188,66 @@ class ImageBankView(tk.Frame):
         if asset is None:
             self._show_empty_detail()
             return
-        for child in self.detail.winfo_children():
-            child.destroy()
-        preview = tk.Label(self.detail, bg=COLORS.surface_alt, width=32, height=12)
-        preview.pack(fill="x", pady=(0, 12))
+        self._clear_detail()
+        preview = tk.Label(self.detail, bg=COLORS.surface_alt, width=30, height=10)
+        preview.pack(fill="x", pady=(0, 10))
         self._preview_photo = None
         try:
             with Image.open(asset.path) as opened:
                 image = opened.convert("RGBA")
-            image.thumbnail((300, 230), Image.Resampling.LANCZOS)
+            image.thumbnail((280, 180), Image.Resampling.LANCZOS)
             self._preview_photo = ImageTk.PhotoImage(image, master=self)
             preview.configure(image=self._preview_photo, width=image.width, height=image.height)
         except (OSError, ValueError):
             preview.configure(text="SEM PRÉVIA", fg=COLORS.text_muted)
 
         name = asset.product_name or asset.original_name
-        tk.Label(self.detail, text=name, bg=COLORS.surface, fg=COLORS.text, font=(FONT["family"], 11, "bold"), wraplength=310, justify="left").pack(anchor="w")
+        tk.Label(
+            self.detail,
+            text=name,
+            bg=COLORS.surface,
+            fg=COLORS.text,
+            font=(FONT["family"], 11, "bold"),
+            wraplength=320,
+            justify="left",
+        ).pack(anchor="w")
         tk.Label(
             self.detail,
             text=f"Confiança {round(asset.confidence * 100)}% · {asset.width}×{asset.height} · {asset.source.upper()}",
             bg=COLORS.surface,
             fg=COLORS.text_muted,
             font=(FONT["family"], 8),
-            wraplength=310,
+            wraplength=320,
             justify="left",
-        ).pack(anchor="w", pady=(4, 10))
+        ).pack(anchor="w", pady=(4, 8))
+
+        if asset.metadata.get("review_reason") == "same_image_multiple_products":
+            names = asset.metadata.get("conflicting_product_names") or ()
+            conflict_text = "\n".join(f"• {value}" for value in names) or "• Associação encontrada em mais de um produto"
+            warning = tk.Frame(
+                self.detail,
+                bg="#FFF4DE",
+                highlightbackground="#E6B85C",
+                highlightthickness=1,
+            )
+            warning.pack(fill="x", pady=(0, 10))
+            tk.Label(
+                warning,
+                text="⚠ REVISÃO OBRIGATÓRIA",
+                bg="#FFF4DE",
+                fg="#8B5A00",
+                font=(FONT["family"], 8, "bold"),
+            ).pack(anchor="w", padx=9, pady=(8, 2))
+            tk.Label(
+                warning,
+                text="Esta mesma imagem apareceu associada a produtos diferentes:\n" + conflict_text,
+                bg="#FFF4DE",
+                fg="#6A4A10",
+                font=(FONT["family"], 8),
+                wraplength=300,
+                justify="left",
+            ).pack(fill="x", padx=9, pady=(0, 8))
+
         if asset.source_file:
             tk.Label(
                 self.detail,
@@ -204,11 +261,35 @@ class ImageBankView(tk.Frame):
                 pady=7,
             ).pack(fill="x", pady=(0, 10))
 
-        ttk.Button(self.detail, text="✓  Aprovar associação", style="Primary.TButton", command=lambda: self._review(asset.id, "accepted")).pack(fill="x", pady=3)
-        ttk.Button(self.detail, text="★  Definir como imagem principal", style="Secondary.TButton", command=lambda: self._preferred(asset.id)).pack(fill="x", pady=3)
-        ttk.Button(self.detail, text="✎  Editar nome do produto", command=lambda: self._rename(asset)).pack(fill="x", pady=3)
-        ttk.Button(self.detail, text="↥  Substituir por outra imagem", command=lambda: self._replace(asset)).pack(fill="x", pady=3)
-        ttk.Button(self.detail, text="✕  Rejeitar", command=lambda: self._review(asset.id, "rejected")).pack(fill="x", pady=(12, 3))
+        ttk.Button(
+            self.detail,
+            text="★  Definir como imagem principal",
+            style="Secondary.TButton",
+            command=lambda: self._preferred(asset.id),
+        ).pack(fill="x", pady=3)
+        ttk.Button(
+            self.detail,
+            text="✎  Editar nome do produto",
+            command=lambda: self._rename(asset),
+        ).pack(fill="x", pady=3)
+        ttk.Button(
+            self.detail,
+            text="↥  Substituir por outra imagem",
+            command=lambda: self._replace(asset),
+        ).pack(fill="x", pady=(3, 10))
+
+        ttk.Button(
+            self.review_actions,
+            text="✓  APROVAR",
+            style="Primary.TButton",
+            command=lambda: self._review(asset.id, "accepted"),
+        ).pack(side="left", fill="x", expand=True, padx=(0, 5))
+        ttk.Button(
+            self.review_actions,
+            text="✕  RECUSAR",
+            command=lambda: self._review(asset.id, "rejected"),
+        ).pack(side="left", fill="x", expand=True, padx=(5, 0))
+        self.detail_canvas.yview_moveto(0.0)
 
     def _review(self, asset_id: str, status: str) -> None:
         self.library.set_review_status(asset_id, status)
@@ -222,7 +303,12 @@ class ImageBankView(tk.Frame):
         self._refresh()
 
     def _rename(self, asset: ImageAsset) -> None:
-        value = simpledialog.askstring("Nome do produto", "Nome associado à imagem:", initialvalue=asset.product_name or asset.original_name, parent=self)
+        value = simpledialog.askstring(
+            "Nome do produto",
+            "Nome associado à imagem:",
+            initialvalue=asset.product_name or asset.original_name,
+            parent=self,
+        )
         if not value or not value.strip():
             return
         name = value.strip()
@@ -232,6 +318,11 @@ class ImageBankView(tk.Frame):
             product_key=self.library.normalize_product_key(name),
             review_status="accepted",
             confidence=max(asset.confidence, 0.95),
+            metadata={
+                key: value
+                for key, value in asset.metadata.items()
+                if key not in {"review_reason", "conflicting_product_names", "conflicting_product_keys"}
+            },
         )
         self._notify_changed()
         self._refresh()
@@ -286,11 +377,28 @@ class ImageBankView(tk.Frame):
         self._notify_changed()
         self._refresh()
 
-    def _show_empty_detail(self) -> None:
+    def _clear_detail(self) -> None:
         for child in self.detail.winfo_children():
             child.destroy()
-        tk.Label(self.detail, text="◇", bg=COLORS.surface, fg=COLORS.text_subtle, font=(FONT["family"], 28)).pack(pady=(48, 6))
-        tk.Label(self.detail, text="Selecione uma imagem", bg=COLORS.surface, fg=COLORS.text, font=(FONT["family"], 10, "bold")).pack()
+        for child in self.review_actions.winfo_children():
+            child.destroy()
+
+    def _show_empty_detail(self) -> None:
+        self._clear_detail()
+        tk.Label(
+            self.detail,
+            text="◇",
+            bg=COLORS.surface,
+            fg=COLORS.text_subtle,
+            font=(FONT["family"], 28),
+        ).pack(pady=(48, 6))
+        tk.Label(
+            self.detail,
+            text="Selecione uma imagem",
+            bg=COLORS.surface,
+            fg=COLORS.text,
+            font=(FONT["family"], 10, "bold"),
+        ).pack()
         tk.Label(
             self.detail,
             text="Confira a associação reconhecida, aprove, rejeite ou escolha a imagem principal do produto.",
@@ -300,6 +408,7 @@ class ImageBankView(tk.Frame):
             wraplength=270,
             justify="center",
         ).pack(pady=(4, 0))
+        self.detail_canvas.yview_moveto(0.0)
 
     def _selected_id(self) -> str:
         selected = self.tree.selection() if hasattr(self, "tree") else ()
