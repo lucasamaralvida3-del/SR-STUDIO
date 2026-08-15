@@ -9,7 +9,7 @@ from srstudio.editor.product_cards import ProductCardRegistry
 
 
 class FlyerRenderer:
-    """Renderizador determinístico usado por preview e exportação raster."""
+    """Renderizador determinístico compartilhado por preview e exportação."""
 
     def __init__(self, card_registry: ProductCardRegistry | None = None) -> None:
         self.cards = card_registry or ProductCardRegistry()
@@ -21,9 +21,12 @@ class FlyerRenderer:
         draw = ImageDraw.Draw(image)
 
         for element in sorted(page.elements, key=lambda item: int(item.get("z_index", 0))):
-            self._render_generic(draw, element, scale)
+            if not bool(element.get("hidden", False)):
+                self._render_generic(draw, element, scale)
 
         for card in sorted(page.cards, key=lambda item: item.z_index):
+            if bool(card.overrides.get("hidden", False)):
+                continue
             product = project.product_by_id(card.product_id)
             if product is None:
                 continue
@@ -55,17 +58,29 @@ class FlyerRenderer:
         w, h = max(1, round(card.width * scale)), max(1, round(card.height * scale))
         layer = Image.new("RGBA", (w, h), vm.style.background)
         draw = ImageDraw.Draw(layer)
-        draw.rounded_rectangle((0, 0, w - 1, h - 1), radius=max(4, round(10 * scale)), outline=vm.style.border, width=max(1, round(scale)))
+        draw.rounded_rectangle(
+            (0, 0, w - 1, h - 1),
+            radius=max(4, round(10 * scale)),
+            outline=vm.style.border,
+            width=max(1, round(scale)),
+        )
 
         self._draw_image(layer, vm.image_path, vm.style.image_region, scale)
         self._draw_text(draw, vm.name, vm.style.name_region, scale, vm.style.text_color, bold=True)
-        self._draw_price(draw, vm, vm.style.price_region, scale)
+        self._draw_price(draw, vm, vm.style.price_region, scale, float(card.overrides.get("price_scale", 1.0)))
         if vm.style.unit_region and vm.unit:
             self._draw_text(draw, f"/{vm.unit}", vm.style.unit_region, scale, vm.style.text_color, bold=True)
         if vm.style.limit_region and vm.limit:
             self._draw_text(draw, f"LIMITE {vm.limit} POR CPF", vm.style.limit_region, scale, vm.style.text_color)
 
-        canvas.paste(layer, (x, y), layer)
+        rotation = float(getattr(card, "rotation", 0.0) or 0.0) % 360.0
+        if rotation:
+            layer = layer.rotate(-rotation, resample=Image.Resampling.BICUBIC, expand=True)
+            paste_x = x + (w - layer.width) // 2
+            paste_y = y + (h - layer.height) // 2
+        else:
+            paste_x, paste_y = x, y
+        canvas.paste(layer, (paste_x, paste_y), layer)
 
     def _draw_image(self, layer: Image.Image, path: str, region, scale: float) -> None:
         if not path:
@@ -85,13 +100,14 @@ class FlyerRenderer:
         py = y + (h - fitted.height) // 2
         layer.alpha_composite(fitted, (px, py))
 
-    def _draw_price(self, draw: ImageDraw.ImageDraw, vm, region, scale: float) -> None:
+    def _draw_price(self, draw: ImageDraw.ImageDraw, vm, region, scale: float, price_scale: float = 1.0) -> None:
         x, y, w, h = self._region_pixels(region, draw._image.width, draw._image.height)
         if not vm.integer:
             return
-        currency_font = self._font(max(10, int(h * 0.23)))
-        integer_font = self._font(max(16, int(h * 0.76)), bold=True)
-        decimal_font = self._font(max(12, int(h * 0.42)), bold=True)
+        visual_scale = max(0.4, min(price_scale, 3.0))
+        currency_font = self._font(max(10, int(h * 0.23 * visual_scale)))
+        integer_font = self._font(max(16, int(h * 0.76 * visual_scale)), bold=True)
+        decimal_font = self._font(max(12, int(h * 0.42 * visual_scale)), bold=True)
         currency = vm.currency or "R$"
         draw.text((x, y + h * 0.48), currency, fill=vm.style.price_color, font=currency_font, anchor="lm")
         currency_box = draw.textbbox((0, 0), currency, font=currency_font)
@@ -144,7 +160,19 @@ class FlyerRenderer:
         w = float(element.get("width", 0)) * scale
         h = float(element.get("height", 0)) * scale
         if kind == "rect":
-            draw.rectangle((x, y, x + w, y + h), fill=element.get("fill", "#FFFFFF"), outline=element.get("outline"))
+            draw.rectangle(
+                (x, y, x + w, y + h),
+                fill=element.get("fill", "#FFFFFF"),
+                outline=element.get("outline"),
+            )
         elif kind == "text":
-            font = FlyerRenderer._font(max(8, round(float(element.get("font_size", 24)) * scale)), bool(element.get("bold")))
-            draw.text((x, y), str(element.get("text", "")), fill=element.get("fill", "#162033"), font=font)
+            font = FlyerRenderer._font(
+                max(8, round(float(element.get("font_size", 24)) * scale)),
+                bool(element.get("bold")),
+            )
+            draw.text(
+                (x, y),
+                str(element.get("text", "")),
+                fill=element.get("fill", "#162033"),
+                font=font,
+            )
