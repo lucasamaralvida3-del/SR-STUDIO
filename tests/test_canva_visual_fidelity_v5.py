@@ -23,7 +23,14 @@ def _slide() -> PptxSlide:
         310,
         45,
         "CARNE DE SERENO",
-        metadata={"font_name": "Anton", "font_size_pt": 18.0, "text_fill": "#FFFFFF", "align": "ctr", "z_index": 20},
+        metadata={
+            "font_name": "Anton",
+            "display_font_name": "Impact",
+            "font_size_pt": 18.0,
+            "text_fill": "#FFFFFF",
+            "align": "ctr",
+            "z_index": 20,
+        },
     )
     placeholder = PptxElement(
         "shape",
@@ -33,10 +40,70 @@ def _slide() -> PptxSlide:
         250,
         metadata={"fill": "#FFFFFF", "z_index": 21},
     )
-    currency = PptxElement("text", 145, 510, 34, 42, "R$", metadata={"font_name": "Anton", "font_size_pt": 23.0, "text_fill": "#FFFFFF", "align": "ctr", "z_index": 30})
-    integer = PptxElement("text", 185, 490, 100, 95, "42", metadata={"font_name": "Anton", "font_size_pt": 54.0, "text_fill": "#FFFFFF", "align": "ctr", "z_index": 31})
-    cents = PptxElement("text", 288, 500, 52, 42, ",66", metadata={"font_name": "Anton", "font_size_pt": 19.0, "text_fill": "#FFFFFF", "align": "ctr", "z_index": 32})
-    unit = PptxElement("text", 342, 535, 45, 30, "KG", metadata={"font_name": "Anton", "font_size_pt": 14.0, "text_fill": "#FFFFFF", "align": "ctr", "z_index": 33})
+    currency = PptxElement(
+        "text",
+        145,
+        510,
+        34,
+        42,
+        "R$",
+        metadata={
+            "font_name": "Anton",
+            "display_font_name": "Impact",
+            "font_size_pt": 23.0,
+            "text_fill": "#FFFFFF",
+            "align": "ctr",
+            "z_index": 30,
+        },
+    )
+    integer = PptxElement(
+        "text",
+        185,
+        490,
+        100,
+        95,
+        "42",
+        metadata={
+            "font_name": "Anton",
+            "display_font_name": "Impact",
+            "font_size_pt": 54.0,
+            "text_fill": "#FFFFFF",
+            "align": "ctr",
+            "z_index": 31,
+        },
+    )
+    cents = PptxElement(
+        "text",
+        288,
+        500,
+        52,
+        42,
+        ",66",
+        metadata={
+            "font_name": "Anton",
+            "display_font_name": "Impact",
+            "font_size_pt": 19.0,
+            "text_fill": "#FFFFFF",
+            "align": "ctr",
+            "z_index": 32,
+        },
+    )
+    unit = PptxElement(
+        "text",
+        342,
+        535,
+        45,
+        30,
+        "KG",
+        metadata={
+            "font_name": "Anton",
+            "display_font_name": "Impact",
+            "font_size_pt": 14.0,
+            "text_fill": "#FFFFFF",
+            "align": "ctr",
+            "z_index": 33,
+        },
+    )
     return PptxSlide(index=1, width=1000, height=1250, elements=[name, placeholder, currency, integer, cents, unit])
 
 
@@ -124,7 +191,8 @@ def test_pipeline_recovers_approved_bank_image_and_preserves_white_text(tmp_path
     assert image_slots[0]["hidden"] is False
     name_element = next(element for element in page.elements if element.get("slot_role") == "name")
     assert name_element["fill"] == "#FFFFFF"
-    assert name_element["font_name"] == "Anton"
+    assert name_element["font_name"] == "Impact"
+    assert name_element["source_font_name"] == "Anton"
 
     currency = next(element for element in page.elements if element.get("slot_role") == "price_currency")
     assert currency["canva_no_wrap"] is True
