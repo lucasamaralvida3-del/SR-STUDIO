@@ -57,6 +57,13 @@ class CommandHistory:
             return
         self._push(command)
 
+    def record(self, command: Command) -> None:
+        """Registra uma transformação que já foi aplicada interativamente na UI."""
+        if self._transaction is not None:
+            self._transaction.append(command)
+            return
+        self._push(command)
+
     def _push(self, command: Command) -> None:
         self._undo.append(command)
         if len(self._undo) > self.limit:
