@@ -24,7 +24,7 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src src/srstudio/app/workspace.py
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src src/srstudio/app/professional.py
       - name: Smoke check executable
         shell: pwsh
         run: |
