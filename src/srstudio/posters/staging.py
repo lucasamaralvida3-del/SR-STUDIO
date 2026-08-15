@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 from PIL import Image
+from pypdf import PdfReader, PdfWriter
 
 from srstudio.core.models import Product
 from srstudio.posters.auto_model import PosterAutoModelResolver
@@ -71,7 +72,7 @@ class PosterStagingService:
             "promotion_type": product.metadata.get("promotion_type"),
             "model": decision.filename,
             "model_revision": self._model_revision(decision.path),
-            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v4-turbo-safe",
+            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v5-fast-legacy-batch",
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()[:40]
@@ -98,6 +99,9 @@ class PosterStagingService:
         folder.mkdir(parents=True, exist_ok=True)
         return folder / f"{signature}.png"
 
+    def pdf_artifact_path(self, product: Product, kind: PosterKind, campaign: str = "") -> Path:
+        return self.artifact_path(product, kind, campaign).with_suffix(".pdf")
+
     def stage_one(self, product: Product, kind: PosterKind, campaign: str = "") -> StagedPoster:
         signature = self.signature(product, kind, campaign)
         destination = self.artifact_path(product, kind, campaign)
@@ -113,7 +117,7 @@ class PosterStagingService:
                     campaign,
                     width=self.PRINT_WIDTH,
                     height=self.PRINT_HEIGHT,
-                    cache_namespace="staging-print-v4-turbo-safe-fallback",
+                    cache_namespace="staging-print-v5-fast-legacy-fallback",
                 )
             if rendered != destination:
                 shutil.copy2(rendered, destination)
@@ -130,11 +134,12 @@ class PosterStagingService:
         *,
         on_progress: StageProgress | None = None,
     ) -> StagingBatchResult:
-        """Render uncached posters in one PowerPoint session with per-item safe fallback.
+        """Fast batch using the proven legacy engines, with per-item safe fallback.
 
-        A Turbo item error is never considered final. Every item whose Turbo output is
-        missing/invalid is retried through the proven single-item renderer. Therefore
-        an Office-specific Turbo incompatibility cannot turn a valid batch into 0 posters.
+        The method name is kept for compatibility with the UI, but the experimental
+        Turbo COM renderer is no longer used. Missing posters are sent to the old
+        PowerPointEngine/AtacadoEngine lifecycle in one batch. Every item that still
+        fails is retried through the proven single-item preview renderer.
         """
         selected = list(products)
         total = len(selected)
@@ -159,17 +164,17 @@ class PosterStagingService:
         if missing:
             outputs = {product.id: destination for _, product, destination, _ in missing}
             by_batch_index = {batch_index: item for batch_index, item in enumerate(missing, start=1)}
-            turbo_success: set[str] = set()
-            turbo_errors: dict[str, str] = {}
+            fast_success: set[str] = set()
+            fast_errors: dict[str, str] = {}
 
-            def turbo_progress(event: str, batch_index: int, detail: str) -> None:
+            def fast_progress(event: str, batch_index: int, detail: str) -> None:
                 item = by_batch_index.get(batch_index)
                 if item is None:
                     return
                 original_index, product, destination, signature = item
                 if event == "start":
                     if on_progress is not None:
-                        on_progress("start", original_index, total, product, False, "turbo")
+                        on_progress("start", original_index, total, product, False, "fast-legacy")
                     return
                 if event == "ok":
                     valid, width, height, error = self._validate_image(destination)
@@ -177,15 +182,15 @@ class PosterStagingService:
                         artifacts[product.id] = StagedPoster(
                             product.id, signature, destination, width, height, True
                         )
-                        if product.id not in turbo_success:
-                            turbo_success.add(product.id)
+                        if product.id not in fast_success:
+                            fast_success.add(product.id)
                             result.generated += 1
                             if on_progress is not None:
-                                on_progress("done", original_index, total, product, True, "turbo")
+                                on_progress("done", original_index, total, product, True, "fast-legacy")
                     else:
-                        turbo_errors[product.id] = error or "Turbo gerou arquivo inválido"
+                        fast_errors[product.id] = error or "renderização rápida gerou arquivo inválido"
                 elif event == "err":
-                    turbo_errors[product.id] = detail or "Falha no Turbo Renderer"
+                    fast_errors[product.id] = detail or "falha na renderização rápida"
 
             batch_error = ""
             try:
@@ -197,13 +202,13 @@ class PosterStagingService:
                         campaign,
                         width=self.PRINT_WIDTH,
                         height=self.PRINT_HEIGHT,
-                        on_progress=turbo_progress,
+                        on_progress=fast_progress,
                     )
             except Exception as exc:
                 batch_error = str(exc)
 
             for original_index, product, destination, signature in missing:
-                if product.id in turbo_success:
+                if product.id in fast_success:
                     continue
 
                 valid, width, height, validation_error = self._validate_image(destination)
@@ -212,9 +217,9 @@ class PosterStagingService:
                         product.id, signature, destination, width, height, True
                     )
                     result.generated += 1
-                    turbo_success.add(product.id)
+                    fast_success.add(product.id)
                     if on_progress is not None:
-                        on_progress("done", original_index, total, product, True, "turbo")
+                        on_progress("done", original_index, total, product, True, "fast-legacy")
                     continue
 
                 if on_progress is not None:
@@ -228,7 +233,7 @@ class PosterStagingService:
                     continue
 
                 parts = [
-                    turbo_errors.get(product.id, ""),
+                    fast_errors.get(product.id, ""),
                     batch_error,
                     validation_error,
                     fallback.error,
@@ -241,7 +246,7 @@ class PosterStagingService:
                     fallback.width,
                     fallback.height,
                     False,
-                    detail or "Turbo e fallback não conseguiram gerar o cartaz.",
+                    detail or "Renderização rápida e fallback não conseguiram gerar o cartaz.",
                 )
                 artifacts[product.id] = final
                 result.failed += 1
@@ -263,6 +268,10 @@ class PosterStagingService:
         path = self.artifact_path(product, kind, campaign)
         return path if self._validate_image(path)[0] else None
 
+    def ready_pdf_artifact(self, product: Product, kind: PosterKind, campaign: str = "") -> Path | None:
+        path = self.pdf_artifact_path(product, kind, campaign)
+        return path if self._validate_pdf(path) else None
+
     def promote_pdf(
         self,
         products: Iterable[Product],
@@ -270,8 +279,35 @@ class PosterStagingService:
         destination: str | Path,
         campaign: str = "",
     ) -> Path:
+        selected = list(products)
+        if not selected:
+            raise RuntimeError("Nenhum cartaz válido para gerar o PDF.")
+
+        output = Path(destination)
+        output.parent.mkdir(parents=True, exist_ok=True)
+
+        # Fast path: if the batch renderer already left vector PDFs for every item,
+        # final generation is only validation + merge. No PowerPoint or raster pass.
+        cached_pdfs: list[Path] = []
+        for product in selected:
+            pdf = self.ready_pdf_artifact(product, kind, campaign)
+            if pdf is None:
+                cached_pdfs = []
+                break
+            cached_pdfs.append(pdf)
+        if cached_pdfs:
+            writer = PdfWriter()
+            for pdf in cached_pdfs:
+                reader = PdfReader(str(pdf))
+                for page in reader.pages:
+                    writer.add_page(page)
+            with output.open("wb") as handle:
+                writer.write(handle)
+            return output
+
+        # Compatibility path for items produced by the normal single-item renderer.
         paths: list[Path] = []
-        for product in products:
+        for product in selected:
             path = self.ready_artifact(product, kind, campaign)
             if path is None:
                 staged = self.stage_one(product, kind, campaign)
@@ -279,11 +315,7 @@ class PosterStagingService:
                     raise RuntimeError(f"Cartaz de {product.name} não passou na validação: {staged.error}")
                 path = staged.path
             paths.append(path)
-        if not paths:
-            raise RuntimeError("Nenhum cartaz válido para gerar o PDF.")
 
-        output = Path(destination)
-        output.parent.mkdir(parents=True, exist_ok=True)
         pages: list[Image.Image] = []
         try:
             for path in paths:
@@ -313,3 +345,12 @@ class PosterStagingService:
             return True, width, height, ""
         except Exception as exc:
             return False, 0, 0, str(exc)
+
+    @staticmethod
+    def _validate_pdf(path: Path) -> bool:
+        if not path.is_file() or path.stat().st_size < 4096:
+            return False
+        try:
+            return len(PdfReader(str(path)).pages) >= 1
+        except Exception:
+            return False
