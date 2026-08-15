@@ -108,20 +108,25 @@ class LegacyPosterPreviewService:
         height: int = 2480,
         on_progress: BatchProgress | None = None,
     ) -> dict[str, Path]:
-        """Render many posters in one hidden PowerPoint session.
+        """Fast batch render based on the proven Stable/old Beta engines.
 
-        The historical fitting functions are reused by the Turbo PowerShell engines;
-        only the Office lifecycle changes. Models stay open and each source slide is
-        duplicated in memory, filled, exported and discarded.
+        The previous experimental Turbo engine used a new COM lifecycle and failed
+        on some real Office installations. This path keeps PowerPointEngine.ps1 /
+        AtacadoEngine.ps1 as the source of truth: one PowerPoint application for the
+        batch, one normal model open/fill/save/close cycle per product. The wrapper
+        only adds PNG export and explicit persistent PDF destinations in the same pass.
         """
         selected = [product for product in products if product.id in outputs]
         if not selected:
             return {}
         if not self.available():
-            raise RuntimeError("Renderização Turbo requer Windows, PowerPoint e modelos SR instalados.")
+            raise RuntimeError("Renderização rápida requer Windows, PowerPoint e modelos SR instalados.")
 
-        with tempfile.TemporaryDirectory(prefix="srstudio-poster-turbo-") as temp_name:
-            job_path = Path(temp_name) / "jobs.json"
+        with tempfile.TemporaryDirectory(prefix="srstudio-poster-fast-legacy-") as temp_name:
+            temp = Path(temp_name)
+            job_path = temp / "jobs.json"
+            output_dir = temp / "engine-output"
+            output_dir.mkdir(parents=True, exist_ok=True)
             jobs: list[dict[str, object]] = []
             for product in selected:
                 job = (
@@ -129,19 +134,24 @@ class LegacyPosterPreviewService:
                     if kind == PosterKind.WHOLESALE
                     else self.bridge._promotion_jobs([product], campaign)[0]
                 )
-                job["output_png"] = str(Path(outputs[product.id]))
+                png = Path(outputs[product.id])
+                pdf = png.with_suffix(".pdf")
+                job["output_png"] = str(png)
+                job["output_pdf"] = str(pdf)
                 jobs.append(job)
             job_path.write_text(json.dumps(jobs, ensure_ascii=False, indent=2), encoding="utf-8-sig")
 
             engines = legacy_engines_root()
             models = legacy_models_root()
             if kind == PosterKind.WHOLESALE:
-                script = engines / "TurboAtacadoPreview.ps1"
+                script = engines / "FastAtacadoBatch.ps1"
                 arguments = [
                     "-JobsJson",
                     str(job_path),
-                    "-BasePreviewEngine",
-                    str(engines / "AtacadoPreview.ps1"),
+                    "-OutputDir",
+                    str(output_dir),
+                    "-BaseEngine",
+                    str(engines / "AtacadoEngine.ps1"),
                     "-Model",
                     str(models / "ATACADO.pptx"),
                     "-Width",
@@ -150,12 +160,14 @@ class LegacyPosterPreviewService:
                     str(int(height)),
                 ]
             else:
-                script = engines / "TurboPromotionPreview.ps1"
+                script = engines / "FastPromotionBatch.ps1"
                 arguments = [
                     "-JobsJson",
                     str(job_path),
-                    "-BasePreviewEngine",
-                    str(engines / "PreviewEngine.ps1"),
+                    "-OutputDir",
+                    str(output_dir),
+                    "-BaseEngine",
+                    str(engines / "PowerPointEngine.ps1"),
                     "-Model1",
                     str(models / "SEGUNDA_DA_LIMPEZA_1_PRECO.pptx"),
                     "-Model2",
@@ -251,27 +263,38 @@ class LegacyPosterPreviewService:
         )
         output_lines: list[str] = []
         assert process.stdout is not None
+        started: set[int] = set()
         for raw in process.stdout:
             line = raw.strip()
             if not line:
                 continue
             output_lines.append(line)
             parts = line.split("|", 2)
-            if len(parts) >= 2 and parts[0] in {"START", "OK", "ERR"}:
-                try:
-                    index = int(parts[1])
-                except ValueError:
-                    continue
-                detail = parts[2] if len(parts) > 2 else ""
+            if len(parts) < 2:
+                continue
+            try:
+                index = int(parts[1])
+            except ValueError:
+                continue
+            event = parts[0]
+            detail = parts[2] if len(parts) > 2 else ""
+            if event == "STAGE":
+                if index not in started and detail in {"ABRINDO_MODELO", "PREENCHENDO"}:
+                    started.add(index)
+                    if on_progress is not None:
+                        on_progress("start", index, detail)
+            elif event in {"START", "OK", "ERR"}:
+                if event == "START":
+                    started.add(index)
                 if on_progress is not None:
-                    on_progress(parts[0].lower(), index, detail)
+                    on_progress(event.lower(), index, detail)
         stderr = process.stderr.read() if process.stderr is not None else ""
         returncode = process.wait()
         if returncode != 0:
-            detail = (stderr or "\n".join(output_lines) or "Falha no Turbo Renderer.").strip()
+            detail = (stderr or "\n".join(output_lines) or "Falha na renderização rápida.").strip()
             raise RuntimeError(detail[-5000:])
         if not any(line.startswith("BATCH_DONE|") for line in output_lines):
-            raise RuntimeError("PowerPoint encerrou sem confirmar a conclusão do lote Turbo.")
+            raise RuntimeError("PowerPoint encerrou sem confirmar a conclusão da renderização rápida.")
 
     @staticmethod
     def _hidden_process_options() -> tuple[object | None, int]:
