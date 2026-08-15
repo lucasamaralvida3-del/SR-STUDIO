@@ -44,6 +44,7 @@ class UnifiedImportPipeline:
                 wholesale_price=item.get("wholesale_price"),
                 retail_price=item.get("retail_price"),
                 unit=str(item.get("unit") or "UN"),
+                quantity=str(item.get("quantity") or ""),
                 cpf_limit=str(item.get("limit") or ""),
                 category=str(item.get("category") or ""),
                 validity=str(item.get("validity") or ""),
@@ -88,7 +89,11 @@ class UnifiedImportPipeline:
                 product = Product(
                     original_name=name_element.text if name_element is not None else "Produto importado",
                     price=SemanticMapper._price_value(price_element.text) if price_element is not None else None,
-                    image_path=image_element.media_path if image_element is not None and Path(image_element.media_path).exists() else "",
+                    image_path=(
+                        image_element.media_path
+                        if image_element is not None and Path(image_element.media_path).exists()
+                        else ""
+                    ),
                     source="pptx",
                     recognition_confidence=candidate.confidence,
                     metadata={"slide": slide.index, "source_file": str(path)},
@@ -122,9 +127,22 @@ class UnifiedImportPipeline:
         y = (element.y / max(sh, 1)) * ph
         width = (element.width / max(sw, 1)) * pw
         height = (element.height / max(sh, 1)) * ph
-        common = {"x": x, "y": y, "width": width, "height": height, "source": "pptx", "name": element.name}
+        common = {
+            "x": x,
+            "y": y,
+            "width": width,
+            "height": height,
+            "source": "pptx",
+            "name": element.name,
+        }
         if element.kind == "text":
-            return {**common, "type": "text", "text": element.text, "font_size": max(10, min(54, height * 0.45)), "fill": "#162033"}
+            return {
+                **common,
+                "type": "text",
+                "text": element.text,
+                "font_size": max(10, min(54, height * 0.45)),
+                "fill": "#162033",
+            }
         if element.kind == "image" and element.media_path and Path(element.media_path).exists():
             return {**common, "type": "image", "path": element.media_path}
         if element.kind == "shape":
