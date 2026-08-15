@@ -13,8 +13,11 @@
 )
 $ErrorActionPreference = "Stop"
 
-# Reuse the exact historical fitting/model functions from PreviewEngine.ps1,
-# but replace its one-job runtime with a persistent batch PowerPoint session.
+# Turbo Seguro: reutiliza exatamente as funções históricas do PreviewEngine,
+# mantém UMA instância do PowerPoint para o lote inteiro, mas abre/fecha o PPTX
+# de cada cartaz como o renderer comprovado fazia. Isso evita incompatibilidades
+# de Office com Slides.Duplicate()/apresentações persistentes sem perder o maior
+# ganho de desempenho: não reiniciar o PowerPoint para cada produto.
 $source = Get-Content -LiteralPath $BasePreviewEngine -Raw -Encoding UTF8
 $start = $source.IndexOf("function Get-ShapeByName")
 $end = $source.IndexOf('$ppt=$null; $pres=$null; $slide=$null')
@@ -28,28 +31,18 @@ $t = [type]::GetTypeFromProgID("PowerPoint.Application")
 if ($null -eq $t) { throw "Microsoft PowerPoint não está registrado no Windows." }
 $ppt = [Activator]::CreateInstance($t)
 try { $ppt.Visible = 0 } catch {}
-$presentations = @{}
-
-function Get-OpenPresentation([string]$model) {
-    if (-not $presentations.ContainsKey($model)) {
-        $presentations[$model] = $ppt.Presentations.Open($model, 0, 0, 0)
-    }
-    return $presentations[$model]
-}
 
 try {
     $idx = 0
     foreach ($job in $jobs) {
         $idx++
+        $pres = $null
         $slide = $null
-        $range = $null
         try {
             Write-Output ("START|{0}" -f $idx)
             $model = Select-Model $job $Model1 $Model2 $Model1Limit $Model2Limit $ClubModel $ClubModelLimit $SaleModel
-            $pres = Get-OpenPresentation $model
-            $sourceSlide = $pres.Slides.Item(1)
-            $range = $sourceSlide.Duplicate()
-            $slide = $range.Item(1)
+            $pres = $ppt.Presentations.Open($model, 0, 0, 0)
+            $slide = $pres.Slides.Item(1)
             Apply-JobToSlide $slide $job
 
             $output = [string]$job.output_png
@@ -66,20 +59,17 @@ try {
             Write-Output ("ERR|{0}|{1}" -f $idx, $clean)
         }
         finally {
-            if ($null -ne $slide) { try { $slide.Delete() } catch {} }
+            if ($null -ne $pres) {
+                try { $pres.Saved = -1; $pres.Close() } catch {}
+            }
             $slide = $null
-            $range = $null
+            $pres = $null
         }
     }
     Write-Output ("BATCH_DONE|{0}" -f $jobs.Count)
 }
 finally {
-    foreach ($key in @($presentations.Keys)) {
-        $pres = $presentations[$key]
-        if ($null -ne $pres) { try { $pres.Saved = -1; $pres.Close() } catch {} }
-    }
     if ($null -ne $ppt) { try { $ppt.Quit() } catch {} }
-    $presentations = @{}
     $ppt = $null
     Write-Output "ENGINE_DONE"
 }
