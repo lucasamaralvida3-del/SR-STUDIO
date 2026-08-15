@@ -6,7 +6,7 @@ import shutil
 import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from PIL import Image
 
@@ -17,6 +17,7 @@ from srstudio.posters.preview import LegacyPosterPreviewService
 
 
 _POWERPOINT_STAGE_LOCK = threading.Lock()
+StageProgress = Callable[[str, int, int, Product, bool, str], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -54,8 +55,6 @@ class PosterStagingService:
     def signature(self, product: Product, kind: PosterKind, campaign: str = "") -> str:
         decision = self.model_resolver.decide(product, kind)
         effective_campaign = campaign or product.campaign
-        # Only values capable of changing the printed poster belong in the signature.
-        # UI/runtime metadata such as PRONTO/ALTERADO must never invalidate the image.
         payload = {
             "kind": kind.value,
             "campaign": effective_campaign,
@@ -72,7 +71,7 @@ class PosterStagingService:
             "promotion_type": product.metadata.get("promotion_type"),
             "model": decision.filename,
             "model_revision": self._model_revision(decision.path),
-            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v3",
+            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v4-turbo",
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()[:40]
@@ -107,9 +106,6 @@ class PosterStagingService:
             return StagedPoster(product.id, signature, destination, width, height, True)
 
         try:
-            # One PowerPoint staging export at a time is both faster and more stable on
-            # Office COM. Live edits queue behind the initial batch rather than opening
-            # competing hidden PowerPoint instances.
             with _POWERPOINT_STAGE_LOCK:
                 rendered = self.renderer.render(
                     product,
@@ -117,7 +113,7 @@ class PosterStagingService:
                     campaign,
                     width=self.PRINT_WIDTH,
                     height=self.PRINT_HEIGHT,
-                    cache_namespace="staging-print-v3",
+                    cache_namespace="staging-print-v4-turbo-fallback",
                 )
             if rendered != destination:
                 shutil.copy2(rendered, destination)
@@ -126,26 +122,119 @@ class PosterStagingService:
         except Exception as exc:
             return StagedPoster(product.id, signature, destination, 0, 0, False, str(exc))
 
+    def stage_many_turbo(
+        self,
+        products: Iterable[Product],
+        kind: PosterKind,
+        campaign: str = "",
+        *,
+        on_progress: StageProgress | None = None,
+    ) -> StagingBatchResult:
+        """Render only uncached posters in one persistent hidden PowerPoint session."""
+        selected = list(products)
+        total = len(selected)
+        result = StagingBatchResult()
+        artifacts: dict[str, StagedPoster] = {}
+        missing: list[tuple[int, Product, Path, str]] = []
+
+        for index, product in enumerate(selected, start=1):
+            signature = self.signature(product, kind, campaign)
+            destination = self.artifact_path(product, kind, campaign)
+            valid, width, height, _ = self._validate_image(destination)
+            if valid:
+                artifact = StagedPoster(product.id, signature, destination, width, height, True)
+                artifacts[product.id] = artifact
+                result.reused += 1
+                if on_progress is not None:
+                    on_progress("start", index, total, product, True, "cache")
+                    on_progress("done", index, total, product, True, "cache")
+            else:
+                missing.append((index, product, destination, signature))
+
+        if missing:
+            outputs = {product.id: destination for _, product, destination, _ in missing}
+            by_batch_index = {batch_index: item for batch_index, item in enumerate(missing, start=1)}
+            completed_ids: set[str] = set()
+
+            def turbo_progress(event: str, batch_index: int, detail: str) -> None:
+                item = by_batch_index.get(batch_index)
+                if item is None:
+                    return
+                original_index, product, destination, signature = item
+                if event == "start":
+                    if on_progress is not None:
+                        on_progress("start", original_index, total, product, False, "")
+                    return
+                if event == "ok":
+                    valid, width, height, error = self._validate_image(destination)
+                    artifact = StagedPoster(product.id, signature, destination, width, height, valid, error)
+                    artifacts[product.id] = artifact
+                    completed_ids.add(product.id)
+                    if valid:
+                        result.generated += 1
+                    else:
+                        result.failed += 1
+                    if on_progress is not None:
+                        on_progress("done", original_index, total, product, valid, error)
+                elif event == "err":
+                    artifact = StagedPoster(product.id, signature, destination, 0, 0, False, detail)
+                    artifacts[product.id] = artifact
+                    completed_ids.add(product.id)
+                    result.failed += 1
+                    if on_progress is not None:
+                        on_progress("done", original_index, total, product, False, detail)
+
+            try:
+                with _POWERPOINT_STAGE_LOCK:
+                    self.renderer.render_many_to(
+                        [product for _, product, _, _ in missing],
+                        kind,
+                        outputs,
+                        campaign,
+                        width=self.PRINT_WIDTH,
+                        height=self.PRINT_HEIGHT,
+                        on_progress=turbo_progress,
+                    )
+            except Exception:
+                # Safe fallback: if the Turbo protocol fails on an Office installation,
+                # keep functionality by rendering only the missing posters one by one.
+                for original_index, product, _, _ in missing:
+                    if product.id in completed_ids:
+                        continue
+                    if on_progress is not None:
+                        on_progress("start", original_index, total, product, False, "fallback")
+                    artifact = self.stage_one(product, kind, campaign)
+                    artifacts[product.id] = artifact
+                    if artifact.valid:
+                        result.generated += 1
+                    else:
+                        result.failed += 1
+                    if on_progress is not None:
+                        on_progress("done", original_index, total, product, artifact.valid, artifact.error)
+            else:
+                for original_index, product, destination, signature in missing:
+                    if product.id in completed_ids:
+                        continue
+                    valid, width, height, error = self._validate_image(destination)
+                    artifact = StagedPoster(product.id, signature, destination, width, height, valid, error)
+                    artifacts[product.id] = artifact
+                    if valid:
+                        result.generated += 1
+                    else:
+                        result.failed += 1
+                    if on_progress is not None:
+                        on_progress("done", original_index, total, product, valid, error)
+
+        result.artifacts = [artifacts[product.id] for product in selected if product.id in artifacts]
+        return result
+
     def stage_many(
         self,
         products: Iterable[Product],
         kind: PosterKind,
         campaign: str = "",
     ) -> StagingBatchResult:
-        result = StagingBatchResult()
-        for product in products:
-            destination = self.artifact_path(product, kind, campaign)
-            was_ready = self._validate_image(destination)[0]
-            artifact = self.stage_one(product, kind, campaign)
-            result.artifacts.append(artifact)
-            if artifact.valid:
-                if was_ready:
-                    result.reused += 1
-                else:
-                    result.generated += 1
-            else:
-                result.failed += 1
-        return result
+        return self.stage_many_turbo(products, kind, campaign)
 
     def ready_artifact(self, product: Product, kind: PosterKind, campaign: str = "") -> Path | None:
         path = self.artifact_path(product, kind, campaign)
