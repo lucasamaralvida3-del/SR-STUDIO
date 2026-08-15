@@ -80,7 +80,9 @@ def should_force_single_line(element: dict) -> bool:
         return True
     if bool(element.get("canva_no_wrap")):
         return True
-    if bool(element.get("canva_single_line")) and len(text) <= 48:
+    if role == "name":
+        return len(text) <= 18
+    if bool(element.get("canva_single_line")) and len(text) <= 24:
         return True
     return False
 
