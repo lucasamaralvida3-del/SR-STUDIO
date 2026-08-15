@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import tkinter as tk
+import tkinter.font as tkfont
 from pathlib import Path
 from tkinter import messagebox, ttk
 
@@ -9,7 +10,16 @@ from PIL import Image, ImageTk
 from srstudio.app.components import card, divider, eyebrow, pill
 from srstudio.app.design import COLORS, FONT
 from srstudio.app.encartes_view import EncartesStudioView, InteractiveFlyerCanvas
+from srstudio.assets.font_fallbacks import choose_tk_family
 from srstudio.core.models import Product, ProductCard
+from srstudio.editor.canva_rendering import (
+    fit_single_line_size,
+    font_pixel_size,
+    role_overflow_ratio,
+    rounded_radius,
+    should_force_single_line,
+    text_placement,
+)
 from srstudio.editor.controller import EditorController
 from srstudio.editor.detected_slots import DetectedSlotService
 from srstudio.editor.layout import Rect
@@ -23,7 +33,12 @@ class ProfessionalFlyerCanvas(InteractiveFlyerCanvas):
     def __init__(self, master: tk.Widget, controller: EditorController, on_selection_changed=None, on_changed=None) -> None:
         self._slot_drag_active = False
         self._slot_drop_target_id = ""
+        self._installed_fonts: set[str] = set()
         super().__init__(master, controller, on_selection_changed, on_changed)
+        try:
+            self._installed_fonts = set(tkfont.families(self))
+        except tk.TclError:
+            self._installed_fonts = {FONT["family"]}
         self.configure(bg="#DDE4EE", cursor="crosshair")
 
     def redraw(self) -> None:
@@ -37,6 +52,127 @@ class ProfessionalFlyerCanvas(InteractiveFlyerCanvas):
         self._slot_drop_target_id = target_id
         if changed:
             self.redraw()
+
+    def _draw_element(self, transform, element: dict, key: str) -> None:
+        kind = str(element.get("type") or "")
+        if str(element.get("source") or "") != "pptx":
+            super()._draw_element(transform, element, key)
+            return
+
+        x, y = transform.to_screen(float(element.get("x", 0)), float(element.get("y", 0)))
+        width = max(0.0, float(element.get("width", 0)) * transform.scale)
+        height = max(0.0, float(element.get("height", 0)) * transform.scale)
+
+        if kind == "text":
+            self._draw_canva_text(transform, element, x, y, width, height)
+            return
+        if kind == "line":
+            color = str(element.get("outline") or element.get("fill") or "#470000")
+            line_width = max(1, round(float(element.get("line_width", 1.0) or 1.0) * transform.scale))
+            self.create_line(x, y, x + width, y + height, fill=color, width=line_width)
+            return
+        if kind == "rect" and float(element.get("corner_radius_ratio", 0.0) or 0.0) > 0:
+            self._draw_rounded_rectangle(
+                x,
+                y,
+                x + width,
+                y + height,
+                rounded_radius(width, height, float(element.get("corner_radius_ratio", 0.0) or 0.0)),
+                fill=str(element.get("fill") or ""),
+                outline=str(element.get("outline") or ""),
+            )
+            return
+        super()._draw_element(transform, element, key)
+
+    def _draw_canva_text(self, transform, element: dict, x: float, y: float, width: float, height: float) -> None:
+        text = str(element.get("text") or "")
+        if not text:
+            return
+        requested = str(element.get("font_name") or element.get("source_font_name") or FONT["family"])
+        family = choose_tk_family(requested, self._installed_fonts)
+        try:
+            points = float(element.get("font_size", 20) or 20)
+        except (TypeError, ValueError):
+            points = 20.0
+        size_px = font_pixel_size(points, transform.scale)
+        weight = "bold" if bool(element.get("bold")) else "normal"
+        slant = "italic" if bool(element.get("italic")) else "roman"
+        role = str(element.get("slot_role") or "")
+        single_line = should_force_single_line(element)
+        placement = text_placement(str(element.get("align") or ""), str(element.get("vertical_anchor") or ""))
+
+        font_obj = tkfont.Font(self, family=family, size=-size_px, weight=weight, slant=slant)
+        if single_line and width > 0 and height > 0:
+            measured_width = max(1, font_obj.measure(text))
+            line_height = max(1, font_obj.metrics("linespace"))
+            fitted_px = fit_single_line_size(
+                size_px,
+                measured_width,
+                line_height,
+                width,
+                height,
+                min_px=max(4, round(5 * transform.scale)),
+                overflow_ratio=role_overflow_ratio(role),
+            )
+            if fitted_px != size_px:
+                size_px = fitted_px
+                font_obj = tkfont.Font(self, family=family, size=-size_px, weight=weight, slant=slant)
+
+        draw_x = x + width * placement.x_factor
+        draw_y = y + height * placement.y_factor
+        options = {
+            "text": text,
+            "anchor": placement.anchor,
+            "fill": str(element.get("fill") or "#162033"),
+            "font": font_obj,
+            "justify": placement.justify,
+        }
+        if not single_line:
+            options["width"] = max(1, width)
+        self.create_text(draw_x, draw_y, **options)
+
+    def _draw_rounded_rectangle(
+        self,
+        x1: float,
+        y1: float,
+        x2: float,
+        y2: float,
+        radius: float,
+        *,
+        fill: str,
+        outline: str,
+    ) -> None:
+        radius = max(0.0, min(radius, abs(x2 - x1) / 2, abs(y2 - y1) / 2))
+        if radius < 2:
+            self.create_rectangle(x1, y1, x2, y2, fill=fill, outline=outline)
+            return
+        points = (
+            x1 + radius,
+            y1,
+            x2 - radius,
+            y1,
+            x2,
+            y1,
+            x2,
+            y1 + radius,
+            x2,
+            y2 - radius,
+            x2,
+            y2,
+            x2 - radius,
+            y2,
+            x1 + radius,
+            y2,
+            x1,
+            y2,
+            x1,
+            y2 - radius,
+            x1,
+            y1 + radius,
+            x1,
+            y1,
+        )
+        self.create_polygon(points, smooth=True, splinesteps=18, fill=fill, outline=outline)
 
     def slot_at_root(self, root_x: int, root_y: int) -> ProductCard | None:
         x = root_x - self.winfo_rootx()
