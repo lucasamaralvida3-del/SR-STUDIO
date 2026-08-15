@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.9 Professional
-Turbo Renderer for Promotion and Atacado poster staging.
-Replaces per-product PowerPoint startup during background staging with one hidden persistent PowerPoint session per batch. Official PPTX models stay open, the source slide is duplicated in memory for each product, exported at final 1772x2480 quality and discarded. Persistent cache remains selective, so only new or commercially changed posters are rendered; existing valid posters are reused instantly. Responsive layout, editable grid, commercial diagnostics and final PDF validation remain unchanged.
-Triggered: 2026-08-15T11:10:00-03:00
+SR Studio 5.0 Beta 7.10 Professional
+Turbo Safe hotfix for Promotion and Atacado poster staging.
+Keeps one PowerPoint session per batch for speed, but reopens each PPTX per poster for broader Office compatibility. Every Turbo item error is now retried automatically through the proven single-item renderer, so a Turbo-specific failure cannot leave a valid batch with zero generated posters. Persistent cache remains selective and only missing or changed posters are rendered.
+Triggered: 2026-08-15T11:23:00-03:00
