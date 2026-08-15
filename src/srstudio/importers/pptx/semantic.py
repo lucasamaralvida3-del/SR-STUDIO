@@ -10,7 +10,10 @@ from .reader import PptxElement, PptxSlide
 PRICE_RE = re.compile(r"(?:R\$\s*)?(\d{1,4})(?:[,.](\d{2}))")
 INTEGER_RE = re.compile(r"^\d{1,4}$")
 CENTS_RE = re.compile(r"^[,.]\d{2}$")
-UNIT_RE = re.compile(r"^(?:/\s*)?(UN|KG|L|LT|ML|G|GR|CX|PCT|BDJ|LATA|GARRAFA)$", re.IGNORECASE)
+UNIT_RE = re.compile(
+    r"^(?:/\s*)?(UN|KG|L|LT|ML|G|GR|CX|PCT|BDJ|LATA|GARRAFA|CADA|A LATA|À LATA|A GARRAFA|À GARRAFA)$",
+    re.IGNORECASE,
+)
 CURRENCY_RE = re.compile(r"^R\$$", re.IGNORECASE)
 
 
@@ -93,7 +96,6 @@ class SemanticMapper:
             name = self._nearest_semantic(anchor, names, used_names, slide, role="name")
             image = self._nearest_semantic(anchor, images, used_images, slide, role="image")
 
-            # A second price in the same visual card normally has no new product name/image.
             existing = self._near_existing_card(cluster, cards, slide)
             if existing is not None and name is None and image is None and existing.secondary_price is None:
                 existing.secondary_price = cluster
@@ -131,7 +133,6 @@ class SemanticMapper:
         clusters: list[PriceCluster] = []
         used: set[int] = set()
 
-        # Preserve the rare case where Canva exported a full price in one text box.
         for element in texts:
             value = self._price_value(element.text)
             if value is None:
@@ -180,7 +181,6 @@ class SemanticMapper:
             used.update(local_used)
             clusters.append(cluster)
 
-        # Some Canva templates omit the R$ object and keep only integer + cents.
         for integer in integers:
             if id(integer) in used:
                 continue
@@ -274,11 +274,11 @@ class SemanticMapper:
             dy_signed = (cy - oy) / max(slide.height, 1)
             dy = abs(dy_signed)
             if role == "name":
-                if dx > 0.22 or dy > 0.24:
+                if dx > 0.26 or dy > 0.36:
                     continue
-                # Product names are commonly just above the price.
-                directional = 0.0 if dy_signed <= 0.04 else dy_signed * 0.8
-                score = dx * 1.25 + dy + directional
+                # In SR Canva cards the product image often sits between name and price.
+                directional = 0.0 if dy_signed <= 0.04 else dy_signed * 1.15
+                score = dx * 1.35 + dy + directional
             else:
                 if dx > 0.25 or dy > 0.30:
                     continue
@@ -427,7 +427,6 @@ class SemanticMapper:
         letters = sum(character.isalpha() for character in cleaned)
         if letters < 3:
             return False
-        # Single-word produce names such as MELANCIA are valid in the SR corpus.
         return True
 
     @staticmethod
