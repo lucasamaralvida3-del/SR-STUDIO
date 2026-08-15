@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.18 Professional
-Banco de Imagens: verificação sequencial das imagens selecionadas.
-Adiciona o botão VERIFICAR na revisão em lote do Banco de Imagens. As imagens selecionadas são abertas em uma tela modal de revisão, uma por vez, com prévia ampliada, nome do produto, confiança, origem, alerta de conflito, contador e barra de progresso. A aprova e avança automaticamente; R recusa, remove do banco e avança automaticamente; Pular preserva a imagem e segue; Voltar retorna para a imagem anterior. Ao terminar, o Studio mostra um resumo com aprovadas, recusadas/removidas e puladas. O modo mantém seleção em lote, atalhos A/R/Ctrl+A/Esc, SR Image Cloud Sync, Canva V2, layouts aprendidos, Promoções, Atacado, PDFium e engines históricos preservados.
-Triggered: 2026-08-15T15:31:00-03:00
+SR Studio 5.0 Beta 7.19 Professional
+Canva Importer: preservação visual nativa do slide.
+Corrige a importação de PPTX do Canva que substituía elementos reconhecidos por cards genéricos do Studio, causando caixas vazias/escuras, textos e preços com escala diferente e perda do visual original. Agora o slide Canva completo permanece como camada visual nativa, incluindo os elementos semânticos usados para reconhecer nome, preço e imagem. Os ProductCards reconhecidos continuam existindo como regiões transparentes para seleção/edição e vínculo de produto, sem redesenhar o layout sobre a arte original. O projeto passa a marcar canva_import_version 3 e canva_native_visual. Mantém Banco de Imagens, revisão em lote/sequencial, SR Image Cloud Sync, layouts aprendidos, Promoções, Atacado, PDFium e engines históricos preservados.
+Triggered: 2026-08-15T15:59:00-03:00
