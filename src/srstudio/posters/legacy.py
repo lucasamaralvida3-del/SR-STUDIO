@@ -176,7 +176,18 @@ class SRPrintPosterService(PrintPosterService):
                 kind = PosterKind.WHOLESALE if legacy_engine == "wholesale" else PosterKind.PROMOTION
                 return bridge.generate_pdf(products, kind, destination, campaign)
             except Exception as exc:
-                result = super().generate_pdf(products, template, destination, campaign)
+                fallback = PosterTemplate(
+                    id=f"{template.id}-fallback",
+                    name=f"{template.name} · fallback interno",
+                    kind=template.kind,
+                    width_mm=template.width_mm,
+                    height_mm=template.height_mm,
+                    dpi=template.dpi,
+                    background=template.background,
+                    accent=template.accent,
+                    metadata={key: value for key, value in template.metadata.items() if key != "legacy_engine"},
+                )
+                result = super().generate_pdf(products, fallback, destination, campaign)
                 result.warnings.insert(
                     0,
                     "Fidelidade histórica via PowerPoint indisponível; usado renderer interno: " + str(exc),
