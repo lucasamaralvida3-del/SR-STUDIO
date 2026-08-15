@@ -58,6 +58,7 @@ class ImageLibrary:
 
     AUTO_ACCEPT_CONFIDENCE = 0.82
     AUTO_MATCH_SCORE = 0.67
+    VISUAL_DUPLICATE_DISTANCE = 6
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
@@ -154,15 +155,62 @@ class ImageLibrary:
         metadata: dict | None = None,
     ) -> ImageAsset:
         product_key = self.normalize_product_key(product_name)
-        near = self.find_near_duplicate(source, product_key)
+        conflict = self.find_cross_product_visual_duplicate(source, product_key)
         status = "accepted" if confidence >= self.AUTO_ACCEPT_CONFIDENCE else "pending"
+        if conflict is not None:
+            conflict_names = sorted(
+                {
+                    name
+                    for name in (
+                        conflict.product_name,
+                        product_name,
+                        *(conflict.metadata.get("conflicting_product_names") or ()),
+                    )
+                    if name
+                }
+            )
+            conflict_keys = sorted(
+                {
+                    key
+                    for key in (
+                        conflict.product_key,
+                        product_key,
+                        *(conflict.metadata.get("conflicting_product_keys") or ()),
+                    )
+                    if key
+                }
+            )
+            conflict_metadata = {
+                **conflict.metadata,
+                "review_reason": "same_image_multiple_products",
+                "conflicting_product_names": conflict_names,
+                "conflicting_product_keys": conflict_keys,
+            }
+            self.update_metadata(
+                conflict.id,
+                review_status="pending",
+                preferred=False,
+                metadata=conflict_metadata,
+            )
+            status = "pending"
+            metadata = {
+                **(metadata or {}),
+                "review_reason": "same_image_multiple_products",
+                "conflicting_product_names": conflict_names,
+                "conflicting_product_keys": conflict_keys,
+            }
+
+        near = self.find_near_duplicate(source, product_key)
         if near is not None:
             return self.update_metadata(
                 near.id,
                 product_name=product_name,
                 aliases=aliases,
                 confidence=max(near.confidence, confidence),
-                review_status="accepted" if near.review_status == "accepted" or status == "accepted" else "pending",
+                review_status="pending" if conflict is not None else (
+                    "accepted" if near.review_status == "accepted" or status == "accepted" else "pending"
+                ),
+                preferred=False if conflict is not None else near.preferred,
                 source_file=source_file or near.source_file,
                 slide_index=slide_index or near.slide_index,
                 metadata={**near.metadata, **(metadata or {})},
@@ -202,7 +250,7 @@ class ImageLibrary:
         candidates: list[ImageMatch] = []
         for data in self._load().values():
             asset = self._asset(data)
-            if asset.kind not in {"product", "unknown"} or asset.review_status == "rejected":
+            if asset.kind not in {"product", "unknown"} or asset.review_status != "accepted":
                 continue
             names = [asset.product_key, asset.product_name, *asset.aliases]
             best_text = 0.0
@@ -228,9 +276,7 @@ class ImageLibrary:
                     reason = "alias"
             if best_text < 0.48:
                 continue
-            trust = 0.0
-            if asset.review_status == "accepted":
-                trust += 0.08
+            trust = 0.08
             if asset.preferred:
                 trust += 0.08
             trust += min(0.08, asset.confidence * 0.08)
@@ -241,7 +287,12 @@ class ImageLibrary:
         best = max(candidates, key=lambda item: item.score)
         return best if best.score >= self.AUTO_MATCH_SCORE else None
 
-    def find_near_duplicate(self, source: str | Path, product_key: str = "", max_distance: int = 6) -> ImageAsset | None:
+    def find_near_duplicate(
+        self,
+        source: str | Path,
+        product_key: str = "",
+        max_distance: int = VISUAL_DUPLICATE_DISTANCE,
+    ) -> ImageAsset | None:
         path = Path(source)
         try:
             with Image.open(path) as image:
@@ -252,6 +303,30 @@ class ImageLibrary:
         for data in self._load().values():
             asset = self._asset(data)
             if normalized_key and asset.product_key and self.normalize_product_key(asset.product_key) != normalized_key:
+                continue
+            if asset.perceptual_hash and self._hamming_hex(fingerprint, asset.perceptual_hash) <= max_distance:
+                return asset
+        return None
+
+    def find_cross_product_visual_duplicate(
+        self,
+        source: str | Path,
+        product_key: str,
+        max_distance: int = VISUAL_DUPLICATE_DISTANCE,
+    ) -> ImageAsset | None:
+        path = Path(source)
+        try:
+            with Image.open(path) as image:
+                fingerprint = self._dhash(image)
+        except (OSError, ValueError):
+            return None
+        normalized_key = self.normalize_product_key(product_key)
+        if not normalized_key:
+            return None
+        for data in self._load().values():
+            asset = self._asset(data)
+            asset_key = self.normalize_product_key(asset.product_key or asset.product_name)
+            if not asset_key or asset_key == normalized_key:
                 continue
             if asset.perceptual_hash and self._hamming_hex(fingerprint, asset.perceptual_hash) <= max_distance:
                 return asset
@@ -279,6 +354,32 @@ class ImageLibrary:
     def set_review_status(self, asset_id: str, status: str) -> ImageAsset:
         if status not in {"accepted", "pending", "rejected"}:
             raise ValueError(status)
+        index = self._load()
+        if asset_id not in index:
+            raise KeyError(asset_id)
+        asset = self._asset(index[asset_id])
+        if status == "accepted" and asset.metadata.get("review_reason") == "same_image_multiple_products":
+            conflict_keys = {
+                self.normalize_product_key(value)
+                for value in asset.metadata.get("conflicting_product_keys", ())
+                if value
+            }
+            aliases = tuple(
+                alias
+                for alias in asset.aliases
+                if self.normalize_product_key(alias) not in conflict_keys
+                or self.normalize_product_key(alias) == asset.product_key
+            )
+            metadata = dict(asset.metadata)
+            metadata.pop("review_reason", None)
+            metadata.pop("conflicting_product_names", None)
+            metadata.pop("conflicting_product_keys", None)
+            return self.update_metadata(
+                asset_id,
+                review_status=status,
+                aliases=aliases,
+                metadata=metadata,
+            )
         return self.update_metadata(asset_id, review_status=status)
 
     def set_preferred(self, asset_id: str, preferred: bool = True) -> ImageAsset:
@@ -440,6 +541,7 @@ class ImageLibrary:
         preferred: bool,
         metadata: dict,
     ) -> ImageAsset:
+        conflicting_product = bool(existing.product_key and product_key and existing.product_key != product_key)
         names = set(existing.aliases)
         if existing.product_name and product_name and existing.product_name != product_name:
             names.add(product_name)
@@ -451,13 +553,46 @@ class ImageLibrary:
         if existing.kind == "unknown" and kind:
             existing.kind = kind
         existing.confidence = max(existing.confidence, max(0.0, min(1.0, float(confidence))))
-        if review_status == "accepted" or existing.review_status != "accepted":
-            existing.review_status = review_status or existing.review_status
+        if conflicting_product:
+            conflict_names = sorted(
+                {
+                    value
+                    for value in (
+                        existing.product_name,
+                        product_name,
+                        *(existing.metadata.get("conflicting_product_names") or ()),
+                    )
+                    if value
+                }
+            )
+            conflict_keys = sorted(
+                {
+                    value
+                    for value in (
+                        existing.product_key,
+                        product_key,
+                        *(existing.metadata.get("conflicting_product_keys") or ()),
+                    )
+                    if value
+                }
+            )
+            existing.review_status = "pending"
+            existing.preferred = False
+            existing.metadata = {
+                **existing.metadata,
+                **metadata,
+                "review_reason": "same_image_multiple_products",
+                "conflicting_product_names": conflict_names,
+                "conflicting_product_keys": conflict_keys,
+            }
+        else:
+            if review_status == "accepted" or existing.review_status != "accepted":
+                existing.review_status = review_status or existing.review_status
+            existing.preferred = existing.preferred or bool(preferred)
+            existing.metadata = {**existing.metadata, **metadata}
         existing.source = existing.source or source
         existing.source_file = existing.source_file or source_file
         existing.slide_index = existing.slide_index or int(slide_index or 0)
-        existing.preferred = existing.preferred or bool(preferred)
-        existing.metadata = {**existing.metadata, **metadata}
         return existing
 
     @staticmethod
