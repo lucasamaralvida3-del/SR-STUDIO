@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.12 Professional
-Renderização rápida reconstruída sobre o engine antigo intacto + PDFium.
-PowerPointEngine.ps1 e AtacadoEngine.ps1 não são mais modificados nem envolvidos por wrappers de preview. Eles geram os PDFs oficiais exatamente pelo fluxo histórico que funciona nas versões anteriores. O SR Studio observa o lote, armazena cada PDF por assinatura e usa PDFium local para criar a prévia PNG 1772x2480 sem abrir PowerPoint novamente. Reimportações iguais reutilizam PDF/PNG do cache; alterações invalidam apenas o cartaz afetado; o PDF final apenas junta os PDFs vetoriais já preparados. O modo normal comprovado continua como fallback para itens que o lote histórico não concluir.
-Triggered: 2026-08-15T11:50:00-03:00
+SR Studio 5.0 Beta 7.13 Professional
+Encartes Studio Canva V2 + banco local de imagens aprendido + layouts SR reutilizáveis.
+O novo importador entende imagens do Canva em Freeform/Shape com picture fill, crop, rotação, flips, transparência, ordem de camadas e grupos/subgrupos transformados. Preços divididos em R$ + reais + centavos + unidade são reunidos em cards editáveis. Projetos PPTX ou ZIP podem treinar em segundo plano o banco nome↔imagem com deduplicação, confiança, revisão e imagem preferida, além do corpus determinístico de layouts por campanha. Excel passa a reutilizar automaticamente imagens aprovadas do banco. Banco de Imagens e Modelos Aprendidos entram na interface profissional. Promoções/Atacado e a renderização PDFium permanecem preservados.
+Triggered: 2026-08-15T13:08:00-03:00
