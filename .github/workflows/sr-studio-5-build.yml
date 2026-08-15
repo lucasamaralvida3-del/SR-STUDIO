@@ -24,7 +24,7 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
       - name: Smoke check executable
         shell: pwsh
         run: |
@@ -36,13 +36,12 @@ jobs:
           $engineA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           $engineB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           if (!(Test-Path $engineA) -and !(Test-Path $engineB)) { throw "Engine oficial de Promoções não foi empacotado" }
-          $fastPromoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/FastPromotionBatch.ps1"
-          $fastPromoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/FastPromotionBatch.ps1"
-          if (!(Test-Path $fastPromoA) -and !(Test-Path $fastPromoB)) { throw "Renderização rápida compatível de Promoções não foi empacotada" }
-          $fastAtacadoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/FastAtacadoBatch.ps1"
-          $fastAtacadoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/FastAtacadoBatch.ps1"
-          if (!(Test-Path $fastAtacadoA) -and !(Test-Path $fastAtacadoB)) { throw "Renderização rápida compatível de Atacado não foi empacotada" }
-          python -c "from srstudio.posters.staging import PosterStagingService; from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; assert PosterStagingService.PRINT_WIDTH == 1772; assert PosterStagingService.PRINT_HEIGHT == 2480; assert poster_pane_ratio(1600) == (68, 32); print(SRStudioTurboPosters.__name__)"
+          $atacadoEngineA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/AtacadoEngine.ps1"
+          $atacadoEngineB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/AtacadoEngine.ps1"
+          if (!(Test-Path $atacadoEngineA) -and !(Test-Path $atacadoEngineB)) { throw "Engine oficial de Atacado não foi empacotado" }
+          $pdfium = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "pdfium.dll" | Select-Object -First 1
+          if ($null -eq $pdfium) { throw "PDFium nativo não foi empacotado; prévia rápida não funcionaria." }
+          python -c "import pypdfium2; from srstudio.posters.legacy_batch import LegacyBatchRenderer; from srstudio.posters.staging import PosterStagingService; from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; assert PosterStagingService.PRINT_WIDTH == 1772; assert PosterStagingService.PRINT_HEIGHT == 2480; assert poster_pane_ratio(1600) == (68, 32); print(LegacyBatchRenderer.__name__, SRStudioTurboPosters.__name__)"
       - name: Create portable update package
         shell: pwsh
         run: |
