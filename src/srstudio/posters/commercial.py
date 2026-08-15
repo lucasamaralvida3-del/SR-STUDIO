@@ -8,6 +8,7 @@ from typing import Iterable
 from openpyxl import load_workbook
 
 from srstudio.core.models import Product, to_decimal
+from srstudio.posters.core import PosterKind
 from srstudio.posters.importers import PromotionWorkbookImporter
 
 
@@ -32,12 +33,14 @@ class CommercialStatus:
             return "Nenhuma inconsistência comercial encontrada."
         return "\n".join(f"• {issue.message}" for issue in self.issues)
 
-    def group_tooltip(self, group: str) -> str:
+    def group_tooltip(self, group: str, labels: dict[str, str] | None = None) -> str:
         matches = [issue.message for issue in self.issues if issue.group == group]
         if matches:
             return "\n".join(f"• {message}" for message in matches)
-        labels = {"cost": "Custo", "sale": "Venda", "club": "Clube", "unit": "Unidade"}
-        return f"{labels.get(group, group.title())}: nenhuma inconsistência encontrada."
+        known = {"cost": "Custo", "sale": "Venda", "club": "Clube", "unit": "Unidade"}
+        if labels:
+            known.update(labels)
+        return f"{known.get(group, group.title())}: nenhuma inconsistência encontrada."
 
 
 class PosterCommercialValidator:
@@ -47,20 +50,33 @@ class PosterCommercialValidator:
     WARNING = "ALERTA"
     OK = "OK"
 
-    def evaluate(self, product: Product) -> CommercialStatus:
+    def evaluate(self, product: Product, kind: PosterKind = PosterKind.PROMOTION) -> CommercialStatus:
         issues: list[CommercialIssue] = []
         cost = self.cost(product)
         sale = product.retail_price
-        poster_type = int(product.metadata.get("promotion_type", 0) or 0)
 
-        if poster_type == 3:
-            promo = None
-            club = product.price
+        if kind == PosterKind.WHOLESALE:
+            promo = product.wholesale_price
+            club = None
+            price_specs = (("ATACADO", promo, "wholesale_price", "club"),)
+            # Report 782 does not carry cost. Only flag missing cost when another import
+            # explicitly claimed it should exist; otherwise wholesale would be all-yellow.
+            expects_cost = bool(product.metadata.get("expects_cost"))
         else:
-            promo = product.price
-            club = product.app_price
+            poster_type = int(product.metadata.get("promotion_type", 0) or 0)
+            if poster_type == 3:
+                promo = None
+                club = product.price
+            else:
+                promo = product.price
+                club = product.app_price
+            price_specs = (
+                ("PROMOÇÃO", promo, "price", "sale"),
+                ("CLUBE", club, "app_price", "club"),
+            )
+            expects_cost = True
 
-        if cost is None:
+        if cost is None and expects_cost:
             issues.append(
                 CommercialIssue(
                     "CUSTO_AUSENTE",
@@ -81,10 +97,7 @@ class PosterCommercialValidator:
                 )
             )
 
-        for label, price, field_name, group in (
-            ("PROMOÇÃO", promo, "price", "sale"),
-            ("CLUBE", club, "app_price", "club"),
-        ):
+        for label, price, field_name, group in price_specs:
             if price is None:
                 continue
             if price <= 0:
@@ -104,7 +117,7 @@ class PosterCommercialValidator:
                     CommercialIssue(
                         "ABAIXO_CUSTO",
                         self.ERROR,
-                        "cost" if label == "PROMOÇÃO" else "club",
+                        "cost" if label == "PROMOÇÃO" else group,
                         f"{label} {self.money(price)} está abaixo do custo {self.money(cost)} em {self.money(diff)}.",
                         field_name,
                     )
@@ -132,7 +145,7 @@ class PosterCommercialValidator:
                         )
                     )
 
-        if promo is not None and club is not None and club > promo:
+        if kind == PosterKind.PROMOTION and promo is not None and club is not None and club > promo:
             issues.append(
                 CommercialIssue(
                     "CLUBE_MAIOR_PROMO",
@@ -165,9 +178,13 @@ class PosterCommercialValidator:
         )
         return CommercialStatus(overall=overall, issues=issues, groups=groups)
 
-    def evaluate_batch(self, products: Iterable[Product]) -> dict[str, CommercialStatus]:
+    def evaluate_batch(
+        self,
+        products: Iterable[Product],
+        kind: PosterKind = PosterKind.PROMOTION,
+    ) -> dict[str, CommercialStatus]:
         product_list = list(products)
-        statuses = {product.id: self.evaluate(product) for product in product_list}
+        statuses = {product.id: self.evaluate(product, kind) for product in product_list}
         seen: dict[str, Product] = {}
         for product in product_list:
             identity = str(product.code or product.ean or "").strip() or product.name.casefold().strip()
@@ -201,7 +218,7 @@ class PosterCommercialValidator:
         unit = str(product.unit or "").upper()
         if "A GRANEL" in name and unit != "KG":
             return "Produto indica 'A GRANEL', mas a unidade do cartaz não está como KG."
-        if unit == "KG" and any(token in name for token in (" ML", "ML ", " L ", "L ")):
+        if unit == "KG" and __import__("re").search(r"\b\d+(?:[.,]\d+)?\s*(?:ML|L)\b", name):
             return "Produto está marcado como KG, mas a descrição contém medida em ML/L."
         return ""
 
@@ -214,7 +231,16 @@ def enrich_promotion_commercial_data(path: str | Path, products: Iterable[Produc
     """Attach Stable-compatible CUSTO/VENDA source values without changing importer contracts."""
 
     source = Path(path)
-    product_list = [product for product in products if str(product.metadata.get("source_file") or "") == str(source)]
+    source_key = str(source.resolve()).casefold()
+    product_list = []
+    for product in products:
+        raw_source = str(product.metadata.get("source_file") or "")
+        try:
+            product_source = str(Path(raw_source).resolve()).casefold() if raw_source else ""
+        except Exception:
+            product_source = raw_source.casefold()
+        if product_source == source_key:
+            product_list.append(product)
     if not product_list or source.suffix.lower() not in {".xlsx", ".xlsm"}:
         return
     workbook = load_workbook(source, data_only=True, read_only=False)
@@ -265,21 +291,7 @@ def enrich_promotion_commercial_data(path: str | Path, products: Iterable[Produc
                 product.metadata["cost"] = str(cost)
             if product.retail_price is None and sale_raw not in (None, ""):
                 product.retail_price = to_decimal(sale_raw)
-            product.metadata.setdefault(
-                "imported_snapshot",
-                {
-                    "display_name": product.display_name,
-                    "price": None if product.price is None else str(product.price),
-                    "app_price": None if product.app_price is None else str(product.app_price),
-                    "retail_price": None if product.retail_price is None else str(product.retail_price),
-                    "wholesale_price": None if product.wholesale_price is None else str(product.wholesale_price),
-                    "unit": product.unit,
-                    "quantity": product.quantity,
-                    "cpf_limit": product.cpf_limit,
-                    "promotion_type": product.metadata.get("promotion_type"),
-                    "cost": product.metadata.get("cost", ""),
-                },
-            )
+            ensure_imported_snapshot(product)
 
 
 def ensure_imported_snapshot(product: Product) -> None:
