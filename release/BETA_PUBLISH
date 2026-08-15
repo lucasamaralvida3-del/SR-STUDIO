@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.10 Professional
-Turbo Safe hotfix for Promotion and Atacado poster staging.
-Keeps one PowerPoint session per batch for speed, but reopens each PPTX per poster for broader Office compatibility. Every Turbo item error is now retried automatically through the proven single-item renderer, so a Turbo-specific failure cannot leave a valid batch with zero generated posters. Persistent cache remains selective and only missing or changed posters are rendered.
-Triggered: 2026-08-15T11:23:00-03:00
+SR Studio 5.0 Beta 7.11 Professional
+Fast renderer rebuilt on the proven legacy PowerPoint engines.
+The experimental Turbo preview engines are no longer used for fast staging. Promotion and Atacado now reuse PowerPointEngine.ps1 / AtacadoEngine.ps1, keeping one PowerPoint application per batch while preserving the historical open-fill-save-close cycle for each PPTX. Each item generates its temporary vector PDF and 300 dpi PNG preview in the same pass; final PDF generation validates and merges the cached vector PDFs. Any fast-item failure still falls back automatically to the proven normal renderer.
+Triggered: 2026-08-15T11:37:00-03:00
