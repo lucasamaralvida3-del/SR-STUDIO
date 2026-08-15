@@ -86,8 +86,12 @@ class ProductCardRegistry:
         return tuple(self._styles.values())
 
     def view_model(self, card: ProductCard, product: Product) -> CardViewModel:
-        style_id = "product-card-hero" if card.highlighted and card.style_id == DEFAULT_STYLE.id else card.style_id
-        style = self.get(style_id)
+        imported = card.overrides.get("imported_style")
+        if isinstance(imported, dict) and imported:
+            style = self._imported_style(card, imported)
+        else:
+            style_id = "product-card-hero" if card.highlighted and card.style_id == DEFAULT_STYLE.id else card.style_id
+            style = self.get(style_id)
         parts = self._price_engine.split(product.price, product.unit)
         name = str(card.overrides.get("name") or product.name)
         image_path = str(card.overrides.get("image_path") or product.image_path)
@@ -104,3 +108,59 @@ class ProductCardRegistry:
             limit=limit,
             style=style,
         )
+
+    def _imported_style(self, card: ProductCard, spec: dict[str, Any]) -> ProductCardStyle:
+        image_region = self._region("image", spec.get("image_region"), DEFAULT_STYLE.image_region)
+        name_region = self._region("name", spec.get("name_region"), DEFAULT_STYLE.name_region)
+        price_region = self._region("price", spec.get("price_region"), DEFAULT_STYLE.price_region)
+        unit_region = self._region("unit", spec.get("unit_region"), DEFAULT_STYLE.unit_region, optional=True)
+        name_style = dict(spec.get("name_style") or {})
+        price_style = dict(spec.get("price_style") or {})
+        text_color = self._hex_color(name_style.get("fill"), DEFAULT_STYLE.text_color)
+        price_color = self._hex_color(price_style.get("fill"), DEFAULT_STYLE.price_color)
+        return ProductCardStyle(
+            id=f"canva-{card.id}",
+            name="Canva importado",
+            image_region=image_region,
+            name_region=name_region,
+            price_region=price_region,
+            unit_region=unit_region,
+            limit_region=None,
+            background="#FFFFFF",
+            border="",
+            text_color=text_color,
+            price_color=price_color,
+            image_fit=str(spec.get("image_fit") or "contain"),
+            metadata={
+                "imported_from_canva": True,
+                "transparent_background": True,
+                "name_style": name_style,
+                "price_style": price_style,
+                "cents_style": dict(spec.get("cents_style") or {}),
+                "currency_style": dict(spec.get("currency_style") or {}),
+            },
+        )
+
+    @staticmethod
+    def _region(
+        name: str,
+        value: Any,
+        fallback: CardRegion | None,
+        *,
+        optional: bool = False,
+    ) -> CardRegion | None:
+        if not isinstance(value, dict) or not value:
+            return None if optional else fallback
+        try:
+            x = max(-0.25, min(1.25, float(value.get("x", 0.0))))
+            y = max(-0.25, min(1.25, float(value.get("y", 0.0))))
+            width = max(0.01, min(1.5, float(value.get("width", 0.0))))
+            height = max(0.01, min(1.5, float(value.get("height", 0.0))))
+            return CardRegion(name, x, y, width, height)
+        except (TypeError, ValueError):
+            return None if optional else fallback
+
+    @staticmethod
+    def _hex_color(value: Any, fallback: str) -> str:
+        text = str(value or "")
+        return text if text.startswith("#") and len(text) in {4, 7, 9} else fallback
