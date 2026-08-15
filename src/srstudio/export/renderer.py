@@ -22,7 +22,7 @@ class FlyerRenderer:
 
         for element in sorted(page.elements, key=lambda item: int(item.get("z_index", 0))):
             if not bool(element.get("hidden", False)):
-                self._render_generic(draw, element, scale)
+                self._render_generic(image, draw, element, scale)
 
         for card in sorted(page.cards, key=lambda item: item.z_index):
             if bool(card.overrides.get("hidden", False)):
@@ -64,13 +64,12 @@ class FlyerRenderer:
             outline=vm.style.border,
             width=max(1, round(scale)),
         )
-
         self._draw_image(layer, vm.image_path, vm.style.image_region, scale)
         self._draw_text(draw, vm.name, vm.style.name_region, scale, vm.style.text_color, bold=True)
         self._draw_price(draw, vm, vm.style.price_region, scale, float(card.overrides.get("price_scale", 1.0)))
-        if vm.style.unit_region and vm.unit:
+        if vm.style.unit_region and vm.unit and bool(card.overrides.get("show_unit", True)):
             self._draw_text(draw, f"/{vm.unit}", vm.style.unit_region, scale, vm.style.text_color, bold=True)
-        if vm.style.limit_region and vm.limit:
+        if vm.style.limit_region and vm.limit and bool(card.overrides.get("show_limit", True)):
             self._draw_text(draw, f"LIMITE {vm.limit} POR CPF", vm.style.limit_region, scale, vm.style.text_color)
 
         rotation = float(getattr(card, "rotation", 0.0) or 0.0) % 360.0
@@ -89,7 +88,8 @@ class FlyerRenderer:
         if not source.exists():
             return
         try:
-            product = Image.open(source).convert("RGBA")
+            with Image.open(source) as opened:
+                product = opened.convert("RGBA")
         except (OSError, ValueError):
             return
         x, y, w, h = self._region_pixels(region, layer.width, layer.height)
@@ -153,26 +153,27 @@ class FlyerRenderer:
         return ImageFont.load_default()
 
     @staticmethod
-    def _render_generic(draw: ImageDraw.ImageDraw, element: dict, scale: float) -> None:
+    def _render_generic(canvas: Image.Image, draw: ImageDraw.ImageDraw, element: dict, scale: float) -> None:
         kind = element.get("type")
         x = float(element.get("x", 0)) * scale
         y = float(element.get("y", 0)) * scale
         w = float(element.get("width", 0)) * scale
         h = float(element.get("height", 0)) * scale
         if kind == "rect":
-            draw.rectangle(
-                (x, y, x + w, y + h),
-                fill=element.get("fill", "#FFFFFF"),
-                outline=element.get("outline"),
-            )
+            draw.rectangle((x, y, x + w, y + h), fill=element.get("fill", "#FFFFFF"), outline=element.get("outline"))
         elif kind == "text":
-            font = FlyerRenderer._font(
-                max(8, round(float(element.get("font_size", 24)) * scale)),
-                bool(element.get("bold")),
-            )
-            draw.text(
-                (x, y),
-                str(element.get("text", "")),
-                fill=element.get("fill", "#162033"),
-                font=font,
-            )
+            font = FlyerRenderer._font(max(8, round(float(element.get("font_size", 24)) * scale)), bool(element.get("bold")))
+            draw.text((x, y), str(element.get("text", "")), fill=element.get("fill", "#162033"), font=font)
+        elif kind == "image":
+            path = Path(str(element.get("path", "")))
+            if not path.exists() or w <= 0 or h <= 0:
+                return
+            try:
+                with Image.open(path) as opened:
+                    image = opened.convert("RGBA")
+                fitted = ImageOps.contain(image, (max(1, round(w)), max(1, round(h))), Image.Resampling.LANCZOS)
+                px = round(x + (w - fitted.width) / 2)
+                py = round(y + (h - fitted.height) / 2)
+                canvas.paste(fitted, (px, py), fitted)
+            except (OSError, ValueError):
+                return
