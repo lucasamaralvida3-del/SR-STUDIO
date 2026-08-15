@@ -17,6 +17,15 @@ ALIASES = {
     "app_price": {"APP", "PRECO APP", "CLUBE", "PRECO CLUBE"},
     "retail_price": {"VAREJO", "PRECO VAREJO", "VENDA"},
     "wholesale_price": {"ATACADO", "PRECO ATACADO"},
+    "quantity": {
+        "QUANTIDADE",
+        "QTD",
+        "QTD ATACADO",
+        "QUANTIDADE ATACADO",
+        "A PARTIR DE",
+        "MINIMO ATACADO",
+        "QUANTIDADE MINIMA",
+    },
     "unit": {"UNIDADE", "UN", "ENTRADA", "TIPO VENDA"},
     "limit": {"LIMITE", "LIMITE CPF", "LIMITE POR CPF"},
     "category": {"CATEGORIA", "SETOR", "DEPARTAMENTO", "SECAO"},
@@ -51,7 +60,9 @@ class ExcelImporter:
         header_row, mapping = self._detect_header(ws)
         result = ExcelImportResult(column_map=mapping, sheet_name=ws.title, header_row=header_row)
         if "name" not in mapping:
-            result.issues.append(ImportIssue(header_row, "name", "Não foi possível identificar a coluna de produto.", "critical"))
+            result.issues.append(
+                ImportIssue(header_row, "name", "Não foi possível identificar a coluna de produto.", "critical")
+            )
             return result
 
         seen: set[str] = set()
@@ -72,6 +83,7 @@ class ExcelImporter:
                 "app_price": values.get("app_price"),
                 "retail_price": values.get("retail_price"),
                 "wholesale_price": values.get("wholesale_price"),
+                "quantity": self._text(values.get("quantity")),
                 "unit": unit,
                 "limit": self._text(values.get("limit")),
                 "category": self._text(values.get("category")),
@@ -81,7 +93,10 @@ class ExcelImporter:
             if identity in seen:
                 result.issues.append(ImportIssue(row_index, "product", f"Produto duplicado: {name}"))
             seen.add(identity)
-            if not any(product.get(k) not in (None, "") for k in ("promo_price", "app_price", "retail_price", "wholesale_price")):
+            if not any(
+                product.get(k) not in (None, "")
+                for k in ("promo_price", "app_price", "retail_price", "wholesale_price")
+            ):
                 result.issues.append(ImportIssue(row_index, "price", f"Produto sem preço: {name}"))
             result.products.append(product)
         return result
@@ -90,7 +105,10 @@ class ExcelImporter:
         best_row = 1
         best_mapping: dict[str, int] = {}
         best_score = -1
-        for row_index, row in enumerate(ws.iter_rows(min_row=1, max_row=min(ws.max_row, 20), values_only=True), start=1):
+        for row_index, row in enumerate(
+            ws.iter_rows(min_row=1, max_row=min(ws.max_row, 20), values_only=True),
+            start=1,
+        ):
             mapping: dict[str, int] = {}
             for idx, value in enumerate(row):
                 normalized = self._norm(value)
@@ -100,7 +118,9 @@ class ExcelImporter:
                     if normalized in aliases and field not in mapping:
                         mapping[field] = idx
                         break
-            score = len(mapping) + (3 if "name" in mapping else 0) + (2 if any(k in mapping for k in ("promo_price", "retail_price", "app_price")) else 0)
+            score = len(mapping) + (3 if "name" in mapping else 0) + (
+                2 if any(k in mapping for k in ("promo_price", "retail_price", "app_price")) else 0
+            )
             if score > best_score:
                 best_row, best_mapping, best_score = row_index, mapping, score
         return best_row, best_mapping
