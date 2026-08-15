@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.1 Professional
-Priority UX update: Promotion and Wholesale are now first-class workflows.
-Release retry after PEP 440 version fix.
-Triggered: 2026-08-15T07:31:00-03:00
+SR Studio 5.0 Beta 7.2 Professional
+Dedicated print-poster correction: Promoções and Atacado restored as independent production modules, separate from Encartes Studio.
+Includes historical SR PPTX/PowerPoint engines, Promotion 1-price/2-price/Club Exclusive flows, Atacado report 782, history/change detection, and real-template analysis improvements.
+Triggered: 2026-08-15T08:16:00-03:00
