@@ -1,0 +1,46 @@
+name: SR Studio 5 Installer
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sr-studio-5-professional]
+    paths:
+      - 'installer/**'
+      - 'src/srstudio/**'
+      - 'pyproject.toml'
+      - '.github/workflows/sr-studio-5-installer.yml'
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      - name: Install application builder
+        run: python -m pip install -e . pyinstaller
+      - name: Build application directory
+        shell: pwsh
+        run: pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src src/srstudio/app/workspace.py
+      - name: Install Inno Setup
+        shell: pwsh
+        run: choco install innosetup -y --no-progress
+      - name: Compile installer
+        shell: pwsh
+        run: |
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "installer\sr-studio-5.iss"
+          if (!(Test-Path "release\SR-Studio-5-Setup.exe")) { throw "Instalador não foi gerado" }
+      - name: Create installer checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash "release\SR-Studio-5-Setup.exe" -Algorithm SHA256).Hash.ToLower()
+          "sha256=$hash" | Set-Content "release\SR-Studio-5-Setup.sha256.txt"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR-Studio-5-Installer
+          path: |
+            release/SR-Studio-5-Setup.exe
+            release/SR-Studio-5-Setup.sha256.txt
+          if-no-files-found: error
