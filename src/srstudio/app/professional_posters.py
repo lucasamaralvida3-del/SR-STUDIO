@@ -11,11 +11,26 @@ from srstudio.core.models import Product
 from srstudio.importers.excel.reader import ExcelImporter
 from srstudio.posters import PosterKind
 from srstudio.posters.importers import PromotionWorkbookImporter, WholesaleReportImporter
+from srstudio.posters.legacy_bridge import legacy_template
 from srstudio.pricing.engine import PriceEngine
 
 
 class _PosterQueueMixin:
     """Keeps poster work queues independent from products used by Encartes Studio."""
+
+    def _load_saved_templates(self) -> None:
+        super()._load_saved_templates()
+        official = legacy_template(self.kind)
+        if official is not None and not any(item.id == official.id for item in self.templates):
+            self.templates.insert(0, official)
+
+    def _refresh_preview(self) -> None:
+        super()._refresh_preview()
+        if not getattr(self, "templates", None):
+            return
+        template = self._current_template()
+        if template.metadata.get("legacy_engine"):
+            self.template_status.configure(text="SR OFICIAL · modelo histórico validado")
 
     def _queue_products(self):
         queues = self.project.settings.get("poster_queues", {})
