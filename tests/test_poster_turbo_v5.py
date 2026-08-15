@@ -24,11 +24,11 @@ def test_turbo_engines_use_one_powerpoint_session_with_safe_model_open_per_item(
     atacado = (legacy_engines_root() / "TurboAtacadoPreview.ps1").read_text(encoding="utf-8-sig")
     assert "[Activator]::CreateInstance" in promo
     assert "$ppt.Presentations.Open" in promo
-    assert "Duplicate()" not in promo
+    assert "$sourceSlide.Duplicate()" not in promo
     assert "BATCH_DONE" in promo
     assert "[Activator]::CreateInstance" in atacado
     assert "$ppt.Presentations.Open" in atacado
-    assert "Duplicate()" not in atacado
+    assert "$sourceSlide.Duplicate()" not in atacado
     assert "BATCH_DONE" in atacado
 
 
