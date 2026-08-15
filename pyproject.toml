@@ -17,7 +17,7 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
-sr-studio-5 = "srstudio.app.main:run"
+sr-studio-5 = "srstudio.app.workspace:run"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -34,6 +34,5 @@ line-length = 120
 target-version = "py311"
 
 [tool.ruff.lint]
-# Durante a construção do 5.0 o gate bloqueia erros de execução/sintaxe.
-# Regras de estilo e modernização voltam de forma incremental após a fundação estabilizar.
+# Gate inicial: erros de execução/sintaxe. Estilo é endurecido progressivamente.
 select = ["E9", "F63", "F7", "F82"]
