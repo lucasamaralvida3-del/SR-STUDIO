@@ -5,7 +5,8 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 
 from srstudio import __version__
-from srstudio.app.design import COLORS, FONT, PAGE_META
+from srstudio.app.brand import icon_path, load_logo_photo
+from srstudio.app.design import COLORS, FONT, NAV_ICONS, NAV_SECTIONS, PAGE_META
 from srstudio.app.editor_experience import StudioEditorExperience
 from srstudio.app.ui_kit import ToastManager, Tooltip
 from srstudio.app.workspace import SRStudioWorkspace
@@ -17,8 +18,138 @@ class SRStudioProfessional(SRStudioWorkspace):
     def __init__(self) -> None:
         super().__init__()
         self.toast = ToastManager(self)
+        try:
+            if icon_path().is_file():
+                self.iconbitmap(default=str(icon_path()))
+        except tk.TclError:
+            pass
         for label, button in self.nav_buttons.items():
             Tooltip(button, PAGE_META[label][1], delay=520)
+
+    def _build_sidebar(self) -> None:
+        brand = tk.Frame(self.sidebar, bg=COLORS.sidebar)
+        brand.pack(fill="x", padx=18, pady=(18, 16))
+
+        self._brand_sidebar_photo = load_logo_photo(self, 58)
+        if self._brand_sidebar_photo is not None:
+            logo = tk.Label(
+                brand,
+                image=self._brand_sidebar_photo,
+                bg=COLORS.sidebar,
+                bd=0,
+            )
+        else:
+            logo = tk.Label(
+                brand,
+                text="SR",
+                width=3,
+                bg=COLORS.primary,
+                fg="white",
+                font=(FONT["family"], 18, "bold"),
+                padx=2,
+                pady=7,
+            )
+        logo.pack(side="left")
+
+        brand_text = tk.Frame(brand, bg=COLORS.sidebar)
+        brand_text.pack(side="left", padx=11)
+        tk.Label(
+            brand_text,
+            text="SR Studio",
+            bg=COLORS.sidebar,
+            fg="white",
+            font=(FONT["family"], 14, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            brand_text,
+            text="PROFESSIONAL",
+            bg=COLORS.sidebar,
+            fg=COLORS.sidebar_muted,
+            font=(FONT["family"], 7, "bold"),
+        ).pack(anchor="w", pady=(1, 0))
+
+        self.nav_buttons: dict[str, tk.Button] = {}
+        self.nav_indicators: dict[str, tk.Frame] = {}
+        for section, labels in NAV_SECTIONS:
+            tk.Label(
+                self.sidebar,
+                text=section,
+                bg=COLORS.sidebar,
+                fg=COLORS.sidebar_muted,
+                font=(FONT["family"], 7, "bold"),
+                anchor="w",
+            ).pack(fill="x", padx=20, pady=(13, 5))
+            for label in labels:
+                row = tk.Frame(self.sidebar, bg=COLORS.sidebar)
+                row.pack(fill="x", padx=10, pady=1)
+                indicator = tk.Frame(row, bg=COLORS.sidebar, width=3)
+                indicator.pack(side="left", fill="y", pady=5)
+                button = tk.Button(
+                    row,
+                    text=f"  {NAV_ICONS[label]}    {label}",
+                    anchor="w",
+                    command=lambda name=label: self.navigate(name),
+                    bg=COLORS.sidebar,
+                    fg=COLORS.sidebar_text,
+                    activebackground=COLORS.sidebar_hover,
+                    activeforeground="white",
+                    bd=0,
+                    relief="flat",
+                    padx=10,
+                    pady=8,
+                    font=(FONT["family"], FONT["small"]),
+                    cursor="hand2",
+                )
+                button.pack(side="left", fill="x", expand=True)
+                button.bind(
+                    "<Enter>",
+                    lambda _e, b=button, name=label: self._nav_hover(b, name, True),
+                )
+                button.bind(
+                    "<Leave>",
+                    lambda _e, b=button, name=label: self._nav_hover(b, name, False),
+                )
+                self.nav_buttons[label] = button
+                self.nav_indicators[label] = indicator
+
+        footer = tk.Frame(
+            self.sidebar,
+            bg=COLORS.sidebar_dark,
+            highlightbackground="#18457D",
+            highlightthickness=1,
+        )
+        footer.pack(side="bottom", fill="x", padx=12, pady=14)
+        top = tk.Frame(footer, bg=COLORS.sidebar_dark)
+        top.pack(fill="x", padx=11, pady=(10, 4))
+        tk.Label(
+            top,
+            text="●",
+            bg=COLORS.sidebar_dark,
+            fg="#49D395",
+            font=(FONT["family"], 8),
+        ).pack(side="left")
+        tk.Label(
+            top,
+            text="Studio protegido",
+            bg=COLORS.sidebar_dark,
+            fg="white",
+            font=(FONT["family"], 8, "bold"),
+        ).pack(side="left", padx=(5, 0))
+        self.sidebar_status = tk.Label(
+            footer,
+            text="Autosave ativo",
+            bg=COLORS.sidebar_dark,
+            fg=COLORS.sidebar_muted,
+            font=(FONT["family"], 8),
+        )
+        self.sidebar_status.pack(anchor="w", padx=11)
+        tk.Label(
+            footer,
+            text=f"v{__version__}",
+            bg=COLORS.sidebar_dark,
+            fg="#7FA6D8",
+            font=(FONT["family"], 7),
+        ).pack(anchor="w", padx=11, pady=(2, 10))
 
     def navigate(self, name: str) -> None:
         if name != "Encartes Studio":
@@ -141,16 +272,20 @@ def _show_splash(app: SRStudioProfessional) -> None:
     )
     shell.pack(fill="both", expand=True)
 
-    logo = tk.Label(
-        shell,
-        text="SR",
-        bg=COLORS.primary,
-        fg="white",
-        font=(FONT["family"], 27, "bold"),
-        padx=15,
-        pady=11,
-    )
-    logo.pack(pady=(48, 16))
+    splash._brand_photo = load_logo_photo(app, 84)
+    if splash._brand_photo is not None:
+        logo = tk.Label(shell, image=splash._brand_photo, bg=COLORS.sidebar, bd=0)
+    else:
+        logo = tk.Label(
+            shell,
+            text="SR",
+            bg=COLORS.primary,
+            fg="white",
+            font=(FONT["family"], 27, "bold"),
+            padx=15,
+            pady=11,
+        )
+    logo.pack(pady=(42, 12))
     tk.Label(
         shell,
         text="SR Studio",
@@ -164,7 +299,7 @@ def _show_splash(app: SRStudioProfessional) -> None:
         bg=COLORS.sidebar,
         fg=COLORS.sidebar_muted,
         font=(FONT["family"], 8, "bold"),
-    ).pack(pady=(3, 18))
+    ).pack(pady=(3, 16))
 
     progress_shell = tk.Frame(shell, bg="#17447E", width=280, height=4)
     progress_shell.pack()
