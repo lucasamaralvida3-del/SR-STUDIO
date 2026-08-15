@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.15 Professional
-SR Image Cloud Sync + Banco de Imagens centralizado.
-Adiciona sincronização automática do Banco SR ao iniciar, cache offline, download incremental, pacote-base verificado por SHA-256 para primeira instalação, preservação total de imagens pessoais, bootstrap redirecionável para futura CDN/R2, botão Sincronizar agora, preparação de publicação e publicador Cloudflare R2 exclusivo para instalações administrativas com credenciais externas. Assets e pacote-base são enviados antes do manifest.json para ativação segura. O banco oficial inicial permanece vazio até a primeira publicação de imagens aprovadas. Canva V2, layouts aprendidos, Promoções, Atacado, PDFium e engines históricos continuam preservados.
-Triggered: 2026-08-15T14:27:00-03:00
+SR Studio 5.0 Beta 7.16 Professional
+Banco de Imagens: revisão segura e layout corrigido.
+Corrige o painel lateral do Banco de Imagens para manter APROVAR e RECUSAR sempre visíveis dentro do layout, com detalhes roláveis separadamente. Imagens iguais ou visualmente equivalentes encontradas em produtos diferentes agora são obrigatoriamente enviadas para PENDENTES com alerta de revisão e lista dos produtos conflitantes, mesmo com alta confiança. Associações pendentes não podem preencher produtos automaticamente. O auto-match por similaridade também ficou mais rigoroso para evitar que apenas uma marca em comum aplique imagem no produto errado. Mantém SR Image Cloud Sync, Canva V2, layouts aprendidos, Promoções, Atacado, PDFium e engines históricos preservados.
+Triggered: 2026-08-15T14:55:00-03:00
