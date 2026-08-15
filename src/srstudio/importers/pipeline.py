@@ -118,12 +118,10 @@ class UnifiedImportPipeline:
                     learned_profiles.append(profile.id)
                     summary.layouts_learned += 1
 
-            used: set[int] = set()
             for candidate in mapped:
                 semantic_elements = self._semantic_elements(candidate)
                 if not semantic_elements or candidate.bounds is None:
                     continue
-                used.update(id(item) for item in semantic_elements)
                 left, top, right, bottom = candidate.bounds
                 name_element = candidate.name
                 image_element = candidate.image
@@ -168,6 +166,7 @@ class UnifiedImportPipeline:
                         "source_file": str(path),
                         "image_bank_asset_id": image_asset_id,
                         "canva_import_v2": True,
+                        "canva_native_visual": True,
                         "price_split": bool(candidate.price_cluster and candidate.price_cluster.complete is None),
                     },
                 )
@@ -181,6 +180,8 @@ class UnifiedImportPipeline:
                     z_index=min((int(item.metadata.get("z_index", 0)) for item in semantic_elements), default=0),
                     overrides={
                         "imported_from_canva": True,
+                        "canva_native_visual": True,
+                        "hidden": True,
                         "imported_style": dict(candidate.style_spec),
                         "recognition_confidence": candidate.confidence,
                     },
@@ -189,16 +190,19 @@ class UnifiedImportPipeline:
                 summary.products_added += 1
                 summary.cards_added += 1
 
+            # Preserve the complete Canva slide as the visual layer. Semantic cards above
+            # are intentionally hidden from normal rendering and remain only as editable
+            # hit regions/product bindings. This avoids replacing Canva artwork with the
+            # generic SR product-card renderer.
             for element in slide.elements:
-                if id(element) in used:
-                    continue
                 converted = self._pptx_element(element, slide.width, slide.height, page.width, page.height)
                 if converted:
                     page.elements.append(converted)
 
         project.settings["pptx_source"] = str(path)
         project.settings["pptx_media_dir"] = str(media_dir)
-        project.settings["canva_import_version"] = 2
+        project.settings["canva_import_version"] = 3
+        project.settings["canva_native_visual"] = True
         if learned_profiles:
             project.settings["canva_layout_profiles"] = list(dict.fromkeys(learned_profiles))
         return summary
