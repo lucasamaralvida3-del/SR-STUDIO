@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import queue
 import re
 import shutil
 import threading
@@ -120,6 +121,8 @@ class SRStudioStagedPosters(base.SRStudioPosterProfessional):
     def __init__(self) -> None:
         self._staging_generation = 0
         self._poster_staging = PosterStagingService()
+        self._staging_events: queue.Queue[tuple] = queue.Queue()
+        self._staging_poll_after = None
         super().__init__()
 
     def _import_poster_source(self, kind: PosterKind) -> int:
@@ -148,12 +151,12 @@ class SRStudioStagedPosters(base.SRStudioPosterProfessional):
             "info",
             4200,
         )
+        self._ensure_staging_event_poll()
 
         def worker() -> None:
             generated = reused = failed = 0
             for index, product in enumerate(products, start=1):
-                artifact_path = self._poster_staging.ready_artifact(product, kind, campaign)
-                was_ready = artifact_path is not None
+                was_ready = self._poster_staging.ready_artifact(product, kind, campaign) is not None
                 artifact = self._poster_staging.stage_one(product, kind, campaign)
                 if artifact.valid:
                     if was_ready:
@@ -162,21 +165,39 @@ class SRStudioStagedPosters(base.SRStudioPosterProfessional):
                         generated += 1
                 else:
                     failed += 1
-                if generation == self._staging_generation:
-                    self.after(
-                        0,
-                        lambda done=index, total=total: self._staging_progress(done, total),
-                    )
-            if generation == self._staging_generation:
-                self.after(
-                    0,
-                    lambda: self._staging_finished(total, generated, reused, failed),
-                )
+                self._staging_events.put(("progress", generation, index, total))
+            self._staging_events.put(("finished", generation, total, generated, reused, failed))
 
         threading.Thread(target=worker, name="sr-poster-staging", daemon=True).start()
 
+    def _ensure_staging_event_poll(self) -> None:
+        if self._staging_poll_after is None:
+            self._staging_poll_after = self.after(120, self._poll_staging_events)
+
+    def _poll_staging_events(self) -> None:
+        self._staging_poll_after = None
+        while True:
+            try:
+                event = self._staging_events.get_nowait()
+            except queue.Empty:
+                break
+            kind = event[0]
+            generation = event[1]
+            if generation != self._staging_generation:
+                continue
+            if kind == "progress":
+                _, _, done, total = event
+                self._staging_progress(done, total)
+            elif kind == "finished":
+                _, _, total, generated, reused, failed = event
+                self._staging_finished(total, generated, reused, failed)
+        if not self._staging_events.empty() or threading.active_count() > 1:
+            self._staging_poll_after = self.after(180, self._poll_staging_events)
+
     def _staging_progress(self, done: int, total: int) -> None:
-        self.toast.show(f"Cartazes pré-renderizados: {done}/{total} prontos.", "info", 1400)
+        # Avoid flooding notifications: first, last and every fifth item are enough.
+        if done == 1 or done == total or done % 5 == 0:
+            self.toast.show(f"Cartazes pré-renderizados: {done}/{total} prontos.", "info", 1400)
 
     def _staging_finished(self, total: int, generated: int, reused: int, failed: int) -> None:
         if failed:
