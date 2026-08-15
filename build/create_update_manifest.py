@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from srstudio import __channel__, __version__
+from srstudio import __channel__, __release_label__, __version__
 from srstudio.updater.manifest import build_manifest
 
 
@@ -13,7 +13,12 @@ def main() -> int:
         return 2
     package = Path(sys.argv[1])
     output = Path(sys.argv[2])
-    manifest = build_manifest(package, __version__, __channel__, "SR Studio 5 Professional development build")
+    manifest = build_manifest(
+        package,
+        __version__,
+        __channel__,
+        f"SR Studio 5 Professional {__release_label__}",
+    )
     manifest.save(output)
     print(f"manifest={output} sha256={manifest.sha256} size={manifest.size}")
     return 0
