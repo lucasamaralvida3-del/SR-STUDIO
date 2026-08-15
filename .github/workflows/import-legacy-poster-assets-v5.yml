@@ -1,0 +1,134 @@
+name: Import legacy poster assets for SR Studio 5
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sr-studio-5-professional]
+    paths:
+      - 'release/IMPORT_LEGACY_POSTERS'
+
+permissions:
+  contents: write
+
+jobs:
+  import-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout professional branch
+        uses: actions/checkout@v4
+
+      - name: Download proven Beta 16 poster package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf legacy-package legacy-work
+          mkdir -p legacy-package legacy-work
+          gh release download v4.0.15-hybrid.beta16 \
+            -p 'SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip' \
+            -D legacy-package
+          unzip -q legacy-package/SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip -d legacy-work
+
+      - name: Recover poster templates and PowerPoint engines
+        shell: bash
+        run: |
+          set -euo pipefail
+          target='src/srstudio/assets/poster_templates/legacy'
+          mkdir -p "$target/models" "$target/engines"
+
+          models=(
+            'SEGUNDA_DA_LIMPEZA_1_PRECO.pptx'
+            'SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx'
+            'SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx'
+            'SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx'
+            'CLUBE_EXCLUSIVO.pptx'
+            'CLUBE_EXCLUSIVO_COM_LIMITE.pptx'
+            'ATACADO.pptx'
+            'CARTAZ_VENDA.pptx'
+          )
+          engines=(
+            'PowerPointEngine.ps1'
+            'AtacadoEngine.ps1'
+            'PreviewEngine.ps1'
+            'AtacadoPreview.ps1'
+            'ValidateLayout.ps1'
+          )
+
+          found_models=0
+          for name in "${models[@]}"; do
+            src="$(find legacy-work -type f -name "$name" -print -quit || true)"
+            if [[ -n "$src" ]]; then
+              cp "$src" "$target/models/$name"
+              echo "Recovered model: $name"
+              found_models=$((found_models + 1))
+            else
+              echo "Model not present in historical package: $name"
+            fi
+          done
+
+          found_engines=0
+          for name in "${engines[@]}"; do
+            src="$(find legacy-work -type f -name "$name" -print -quit || true)"
+            if [[ -n "$src" ]]; then
+              cp "$src" "$target/engines/$name"
+              echo "Recovered engine: $name"
+              found_engines=$((found_engines + 1))
+            else
+              echo "Engine not present in historical package: $name"
+            fi
+          done
+
+          if [[ "$found_models" -lt 3 ]]; then
+            echo "Too few legacy poster models were recovered ($found_models)."
+            find legacy-work -maxdepth 4 -type f | sort | head -200
+            exit 1
+          fi
+          if [[ ! -f "$target/models/ATACADO.pptx" ]]; then
+            echo 'ATACADO.pptx is mandatory.'
+            exit 1
+          fi
+
+      - name: Build provenance manifest
+        shell: python
+        run: |
+          from __future__ import annotations
+          import hashlib
+          import json
+          from pathlib import Path
+
+          root = Path('src/srstudio/assets/poster_templates/legacy')
+          files = []
+          for path in sorted(p for p in root.rglob('*') if p.is_file() and p.name != 'manifest.json'):
+              digest = hashlib.sha256(path.read_bytes()).hexdigest()
+              files.append({
+                  'path': path.relative_to(root).as_posix(),
+                  'sha256': digest,
+                  'size': path.stat().st_size,
+              })
+          manifest = {
+              'format': 'SRSTUDIO_LEGACY_POSTERS_1',
+              'source_release': 'v4.0.15-hybrid.beta16',
+              'source_asset': 'SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip',
+              'purpose': 'Preserve the proven Promotion/Wholesale print poster templates in SR Studio 5.',
+              'files': files,
+          }
+          (root / 'manifest.json').write_text(
+              json.dumps(manifest, ensure_ascii=False, indent=2),
+              encoding='utf-8',
+          )
+          print(f'Legacy poster assets: {len(files)}')
+
+      - name: Commit assets to Professional branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/srstudio/assets/poster_templates/legacy
+          if git diff --cached --quiet; then
+            echo 'Legacy poster assets already match the historical package.'
+            exit 0
+          fi
+          git commit -m 'assets(posters): recover proven Stable poster templates'
+          git push origin HEAD:sr-studio-5-professional
