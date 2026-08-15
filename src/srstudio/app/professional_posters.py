@@ -26,6 +26,37 @@ from srstudio.pricing.engine import PriceEngine
 class _PosterQueueMixin:
     """Keeps poster work queues independent from products used by Encartes Studio."""
 
+    def _build(self) -> None:
+        super()._build()
+
+        # PosterGeneratorView historically used pack() for all four large regions.
+        # With a tall official preview the flexible body could consume the requested
+        # height and push the generation footer below the visible window. Re-grid only
+        # the top-level regions: the body is the sole flexible row and the actions stay
+        # pinned at the bottom on every supported window size.
+        regions = self.winfo_children()
+        if len(regions) >= 4:
+            header, controls, body, footer = regions[:4]
+            for region in (header, controls, body, footer):
+                region.pack_forget()
+
+            self.grid_columnconfigure(0, weight=1)
+            self.grid_rowconfigure(0, weight=0)
+            self.grid_rowconfigure(1, weight=0)
+            self.grid_rowconfigure(2, weight=1)
+            self.grid_rowconfigure(3, weight=0)
+
+            header.grid(row=0, column=0, sticky="ew", padx=24, pady=(20, 10))
+            controls.grid(row=1, column=0, sticky="ew", padx=24, pady=(0, 10))
+            body.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 10))
+            footer.grid(row=3, column=0, sticky="ew", padx=24, pady=(0, 18))
+
+            # Ignore the large requested height of a rendered preview. The body receives
+            # the actual remaining window space and its table/preview panes adapt inside it.
+            body.grid_propagate(False)
+            self._poster_body = body
+            self._poster_footer = footer
+
     def _load_saved_templates(self) -> None:
         super()._load_saved_templates()
         catalog = PosterModelCatalog()
@@ -72,11 +103,23 @@ class _PosterQueueMixin:
         if not hasattr(self, "_preview_executor"):
             self._preview_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sr-poster-preview")
             self._official_preview_request = ""
+            self._preview_debounce_after = None
+            self._preview_future = None
             self.bind("<Destroy>", self._shutdown_preview_executor, add="+")
 
     def _shutdown_preview_executor(self, event=None) -> None:
         if event is not None and event.widget is not self:
             return
+        after_id = getattr(self, "_preview_debounce_after", None)
+        if after_id is not None:
+            try:
+                self.after_cancel(after_id)
+            except tk.TclError:
+                pass
+            self._preview_debounce_after = None
+        future = getattr(self, "_preview_future", None)
+        if future is not None and not future.done():
+            future.cancel()
         executor = getattr(self, "_preview_executor", None)
         if executor is not None:
             executor.shutdown(wait=False, cancel_futures=True)
@@ -172,11 +215,41 @@ class _PosterQueueMixin:
         if request == getattr(self, "_official_preview_request", ""):
             return
         self._official_preview_request = request
-        self.template_status.configure(text=f"AUTO · {decision.short_label} · carregando prévia oficial…")
+
+        # Debounce rapid table navigation. Only the product where the selection stops
+        # starts a PowerPoint preview; queued previews from fast clicks are discarded.
+        after_id = getattr(self, "_preview_debounce_after", None)
+        if after_id is not None:
+            try:
+                self.after_cancel(after_id)
+            except tk.TclError:
+                pass
+        future = getattr(self, "_preview_future", None)
+        if future is not None and not future.done():
+            future.cancel()
+
+        self.template_status.configure(text=f"AUTO · {decision.short_label} · aguardando prévia…")
+        self._preview_debounce_after = self.after(
+            260,
+            lambda: self._start_official_preview(request, product, decision, campaign),
+        )
+
+    def _start_official_preview(
+        self,
+        request: str,
+        product: Product,
+        decision: PosterModelDecision,
+        campaign: str,
+    ) -> None:
+        if request != getattr(self, "_official_preview_request", ""):
+            return
+        self._preview_debounce_after = None
         executor = self._preview_executor
         if executor is None:
             return
-        future = executor.submit(service.render, product, self.kind, campaign)
+        self.template_status.configure(text=f"AUTO · {decision.short_label} · PowerPoint em segundo plano…")
+        future = executor.submit(self._official_preview_service.render, product, self.kind, campaign)
+        self._preview_future = future
         self.after(90, lambda: self._poll_official_preview(request, decision, future))
 
     def _poll_official_preview(
@@ -196,14 +269,20 @@ class _PosterQueueMixin:
         if not future.done():
             self.after(90, lambda: self._poll_official_preview(request, decision, future))
             return
+        if future is getattr(self, "_preview_future", None):
+            self._preview_future = None
         try:
             preview_path = Path(future.result())
             with Image.open(preview_path) as raw:
                 image = raw.convert("RGB")
-                image.thumbnail((440, 590), Image.Resampling.LANCZOS)
+                available_w = self.preview.winfo_width()
+                available_h = self.preview.winfo_height()
+                max_w = min(440, max(260, available_w - 24)) if available_w > 80 else 440
+                max_h = min(550, max(300, available_h - 24)) if available_h > 80 else 520
+                image.thumbnail((max_w, max_h), Image.Resampling.LANCZOS)
             self._preview_photo = ImageTk.PhotoImage(image, master=self.preview)
             self.preview.configure(image=self._preview_photo, text="")
-            self.template_status.configure(text=f"AUTO · {decision.short_label} · prévia oficial")
+            self.template_status.configure(text=f"AUTO · {decision.short_label} · prévia oficial pronta")
         except Exception as exc:
             self.template_status.configure(text=f"AUTO · {decision.short_label} · prévia simplificada")
             current = self.info_label.cget("text")
