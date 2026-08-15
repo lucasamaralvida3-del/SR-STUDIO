@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import math
 import tkinter as tk
+from pathlib import Path
 
-from PIL import ImageTk
+from PIL import Image, ImageEnhance, ImageOps, ImageTk
 
 from srstudio.app.design import COLORS, FONT
 from srstudio.app.premium_editor import PremiumEncartesStudioView, PremiumFlyerCanvas
@@ -25,7 +27,7 @@ CURSORS = {
 
 
 class StudioCanvasExperience(PremiumFlyerCanvas):
-    """Ergonomia adicional do canvas para uso contínuo em desktop."""
+    """Desktop canvas with Canva-aware preview and professional editing ergonomics."""
 
     def __init__(self, master, controller, on_selection_changed=None, on_changed=None, on_zoom=None) -> None:
         self.on_zoom = on_zoom
@@ -35,7 +37,6 @@ class StudioCanvasExperience(PremiumFlyerCanvas):
         self.bind("<Control-MouseWheel>", self._wheel_zoom, add="+")
 
     def redraw(self) -> None:
-        """Desenha o editor na ordem correta: papel, grid, conteúdo, régua e seleção."""
         self.delete("all")
         self._photos.clear()
         transform = self.transform()
@@ -58,10 +59,7 @@ class StudioCanvasExperience(PremiumFlyerCanvas):
         )
         if self.show_grid:
             self._draw_grid(transform)
-        elements = sorted(
-            self.controller.page.elements,
-            key=lambda item: int(item.get("z_index", 0)),
-        )
+        elements = sorted(self.controller.page.elements, key=lambda item: int(item.get("z_index", 0)))
         for index, element in enumerate(elements):
             if not bool(element.get("hidden", False)):
                 self._draw_element(transform, element, f"element-{index}")
@@ -72,9 +70,129 @@ class StudioCanvasExperience(PremiumFlyerCanvas):
             self._draw_rulers(transform)
         self._draw_selection(transform)
 
+    def _draw_element(self, transform, element: dict, key: str) -> None:
+        x, y = transform.to_screen(float(element.get("x", 0)), float(element.get("y", 0)))
+        width = max(0.0, float(element.get("width", 0)) * transform.scale)
+        height = max(0.0, float(element.get("height", 0)) * transform.scale)
+        kind = element.get("type")
+        rotation = float(element.get("rotation", 0.0) or 0.0) % 360.0
+        if kind == "rect":
+            if rotation:
+                points = self._rotated_rect_points(x, y, width, height, rotation)
+                self.create_polygon(
+                    *points,
+                    fill=str(element.get("fill") or "#FFFFFF"),
+                    outline=str(element.get("outline") or ""),
+                )
+            else:
+                self.create_rectangle(
+                    x,
+                    y,
+                    x + width,
+                    y + height,
+                    fill=str(element.get("fill") or "#FFFFFF"),
+                    outline=str(element.get("outline") or ""),
+                )
+            return
+        if kind == "text":
+            try:
+                raw_size = float(element.get("font_size", 20) or 20)
+            except (TypeError, ValueError):
+                raw_size = 20.0
+            size = max(6, round(raw_size * 1.333 * transform.scale))
+            family = str(element.get("font_name") or FONT["family"])
+            weight = "bold" if element.get("bold") else "normal"
+            slant = "italic" if element.get("italic") else "roman"
+            anchor = "nw"
+            justify = "left"
+            align = str(element.get("align") or "").lower()
+            if align in {"ctr", "center"}:
+                anchor, justify = "n", "center"
+                x += width / 2
+            elif align in {"r", "right"}:
+                anchor, justify = "ne", "right"
+                x += width
+            self.create_text(
+                x,
+                y,
+                text=str(element.get("text", "")),
+                anchor=anchor,
+                width=max(10, width),
+                fill=str(element.get("fill") or "#162033"),
+                font=(family, size, weight, slant),
+                justify=justify,
+                angle=-rotation,
+            )
+            return
+        if kind == "image":
+            photo = self._canva_image(element, max(1, round(width)), max(1, round(height)), key)
+            if photo is not None:
+                self.create_image(x + width / 2, y + height / 2, image=photo, anchor="center")
+            return
+        super()._draw_element(transform, element, key)
+
+    def _canva_image(self, element: dict, width: int, height: int, key: str) -> ImageTk.PhotoImage | None:
+        source = Path(str(element.get("path", "")))
+        if not source.is_file():
+            return None
+        try:
+            with Image.open(source) as opened:
+                image = opened.convert("RGBA")
+            image = self._apply_crop(image, dict(element.get("crop") or {}))
+            if bool(element.get("flip_h")):
+                image = ImageOps.mirror(image)
+            if bool(element.get("flip_v")):
+                image = ImageOps.flip(image)
+            if str(element.get("image_fit") or "contain").lower() == "cover":
+                fitted = ImageOps.fit(image, (width, height), Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+            else:
+                fitted = ImageOps.contain(image, (width, height), Image.Resampling.LANCZOS)
+                canvas = Image.new("RGBA", (width, height), (0, 0, 0, 0))
+                canvas.alpha_composite(fitted, ((width - fitted.width) // 2, (height - fitted.height) // 2))
+                fitted = canvas
+            opacity = max(0.0, min(1.0, float(element.get("opacity", 1.0) or 1.0)))
+            if opacity < 0.999:
+                alpha = ImageEnhance.Brightness(fitted.getchannel("A")).enhance(opacity)
+                fitted.putalpha(alpha)
+            rotation = float(element.get("rotation", 0.0) or 0.0) % 360.0
+            if rotation:
+                fitted = fitted.rotate(-rotation, resample=Image.Resampling.BICUBIC, expand=True)
+            photo = ImageTk.PhotoImage(fitted, master=self)
+            self._photos[key] = photo
+            return photo
+        except (OSError, ValueError, TypeError):
+            return None
+
+    @staticmethod
+    def _apply_crop(image: Image.Image, crop: dict) -> Image.Image:
+        if not crop:
+            return image
+        try:
+            left = max(0.0, min(0.98, float(crop.get("l", 0.0))))
+            top = max(0.0, min(0.98, float(crop.get("t", 0.0))))
+            right = max(0.0, min(0.98, float(crop.get("r", 0.0))))
+            bottom = max(0.0, min(0.98, float(crop.get("b", 0.0))))
+        except (TypeError, ValueError):
+            return image
+        x1, y1 = round(image.width * left), round(image.height * top)
+        x2, y2 = round(image.width * (1.0 - right)), round(image.height * (1.0 - bottom))
+        return image.crop((x1, y1, x2, y2)) if x2 > x1 and y2 > y1 else image
+
+    @staticmethod
+    def _rotated_rect_points(x: float, y: float, width: float, height: float, rotation: float) -> list[float]:
+        cx, cy = x + width / 2, y + height / 2
+        angle = math.radians(-rotation)
+        cosine, sine = math.cos(angle), math.sin(angle)
+        result: list[float] = []
+        for px, py in ((x, y), (x + width, y), (x + width, y + height), (x, y + height)):
+            dx, dy = px - cx, py - cy
+            result.extend((cx + dx * cosine - dy * sine, cy + dx * sine + dy * cosine))
+        return result
+
     def _draw_card(self, transform, card) -> None:
         rotation = float(getattr(card, "rotation", 0.0) or 0.0) % 360.0
-        if not rotation:
+        imported = bool(card.overrides.get("imported_from_canva"))
+        if not rotation and not imported:
             super()._draw_card(transform, card)
             return
         product = self.controller.project.product_by_id(card.product_id)
@@ -82,14 +200,9 @@ class StudioCanvasExperience(PremiumFlyerCanvas):
             return
         layer = self.card_renderer.render_card_layer(card, product, scale=transform.scale, apply_rotation=True)
         photo = ImageTk.PhotoImage(layer, master=self)
-        self._photos[f"rotated-card-{card.id}"] = photo
+        self._photos[f"rendered-card-{card.id}"] = photo
         rect = transform.rect_to_screen(Rect(card.x, card.y, card.width, card.height))
-        self.create_image(
-            rect.x + rect.width / 2,
-            rect.y + rect.height / 2,
-            image=photo,
-            anchor="center",
-        )
+        self.create_image(rect.x + rect.width / 2, rect.y + rect.height / 2, image=photo, anchor="center")
 
     def _update_cursor(self, event: tk.Event) -> None:
         if self._active_handle:
