@@ -170,7 +170,8 @@ class CloudImageBankView(ImageBankView):
                 )
                 published = R2Publisher(self._r2_config).publish_directory(package.output_dir)
             except Exception as exc:
-                self.after(0, lambda: self._publish_failed(str(exc)))
+                error = str(exc)
+                self.after(0, lambda message=error: self._publish_failed(message))
                 return
             self.after(0, lambda: self._publish_finished(version, package, published))
 
