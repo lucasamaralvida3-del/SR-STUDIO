@@ -4,12 +4,28 @@ import threading
 
 import srstudio.app.advanced_posters as advanced
 import srstudio.app.responsive_posters as responsive
+from srstudio.app.layout_corpus_view import LayoutCorpusView
 from srstudio.app.professional import _show_splash
 from srstudio.posters import PosterKind
 
 
 class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
-    """Responsive poster shell with safe fast batch staging based on legacy engines."""
+    """Responsive poster shell plus the professional Encartes Studio experience."""
+
+    def navigate(self, name: str) -> None:
+        super().navigate(name)
+        if name != "Modelos":
+            return
+        self._clear()
+        LayoutCorpusView(
+            self.content,
+            self.project,
+            self.layout_corpus,
+            self.templates,
+            on_changed=self._mark_changed,
+            on_open_encartes=lambda: self.navigate("Encartes Studio"),
+            on_train=self.train_canva_library,
+        )
 
     def _start_background_staging(self, products, kind: PosterKind, campaign: str) -> None:
         self._staging_generation += 1
