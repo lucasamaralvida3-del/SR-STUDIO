@@ -5,9 +5,11 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from srstudio.core.models import Page, Product, ProductCard, StudioProject
+from srstudio.images.library import ImageLibrary
 from srstudio.importers.excel.reader import ExcelImporter
 from srstudio.importers.pptx.reader import PptxElement, PptxImporter
-from srstudio.importers.pptx.semantic import SemanticMapper
+from srstudio.importers.pptx.semantic import SemanticCard, SemanticMapper
+from srstudio.templates.corpus import LayoutCorpus
 
 
 @dataclass(slots=True)
@@ -15,11 +17,24 @@ class ImportSummary:
     source: str
     products_added: int = 0
     cards_added: int = 0
+    images_matched: int = 0
+    images_learned: int = 0
+    layouts_learned: int = 0
     warnings: list[str] = field(default_factory=list)
 
 
 class UnifiedImportPipeline:
-    """Converte Excel/PPTX para o mesmo modelo central do SR Studio."""
+    """Convert Excel/Canva PPTX into the same editable SR Studio project model."""
+
+    def __init__(
+        self,
+        image_library: ImageLibrary | None = None,
+        layout_corpus: LayoutCorpus | None = None,
+    ) -> None:
+        self.image_library = image_library
+        self.layout_corpus = layout_corpus
+        self.pptx_importer = PptxImporter()
+        self.semantic_mapper = SemanticMapper()
 
     def import_file(self, path: str | Path, project: StudioProject) -> ImportSummary:
         source = Path(path)
@@ -51,16 +66,31 @@ class UnifiedImportPipeline:
                 source="excel",
                 metadata={"source_row": item.get("source_row")},
             )
+            self._attach_learned_image(product, summary)
             project.products.append(product)
             summary.products_added += 1
         return summary
 
+    def _attach_learned_image(self, product: Product, summary: ImportSummary) -> None:
+        if self.image_library is None or product.image_path:
+            return
+        match = self.image_library.find_best_for_product(product.name)
+        if match is None:
+            return
+        product.image_path = match.asset.path
+        product.metadata["image_bank_asset_id"] = match.asset.id
+        product.metadata["image_bank_score"] = round(match.score, 4)
+        product.metadata["image_bank_reason"] = match.reason
+        product.metadata["image_bank_source"] = match.asset.source
+        self.image_library.record_use(match.asset.id)
+        summary.images_matched += 1
+
     def _pptx(self, path: Path, project: StudioProject) -> ImportSummary:
         digest = hashlib.sha256(f"{path.resolve()}:{path.stat().st_mtime_ns}".encode()).hexdigest()[:16]
         media_dir = Path.home() / ".srstudio5" / "imports" / digest
-        parsed = PptxImporter().import_file(path, media_dir=media_dir)
+        parsed = self.pptx_importer.import_file(path, media_dir=media_dir)
         summary = ImportSummary(str(path), warnings=list(parsed.warnings))
-        mapper = SemanticMapper()
+        learned_profiles: list[str] = []
 
         for slide in parsed.slides:
             while len(project.pages) < slide.index:
@@ -69,42 +99,84 @@ class UnifiedImportPipeline:
             page.name = f"Slide {slide.index}"
             page.width = 1080.0
             page.height = 1080.0 * (slide.height / max(slide.width, 1))
+            if str(slide.background).startswith("#"):
+                page.background = slide.background
             page.cards.clear()
             page.elements.clear()
 
-            mapped = mapper.map_slide(slide)
+            mapped = self.semantic_mapper.map_slide(slide)
+            if self.layout_corpus is not None:
+                profile = self.layout_corpus.observe(slide, mapped, str(path))
+                if profile is not None:
+                    learned_profiles.append(profile.id)
+                    summary.layouts_learned += 1
+
             used: set[int] = set()
             for candidate in mapped:
-                elements = [item for item in (candidate.name, candidate.price, candidate.image) if item is not None]
-                if not elements:
+                semantic_elements = self._semantic_elements(candidate)
+                if not semantic_elements or candidate.bounds is None:
                     continue
-                used.update(id(item) for item in elements)
-                left = min(item.x for item in elements)
-                top = min(item.y for item in elements)
-                right = max(item.x + item.width for item in elements)
-                bottom = max(item.y + item.height for item in elements)
+                used.update(id(item) for item in semantic_elements)
+                left, top, right, bottom = candidate.bounds
                 name_element = candidate.name
-                price_element = candidate.price
                 image_element = candidate.image
+                product_name = name_element.text if name_element is not None else "Produto importado"
+                image_path = (
+                    image_element.media_path
+                    if image_element is not None and Path(image_element.media_path).exists()
+                    else ""
+                )
+                image_asset_id = ""
+                if self.image_library is not None and image_path and name_element is not None:
+                    try:
+                        asset = self.image_library.learn_product_image(
+                            image_path,
+                            product_name,
+                            confidence=candidate.confidence,
+                            source_file=path.name,
+                            slide_index=slide.index,
+                            metadata={
+                                "source_file": str(path),
+                                "card_bounds": list(candidate.bounds),
+                                "crop": dict(image_element.metadata.get("crop") or {}) if image_element else {},
+                            },
+                        )
+                        image_path = asset.path
+                        image_asset_id = asset.id
+                        summary.images_learned += 1
+                    except (OSError, ValueError):
+                        pass
+
+                unit = self._unit_text(candidate.unit.text if candidate.unit is not None else "UN")
                 product = Product(
-                    original_name=name_element.text if name_element is not None else "Produto importado",
-                    price=SemanticMapper._price_value(price_element.text) if price_element is not None else None,
-                    image_path=(
-                        image_element.media_path
-                        if image_element is not None and Path(image_element.media_path).exists()
-                        else ""
-                    ),
+                    original_name=product_name,
+                    price=candidate.price_value,
+                    app_price=(candidate.secondary_price.value if candidate.secondary_price is not None else None),
+                    unit=unit,
+                    image_path=image_path,
                     source="pptx",
                     recognition_confidence=candidate.confidence,
-                    metadata={"slide": slide.index, "source_file": str(path)},
+                    metadata={
+                        "slide": slide.index,
+                        "source_file": str(path),
+                        "image_bank_asset_id": image_asset_id,
+                        "canva_import_v2": True,
+                        "price_split": bool(candidate.price_cluster and candidate.price_cluster.complete is None),
+                    },
                 )
                 project.products.append(product)
                 card = ProductCard(
                     product_id=product.id,
                     x=(left / max(slide.width, 1)) * page.width,
                     y=(top / max(slide.height, 1)) * page.height,
-                    width=max(80.0, ((right - left) / max(slide.width, 1)) * page.width),
-                    height=max(70.0, ((bottom - top) / max(slide.height, 1)) * page.height),
+                    width=max(24.0, ((right - left) / max(slide.width, 1)) * page.width),
+                    height=max(24.0, ((bottom - top) / max(slide.height, 1)) * page.height),
+                    z_index=min((int(item.metadata.get("z_index", 0)) for item in semantic_elements), default=0),
+                    overrides={
+                        "imported_from_canva": True,
+                        "imported_style": dict(candidate.style_spec),
+                        "recognition_confidence": candidate.confidence,
+                    },
                 )
                 page.cards.append(card)
                 summary.products_added += 1
@@ -119,7 +191,42 @@ class UnifiedImportPipeline:
 
         project.settings["pptx_source"] = str(path)
         project.settings["pptx_media_dir"] = str(media_dir)
+        project.settings["canva_import_version"] = 2
+        if learned_profiles:
+            project.settings["canva_layout_profiles"] = list(dict.fromkeys(learned_profiles))
         return summary
+
+    @staticmethod
+    def _semantic_elements(candidate: SemanticCard) -> list[PptxElement]:
+        elements: list[PptxElement] = []
+        for item in (candidate.name, candidate.image):
+            if item is not None:
+                elements.append(item)
+        if candidate.price_cluster is not None:
+            elements.extend(candidate.price_cluster.elements)
+        elif candidate.price is not None:
+            elements.append(candidate.price)
+        if candidate.secondary_price is not None:
+            elements.extend(candidate.secondary_price.elements)
+        # Keep order while removing duplicate references.
+        unique: list[PptxElement] = []
+        seen: set[int] = set()
+        for element in elements:
+            if id(element) not in seen:
+                unique.append(element)
+                seen.add(id(element))
+        return unique
+
+    @staticmethod
+    def _unit_text(value: str) -> str:
+        text = " ".join(str(value or "UN").upper().replace("/", " ").split())
+        aliases = {
+            "A LATA": "À LATA",
+            "A GARRAFA": "À GARRAFA",
+            "LT": "L",
+            "GR": "G",
+        }
+        return aliases.get(text, text or "UN")
 
     @staticmethod
     def _pptx_element(element: PptxElement, sw: int, sh: int, pw: float, ph: float) -> dict | None:
@@ -127,6 +234,7 @@ class UnifiedImportPipeline:
         y = (element.y / max(sh, 1)) * ph
         width = (element.width / max(sw, 1)) * pw
         height = (element.height / max(sh, 1)) * ph
+        metadata = element.metadata
         common = {
             "x": x,
             "y": y,
@@ -134,17 +242,46 @@ class UnifiedImportPipeline:
             "height": height,
             "source": "pptx",
             "name": element.name,
+            "z_index": int(metadata.get("z_index", 0)),
+            "rotation": float(metadata.get("rotation", 0.0) or 0.0),
+            "opacity": float(metadata.get("opacity", 1.0) or 1.0),
+            "grouped": bool(metadata.get("grouped", False)),
+            "group_depth": int(metadata.get("group_depth", 0) or 0),
         }
         if element.kind == "text":
+            font_size_pt = float(metadata.get("font_size_pt", 0.0) or 0.0)
             return {
                 **common,
                 "type": "text",
                 "text": element.text,
-                "font_size": max(10, min(54, height * 0.45)),
-                "fill": "#162033",
+                "font_name": str(metadata.get("font_name") or ""),
+                "font_size": font_size_pt if font_size_pt > 0 else max(8, min(64, height * 0.42)),
+                "bold": bool(metadata.get("bold", False)),
+                "italic": bool(metadata.get("italic", False)),
+                "align": str(metadata.get("align") or ""),
+                "fill": str(metadata.get("fill") or "#162033"),
             }
         if element.kind == "image" and element.media_path and Path(element.media_path).exists():
-            return {**common, "type": "image", "path": element.media_path}
+            return {
+                **common,
+                "type": "image",
+                "path": element.media_path,
+                "crop": dict(metadata.get("crop") or {}),
+                "fill_rect": dict(metadata.get("fill_rect") or {}),
+                "image_fit": "cover" if metadata.get("crop") or metadata.get("picture_fill") else "contain",
+                "picture_fill": bool(metadata.get("picture_fill", False)),
+                "flip_h": bool(metadata.get("flip_h", False)),
+                "flip_v": bool(metadata.get("flip_v", False)),
+            }
         if element.kind == "shape":
-            return {**common, "type": "rect", "fill": "#FFFFFF", "outline": "#D9E1EC"}
+            fill = str(metadata.get("fill") or "")
+            outline = str(metadata.get("outline") or "")
+            if not fill and not outline:
+                return None
+            return {
+                **common,
+                "type": "rect",
+                "fill": fill if fill.startswith("#") else "#FFFFFF",
+                "outline": outline if outline.startswith("#") else "",
+            }
         return None
