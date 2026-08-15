@@ -1,0 +1,175 @@
+name: Publish SR Studio 5 Beta 7 Professional
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sr-studio-5-professional]
+    paths:
+      - 'release/BETA7_PUBLISH'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-beta:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Professional branch
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install, compile and test
+        shell: pwsh
+        run: |
+          python -m pip install -e . pyinstaller pytest ruff
+          python -m compileall -q src
+          ruff check src tests --select E9,F63,F7,F82
+          pytest -q
+
+      - name: Build SR Studio 5 Professional
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --paths src src/srstudio/app/professional.py
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Executável profissional não foi gerado." }
+
+      - name: Assemble launcher-compatible hybrid bundle
+        shell: pwsh
+        run: |
+          $bundleRoot = "release/beta7-bundle"
+          $filesRoot = Join-Path $bundleRoot "files"
+          $appRoot = Join-Path $filesRoot "SRStudio5"
+          New-Item -ItemType Directory -Force -Path $appRoot | Out-Null
+          Copy-Item "dist/SR Studio 5/*" $appRoot -Recurse -Force
+
+          @'
+          from __future__ import annotations
+          import os
+          import subprocess
+          from pathlib import Path
+
+          def main() -> int:
+              app_dir = Path(__file__).resolve().parent
+              executable = app_dir / "SRStudio5" / "SR Studio 5.exe"
+              if not executable.is_file():
+                  raise FileNotFoundError(f"SR Studio 5 Professional não encontrado: {executable}")
+              env = os.environ.copy()
+              env["SR_STUDIO_LAUNCHED_BY_UPDATER"] = "1"
+              subprocess.Popen([str(executable)], cwd=str(executable.parent), env=env)
+              return 0
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          '@ | Set-Content -LiteralPath (Join-Path $filesRoot "SR_Studio_Gerador.py") -Encoding UTF8
+
+          "SR Studio 5.0.0 - Beta 7 Professional" | Set-Content -LiteralPath (Join-Path $filesRoot "VERSAO.txt") -Encoding UTF8
+          @{
+            version = "5.0.0-hybrid.beta7"
+            product_version = "5.0.0"
+            channel = "beta"
+            release_label = "Beta 7 Professional"
+            entrypoint = "SR_Studio_Gerador.py"
+            professional_executable = "SRStudio5/SR Studio 5.exe"
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $filesRoot "version.json") -Encoding UTF8
+
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $zip = "release/SR_STUDIO_5.0.0_BETA7_PROFESSIONAL.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path $filesRoot -DestinationPath $zip -CompressionLevel Optimal
+          if (!(Test-Path $zip)) { throw "Bundle Beta 7 não foi criado." }
+
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $zip).Length
+          "BETA_ZIP=$zip" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_SHA256=$hash" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_SIZE=$size" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_TAG=v5.0.0-hybrid.beta7" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_FILE=SR_STUDIO_5.0.0_BETA7_PROFESSIONAL.zip" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Bundle: $zip | $size bytes | $hash"
+
+      - name: Validate hybrid bundle
+        shell: pwsh
+        run: |
+          $validation = "release/beta7-validate"
+          Expand-Archive -LiteralPath $env:BETA_ZIP -DestinationPath $validation -Force
+          if (!(Test-Path "$validation/files/SR_Studio_Gerador.py")) { throw "Shim do Launcher ausente." }
+          if (!(Test-Path "$validation/files/SRStudio5/SR Studio 5.exe")) { throw "Executável profissional ausente no bundle." }
+          $got = (Get-FileHash $env:BETA_ZIP -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $env:BETA_SHA256) { throw "SHA-256 mudou após empacotamento." }
+
+      - name: Create or update Beta 7 prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @"
+          SR Studio 5.0 Beta 7 Professional
+
+          Primeira Beta pública da nova arquitetura profissional do SR Studio 5.
+          Inclui novo design SR, Encartes Studio premium, Product Cards, Smart Guides, páginas, camadas, Undo/Redo, Price Engine, importação Excel/PPTX, SR IA estruturada, validação/preflight, exportação profissional, autosave/recovery e identidade oficial SR.
+
+          Compatível com o Launcher Beta Base 3.4 através de um shim de transição. O Beta 6.1 permanece disponível no histórico de Releases para rollback.
+          "@
+          if (gh release view $env:BETA_TAG *> $null) {
+            gh release upload $env:BETA_TAG $env:BETA_ZIP --clobber
+            gh release edit $env:BETA_TAG --prerelease --title "SR Studio 5.0 Beta 7 Professional" --notes $notes
+          } else {
+            gh release create $env:BETA_TAG $env:BETA_ZIP --target $env:GITHUB_SHA --prerelease --title "SR Studio 5.0 Beta 7 Professional" --notes $notes
+          }
+
+      - name: Checkout main for manifest activation
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+
+      - name: Activate existing Beta channel only after release is valid
+        shell: pwsh
+        run: |
+          $manifestPath = "mainrepo/beta/manifest.json"
+          $published = (Get-Date).ToString("o")
+          $url = "https://github.com/${{ github.repository }}/releases/download/$env:BETA_TAG/$env:BETA_FILE"
+          $manifest = [ordered]@{
+            format = "SRSTUDIO_HYBRID_BUNDLE_1"
+            product = "SR Studio"
+            channel = "beta"
+            version = "5.0.0-hybrid.beta7"
+            product_version = "5.0.0"
+            release_label = "Beta 7 Professional"
+            published_at = $published
+            min_launcher = "4.0.1-hybrid.base3.4"
+            min_launcher_version = "4.0.1-hybrid.base3.4"
+            bundle = [ordered]@{
+              url = $url
+              sha256 = $env:BETA_SHA256
+              size = [int64]$env:BETA_SIZE
+              member_prefix = "files/"
+            }
+            url = $url
+            bundle_url = $url
+            sha256 = $env:BETA_SHA256
+            size = [int64]$env:BETA_SIZE
+            member_prefix = "files/"
+            previous_version = "5.0.0-hybrid.beta6.1"
+            notes = "SR Studio 5.0 Beta 7 Professional - nova arquitetura profissional acessível pelo mesmo canal Beta do Launcher. Beta 6.1 preservada para rollback."
+          }
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+          Push-Location mainrepo
+          git config user.name "SR Studio Update Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add beta/manifest.json
+          git commit -m "release: activate SR Studio 5 Beta 7 Professional"
+          git push origin HEAD:main
+          Pop-Location
+
+      - name: Publication summary
+        shell: pwsh
+        run: |
+          Write-Host "SR Studio 5 Beta 7 Professional publicada no canal Beta existente."
+          Write-Host "Tag: $env:BETA_TAG"
+          Write-Host "SHA256: $env:BETA_SHA256"
