@@ -76,7 +76,9 @@ def _promotion_workbook(path: Path) -> None:
 
 
 def test_promotion_workbook_restores_three_legacy_poster_types(tmp_path: Path):
-    path = tmp_path / "PROMOCAO 15-08-2026.xlsx"
+    # Keep the synthetic filename consistent with the campaign period so the
+    # date-mismatch protection itself stays enabled and tested by production code.
+    path = tmp_path / "PROMOCAO.xlsx"
     _promotion_workbook(path)
     result = PromotionWorkbookImporter().import_file(path)
     assert not result.errors
