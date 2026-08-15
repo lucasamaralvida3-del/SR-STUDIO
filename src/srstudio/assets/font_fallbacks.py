@@ -23,9 +23,30 @@ PILLOW_FILE_FALLBACKS: dict[str, tuple[str, ...]] = {
     "poppins": ("Poppins-Regular.ttf", "segoeui.ttf", "arial.ttf"),
 }
 
+WINDOWS_DISPLAY_FALLBACK: dict[str, str] = {
+    "anton": "Impact",
+    "high cruiser": "Impact",
+    "zing rust base": "Impact",
+    "roboto condensed": "Arial Narrow",
+    "arimo": "Arial",
+    "raleway": "Segoe UI",
+    "montserrat": "Segoe UI",
+    "poppins": "Segoe UI",
+}
+
 
 def normalize_family(name: str) -> str:
     return " ".join(str(name or "").strip().lower().split())
+
+
+def preferred_windows_display_family(requested: str) -> str:
+    """Return a predictable Windows family for Canva-only/unbundled fonts.
+
+    The original family is still stored separately by the importer, so a future
+    explicit font override can restore it without losing source metadata.
+    """
+    value = str(requested or "").strip()
+    return WINDOWS_DISPLAY_FALLBACK.get(normalize_family(value), value)
 
 
 def choose_tk_family(requested: str, installed: set[str] | tuple[str, ...] | list[str]) -> str:
@@ -63,12 +84,7 @@ def pillow_font_candidates(requested: str, bold: bool = False) -> list[str]:
 
 
 def canva_wrap_width(text: str, role: str, width: float) -> float:
-    """Canva single-line boxes must not wrap R$, cents, units or short names.
-
-    A missing Canva font otherwise makes Tk wrap a two-character price token into
-    two lines, which is the main cause of the vertical/fragmented prices seen in
-    imported flyers.
-    """
+    """Canva single-line boxes must not wrap R$, cents, units or short names."""
     value = str(text or "")
     if not value or "\n" not in value:
         if role in {
