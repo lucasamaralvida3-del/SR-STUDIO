@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 import tkinter as tk
+from pathlib import Path
+from tkinter import filedialog, messagebox
 
 from srstudio import __version__
 from srstudio.app.design import COLORS, FONT, PAGE_META
 from srstudio.app.premium_editor import PremiumEncartesStudioView
+from srstudio.app.ui_kit import ToastManager
 from srstudio.app.workspace import SRStudioWorkspace
 
 
 class SRStudioProfessional(SRStudioWorkspace):
     """Entrada visual profissional do SR Studio 5."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.toast = ToastManager(self)
 
     def navigate(self, name: str) -> None:
         if name != "Encartes Studio":
@@ -31,6 +38,82 @@ class SRStudioProfessional(SRStudioWorkspace):
         self.topbar_subtitle.configure(text=subtitle)
         self._clear()
         PremiumEncartesStudioView(self.content, self.project)
+
+    def save_project(self, _event=None) -> str:
+        path = self.session.state.project_path
+        if not path:
+            path = filedialog.asksaveasfilename(
+                defaultextension=".srproject",
+                filetypes=[("Projeto SR", "*.srproject")],
+            )
+        if not path:
+            return "break"
+        try:
+            saved = self.session.save(path)
+            self.recent.touch(saved, self.project.name)
+            self._refresh_dirty()
+            self.toast.show("Projeto salvo com segurança.", "success")
+        except Exception as exc:
+            messagebox.showerror("Salvar projeto", f"Não foi possível salvar.\n\n{exc}")
+        return "break"
+
+    def import_source(self, _event=None) -> str:
+        path = filedialog.askopenfilename(
+            filetypes=[("Excel / Canva PPTX", "*.xlsx *.xlsm *.pptx"), ("Todos", "*.*")]
+        )
+        if not path:
+            return "break"
+        try:
+            result = self.workflow.import_source(path)
+            self.navigate("Encartes Studio")
+            self._refresh_dirty()
+            self.toast.show(result.message or "Importação concluída.", "success", 4200)
+        except Exception as exc:
+            messagebox.showerror("Importação", f"Falha na importação.\n\n{exc}")
+        return "break"
+
+    def create_portable_package(self) -> None:
+        path = filedialog.asksaveasfilename(
+            defaultextension=".srpack",
+            filetypes=[("Pacote SR", "*.srpack")],
+        )
+        if not path:
+            return
+        try:
+            result = self.package.create(self.project, path)
+            self.toast.show(f"Pacote portátil criado: {Path(result).name}", "success", 4200)
+        except Exception as exc:
+            messagebox.showerror("Pacote portátil", str(exc))
+
+    def learn_current_layout(self) -> None:
+        page = self.project.pages[0]
+        template = self.layout_learning.learn_page(page, f"SR {page.name}")
+        learned = self.project.settings.setdefault("learned_templates", [])
+        learned.append(
+            {
+                "name": template.name,
+                "page_width": template.page_width,
+                "page_height": template.page_height,
+                "background": template.background,
+                "metadata": template.metadata,
+                "slots": [
+                    {
+                        "x": slot.x,
+                        "y": slot.y,
+                        "width": slot.width,
+                        "height": slot.height,
+                        "role": slot.role,
+                    }
+                    for slot in template.slots
+                ],
+            }
+        )
+        self._mark_changed()
+        self.toast.show(
+            f"Layout '{template.name}' aprendido com {len(template.slots)} slot(s).",
+            "success",
+            4200,
+        )
 
 
 def _show_splash(app: SRStudioProfessional) -> None:
@@ -84,16 +167,17 @@ def _show_splash(app: SRStudioProfessional) -> None:
     progress_shell = tk.Frame(shell, bg="#17447E", width=280, height=4)
     progress_shell.pack()
     progress_shell.pack_propagate(False)
-    progress = tk.Frame(progress_shell, bg="#78A8FF", width=205, height=4)
+    progress = tk.Frame(progress_shell, bg="#78A8FF", width=60, height=4)
     progress.pack(side="left", fill="y")
 
-    tk.Label(
+    status = tk.Label(
         shell,
-        text="Preparando seu workspace...",
+        text="Carregando núcleo...",
         bg=COLORS.sidebar,
         fg=COLORS.sidebar_muted,
         font=(FONT["family"], FONT["small"]),
-    ).pack(pady=(10, 2))
+    )
+    status.pack(pady=(10, 2))
     tk.Label(
         shell,
         text=f"v{__version__}",
@@ -102,14 +186,27 @@ def _show_splash(app: SRStudioProfessional) -> None:
         font=(FONT["family"], FONT["micro"]),
     ).pack()
 
+    stages = (
+        (160, 110, "Preparando projetos..."),
+        (360, 185, "Carregando editor visual..."),
+        (590, 245, "Inicializando SR IA..."),
+        (780, 280, "Workspace pronto"),
+    )
+    for delay, width_value, text in stages:
+        app.after(
+            delay,
+            lambda w=width_value, label=text: (progress.configure(width=w), status.configure(text=label)),
+        )
+
     def finish() -> None:
         if splash.winfo_exists():
             splash.destroy()
         app.deiconify()
         app.lift()
         app.focus_force()
+        app.after(300, lambda: app.toast.show("SR Studio pronto para trabalhar.", "success", 2200))
 
-    app.after(950, finish)
+    app.after(980, finish)
 
 
 def run() -> None:
