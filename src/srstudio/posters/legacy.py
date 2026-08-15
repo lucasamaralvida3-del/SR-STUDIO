@@ -1,9 +1,19 @@
 from __future__ import annotations
 
 from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
+from typing import Iterable
 
 from srstudio.core.models import Product, to_decimal
-from srstudio.posters.core import PosterData, PosterEngine, PosterIssue, PosterKind, PrintPosterService
+from srstudio.posters.core import (
+    PosterBatchResult,
+    PosterData,
+    PosterEngine,
+    PosterIssue,
+    PosterKind,
+    PosterTemplate,
+    PrintPosterService,
+)
 
 
 class SRPosterData(PosterData):
@@ -149,3 +159,27 @@ class SRPrintPosterService(PrintPosterService):
     def __init__(self) -> None:
         super().__init__()
         self.engine = SRPosterEngine()
+
+    def generate_pdf(
+        self,
+        products: Iterable[Product],
+        template: PosterTemplate,
+        destination: str | Path,
+        campaign: str = "",
+    ) -> PosterBatchResult:
+        legacy_engine = str(template.metadata.get("legacy_engine") or "")
+        if legacy_engine in {"promotion", "wholesale"}:
+            from srstudio.posters.legacy_bridge import LegacyPosterBridge
+
+            bridge = LegacyPosterBridge()
+            try:
+                kind = PosterKind.WHOLESALE if legacy_engine == "wholesale" else PosterKind.PROMOTION
+                return bridge.generate_pdf(products, kind, destination, campaign)
+            except Exception as exc:
+                result = super().generate_pdf(products, template, destination, campaign)
+                result.warnings.insert(
+                    0,
+                    "Fidelidade histórica via PowerPoint indisponível; usado renderer interno: " + str(exc),
+                )
+                return result
+        return super().generate_pdf(products, template, destination, campaign)
