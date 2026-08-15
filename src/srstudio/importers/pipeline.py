@@ -249,10 +249,6 @@ class UnifiedImportPipeline:
                 summary.products_added += 1
                 summary.cards_added += 1
 
-            # Preserve the complete Canva slide as the visual layer. Semantic cards are
-            # locked/hidden hit regions. Only validated local associations receive a
-            # slot binding, so replacing one product can never rewrite a large unrelated
-            # region of the slide.
             for element in slide.elements:
                 converted = self._pptx_element(element, slide.width, slide.height, page.width, page.height)
                 if not converted:
@@ -262,6 +258,8 @@ class UnifiedImportPipeline:
                     slot_id, role = binding
                     converted["slot_id"] = slot_id
                     converted["slot_role"] = role
+                    if converted.get("type") == "text":
+                        self._stabilize_canva_text_box(converted, role)
                     converted["template_hidden"] = bool(converted.get("hidden", False))
                     if converted.get("type") == "text":
                         converted["template_text"] = str(converted.get("text") or "")
@@ -269,8 +267,6 @@ class UnifiedImportPipeline:
                         converted["template_path"] = str(converted.get("path") or "")
                 page.elements.append(converted)
 
-            # Synthetic image layers sit above the empty white card artwork and below
-            # its price text. They stay hidden when there is no approved bank image.
             page.elements.extend(synthetic_image_slots)
 
         project.settings["pptx_source"] = str(path)
@@ -381,6 +377,48 @@ class UnifiedImportPipeline:
         }
 
     @staticmethod
+    def _stabilize_canva_text_box(element: dict, role: str) -> None:
+        """Keep Canva one-line price tokens horizontal when fonts are substituted."""
+        role = str(role or "")
+        if role not in {
+            "price_currency",
+            "price_integer",
+            "price_cents",
+            "price_complete",
+            "unit",
+            "app_price_currency",
+            "app_price_integer",
+            "app_price_cents",
+            "app_price_complete",
+            "app_unit",
+        }:
+            return
+        text = str(element.get("text") or "")
+        if not text or "\n" in text:
+            return
+        try:
+            font_size = float(element.get("font_size", 0.0) or 0.0)
+            width = float(element.get("width", 0.0) or 0.0)
+            x = float(element.get("x", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            return
+        if font_size <= 0:
+            return
+        minimum = font_size * 1.333 * max(1.8, len(text) * 0.78 + 0.9)
+        if minimum <= width:
+            element["canva_no_wrap"] = True
+            return
+        delta = minimum - width
+        align = str(element.get("align") or "").lower()
+        if align in {"ctr", "center"}:
+            x -= delta / 2
+        elif align in {"r", "right"}:
+            x -= delta
+        element["x"] = x
+        element["width"] = minimum
+        element["canva_no_wrap"] = True
+
+    @staticmethod
     def _unit_text(value: str) -> str:
         text = " ".join(str(value or "UN").upper().replace("/", " ").split())
         aliases = {
@@ -445,9 +483,6 @@ class UnifiedImportPipeline:
             raw_outline = str(metadata.get("outline") or "")
             fill = raw_fill if raw_fill.startswith("#") else ""
             outline = raw_outline if raw_outline.startswith("#") else ""
-            # Canva frequently exports transparent/no-fill helper shapes. The old
-            # fallback painted them white, which created the large white blocks seen
-            # over product cards after import.
             if not fill and not outline:
                 return None
             return {
