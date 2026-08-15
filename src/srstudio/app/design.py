@@ -20,6 +20,14 @@ class Colors:
     primary_soft: str = "#EAF1FF"
     primary_soft_hover: str = "#DCE8FF"
 
+    # High-frequency production modes
+    promotion: str = "#1767E8"
+    promotion_hover: str = "#0F56C9"
+    promotion_soft: str = "#EAF2FF"
+    wholesale: str = "#123F78"
+    wholesale_hover: str = "#0B3262"
+    wholesale_soft: str = "#E9F0F8"
+
     # Semantic tones
     success: str = "#169B62"
     success_soft: str = "#E9F8F1"
@@ -100,10 +108,12 @@ NAVIGATION = (
     ("Exportação", "⇧"),
     ("SR IA", "✦"),
     ("Configurações", "⚙"),
+    ("Promoções", "⚡"),
+    ("Atacado", "▦"),
 )
 
 NAV_SECTIONS = (
-    ("WORKSPACE", ("Início", "Central 5.0", "Encartes Studio")),
+    ("WORKSPACE", ("Início", "Encartes Studio", "Central 5.0")),
     ("CONTEÚDO", ("Banco de Produtos", "Planilhas", "Modelos")),
     ("FINALIZAÇÃO", ("Validação", "Exportação", "SR IA")),
     ("SISTEMA", ("Configurações",)),
@@ -112,6 +122,8 @@ NAV_SECTIONS = (
 NAV_ICONS = dict(NAVIGATION)
 
 PAGE_META = {
+    "Promoções": ("Cartazes de Promoção", "Geração rápida de ofertas e campanhas promocionais"),
+    "Atacado": ("Cartazes de Atacado", "Geração de cartazes com varejo, atacado e quantidade"),
     "Início": ("Início", "Visão geral do projeto e atalhos rápidos"),
     "Central 5.0": ("Central 5.0", "Saúde, integridade e operação do projeto"),
     "Encartes Studio": ("Encartes Studio", "Editor visual da campanha"),
