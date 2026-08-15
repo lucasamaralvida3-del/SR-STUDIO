@@ -11,6 +11,7 @@ from typing import Iterable
 from pypdf import PdfReader, PdfWriter
 
 from srstudio.core.models import Product
+from srstudio.posters.auto_model import PosterAutoModelResolver
 from srstudio.posters.core import PosterBatchResult, PosterKind, PosterTemplate
 from srstudio.posters.legacy import SRPosterEngine
 
@@ -32,6 +33,7 @@ class LegacyPosterBridge:
 
     def __init__(self) -> None:
         self.engine = SRPosterEngine()
+        self.model_resolver = PosterAutoModelResolver()
 
     @staticmethod
     def assets_available() -> bool:
@@ -69,7 +71,11 @@ class LegacyPosterBridge:
 
         valid: list[Product] = []
         for product in selected:
-            data = self.engine.wholesale(product, campaign or "Atacado") if kind == PosterKind.WHOLESALE else self.engine.promotion(product, campaign)
+            data = (
+                self.engine.wholesale(product, campaign or "Atacado")
+                if kind == PosterKind.WHOLESALE
+                else self.engine.promotion(product, campaign)
+            )
             errors = [issue for issue in self.engine.validate(data) if issue.severity == "error"]
             if errors:
                 result.skipped += 1
@@ -105,7 +111,9 @@ class LegacyPosterBridge:
                     try:
                         errors = json.loads(error_file.read_text(encoding="utf-8-sig"))
                         for item in errors:
-                            result.warnings.append(f"{item.get('nome', 'Produto')}: {item.get('message', 'falha')}")
+                            result.warnings.append(
+                                f"{item.get('nome', 'Produto')}: {item.get('message', 'falha')}"
+                            )
                     except (OSError, ValueError, TypeError):
                         pass
         return result
@@ -113,17 +121,20 @@ class LegacyPosterBridge:
     def _promotion_jobs(self, products: list[Product], campaign_override: str) -> list[dict[str, object]]:
         jobs: list[dict[str, object]] = []
         for product in products:
-            poster_type = int(product.metadata.get("promotion_type", 0) or 0)
-            if poster_type not in {1, 2, 3}:
-                poster_type = 2 if product.app_price is not None and product.price != product.app_price else 1
+            decision = self.model_resolver.promotion(product)
+            poster_type = decision.poster_type
             campaign = campaign_override or product.campaign or "OFERTA!!"
             promo = ""
             club = ""
-            if poster_type == 3:
+            if poster_type == PosterAutoModelResolver.TYPE_CLUB_ONLY:
                 club = self._money(product.price or product.app_price)
             else:
-                promo = self._money(product.price)
-                club = self._money(product.app_price) if poster_type == 2 else ""
+                promo = self._money(product.price or product.retail_price)
+                club = (
+                    self._money(product.app_price)
+                    if poster_type == PosterAutoModelResolver.TYPE_TWO_PRICES
+                    else ""
+                )
             jobs.append(
                 {
                     "tipo": poster_type,
@@ -135,6 +146,8 @@ class LegacyPosterBridge:
                     "validade": product.validity,
                     "unidade_exibicao": self._legacy_unit(product.unit),
                     "limite": product.cpf_limit,
+                    "modelo_detectado": decision.filename,
+                    "modelo_rotulo": decision.label,
                 }
             )
         return jobs
@@ -152,6 +165,7 @@ class LegacyPosterBridge:
                     "total": fields["total"],
                     "quantidade_texto": fields["quantidade_texto"],
                     "quantidade_2_texto": fields["quantidade_2_texto"],
+                    "modelo_detectado": "ATACADO.pptx",
                 }
             )
         return jobs
@@ -194,7 +208,16 @@ class LegacyPosterBridge:
         shell = shutil.which("powershell.exe") or shutil.which("pwsh.exe")
         if not shell:
             raise RuntimeError("Windows PowerShell não encontrado para o engine de cartazes.")
-        command = [shell, "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", str(script), *args]
+        command = [
+            shell,
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-File",
+            str(script),
+            *args,
+        ]
         completed = subprocess.run(
             command,
             capture_output=True,
@@ -269,7 +292,12 @@ def legacy_template(kind: PosterKind) -> PosterTemplate | None:
             name="SR Oficial · Atacado",
             kind=kind,
             source_pptx=str(legacy_models_root() / "ATACADO.pptx"),
-            metadata={"legacy_engine": "wholesale", "recommended": True, "source": "Stable 2 / Beta 16"},
+            metadata={
+                "legacy_engine": "wholesale",
+                "recommended": True,
+                "source": "Stable 2 / Beta 16",
+                "automatic_model_detection": True,
+            },
         )
     return PosterTemplate(
         id="sr-legacy-promocao-auto",
@@ -279,6 +307,7 @@ def legacy_template(kind: PosterKind) -> PosterTemplate | None:
             "legacy_engine": "promotion",
             "recommended": True,
             "source": "Stable 2 / Beta 16",
+            "automatic_model_detection": True,
             "auto_models": [
                 "SEGUNDA_DA_LIMPEZA_1_PRECO.pptx",
                 "SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx",
@@ -286,6 +315,7 @@ def legacy_template(kind: PosterKind) -> PosterTemplate | None:
                 "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx",
                 "CLUBE_EXCLUSIVO.pptx",
                 "CLUBE_EXCLUSIVO_COM_LIMITE.pptx",
+                "CARTAZ_VENDA.pptx",
             ],
         },
     )
