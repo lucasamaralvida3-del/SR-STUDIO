@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.4 Professional
-Restores the proven automatic poster-model behavior from previous SR Studio versions while keeping the new professional module UI.
-AUTO now decides per product: 1 price, 1 price + limit, 2 prices, 2 prices + limit, Club Exclusive, Club + limit, or Cartaz Venda; the same batch may mix models. The table exposes the detected model and PowerPoint supplies the faithful preview when available.
-Triggered: 2026-08-15T08:55:00-03:00
+SR Studio 5.0 Beta 7.5 Professional
+Poster preview and responsive layout polish for the high-frequency Promotion/Atacado generators.
+Official PowerPoint previews now run silently in the background with debounce and visible status feedback; the generator footer is pinned so Gerar PDF / Gerar PNGs / Imprimir remain visible when large spreadsheets are loaded or the window is resized.
+Triggered: 2026-08-15T09:05:00-03:00
