@@ -7,8 +7,9 @@
 )
 $ErrorActionPreference = "Stop"
 
-# Reuse the exact historical Atacado fitting functions, while keeping the
-# PowerPoint application and ATACADO.pptx open for the whole batch.
+# Turbo Seguro para Atacado: UMA instância do PowerPoint por lote, com o modelo
+# aberto/fechado para cada cartaz. Mantém o ganho principal de desempenho sem
+# depender de Slides.Duplicate(), que varia entre versões/instalações do Office.
 $source = Get-Content -LiteralPath $BasePreviewEngine -Raw -Encoding UTF8
 $start = $source.IndexOf("function Get-ShapeByName")
 $end = $source.IndexOf('$job=Get-Content')
@@ -22,19 +23,17 @@ $t = [type]::GetTypeFromProgID("PowerPoint.Application")
 if ($null -eq $t) { throw "Microsoft PowerPoint não está registrado no Windows." }
 $ppt = [Activator]::CreateInstance($t)
 try { $ppt.Visible = 0 } catch {}
-$pres = $null
+
 try {
-    $pres = $ppt.Presentations.Open($Model, 0, 0, 0)
-    $sourceSlide = $pres.Slides.Item(1)
     $idx = 0
     foreach ($job in $jobs) {
         $idx++
+        $pres = $null
         $slide = $null
-        $range = $null
         try {
             Write-Output ("START|{0}" -f $idx)
-            $range = $sourceSlide.Duplicate()
-            $slide = $range.Item(1)
+            $pres = $ppt.Presentations.Open($Model, 0, 0, 0)
+            $slide = $pres.Slides.Item(1)
             Set-ProductNameFit (Get-ShapeByName $slide "SR_ATACADO_NOME") ([string]$job.nome) 43 18
             Set-T (Get-ShapeByName $slide "SR_ATACADO_VAREJO") ([string]$job.varejo)
             Set-T (Get-ShapeByName $slide "SR_ATACADO_PRECO") ([string]$job.atacado)
@@ -56,17 +55,17 @@ try {
             Write-Output ("ERR|{0}|{1}" -f $idx, $clean)
         }
         finally {
-            if ($null -ne $slide) { try { $slide.Delete() } catch {} }
+            if ($null -ne $pres) {
+                try { $pres.Saved = -1; $pres.Close() } catch {}
+            }
             $slide = $null
-            $range = $null
+            $pres = $null
         }
     }
     Write-Output ("BATCH_DONE|{0}" -f $jobs.Count)
 }
 finally {
-    if ($null -ne $pres) { try { $pres.Saved = -1; $pres.Close() } catch {} }
     if ($null -ne $ppt) { try { $ppt.Quit() } catch {} }
-    $pres = $null
     $ppt = $null
     Write-Output "ENGINE_DONE"
 }
