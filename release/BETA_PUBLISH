@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.6 Professional
-Introduces final-quality poster staging for Promotion and Atacado.
-After importing the spreadsheet/report, SR Studio pre-renders the automatic cartazes silently in the background at 1772x2480 (300 dpi). The preview reuses those ready artifacts and Gerar PDF validates and assembles them without re-rendering PowerPoint. Commercial/model changes invalidate the cache automatically; manual PPTX overrides keep the traditional generation flow.
-Triggered: 2026-08-15T09:22:00-03:00
+SR Studio 5.0 Beta 7.7 Professional
+Editable realtime poster workspace for Promotion and Atacado.
+Adds inline editing of product name, prices, unit, limit and wholesale quantity; automatic per-item model recalculation; commercial Custo/Venda/Clube diagnostics with hover details; row status, filters, batch context actions and restore-imported-data. Spreadsheet/report import and 300 dpi poster staging now have subtle progress bars, while edits invalidate and re-render only the affected poster before final PDF validation.
+Triggered: 2026-08-15T10:21:00-03:00
