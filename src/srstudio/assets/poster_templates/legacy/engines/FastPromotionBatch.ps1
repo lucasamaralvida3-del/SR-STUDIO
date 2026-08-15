@@ -79,16 +79,7 @@ public static class SRStudioBatchWindow {
 $tempScript = Join-Path ([System.IO.Path]::GetTempPath()) ("srstudio-fast-promo-" + [guid]::NewGuid().ToString("N") + ".ps1")
 try {
     Set-Content -LiteralPath $tempScript -Value $source -Encoding UTF8
-    & $tempScript \
-        -JobsJson $JobsJson \
-        -OutputDir $OutputDir \
-        -Model1 $Model1 \
-        -Model2 $Model2 \
-        -Model1Limit $Model1Limit \
-        -Model2Limit $Model2Limit \
-        -ClubModel $ClubModel \
-        -ClubModelLimit $ClubModelLimit \
-        -SaleModel $SaleModel
+    & $tempScript -JobsJson $JobsJson -OutputDir $OutputDir -Model1 $Model1 -Model2 $Model2 -Model1Limit $Model1Limit -Model2Limit $Model2Limit -ClubModel $ClubModel -ClubModelLimit $ClubModelLimit -SaleModel $SaleModel
     if ($LASTEXITCODE -ne $null -and $LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 finally {
