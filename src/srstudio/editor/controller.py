@@ -65,7 +65,7 @@ class EditorController:
                 if card.id in before:
                     card.x, card.y = before[card.id]
 
-        self.history.execute(LambdaCommand("Mover seleção", do, undo, merge_key="move-selection"))
+        self.history.execute(LambdaCommand("Mover seleção", do, undo))
 
     def snap_card(self, card_id: str, proposed_x: float, proposed_y: float) -> SnapResult | None:
         card = self.scene.card(card_id)
@@ -78,7 +78,7 @@ class EditorController:
     def apply_auto_layout(self, highlighted: int = 0) -> None:
         if not self.page.cards:
             return
-        before = {card.id: (card.x, card.y, card.width, card.height) for card in self.page.cards}
+        before = {card.id: (card.x, card.y, card.width, card.height, card.highlighted) for card in self.page.cards}
         plan = self.layout.best(len(self.page.cards), self.page.width, self.page.height, highlighted=highlighted)
 
         def do() -> None:
@@ -92,7 +92,7 @@ class EditorController:
         def undo() -> None:
             for card in self.page.cards:
                 if card.id in before:
-                    card.x, card.y, card.width, card.height = before[card.id]
+                    card.x, card.y, card.width, card.height, card.highlighted = before[card.id]
 
         self.history.execute(LambdaCommand(f"Aplicar layout {plan.name}", do, undo))
 
