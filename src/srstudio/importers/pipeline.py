@@ -118,6 +118,7 @@ class UnifiedImportPipeline:
                     learned_profiles.append(profile.id)
                     summary.layouts_learned += 1
 
+            slot_bindings: dict[int, tuple[str, str]] = {}
             for candidate in mapped:
                 semantic_elements = self._semantic_elements(candidate)
                 if not semantic_elements or candidate.bounds is None:
@@ -181,31 +182,78 @@ class UnifiedImportPipeline:
                     overrides={
                         "imported_from_canva": True,
                         "canva_native_visual": True,
+                        "slot_detected": True,
+                        "slot_filled": False,
+                        "slot_template_product_id": product.id,
                         "hidden": True,
                         "imported_style": dict(candidate.style_spec),
                         "recognition_confidence": candidate.confidence,
                     },
                 )
                 page.cards.append(card)
+                slot_bindings.update(self._candidate_slot_bindings(candidate, card.id))
                 summary.products_added += 1
                 summary.cards_added += 1
 
-            # Preserve the complete Canva slide as the visual layer. Semantic cards above
-            # are intentionally hidden from normal rendering and remain only as editable
-            # hit regions/product bindings. This avoids replacing Canva artwork with the
-            # generic SR product-card renderer.
+            # Preserve the complete Canva slide as the visual layer. Semantic cards are
+            # hidden hit regions, while each semantic source element is tagged with the
+            # slot and role it belongs to. Filling a slot can therefore replace content
+            # without changing Canva geometry, typography, crop, z-order or decoration.
             for element in slide.elements:
                 converted = self._pptx_element(element, slide.width, slide.height, page.width, page.height)
-                if converted:
-                    page.elements.append(converted)
+                if not converted:
+                    continue
+                binding = slot_bindings.get(id(element))
+                if binding is not None:
+                    slot_id, role = binding
+                    converted["slot_id"] = slot_id
+                    converted["slot_role"] = role
+                    converted["template_hidden"] = bool(converted.get("hidden", False))
+                    if converted.get("type") == "text":
+                        converted["template_text"] = str(converted.get("text") or "")
+                    elif converted.get("type") == "image":
+                        converted["template_path"] = str(converted.get("path") or "")
+                page.elements.append(converted)
 
         project.settings["pptx_source"] = str(path)
         project.settings["pptx_media_dir"] = str(media_dir)
-        project.settings["canva_import_version"] = 3
+        project.settings["canva_import_version"] = 4
         project.settings["canva_native_visual"] = True
+        project.settings["canva_smart_slots"] = True
         if learned_profiles:
             project.settings["canva_layout_profiles"] = list(dict.fromkeys(learned_profiles))
         return summary
+
+    @staticmethod
+    def _candidate_slot_bindings(candidate: SemanticCard, card_id: str) -> dict[int, tuple[str, str]]:
+        bindings: dict[int, tuple[str, str]] = {}
+
+        def bind(element: PptxElement | None, role: str) -> None:
+            if element is not None:
+                bindings[id(element)] = (card_id, role)
+
+        bind(candidate.name, "name")
+        bind(candidate.image, "image")
+        cluster = candidate.price_cluster
+        if cluster is not None:
+            bind(cluster.complete, "price_complete")
+            bind(cluster.currency, "price_currency")
+            bind(cluster.integer, "price_integer")
+            bind(cluster.cents, "price_cents")
+            bind(cluster.unit, "unit")
+        elif candidate.price is not None:
+            bind(candidate.price, "price_complete")
+        if candidate.unit is not None:
+            bind(candidate.unit, "unit")
+
+        secondary = candidate.secondary_price
+        if secondary is not None:
+            bind(secondary.complete, "app_price_complete")
+            bind(secondary.currency, "app_price_currency")
+            bind(secondary.integer, "app_price_integer")
+            bind(secondary.cents, "app_price_cents")
+            bind(secondary.unit, "app_unit")
+        return bindings
 
     @staticmethod
     def _semantic_elements(candidate: SemanticCard) -> list[PptxElement]:
