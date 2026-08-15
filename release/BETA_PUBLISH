@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.5 Professional
-Poster preview and responsive layout polish for the high-frequency Promotion/Atacado generators.
-Official PowerPoint previews now run silently in the background with debounce and visible status feedback; the generator footer is pinned so Gerar PDF / Gerar PNGs / Imprimir remain visible when large spreadsheets are loaded or the window is resized.
-Triggered: 2026-08-15T09:05:00-03:00
+SR Studio 5.0 Beta 7.6 Professional
+Introduces final-quality poster staging for Promotion and Atacado.
+After importing the spreadsheet/report, SR Studio pre-renders the automatic cartazes silently in the background at 1772x2480 (300 dpi). The preview reuses those ready artifacts and Gerar PDF validates and assembles them without re-rendering PowerPoint. Commercial/model changes invalidate the cache automatically; manual PPTX overrides keep the traditional generation flow.
+Triggered: 2026-08-15T09:22:00-03:00
