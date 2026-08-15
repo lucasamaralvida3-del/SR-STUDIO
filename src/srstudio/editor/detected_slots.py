@@ -26,7 +26,7 @@ class DetectedSlotService:
         "app_unit",
     }
     MAX_AREA_RATIO = 0.20
-    MAX_WIDTH_RATIO = 0.46
+    MAX_WIDTH_RATIO = 0.55
     MAX_HEIGHT_RATIO = 0.52
     MIN_CONFIDENCE = 0.62
 
@@ -175,8 +175,6 @@ class DetectedSlotService:
                     element["path"] = product.image_path
                     element["hidden"] = False
                 else:
-                    # Never leave the previous Canva product image visible and
-                    # never render an empty picture placeholder on top of artwork.
                     element["path"] = ""
                     element["hidden"] = True
             elif role in cls.PRIMARY_ROLES:
