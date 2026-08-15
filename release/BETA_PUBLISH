@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.3 Professional
-Poster model library restoration: all programmed Promotion/Atacado PPTX models are visible again in the generators and in the Models center.
-Adds automatic reindexing, protected originals, custom-model backups/version history, legacy-folder migration, and persistence outside application updates.
-Triggered: 2026-08-15T08:34:00-03:00
+SR Studio 5.0 Beta 7.4 Professional
+Restores the proven automatic poster-model behavior from previous SR Studio versions while keeping the new professional module UI.
+AUTO now decides per product: 1 price, 1 price + limit, 2 prices, 2 prices + limit, Club Exclusive, Club + limit, or Cartaz Venda; the same batch may mix models. The table exposes the detected model and PowerPoint supplies the faithful preview when available.
+Triggered: 2026-08-15T08:55:00-03:00
