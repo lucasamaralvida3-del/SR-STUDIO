@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.11 Professional
-Fast renderer rebuilt on the proven legacy PowerPoint engines.
-The experimental Turbo preview engines are no longer used for fast staging. Promotion and Atacado now reuse PowerPointEngine.ps1 / AtacadoEngine.ps1, keeping one PowerPoint application per batch while preserving the historical open-fill-save-close cycle for each PPTX. Each item generates its temporary vector PDF and 300 dpi PNG preview in the same pass; final PDF generation validates and merges the cached vector PDFs. Any fast-item failure still falls back automatically to the proven normal renderer.
-Triggered: 2026-08-15T11:37:00-03:00
+SR Studio 5.0 Beta 7.12 Professional
+Renderização rápida reconstruída sobre o engine antigo intacto + PDFium.
+PowerPointEngine.ps1 e AtacadoEngine.ps1 não são mais modificados nem envolvidos por wrappers de preview. Eles geram os PDFs oficiais exatamente pelo fluxo histórico que funciona nas versões anteriores. O SR Studio observa o lote, armazena cada PDF por assinatura e usa PDFium local para criar a prévia PNG 1772x2480 sem abrir PowerPoint novamente. Reimportações iguais reutilizam PDF/PNG do cache; alterações invalidam apenas o cartaz afetado; o PDF final apenas junta os PDFs vetoriais já preparados. O modo normal comprovado continua como fallback para itens que o lote histórico não concluir.
+Triggered: 2026-08-15T11:50:00-03:00
