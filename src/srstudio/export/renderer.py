@@ -6,6 +6,14 @@ from PIL import Image, ImageDraw, ImageEnhance, ImageFont, ImageOps
 
 from srstudio.assets.font_fallbacks import pillow_font_candidates
 from srstudio.core.models import Page, StudioProject
+from srstudio.editor.canva_rendering import (
+    fit_single_line_size,
+    font_pixel_size,
+    role_overflow_ratio,
+    rounded_radius,
+    should_force_single_line,
+    text_placement,
+)
 from srstudio.editor.product_cards import ProductCardRegistry
 
 
@@ -244,27 +252,55 @@ class FlyerRenderer:
         rotation = float(element.get("rotation", 0.0) or 0.0) % 360.0
         opacity = max(0.0, min(1.0, float(element.get("opacity", 1.0) or 1.0)))
         if kind == "rect":
-            if not rotation:
-                draw.rectangle(
-                    (x, y, x + w, y + h),
-                    fill=element.get("fill", "#FFFFFF"),
-                    outline=element.get("outline") or None,
-                )
-                return
-            layer = Image.new("RGBA", (max(1, round(w)), max(1, round(h))), (0, 0, 0, 0))
-            local = ImageDraw.Draw(layer)
-            local.rectangle(
-                (0, 0, layer.width - 1, layer.height - 1),
-                fill=element.get("fill", "#FFFFFF"),
-                outline=element.get("outline") or None,
-            )
-            cls._paste_rotated(canvas, layer, x, y, w, h, rotation, opacity)
+            cls._render_rect_element(canvas, draw, element, x, y, w, h, rotation, opacity)
+            return
+        if kind == "line":
+            color = cls._safe_color(element.get("outline"), cls._safe_color(element.get("fill"), "#470000"))
+            width = max(1, round(float(element.get("line_width", 1.0) or 1.0) * scale))
+            draw.line((x, y, x + w, y + h), fill=color, width=width)
             return
         if kind == "text":
             cls._render_text_element(canvas, draw, element, x, y, w, h, scale, rotation, opacity)
             return
         if kind == "image":
             cls._render_image_element(canvas, element, x, y, w, h, rotation, opacity)
+
+    @classmethod
+    def _render_rect_element(
+        cls,
+        canvas: Image.Image,
+        draw: ImageDraw.ImageDraw,
+        element: dict,
+        x: float,
+        y: float,
+        w: float,
+        h: float,
+        rotation: float,
+        opacity: float,
+    ) -> None:
+        fill = element.get("fill") or None
+        outline = element.get("outline") or None
+        radius = rounded_radius(w, h, float(element.get("corner_radius_ratio", 0.0) or 0.0))
+        line_width = max(1, round(float(element.get("line_width", 1.0) or 1.0)))
+        if not rotation and opacity >= 0.999:
+            if radius > 0:
+                draw.rounded_rectangle((x, y, x + w, y + h), radius=radius, fill=fill, outline=outline, width=line_width)
+            else:
+                draw.rectangle((x, y, x + w, y + h), fill=fill, outline=outline, width=line_width)
+            return
+        layer = Image.new("RGBA", (max(1, round(w)), max(1, round(h))), (0, 0, 0, 0))
+        local = ImageDraw.Draw(layer)
+        if radius > 0:
+            local.rounded_rectangle(
+                (0, 0, layer.width - 1, layer.height - 1),
+                radius=radius,
+                fill=fill,
+                outline=outline,
+                width=line_width,
+            )
+        else:
+            local.rectangle((0, 0, layer.width - 1, layer.height - 1), fill=fill, outline=outline, width=line_width)
+        cls._paste_rotated(canvas, layer, x, y, w, h, rotation, opacity)
 
     @classmethod
     def _render_text_element(
@@ -284,22 +320,42 @@ class FlyerRenderer:
             raw_size = float(element.get("font_size", 24) or 24)
         except (TypeError, ValueError):
             raw_size = 24.0
-        font_size = max(7, round(raw_size * 1.333 * scale))
-        font = cls._font(font_size, bool(element.get("bold")), str(element.get("font_name") or ""))
+        font_size = font_pixel_size(raw_size, scale)
+        family = str(element.get("font_name") or element.get("source_font_name") or "")
+        bold = bool(element.get("bold"))
+        font = cls._font(font_size, bold, family)
         text = str(element.get("text", ""))
         color = cls._safe_color(element.get("fill"), "#162033")
-        align = str(element.get("align") or "").lower()
+        placement = text_placement(str(element.get("align") or ""), str(element.get("vertical_anchor") or ""))
+        single_line = should_force_single_line(element)
+
+        if single_line and text:
+            bbox = draw.textbbox((0, 0), text, font=font)
+            measured_width = max(1, bbox[2] - bbox[0])
+            line_height = max(1, bbox[3] - bbox[1])
+            fitted_size = fit_single_line_size(
+                font_size,
+                measured_width,
+                line_height,
+                w,
+                h,
+                min_px=max(4, round(5 * scale)),
+                overflow_ratio=role_overflow_ratio(str(element.get("slot_role") or "")),
+            )
+            if fitted_size != font_size:
+                font_size = fitted_size
+                font = cls._font(font_size, bold, family)
 
         if not rotation and opacity >= 0.999:
-            cls._draw_aligned_text(draw, text, font, color, x, y, w, align)
+            cls._draw_box_text(draw, text, font, color, x, y, w, h, placement, single_line)
             return
         layer = Image.new("RGBA", (max(1, round(w)), max(1, round(h))), (0, 0, 0, 0))
         local = ImageDraw.Draw(layer)
-        cls._draw_aligned_text(local, text, font, color, 0, 0, layer.width, align)
+        cls._draw_box_text(local, text, font, color, 0, 0, layer.width, layer.height, placement, single_line)
         cls._paste_rotated(canvas, layer, x, y, w, h, rotation, opacity)
 
     @staticmethod
-    def _draw_aligned_text(
+    def _draw_box_text(
         draw: ImageDraw.ImageDraw,
         text: str,
         font: ImageFont.ImageFont,
@@ -307,17 +363,29 @@ class FlyerRenderer:
         x: float,
         y: float,
         width: float,
-        align: str,
+        height: float,
+        placement,
+        single_line: bool,
     ) -> None:
-        bbox = draw.textbbox((0, 0), text, font=font)
+        bbox = draw.multiline_textbbox((0, 0), text, font=font, spacing=0, align=placement.justify)
         text_width = max(0, bbox[2] - bbox[0])
-        if align in {"ctr", "center"}:
-            text_x = x + (width - text_width) / 2
-        elif align in {"r", "right"}:
+        text_height = max(0, bbox[3] - bbox[1])
+        if placement.x_factor == 0.5:
+            text_x = x + width / 2 - text_width / 2
+        elif placement.x_factor == 1.0:
             text_x = x + width - text_width
         else:
             text_x = x
-        draw.text((text_x, y), text, fill=color, font=font)
+        if placement.y_factor == 0.5:
+            text_y = y + height / 2 - text_height / 2 - bbox[1]
+        elif placement.y_factor == 1.0:
+            text_y = y + height - text_height - bbox[1]
+        else:
+            text_y = y - bbox[1]
+        if single_line:
+            draw.text((text_x, text_y), text, fill=color, font=font)
+        else:
+            draw.multiline_text((text_x, text_y), text, fill=color, font=font, spacing=0, align=placement.justify)
 
     @classmethod
     def _render_image_element(
