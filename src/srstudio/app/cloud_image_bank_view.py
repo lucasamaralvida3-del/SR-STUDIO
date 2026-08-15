@@ -5,16 +5,16 @@ import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox, simpledialog, ttk
 
+from srstudio.app.batch_image_bank_view import BatchImageBankView
 from srstudio.app.components import card
 from srstudio.app.design import COLORS, FONT
-from srstudio.app.image_bank_view import ImageBankView
 from srstudio.images.cloud_publish import ImageBankPublicationBuilder
 from srstudio.images.cloud_sync import ImageBankCloudSync
 from srstudio.images.r2_publish import R2Config, R2Publisher
 
 
-class CloudImageBankView(ImageBankView):
-    """Image Bank UI with read-only cloud sync and credential-gated admin publication."""
+class CloudImageBankView(BatchImageBankView):
+    """Image Bank UI with batch review, cloud sync and credential-gated admin publication."""
 
     def __init__(
         self,
