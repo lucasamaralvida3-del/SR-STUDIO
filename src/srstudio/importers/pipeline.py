@@ -7,6 +7,7 @@ from pathlib import Path
 from srstudio.core.models import Page, Product, ProductCard, StudioProject
 from srstudio.images.library import ImageLibrary
 from srstudio.importers.excel.reader import ExcelImporter
+from srstudio.importers.pptx.placeholders import CanvaImagePlaceholderDetector
 from srstudio.importers.pptx.reader import PptxElement, PptxImporter
 from srstudio.importers.pptx.semantic import SemanticCard
 from srstudio.importers.pptx.slot_validation import SmartSlotValidator
@@ -136,7 +137,17 @@ class UnifiedImportPipeline:
                     summary.layouts_learned += 1
 
             slot_bindings: dict[int, tuple[str, str]] = {}
+            synthetic_image_slots: list[dict] = []
+            used_placeholders: set[int] = set()
+
             for candidate in safe_mapped:
+                placeholder = None
+                if candidate.image is None:
+                    placeholder = CanvaImagePlaceholderDetector.find(candidate, slide, used_placeholders)
+                    if placeholder is not None:
+                        used_placeholders.add(id(placeholder))
+                        CanvaImagePlaceholderDetector.expand_candidate_bounds(candidate, placeholder, slide)
+
                 semantic_elements = self._semantic_elements(candidate)
                 if not semantic_elements or candidate.bounds is None:
                     continue
@@ -190,6 +201,9 @@ class UnifiedImportPipeline:
                         "price_split": bool(candidate.price_cluster and candidate.price_cluster.complete is None),
                     },
                 )
+                if not product.image_path:
+                    self._attach_learned_image(product, summary)
+
                 project.products.append(product)
                 card = ProductCard(
                     product_id=product.id,
@@ -213,6 +227,25 @@ class UnifiedImportPipeline:
                 )
                 page.cards.append(card)
                 slot_bindings.update(self._candidate_slot_bindings(candidate, card.id))
+
+                if placeholder is not None:
+                    image_box = CanvaImagePlaceholderDetector.image_box(placeholder, candidate, slide)
+                    if image_box is not None:
+                        synthetic_image_slots.append(
+                            self._synthetic_image_slot(
+                                card.id,
+                                product.image_path,
+                                image_box,
+                                placeholder,
+                                candidate,
+                                slide.width,
+                                slide.height,
+                                page.width,
+                                page.height,
+                            )
+                        )
+                        card.overrides["slot_has_image_placeholder"] = True
+
                 summary.products_added += 1
                 summary.cards_added += 1
 
@@ -236,12 +269,16 @@ class UnifiedImportPipeline:
                         converted["template_path"] = str(converted.get("path") or "")
                 page.elements.append(converted)
 
+            # Synthetic image layers sit above the empty white card artwork and below
+            # its price text. They stay hidden when there is no approved bank image.
+            page.elements.extend(synthetic_image_slots)
+
         project.settings["pptx_source"] = str(path)
         project.settings["pptx_media_dir"] = str(media_dir)
-        project.settings["canva_import_version"] = 5
+        project.settings["canva_import_version"] = 6
         project.settings["canva_native_visual"] = True
         project.settings["canva_smart_slots"] = True
-        project.settings["canva_slot_detector_version"] = 2
+        project.settings["canva_slot_detector_version"] = 3
         project.settings["canva_slot_stats"] = slot_stats
         if learned_profiles:
             project.settings["canva_layout_profiles"] = list(dict.fromkeys(learned_profiles))
@@ -298,6 +335,51 @@ class UnifiedImportPipeline:
                 seen.add(id(element))
         return unique
 
+    @classmethod
+    def _synthetic_image_slot(
+        cls,
+        card_id: str,
+        image_path: str,
+        image_box: tuple[int, int, int, int],
+        placeholder: PptxElement,
+        candidate: SemanticCard,
+        sw: int,
+        sh: int,
+        pw: float,
+        ph: float,
+    ) -> dict:
+        left, top, right, bottom = image_box
+        price_elements = candidate.price_cluster.elements if candidate.price_cluster is not None else []
+        price_z = min((int(item.metadata.get("z_index", 0)) for item in price_elements), default=0)
+        placeholder_z = int(placeholder.metadata.get("z_index", 0))
+        z_index = price_z - 1 if price_z > placeholder_z else placeholder_z
+        hidden = not bool(image_path)
+        return {
+            "type": "image",
+            "path": image_path,
+            "x": (left / max(sw, 1)) * pw,
+            "y": (top / max(sh, 1)) * ph,
+            "width": ((right - left) / max(sw, 1)) * pw,
+            "height": ((bottom - top) / max(sh, 1)) * ph,
+            "source": "pptx",
+            "name": "SR Smart Image Slot",
+            "z_index": z_index,
+            "rotation": 0.0,
+            "opacity": 1.0,
+            "image_fit": "contain",
+            "crop": {},
+            "fill_rect": {},
+            "picture_fill": False,
+            "flip_h": False,
+            "flip_v": False,
+            "hidden": hidden,
+            "template_hidden": hidden,
+            "template_path": image_path,
+            "slot_id": card_id,
+            "slot_role": "image",
+            "synthetic_canva_image_slot": True,
+        }
+
     @staticmethod
     def _unit_text(value: str) -> str:
         text = " ".join(str(value or "UN").upper().replace("/", " ").split())
@@ -331,6 +413,7 @@ class UnifiedImportPipeline:
         }
         if element.kind == "text":
             font_size_pt = float(metadata.get("font_size_pt", 0.0) or 0.0)
+            text_fill = str(metadata.get("text_fill") or "")
             return {
                 **common,
                 "type": "text",
@@ -340,7 +423,10 @@ class UnifiedImportPipeline:
                 "bold": bool(metadata.get("bold", False)),
                 "italic": bool(metadata.get("italic", False)),
                 "align": str(metadata.get("align") or ""),
-                "fill": str(metadata.get("fill") or "#162033"),
+                "vertical_anchor": str(metadata.get("vertical_anchor") or ""),
+                "text_wrap": str(metadata.get("body_wrap") or ""),
+                "fill": text_fill if text_fill.startswith("#") else "#162033",
+                "canva_single_line": "\n" not in element.text,
             }
         if element.kind == "image" and element.media_path and Path(element.media_path).exists():
             return {
