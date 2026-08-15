@@ -11,18 +11,11 @@ LOGO_NAME = "SR_logo.png"
 ICON_NAME = "SR_Studio.ico"
 
 
-def _runtime_root() -> Path:
+def brand_dir() -> Path:
     frozen = getattr(sys, "_MEIPASS", None)
     if frozen:
-        return Path(frozen)
-    return Path(__file__).resolve().parents[2]
-
-
-def brand_dir() -> Path:
-    root = _runtime_root()
-    if getattr(sys, "_MEIPASS", None):
-        return root / BRAND_DIR
-    return root / "assets" / "brand"
+        return Path(frozen) / BRAND_DIR
+    return Path(__file__).resolve().parents[1] / "assets" / "brand"
 
 
 def logo_path() -> Path:
@@ -51,15 +44,5 @@ def load_logo_photo(master, size: int = 56) -> ImageTk.PhotoImage | None:
         y = (size - image.height) // 2
         canvas.alpha_composite(image, (x, y))
         return ImageTk.PhotoImage(canvas, master=master)
-    except (OSError, ValueError, tk_error()):
+    except (OSError, ValueError, RuntimeError):
         return None
-
-
-def tk_error():
-    """Retorna TclError sem importar tkinter no caminho de testes headless."""
-    try:
-        import tkinter as tk
-
-        return tk.TclError
-    except ImportError:
-        return RuntimeError
