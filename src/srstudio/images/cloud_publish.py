@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -16,6 +17,7 @@ class PublicationResult:
     assets: int
     output_dir: str
     manifest_path: str
+    base_bundle_path: str
     bytes_total: int
 
 
@@ -82,12 +84,27 @@ class ImageBankPublicationBuilder:
                 }
             )
 
+        bundle_name = f"base-v{version}.zip"
+        bundle_path = root / bundle_name
+        with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED, compresslevel=6) as archive:
+            for path in sorted(assets_dir.iterdir()):
+                if path.is_file():
+                    archive.write(path, f"assets/{path.name}")
+        bundle_sha = self._sha256(bundle_path)
+        bundle_size = bundle_path.stat().st_size
+
         manifest = {
             "format": "SR_IMAGE_BANK_1",
             "bank_version": version,
             "published_at": datetime.now(timezone.utc).isoformat(),
             "base_version": version,
             "asset_count": len(manifest_assets),
+            "base_bundle": {
+                "version": version,
+                "url": f"{base_url}/{bundle_name}",
+                "sha256": bundle_sha,
+                "size": bundle_size,
+            },
             "assets": manifest_assets,
         }
         manifest_path = root / "manifest.json"
@@ -97,7 +114,8 @@ class ImageBankPublicationBuilder:
             assets=len(manifest_assets),
             output_dir=str(root),
             manifest_path=str(manifest_path),
-            bytes_total=bytes_total,
+            base_bundle_path=str(bundle_path),
+            bytes_total=bytes_total + bundle_size,
         )
 
     @staticmethod
