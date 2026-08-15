@@ -4,7 +4,7 @@ import tkinter as tk
 
 from srstudio import __version__
 from srstudio.app.design import COLORS, FONT, PAGE_META
-from srstudio.app.encartes_professional_view import ProfessionalEncartesStudioView
+from srstudio.app.premium_editor import PremiumEncartesStudioView
 from srstudio.app.workspace import SRStudioWorkspace
 
 
@@ -30,7 +30,7 @@ class SRStudioProfessional(SRStudioWorkspace):
         self.topbar_title.configure(text=title)
         self.topbar_subtitle.configure(text=subtitle)
         self._clear()
-        ProfessionalEncartesStudioView(self.content, self.project)
+        PremiumEncartesStudioView(self.content, self.project)
 
 
 def _show_splash(app: SRStudioProfessional) -> None:
