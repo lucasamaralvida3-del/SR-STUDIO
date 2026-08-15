@@ -348,7 +348,7 @@ class PosterStagingService:
 
     @staticmethod
     def _validate_pdf(path: Path) -> bool:
-        if not path.is_file() or path.stat().st_size < 4096:
+        if not path.is_file() or path.stat().st_size < 256:
             return False
         try:
             return len(PdfReader(str(path)).pages) >= 1
