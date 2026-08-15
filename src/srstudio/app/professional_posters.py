@@ -5,11 +5,13 @@ from pathlib import Path
 from tkinter import filedialog, messagebox
 
 from srstudio.app.design import COLORS, FONT, PAGE_META
+from srstudio.app.poster_models_view import PosterModelsView
 from srstudio.app.posters_view import PromotionPostersView, WholesalePostersView
 from srstudio.app.professional import PRIMARY_WORKFLOWS, SRStudioProfessional, _show_splash
 from srstudio.core.models import Product
 from srstudio.importers.excel.reader import ExcelImporter
 from srstudio.posters import PosterKind
+from srstudio.posters.catalog import PosterModelCatalog, PosterModelEntry
 from srstudio.posters.history import WholesaleHistoryStore
 from srstudio.posters.importers import PromotionWorkbookImporter, WholesaleReportImporter
 from srstudio.posters.legacy_bridge import legacy_template
@@ -21,17 +23,90 @@ class _PosterQueueMixin:
 
     def _load_saved_templates(self) -> None:
         super()._load_saved_templates()
-        official = legacy_template(self.kind)
-        if official is not None and not any(item.id == official.id for item in self.templates):
-            self.templates.insert(0, official)
+        catalog = PosterModelCatalog()
+        catalog_entries = catalog.list(
+            self.kind,
+            include_versions=False,
+            groups={PosterModelCatalog.GROUP_OFFICIAL, PosterModelCatalog.GROUP_CUSTOM},
+        )
+        if catalog_entries:
+            # When the real programmed PPTX models are available, hide the generic
+            # renderer presets from the chooser. They remain available as fallback in
+            # the service, but no longer make the official models look like they vanished.
+            self.templates = [item for item in self.templates if item.uses_pptx]
+            for entry in catalog_entries:
+                template = catalog.to_template(entry, self.analyzer)
+                if not any(
+                    existing.source_pptx
+                    and Path(existing.source_pptx).resolve() == Path(template.source_pptx).resolve()
+                    for existing in self.templates
+                ):
+                    self.templates.append(template)
+
+        automatic = legacy_template(self.kind)
+        if automatic is not None and not any(item.id == automatic.id for item in self.templates):
+            automatic.name = (
+                "SR OFICIAL · Automático (1 preço / 2 preços / Clube / limite)"
+                if self.kind == PosterKind.PROMOTION
+                else "SR OFICIAL · Atacado automático"
+            )
+            self.templates.insert(0, automatic)
+
+        preferred = self.project.settings.get("preferred_poster_model", {})
+        preferred_path = str(preferred.get(self.kind.value) or "") if isinstance(preferred, dict) else ""
+        if preferred_path:
+            for index, template in enumerate(self.templates):
+                if template.source_pptx and Path(template.source_pptx) == Path(preferred_path):
+                    self.templates.insert(0, self.templates.pop(index))
+                    break
+
+    def _import_template(self) -> None:
+        path = filedialog.askopenfilename(
+            title="Importar modelo de cartaz",
+            filetypes=[("Modelo PowerPoint", "*.pptx"), ("Todos", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            catalog = PosterModelCatalog()
+            entry = catalog.install_custom(path, self.kind)
+            template = catalog.to_template(entry, self.analyzer)
+        except Exception as exc:
+            messagebox.showerror("Modelo de cartaz", f"Não foi possível instalar o PPTX.\n\n{exc}")
+            return
+
+        self.templates = [
+            item
+            for item in self.templates
+            if not item.source_pptx or Path(item.source_pptx) != Path(template.source_pptx)
+        ]
+        self.templates.append(template)
+        self.template_combo.configure(values=[item.name for item in self.templates])
+        self.template_var.set(template.name)
+        saved = self.project.settings.setdefault("poster_templates", [])
+        saved_entry = {"path": template.source_pptx, "kind": self.kind.value}
+        if saved_entry not in saved:
+            saved.append(saved_entry)
+        preferred = self.project.settings.setdefault("preferred_poster_model", {})
+        preferred[self.kind.value] = template.source_pptx
+        if self.on_changed:
+            self.on_changed()
+        roles = ", ".join(sorted(template.fields)) or "campos do modelo preservados"
+        self._notify(
+            f"Modelo instalado em Personalizados · {template.width_mm:.0f} × {template.height_mm:.0f} mm · {roles}",
+            "success",
+        )
+        self._refresh_preview()
 
     def _refresh_preview(self) -> None:
         super()._refresh_preview()
         if not getattr(self, "templates", None):
             return
         template = self._current_template()
+        group = str(template.metadata.get("catalog_group") or "")
         if template.metadata.get("legacy_engine"):
-            self.template_status.configure(text="SR OFICIAL · modelo histórico validado")
+            suffix = f" · {group}" if group else ""
+            self.template_status.configure(text=f"SR OFICIAL · modelo programado{suffix}")
         if self.is_wholesale:
             product = self._current_product()
             if product is not None:
@@ -151,6 +226,7 @@ class SRStudioPosterProfessional(SRStudioProfessional):
 
     def __init__(self) -> None:
         super().__init__()
+        self.poster_models = PosterModelCatalog(self.data_dir / "modelos")
         self.wholesale_history = WholesaleHistoryStore(self.data_dir / "atacado-history.sqlite3")
 
     def navigate(self, name: str) -> None:
@@ -161,6 +237,22 @@ class SRStudioPosterProfessional(SRStudioProfessional):
             self._show_poster_module(name, PosterKind.WHOLESALE)
             return
         super().navigate(name)
+
+    def _templates_view(self) -> None:
+        PosterModelsView(
+            self.content,
+            self.poster_models,
+            on_use=self._use_poster_model,
+            toast=self.toast,
+        )
+
+    def _use_poster_model(self, entry: PosterModelEntry) -> None:
+        preferred = self.project.settings.setdefault("preferred_poster_model", {})
+        preferred[entry.kind.value] = entry.path
+        self._mark_changed()
+        module = "Atacado" if entry.kind == PosterKind.WHOLESALE else "Promoções"
+        self.toast.show(f"Modelo selecionado: {entry.name}. Abrindo {module}...", "success", 3600)
+        self.navigate(module)
 
     def _show_poster_module(self, name: str, kind: PosterKind) -> None:
         self._active_nav = name
