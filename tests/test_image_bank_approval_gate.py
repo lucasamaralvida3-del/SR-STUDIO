@@ -64,7 +64,7 @@ def test_same_image_seen_on_different_products_is_forced_back_to_review(tmp_path
     assert library.find_best_for_product("FEIJAO VASCONCELOS 1KG") is None
 
 
-def test_approving_cross_product_conflict_keeps_only_current_product_association(tmp_path):
+def test_approving_cross_product_conflict_keeps_current_association_and_blocks_weak_fuzzy_fill(tmp_path):
     library = ImageLibrary(tmp_path / "bank")
     source = _image(tmp_path / "produto.png")
     first = library.learn_product_image(source, "ARROZ VASCONCELOS 5KG", confidence=0.99)
@@ -75,5 +75,18 @@ def test_approving_cross_product_conflict_keeps_only_current_product_association
     assert approved.review_status == "accepted"
     assert approved.metadata.get("review_reason") is None
     assert "FEIJAO VASCONCELOS 1KG" not in approved.aliases
-    assert library.find_best_for_product("ARROZ VASCONCELOS 5KG") is not None
-    assert library.find_best_for_product("FEIJAO VASCONCELOS 1KG") is None
+
+    pipeline = UnifiedImportPipeline(image_library=library)
+
+    arroz = Product(original_name="ARROZ VASCONCELOS 5KG")
+    arroz_summary = ImportSummary("arroz.xlsx")
+    pipeline._attach_learned_image(arroz, arroz_summary)
+    assert arroz.image_path == approved.path
+    assert arroz_summary.images_matched == 1
+
+    feijao = Product(original_name="FEIJAO VASCONCELOS 1KG")
+    feijao_summary = ImportSummary("feijao.xlsx")
+    pipeline._attach_learned_image(feijao, feijao_summary)
+    assert feijao.image_path == ""
+    assert feijao_summary.images_matched == 0
+    assert feijao_summary.warnings
