@@ -10,6 +10,7 @@ from srstudio.app.professional import PRIMARY_WORKFLOWS, SRStudioProfessional, _
 from srstudio.core.models import Product
 from srstudio.importers.excel.reader import ExcelImporter
 from srstudio.posters import PosterKind
+from srstudio.posters.history import WholesaleHistoryStore
 from srstudio.posters.importers import PromotionWorkbookImporter, WholesaleReportImporter
 from srstudio.posters.legacy_bridge import legacy_template
 from srstudio.pricing.engine import PriceEngine
@@ -31,6 +32,20 @@ class _PosterQueueMixin:
         template = self._current_template()
         if template.metadata.get("legacy_engine"):
             self.template_status.configure(text="SR OFICIAL · modelo histórico validado")
+        if self.is_wholesale:
+            product = self._current_product()
+            if product is not None:
+                status = str(product.metadata.get("atacado_status") or "")
+                reason = str(product.metadata.get("atacado_reason") or "")
+                alert = str(product.metadata.get("atacado_alert") or "")
+                details = []
+                if status:
+                    details.append(f"Histórico: {status}" + (f" · {reason}" if reason else ""))
+                if alert:
+                    details.append(f"Atenção: {alert}")
+                if details:
+                    current = self.info_label.cget("text")
+                    self.info_label.configure(text=current + "\n" + "\n".join(details))
 
     def _queue_products(self):
         queues = self.project.settings.get("poster_queues", {})
@@ -40,12 +55,24 @@ class _PosterQueueMixin:
         lookup = {product.id: product for product in self.project.products}
         return [lookup[product_id] for product_id in ids if product_id in lookup]
 
+    def _ensure_status_column(self) -> None:
+        if not self.is_wholesale:
+            return
+        columns = tuple(self.tree["columns"])
+        if "status" in columns:
+            return
+        self.tree.configure(columns=(*columns, "status"))
+        self.tree.heading("status", text="Status")
+        self.tree.column("status", width=105, minwidth=85, stretch=False)
+
     def refresh_products(self) -> None:
         previous_ids = set(self.tree.selection()) if hasattr(self, "tree") else set()
         for item in self.tree.get_children():
             self.tree.delete(item)
+        self._ensure_status_column()
         price_engine = PriceEngine()
         products = self._queue_products()
+        preferred_ids: list[str] = []
         for product in products:
             if self.is_wholesale:
                 first = product.retail_price if product.retail_price is not None else product.price
@@ -59,34 +86,45 @@ class _PosterQueueMixin:
             if not self.is_wholesale and poster_type == 3:
                 first_text = price_engine.split(product.price, "").formatted.replace("/", "") if product.price else "—"
                 second_text = "CLUBE EXCLUSIVO"
-            self.tree.insert(
-                "",
-                "end",
-                iid=product.id,
-                values=(
-                    product.code or "—",
-                    product.name,
-                    first_text,
-                    second_text,
-                    product.quantity or "—",
-                    product.unit,
-                    product.cpf_limit or "—",
-                ),
-            )
+            values = [
+                product.code or "—",
+                product.name,
+                first_text,
+                second_text,
+                product.quantity or "—",
+                product.unit,
+                product.cpf_limit or "—",
+            ]
+            if self.is_wholesale:
+                status = str(product.metadata.get("atacado_status") or "")
+                values.append(status or "—")
+                if status in {"NOVO", "ALTERADO"}:
+                    preferred_ids.append(product.id)
+            self.tree.insert("", "end", iid=product.id, values=values)
         if previous_ids:
             available = [item for item in previous_ids if self.tree.exists(item)]
             if available:
                 self.tree.selection_set(available)
-        elif self.tree.get_children():
+        elif preferred_ids:
+            self.tree.selection_set(preferred_ids)
+        elif self.tree.get_children() and not self.is_wholesale:
             self.tree.selection_set(self.tree.get_children())
-        self.count_label.configure(text=f"{len(products)} produto(s) na fila")
+        if self.is_wholesale:
+            new_count = sum(product.metadata.get("atacado_status") == "NOVO" for product in products)
+            changed_count = sum(product.metadata.get("atacado_status") == "ALTERADO" for product in products)
+            self.count_label.configure(
+                text=f"{len(products)} produto(s) · {new_count} novo(s) · {changed_count} alterado(s)"
+            )
+        else:
+            self.count_label.configure(text=f"{len(products)} produto(s) na fila")
         self._refresh_preview()
 
     def _selected_products(self):
         products = self._queue_products()
         selected = set(self.tree.selection())
         if not selected:
-            return products
+            has_history = self.is_wholesale and any(product.metadata.get("atacado_status") for product in products)
+            return [] if has_history else products
         return [product for product in products if product.id in selected]
 
     def _current_product(self):
@@ -110,6 +148,10 @@ class WholesalePosterModule(_PosterQueueMixin, WholesalePostersView):
 
 class SRStudioPosterProfessional(SRStudioProfessional):
     """Official v5 shell with Promotion/Wholesale restored as dedicated print modules."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.wholesale_history = WholesaleHistoryStore(self.data_dir / "atacado-history.sqlite3")
 
     def navigate(self, name: str) -> None:
         if name == "Promoções":
@@ -178,6 +220,25 @@ class SRStudioPosterProfessional(SRStudioProfessional):
 
             if imported.errors:
                 raise RuntimeError("\n".join(imported.errors))
+
+            history_summary = None
+            if kind == PosterKind.WHOLESALE and imported.products:
+                history_summary = self.wholesale_history.analyze_and_store(
+                    source,
+                    imported.products,
+                    imported.metadata,
+                )
+                self.project.settings["atacado_history_summary"] = {
+                    "report_id": history_summary.report_id,
+                    "duplicate": history_summary.duplicate,
+                    "new": history_summary.new,
+                    "changed": history_summary.changed,
+                    "same": history_summary.same,
+                    "removed": history_summary.removed,
+                    "alerts": history_summary.alerts,
+                    "removed_codes": list(history_summary.removed_codes),
+                }
+
             queues = self.project.settings.setdefault("poster_queues", {})
             old_ids = set(queues.get(kind.value, []))
             if old_ids:
@@ -199,9 +260,16 @@ class SRStudioPosterProfessional(SRStudioProfessional):
             message = f"{len(imported.products)} produto(s) carregados no módulo de cartazes."
             if imported.campaigns:
                 message += f" {len(imported.campaigns)} campanha(s) reconhecida(s)."
+            if history_summary is not None:
+                message += (
+                    f" Atacado: {history_summary.new} novo(s), {history_summary.changed} alterado(s), "
+                    f"{history_summary.same} sem alteração, {history_summary.removed} removido(s)."
+                )
+                if history_summary.duplicate:
+                    message += " Relatório já conhecido; histórico reaproveitado."
             if imported.warnings:
                 message += f" {len(imported.warnings)} aviso(s) para revisar."
-            self.toast.show(message, "success", 4600)
+            self.toast.show(message, "success", 5200)
             if imported.warnings:
                 messagebox.showwarning("Importação concluída com avisos", "\n".join(imported.warnings[:15]))
             return len(imported.products)
