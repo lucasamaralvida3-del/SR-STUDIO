@@ -51,7 +51,7 @@ jobs:
       - name: Build SR Studio 5 Professional
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" --paths src src/srstudio/app/advanced_posters.py
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" --paths src src/srstudio/app/responsive_posters.py
           if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Executável profissional não foi gerado." }
           $modelA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
           $modelB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
@@ -59,7 +59,7 @@ jobs:
           $engineA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           $engineB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           if (!(Test-Path $engineA) -and !(Test-Path $engineB)) { throw "Engine oficial de Promoções ausente do executável." }
-          python -c "from srstudio.app.advanced_posters import SRStudioAdvancedPosters, AdvancedPromotionPosterModule; print(SRStudioAdvancedPosters.__name__, AdvancedPromotionPosterModule.__name__)"
+          python -c "from srstudio.app.responsive_posters import SRStudioResponsivePosters, ResponsivePromotionPosterModule, poster_pane_ratio; assert poster_pane_ratio(1500) == (68, 32); print(SRStudioResponsivePosters.__name__, ResponsivePromotionPosterModule.__name__)"
 
       - name: Assemble launcher-compatible hybrid bundle
         shell: pwsh
@@ -141,9 +141,8 @@ jobs:
 
           Atualização do SR Studio 5 Professional no canal Beta oficial.
           Versão: $env:DIST_VERSION
-          Cartazes de Promoção e Atacado agora possuem grade editável em tempo real, diagnóstico Custo/Venda/Clube (ou Atacado), tooltips de erro, filtros e ações em lote.
-          A importação e a pré-renderização possuem progresso próprio; cada alteração invalida e atualiza somente o cartaz afetado, preservando os temporários já válidos.
-          Os modelos históricos SR, detecção automática e geração final a partir do staging de 300 dpi continuam preservados.
+          O Gerador de Cartazes agora usa proporção responsiva entre lista e prévia, com painel de prévia maior, imagem redimensionada conforme a janela, colunas adaptativas e rolagem horizontal apenas quando necessário.
+          Grade editável, diagnóstico Custo/Venda/Clube, progresso de importação/renderização, staging 300 dpi e modelos históricos SR continuam preservados.
 
           Compatível com o Launcher Beta Base 3.4 através do shim SR_Studio_Gerador.py.
           "@
@@ -192,7 +191,7 @@ jobs:
             size = [int64]$env:BETA_SIZE
             member_prefix = "files/"
             previous_version = $previousVersion
-            notes = "SR Studio $env:RELEASE_LABEL - grade editável, diagnóstico comercial, progresso de importação/renderização e atualização de cartaz em tempo real."
+            notes = "SR Studio $env:RELEASE_LABEL - proporção responsiva do Gerador de Cartazes, prévia maior e grade adaptativa."
           }
           $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
