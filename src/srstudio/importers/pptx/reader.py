@@ -10,6 +10,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from srstudio.assets.font_fallbacks import preferred_windows_display_family
+from srstudio.importers.pptx.shape_geometry import shape_geometry_metadata
 
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -145,6 +146,7 @@ class PptxImporter:
         media_path, media_meta = self._media(node, rels, media_map)
         metadata = self._common_metadata(node, z_index)
         metadata.update(self._shape_style(node))
+        metadata.update(shape_geometry_metadata(node))
         metadata.update(media_meta)
         if media_path:
             metadata["picture_fill"] = True
