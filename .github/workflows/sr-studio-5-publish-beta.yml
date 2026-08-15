@@ -51,7 +51,7 @@ jobs:
       - name: Build SR Studio 5 Professional
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" --paths src src/srstudio/app/professional_posters.py
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" --paths src src/srstudio/app/staged_posters.py
           if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Executável profissional não foi gerado." }
           $modelA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
           $modelB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
@@ -141,7 +141,7 @@ jobs:
           Atualização do SR Studio 5 Professional no canal Beta oficial.
           Versão: $env:DIST_VERSION
           Cartazes de Promoção e Cartazes de Atacado são módulos dedicados de impressão, separados do Encartes Studio.
-          Inclui os modelos SR históricos validados, geração 1 preço / 2 preços / Clube Exclusivo e o fluxo Atacado do relatório 782.
+          Inclui os modelos SR históricos validados e pré-geração temporária em qualidade final para prévias instantâneas e PDF sem nova renderização.
 
           Compatível com o Launcher Beta Base 3.4 através do shim SR_Studio_Gerador.py.
           "@
@@ -190,7 +190,7 @@ jobs:
             size = [int64]$env:BETA_SIZE
             member_prefix = "files/"
             previous_version = $previousVersion
-            notes = "SR Studio $env:RELEASE_LABEL - módulos dedicados de Cartazes de Promoção e Atacado com modelos históricos SR."
+            notes = "SR Studio $env:RELEASE_LABEL - cartazes pré-gerados em segundo plano e liberados após validação."
           }
           $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
