@@ -10,6 +10,7 @@ from typing import Iterable
 from PIL import Image
 
 from srstudio.core.models import Product
+from srstudio.posters.auto_model import PosterAutoModelResolver
 from srstudio.posters.core import PosterKind
 from srstudio.posters.preview import LegacyPosterPreviewService
 
@@ -43,17 +44,38 @@ class PosterStagingService:
         self.root = Path(root) if root is not None else Path.home() / ".srstudio5" / "cache" / "poster-staging"
         self.root.mkdir(parents=True, exist_ok=True)
         self.renderer = LegacyPosterPreviewService(self.root / "render-cache")
+        self.model_resolver = PosterAutoModelResolver()
+        self._model_hashes: dict[str, str] = {}
 
     def signature(self, product: Product, kind: PosterKind, campaign: str = "") -> str:
+        decision = self.model_resolver.decide(product, kind)
         payload = {
             "kind": kind.value,
             "campaign": campaign,
             "product": product.to_dict(),
             "promotion_type": product.metadata.get("promotion_type"),
-            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v1",
+            "model": decision.filename,
+            "model_revision": self._model_revision(decision.path),
+            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v2",
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()[:40]
+
+    def _model_revision(self, path: Path) -> str:
+        key = str(path.resolve())
+        cached = self._model_hashes.get(key)
+        if cached is not None:
+            return cached
+        if not path.is_file():
+            revision = "missing"
+        else:
+            digest = hashlib.sha256()
+            with path.open("rb") as stream:
+                for block in iter(lambda: stream.read(1024 * 1024), b""):
+                    digest.update(block)
+            revision = digest.hexdigest()[:20]
+        self._model_hashes[key] = revision
+        return revision
 
     def artifact_path(self, product: Product, kind: PosterKind, campaign: str = "") -> Path:
         signature = self.signature(product, kind, campaign)
@@ -75,7 +97,7 @@ class PosterStagingService:
                 campaign,
                 width=self.PRINT_WIDTH,
                 height=self.PRINT_HEIGHT,
-                cache_namespace="staging-print-v1",
+                cache_namespace="staging-print-v2",
             )
             if rendered != destination:
                 shutil.copy2(rendered, destination)
