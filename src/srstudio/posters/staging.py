@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterable
@@ -13,6 +14,9 @@ from srstudio.core.models import Product
 from srstudio.posters.auto_model import PosterAutoModelResolver
 from srstudio.posters.core import PosterKind
 from srstudio.posters.preview import LegacyPosterPreviewService
+
+
+_POWERPOINT_STAGE_LOCK = threading.Lock()
 
 
 @dataclass(frozen=True, slots=True)
@@ -49,14 +53,26 @@ class PosterStagingService:
 
     def signature(self, product: Product, kind: PosterKind, campaign: str = "") -> str:
         decision = self.model_resolver.decide(product, kind)
+        effective_campaign = campaign or product.campaign
+        # Only values capable of changing the printed poster belong in the signature.
+        # UI/runtime metadata such as PRONTO/ALTERADO must never invalidate the image.
         payload = {
             "kind": kind.value,
-            "campaign": campaign,
-            "product": product.to_dict(),
+            "campaign": effective_campaign,
+            "code": product.code,
+            "name": product.name,
+            "price": None if product.price is None else str(product.price),
+            "app_price": None if product.app_price is None else str(product.app_price),
+            "retail_price": None if product.retail_price is None else str(product.retail_price),
+            "wholesale_price": None if product.wholesale_price is None else str(product.wholesale_price),
+            "unit": product.unit,
+            "quantity": product.quantity,
+            "limit": product.cpf_limit,
+            "validity": product.validity,
             "promotion_type": product.metadata.get("promotion_type"),
             "model": decision.filename,
             "model_revision": self._model_revision(decision.path),
-            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v2",
+            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v3",
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()[:40]
@@ -91,14 +107,18 @@ class PosterStagingService:
             return StagedPoster(product.id, signature, destination, width, height, True)
 
         try:
-            rendered = self.renderer.render(
-                product,
-                kind,
-                campaign,
-                width=self.PRINT_WIDTH,
-                height=self.PRINT_HEIGHT,
-                cache_namespace="staging-print-v2",
-            )
+            # One PowerPoint staging export at a time is both faster and more stable on
+            # Office COM. Live edits queue behind the initial batch rather than opening
+            # competing hidden PowerPoint instances.
+            with _POWERPOINT_STAGE_LOCK:
+                rendered = self.renderer.render(
+                    product,
+                    kind,
+                    campaign,
+                    width=self.PRINT_WIDTH,
+                    height=self.PRINT_HEIGHT,
+                    cache_namespace="staging-print-v3",
+                )
             if rendered != destination:
                 shutil.copy2(rendered, destination)
             valid, width, height, error = self._validate_image(destination)
