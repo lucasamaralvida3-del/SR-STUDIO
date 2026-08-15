@@ -51,8 +51,14 @@ jobs:
       - name: Build SR Studio 5 Professional
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --paths src src/srstudio/app/professional_posters.py
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" --paths src src/srstudio/app/professional_posters.py
           if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Executável profissional não foi gerado." }
+          $modelA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
+          $modelB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
+          if (!(Test-Path $modelA) -and !(Test-Path $modelB)) { throw "Modelo oficial ATACADO.pptx ausente do executável." }
+          $engineA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
+          $engineB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
+          if (!(Test-Path $engineA) -and !(Test-Path $engineB)) { throw "Engine oficial de Promoções ausente do executável." }
 
       - name: Assemble launcher-compatible hybrid bundle
         shell: pwsh
@@ -115,6 +121,12 @@ jobs:
           Expand-Archive -LiteralPath $env:BETA_ZIP -DestinationPath $validation -Force
           if (!(Test-Path "$validation/files/SR_Studio_Gerador.py")) { throw "Shim do Launcher ausente." }
           if (!(Test-Path "$validation/files/SRStudio5/SR Studio 5.exe")) { throw "Executável profissional ausente no bundle." }
+          $legacyModelA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
+          $legacyModelB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
+          if (!(Test-Path $legacyModelA) -and !(Test-Path $legacyModelB)) { throw "Bundle Beta sem modelo oficial de Atacado." }
+          $legacyEngineA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
+          $legacyEngineB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
+          if (!(Test-Path $legacyEngineA) -and !(Test-Path $legacyEngineB)) { throw "Bundle Beta sem engine oficial de Promoções." }
           $got = (Get-FileHash $env:BETA_ZIP -Algorithm SHA256).Hash.ToLower()
           if ($got -ne $env:BETA_SHA256) { throw "SHA-256 mudou após empacotamento." }
 
@@ -129,6 +141,7 @@ jobs:
           Atualização do SR Studio 5 Professional no canal Beta oficial.
           Versão: $env:DIST_VERSION
           Cartazes de Promoção e Cartazes de Atacado são módulos dedicados de impressão, separados do Encartes Studio.
+          Inclui os modelos SR históricos validados, geração 1 preço / 2 preços / Clube Exclusivo e o fluxo Atacado do relatório 782.
 
           Compatível com o Launcher Beta Base 3.4 através do shim SR_Studio_Gerador.py.
           "@
@@ -177,7 +190,7 @@ jobs:
             size = [int64]$env:BETA_SIZE
             member_prefix = "files/"
             previous_version = $previousVersion
-            notes = "SR Studio $env:RELEASE_LABEL - módulos dedicados de Cartazes de Promoção e Atacado."
+            notes = "SR Studio $env:RELEASE_LABEL - módulos dedicados de Cartazes de Promoção e Atacado com modelos históricos SR."
           }
           $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
