@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.14 Professional
-Canva V2 + hotfix de confiança do Banco de Imagens.
-Mantém todo o Canva Importer V2, reconhecimento de Freeform/Shape com picture fill, grupos/subgrupos, preços divididos, cards editáveis, treinamento PPTX/ZIP, deduplicação, Banco de Imagens e layouts SR reutilizáveis. Hotfix: imagens aprendidas com baixa/média confiança permanecem PENDENTES e nunca são usadas automaticamente na importação Excel; somente imagens APROVADAS podem preencher produtos automaticamente. Promoções, Atacado, PDFium, cache seletivo e renderização histórica continuam preservados.
-Triggered: 2026-08-15T13:12:00-03:00
+SR Studio 5.0 Beta 7.15 Professional
+SR Image Cloud Sync + Banco de Imagens centralizado.
+Adiciona sincronização automática do Banco SR ao iniciar, cache offline, download incremental, pacote-base verificado por SHA-256 para primeira instalação, preservação total de imagens pessoais, bootstrap redirecionável para futura CDN/R2, botão Sincronizar agora, preparação de publicação e publicador Cloudflare R2 exclusivo para instalações administrativas com credenciais externas. Assets e pacote-base são enviados antes do manifest.json para ativação segura. O banco oficial inicial permanece vazio até a primeira publicação de imagens aprovadas. Canva V2, layouts aprendidos, Promoções, Atacado, PDFium e engines históricos continuam preservados.
+Triggered: 2026-08-15T14:27:00-03:00
