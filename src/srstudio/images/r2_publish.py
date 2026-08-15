@@ -59,7 +59,7 @@ class R2Publisher:
         files_uploaded = 0
         bytes_uploaded = 0
 
-        # Upload immutable assets first; manifest is the atomic activation pointer.
+        # Immutable assets first.
         for path in sorted(assets_dir.iterdir()) if assets_dir.is_dir() else []:
             if not path.is_file():
                 continue
@@ -67,6 +67,13 @@ class R2Publisher:
             files_uploaded += 1
             bytes_uploaded += path.stat().st_size
 
+        # Base bundles are optional accelerators and must exist before activation.
+        for path in sorted(root.glob("base-v*.zip")):
+            self.put_file(path, path.name, content_type="application/zip")
+            files_uploaded += 1
+            bytes_uploaded += path.stat().st_size
+
+        # Manifest last: this is the atomic activation pointer for all clients.
         self.put_file(manifest, "manifest.json", content_type="application/json; charset=utf-8")
         files_uploaded += 1
         bytes_uploaded += manifest.stat().st_size
