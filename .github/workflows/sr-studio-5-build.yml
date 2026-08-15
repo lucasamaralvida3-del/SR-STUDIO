@@ -24,7 +24,7 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/responsive_posters.py
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
       - name: Smoke check executable
         shell: pwsh
         run: |
@@ -36,7 +36,13 @@ jobs:
           $engineA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           $engineB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           if (!(Test-Path $engineA) -and !(Test-Path $engineB)) { throw "Engine oficial de Promoções não foi empacotado" }
-          python -c "from srstudio.posters.staging import PosterStagingService; from srstudio.app.responsive_posters import ResponsivePromotionPosterModule, poster_pane_ratio; assert PosterStagingService.PRINT_WIDTH == 1772; assert PosterStagingService.PRINT_HEIGHT == 2480; assert poster_pane_ratio(1600) == (68, 32); print(ResponsivePromotionPosterModule.__name__)"
+          $turboPromoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/TurboPromotionPreview.ps1"
+          $turboPromoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/TurboPromotionPreview.ps1"
+          if (!(Test-Path $turboPromoA) -and !(Test-Path $turboPromoB)) { throw "Turbo Renderer de Promoções não foi empacotado" }
+          $turboAtacadoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/TurboAtacadoPreview.ps1"
+          $turboAtacadoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/TurboAtacadoPreview.ps1"
+          if (!(Test-Path $turboAtacadoA) -and !(Test-Path $turboAtacadoB)) { throw "Turbo Renderer de Atacado não foi empacotado" }
+          python -c "from srstudio.posters.staging import PosterStagingService; from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; assert PosterStagingService.PRINT_WIDTH == 1772; assert PosterStagingService.PRINT_HEIGHT == 2480; assert poster_pane_ratio(1600) == (68, 32); print(SRStudioTurboPosters.__name__)"
       - name: Create portable update package
         shell: pwsh
         run: |
