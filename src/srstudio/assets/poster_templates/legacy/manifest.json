@@ -1,0 +1,73 @@
+{
+  "format": "SRSTUDIO_LEGACY_POSTERS_1",
+  "source_release": "v4.0.15-hybrid.beta16",
+  "source_asset": "SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip",
+  "purpose": "Preserve the proven Promotion/Wholesale print poster templates in SR Studio 5.",
+  "files": [
+    {
+      "path": "engines/AtacadoEngine.ps1",
+      "sha256": "9d8655a9d006fcbd0d3093f0945a4dc1162008173a278ee26ec3ed477bb94b9a",
+      "size": 7866
+    },
+    {
+      "path": "engines/AtacadoPreview.ps1",
+      "sha256": "56880d44973058e1df99820b2af4b424348ff1e90379618d51ec606c87f75bed",
+      "size": 5257
+    },
+    {
+      "path": "engines/PowerPointEngine.ps1",
+      "sha256": "7d9b866b7daff10fe1744a64ab6bc77f94026ac6cacfa2733b96cb24b8e333cf",
+      "size": 19684
+    },
+    {
+      "path": "engines/PreviewEngine.ps1",
+      "sha256": "0c24416b1ad1e8215f42cfff08f1350255432a7820a71775cbf9fcbb11472f49",
+      "size": 18099
+    },
+    {
+      "path": "engines/ValidateLayout.ps1",
+      "sha256": "5e75a4db830b5dd717e265b7432c8d3b83a284b730f410b921b6bcd2a3d33097",
+      "size": 11562
+    },
+    {
+      "path": "models/ATACADO.pptx",
+      "sha256": "adb19cbb76255775a4ce39ea031c801c5b30148b39ffe2beaa4d8711b9ec8b1a",
+      "size": 176889
+    },
+    {
+      "path": "models/CARTAZ_VENDA.pptx",
+      "sha256": "69d215030161655840b12f14c163e12c83a94478383feb9a77995b1edecef8e2",
+      "size": 46695
+    },
+    {
+      "path": "models/CLUBE_EXCLUSIVO.pptx",
+      "sha256": "02f7faf27cec0bde163721c36454f48992132e0d7cff5dac480780ba6ce87e38",
+      "size": 192432
+    },
+    {
+      "path": "models/CLUBE_EXCLUSIVO_COM_LIMITE.pptx",
+      "sha256": "25e9099db0aa3d55386d9de237d3ec7e3f1ba1eb24f9096356ce39fde6f82de1",
+      "size": 188985
+    },
+    {
+      "path": "models/SEGUNDA_DA_LIMPEZA_1_PRECO.pptx",
+      "sha256": "19dd0f6009d6844992a58cc8438ef22d9c8f318af21b1bf63f3890480ccb3804",
+      "size": 173767
+    },
+    {
+      "path": "models/SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx",
+      "sha256": "c9608f58bbd772b5bf0c6f9cf2fc89e4d64fff8d9ad5c8f6d9059c9b67dbc05c",
+      "size": 175159
+    },
+    {
+      "path": "models/SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx",
+      "sha256": "76bf46c5fa995a69e0b3309ecb60c1c1eca5e28e309df6507612c38fad2a214d",
+      "size": 247759
+    },
+    {
+      "path": "models/SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx",
+      "sha256": "2d6da2ba0e1fc282122fb57431e9d71f38e696f796ccf08ebd5925d07e3ccb3b",
+      "size": 248244
+    }
+  ]
+}
