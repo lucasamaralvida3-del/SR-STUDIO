@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -81,30 +82,55 @@ class LegacyPosterPreviewService:
             raise RuntimeError("O PowerPoint encerrou sem gerar a prévia oficial.")
         return destination
 
-    @staticmethod
-    def _run(script: Path, arguments: list[str]) -> None:
+    @classmethod
+    def _run(cls, script: Path, arguments: list[str]) -> None:
         shell = shutil.which("powershell.exe") or shutil.which("pwsh.exe")
         if not shell or os.name != "nt":
             raise RuntimeError("PowerShell do Windows não disponível.")
-        completed = subprocess.run(
-            [
-                shell,
-                "-NoProfile",
-                "-NonInteractive",
-                "-ExecutionPolicy",
-                "Bypass",
-                "-File",
-                str(script),
-                *arguments,
-            ],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-        )
+
+        # The historical preview scripts intentionally made PowerPoint visible so they
+        # could be debugged by hand. For Studio preview we preserve the script/model
+        # logic but execute a temporary copy with the application kept hidden. The
+        # original print engines/assets remain untouched.
+        with tempfile.TemporaryDirectory(prefix="srstudio-silent-preview-") as temp_name:
+            silent_script = Path(temp_name) / script.name
+            source = script.read_text(encoding="utf-8-sig")
+            silent_script.write_text(cls._silent_script_source(source), encoding="utf-8-sig")
+
+            startupinfo = None
+            creationflags = 0
+            if os.name == "nt":
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                startupinfo.wShowWindow = 0
+                creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+            completed = subprocess.run(
+                [
+                    shell,
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(silent_script),
+                    *arguments,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=120,
+                check=False,
+                startupinfo=startupinfo,
+                creationflags=creationflags,
+            )
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "Falha ao gerar prévia oficial.").strip()
             raise RuntimeError(detail[-4000:])
+
+    @staticmethod
+    def _silent_script_source(source: str) -> str:
+        replacement = "try { $ppt.Visible = 0 } catch { }"
+        return re.sub(r"\$ppt\.Visible\s*=\s*-1", replacement, source, flags=re.IGNORECASE)
 
     @staticmethod
     def _cache_key(product: Product, kind: PosterKind, campaign: str) -> str:
@@ -113,7 +139,7 @@ class LegacyPosterPreviewService:
             "campaign": campaign,
             "product": product.to_dict(),
             "poster_type": product.metadata.get("promotion_type"),
-            "engine": "legacy-preview-v1",
+            "engine": "legacy-preview-v2-silent",
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()[:32]
