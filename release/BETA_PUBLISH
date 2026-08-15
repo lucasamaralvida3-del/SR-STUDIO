@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.17 Professional
-Banco de Imagens: revisão em lote e atalhos A/R.
-Adiciona seleção múltipla no Banco de Imagens, Selecionar todas/Desmarcar todas, contador de seleção, aprovação em lote e recusa em lote com exclusão real do registro e do arquivo local pertencente ao banco. Atalhos: A aprova seleção, R abre confirmação de recusa/exclusão, R novamente confirma a exclusão, Ctrl+A seleciona todas as imagens visíveis e Esc cancela/limpa seleção. A confirmação também aceita Enter e mantém proteção contra apagar arquivos externos ao diretório do banco. O módulo BatchImageBankView é integrado ao CloudImageBankView e validado no smoke check do executável. Mantém correções de conflito visual, SR Image Cloud Sync, Canva V2, layouts aprendidos, Promoções, Atacado, PDFium e engines históricos preservados.
-Triggered: 2026-08-15T15:17:00-03:00
+SR Studio 5.0 Beta 7.18 Professional
+Banco de Imagens: verificação sequencial das imagens selecionadas.
+Adiciona o botão VERIFICAR na revisão em lote do Banco de Imagens. As imagens selecionadas são abertas em uma tela modal de revisão, uma por vez, com prévia ampliada, nome do produto, confiança, origem, alerta de conflito, contador e barra de progresso. A aprova e avança automaticamente; R recusa, remove do banco e avança automaticamente; Pular preserva a imagem e segue; Voltar retorna para a imagem anterior. Ao terminar, o Studio mostra um resumo com aprovadas, recusadas/removidas e puladas. O modo mantém seleção em lote, atalhos A/R/Ctrl+A/Esc, SR Image Cloud Sync, Canva V2, layouts aprendidos, Promoções, Atacado, PDFium e engines históricos preservados.
+Triggered: 2026-08-15T15:31:00-03:00
