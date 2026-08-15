@@ -20,7 +20,7 @@ dev = ["pytest>=8.0", "ruff>=0.6"]
 sr-studio-5 = "srstudio.app.professional_posters:run"
 
 [tool.setuptools]
-package-dir = {"" = "src"]
+package-dir = {"" = "src"}
 include-package-data = true
 
 [tool.setuptools.dynamic]
