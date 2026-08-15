@@ -14,7 +14,14 @@ class EditorController:
 
     def __init__(self, project: StudioProject, page: Page | None = None) -> None:
         self.project = project
-        self.page = page or project.pages[0]
+        if page is None:
+            try:
+                active_index = int(project.settings.get("active_page_index", 0) or 0)
+            except (TypeError, ValueError):
+                active_index = 0
+            active_index = max(0, min(active_index, len(project.pages) - 1))
+            page = project.pages[active_index]
+        self.page = page
         self.scene = Scene(self.page)
         self.history = CommandHistory()
         self.layout = LayoutEngine()
