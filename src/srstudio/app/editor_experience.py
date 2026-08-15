@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import tkinter as tk
 
+from PIL import ImageTk
+
 from srstudio.app.design import COLORS, FONT
 from srstudio.app.premium_editor import PremiumEncartesStudioView, PremiumFlyerCanvas
 from srstudio.app.ui_kit import IconButton, Tooltip
+from srstudio.editor.layout import Rect
+from srstudio.export.renderer import FlyerRenderer
 
 
 CURSORS = {
@@ -26,8 +30,28 @@ class StudioCanvasExperience(PremiumFlyerCanvas):
     def __init__(self, master, controller, on_selection_changed=None, on_changed=None, on_zoom=None) -> None:
         self.on_zoom = on_zoom
         super().__init__(master, controller, on_selection_changed, on_changed)
+        self.card_renderer = FlyerRenderer(self.registry)
         self.bind("<Motion>", self._update_cursor, add="+")
         self.bind("<Control-MouseWheel>", self._wheel_zoom, add="+")
+
+    def _draw_card(self, transform, card) -> None:
+        rotation = float(getattr(card, "rotation", 0.0) or 0.0) % 360.0
+        if not rotation:
+            super()._draw_card(transform, card)
+            return
+        product = self.controller.project.product_by_id(card.product_id)
+        if product is None:
+            return
+        layer = self.card_renderer.render_card_layer(card, product, scale=transform.scale, apply_rotation=True)
+        photo = ImageTk.PhotoImage(layer, master=self)
+        self._photos[f"rotated-card-{card.id}"] = photo
+        rect = transform.rect_to_screen(Rect(card.x, card.y, card.width, card.height))
+        self.create_image(
+            rect.x + rect.width / 2,
+            rect.y + rect.height / 2,
+            image=photo,
+            anchor="center",
+        )
 
     def _update_cursor(self, event: tk.Event) -> None:
         if self._active_handle:
@@ -191,7 +215,7 @@ class StudioEditorExperience(PremiumEncartesStudioView):
             highlightthickness=1,
             height=26,
         )
-        self.status_strip.place(relx=0.5, rely=1.0, y=-8, anchor="s", width=430)
+        self.status_strip.place(relx=0.5, rely=1.0, y=-8, anchor="s", width=460)
         self.status_strip.lift()
         self.selection_status = tk.Label(
             self.status_strip,
@@ -209,20 +233,30 @@ class StudioEditorExperience(PremiumEncartesStudioView):
             font=(FONT["family"], 7, "bold"),
         )
         self.zoom_status.pack(side="right", padx=10)
-        tk.Label(
+        self.canvas_status = tk.Label(
             self.status_strip,
-            text="Snap ✓   Grid ✓",
+            text="Snap ✓   Grid ✓   Régua ✓",
             bg="#EEF2F7",
             fg=COLORS.success,
             font=(FONT["family"], 7, "bold"),
-        ).pack(side="right", padx=6)
+        )
+        self.canvas_status.pack(side="right", padx=6)
+
+    def _refresh_canvas_status(self) -> None:
+        if not hasattr(self, "canvas_status"):
+            return
+        grid = "✓" if self.canvas.show_grid else "—"
+        ruler = "✓" if self.canvas.show_rulers else "—"
+        self.canvas_status.configure(text=f"Snap ✓   Grid {grid}   Régua {ruler}")
 
     def _toggle_grid(self) -> None:
         self.canvas.toggle_grid()
+        self._refresh_canvas_status()
         self.toast.show("Grid ativado" if self.canvas.show_grid else "Grid ocultado", "info", 1500)
 
     def _toggle_rulers(self) -> None:
         self.canvas.toggle_rulers()
+        self._refresh_canvas_status()
         self.toast.show("Régua ativada" if self.canvas.show_rulers else "Régua ocultada", "info", 1500)
 
     def _zoom_changed(self, zoom: float) -> None:
@@ -276,11 +310,15 @@ class StudioEditorExperience(PremiumEncartesStudioView):
 
         transform = self.canvas.transform()
         card = cards[0]
-        from srstudio.editor.layout import Rect
-
         rect = transform.rect_to_screen(Rect(card.x, card.y, card.width, card.height))
         desired_width = len(actions) * 33 + 8
-        x = max(8, min(self.center.winfo_width() - desired_width - 8, int(rect.x + rect.width / 2 - desired_width / 2)))
+        x = max(
+            8,
+            min(
+                self.center.winfo_width() - desired_width - 8,
+                int(rect.x + rect.width / 2 - desired_width / 2),
+            ),
+        )
         y = max(8, int(rect.y - 52))
         bar.place(x=x, y=y)
         bar.lift()
