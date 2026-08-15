@@ -25,6 +25,9 @@ class _StagedPosterViewMixin:
             self._staging_service = service
         return service
 
+    def _staging_is_applicable(self) -> bool:
+        return self._is_automatic_template(self._current_template())
+
     def _schedule_official_preview(self, product, decision) -> None:
         campaign = self._campaign_override()
         staged = self._ensure_staging().ready_artifact(product, self.kind, campaign)
@@ -49,6 +52,9 @@ class _StagedPosterViewMixin:
             pass
 
     def _generate_pdf(self) -> None:
+        if not self._staging_is_applicable():
+            super()._generate_pdf()
+            return
         products = self._selected_products()
         if not products:
             messagebox.showinfo("Cartazes", "Nenhum produto selecionado para gerar.")
@@ -79,6 +85,9 @@ class _StagedPosterViewMixin:
         self._notify("PDF montado a partir dos cartazes já pré-renderizados.", "success")
 
     def _generate_pngs(self) -> None:
+        if not self._staging_is_applicable():
+            super()._generate_pngs()
+            return
         products = self._selected_products()
         if not products:
             return
