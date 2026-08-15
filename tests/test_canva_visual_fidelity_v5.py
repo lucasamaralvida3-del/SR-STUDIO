@@ -5,6 +5,7 @@ from pathlib import Path
 
 from PIL import Image
 
+from srstudio.assets.font_fallbacks import canva_wrap_width, choose_tk_family, pillow_font_candidates
 from srstudio.core.models import StudioProject
 from srstudio.images.library import ImageLibrary
 from srstudio.importers.pipeline import UnifiedImportPipeline
@@ -124,3 +125,15 @@ def test_pipeline_recovers_approved_bank_image_and_preserves_white_text(tmp_path
     name_element = next(element for element in page.elements if element.get("slot_role") == "name")
     assert name_element["fill"] == "#FFFFFF"
     assert name_element["font_name"] == "Anton"
+
+    currency = next(element for element in page.elements if element.get("slot_role") == "price_currency")
+    assert currency["canva_no_wrap"] is True
+    assert currency["width"] > 34 / 1000 * page.width
+
+
+def test_canva_font_helpers_keep_price_tokens_single_line():
+    assert canva_wrap_width("R$", "price_currency", 18) == 0
+    assert canva_wrap_width(",66", "price_cents", 20) == 0
+    assert canva_wrap_width("KG", "unit", 16) == 0
+    assert choose_tk_family("Anton", {"Impact", "Arial"}) == "Impact"
+    assert "impact.ttf" in pillow_font_candidates("Anton")
