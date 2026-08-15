@@ -4,6 +4,7 @@ import threading
 
 import srstudio.app.advanced_posters as advanced
 import srstudio.app.responsive_posters as responsive
+from srstudio.app.cloud_image_bank_view import CloudImageBankView
 from srstudio.app.layout_corpus_view import LayoutCorpusView
 from srstudio.app.professional import _show_splash
 from srstudio.images.cloud_sync import ImageBankCloudSync
@@ -50,12 +51,18 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
                 "success",
                 4200,
             )
-        elif result.state == "offline":
-            # Offline is non-blocking; only surface a subtle status in the sidebar.
-            return
 
     def navigate(self, name: str) -> None:
         super().navigate(name)
+        if name == "Banco de Imagens":
+            self._clear()
+            CloudImageBankView(
+                self.content,
+                self.image_library,
+                self._image_bank_cloud,
+                on_changed=self._mark_changed,
+            )
+            return
         if name != "Modelos":
             return
         self._clear()
