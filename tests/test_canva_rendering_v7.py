@@ -161,4 +161,4 @@ def test_export_renderer_handles_rounded_shape_line_and_canva_text():
     image = FlyerRenderer().render_page(project, page)
     assert isinstance(image, Image.Image)
     assert image.size == (320, 400)
-    assert image.getpixel((35, 35)) != (16, 16, 16)
+    assert image.getpixel((60, 60)) == (255, 255, 255)
