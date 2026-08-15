@@ -9,7 +9,7 @@ from srstudio.pricing.engine import PriceEngine
 
 
 class DetectedSlotService:
-    """Bind products to semantic Canva slots while preserving the original artwork."""
+    """Bind products to validated semantic Canva slots while preserving artwork."""
 
     PRIMARY_ROLES = {
         "price_complete",
@@ -25,6 +25,10 @@ class DetectedSlotService:
         "app_price_cents",
         "app_unit",
     }
+    MAX_AREA_RATIO = 0.20
+    MAX_WIDTH_RATIO = 0.46
+    MAX_HEIGHT_RATIO = 0.52
+    MIN_CONFIDENCE = 0.62
 
     @staticmethod
     def is_detected(card: ProductCard) -> bool:
@@ -38,15 +42,19 @@ class DetectedSlotService:
         )
 
     @classmethod
+    def fillable_slots(cls, page: Page) -> list[ProductCard]:
+        return [card for card in cls.slots(page) if cls.can_fill(page, card)]
+
+    @classmethod
     def has_slots(cls, page: Page) -> bool:
-        return any(cls.is_detected(card) for card in page.cards)
+        return bool(cls.fillable_slots(page))
 
     @classmethod
     def next_empty(cls, page: Page) -> ProductCard | None:
         return next(
             (
                 card
-                for card in cls.slots(page)
+                for card in cls.fillable_slots(page)
                 if not bool(card.overrides.get("slot_filled", False))
             ),
             None,
@@ -58,7 +66,37 @@ class DetectedSlotService:
 
     @classmethod
     def can_fill(cls, page: Page, card: ProductCard) -> bool:
-        return cls.is_detected(card) and bool(cls.bound_elements(page, card.id))
+        if not cls.is_detected(card):
+            return False
+        if bool(card.overrides.get("slot_rejected", False)):
+            return False
+
+        bound = cls.bound_elements(page, card.id)
+        if not bound:
+            return False
+        roles = {str(element.get("slot_role") or "") for element in bound}
+        if "name" not in roles:
+            return False
+        has_price = "price_complete" in roles or ({"price_integer", "price_cents"} <= roles)
+        if not has_price:
+            return False
+
+        width = max(0.0, float(card.width))
+        height = max(0.0, float(card.height))
+        if width <= 0 or height <= 0:
+            return False
+        page_width = max(float(page.width), 1.0)
+        page_height = max(float(page.height), 1.0)
+        area_ratio = (width * height) / (page_width * page_height)
+        if area_ratio > cls.MAX_AREA_RATIO:
+            return False
+        if width / page_width > cls.MAX_WIDTH_RATIO or height / page_height > cls.MAX_HEIGHT_RATIO:
+            return False
+
+        confidence = float(card.overrides.get("recognition_confidence", 1.0) or 0.0)
+        if confidence < cls.MIN_CONFIDENCE:
+            return False
+        return True
 
     @classmethod
     def fill_with_history(cls, controller, card: ProductCard, product: Product) -> bool:
@@ -133,8 +171,14 @@ class DetectedSlotService:
                 element["text"] = product.name
                 element["hidden"] = False
             elif role == "image":
-                element["path"] = product.image_path if product.has_image else ""
-                element["hidden"] = False
+                if product.has_image:
+                    element["path"] = product.image_path
+                    element["hidden"] = False
+                else:
+                    # Never leave the previous Canva product image visible and
+                    # never render an empty picture placeholder on top of artwork.
+                    element["path"] = ""
+                    element["hidden"] = True
             elif role in cls.PRIMARY_ROLES:
                 cls._apply_price_role(element, role, primary, product.unit)
             elif role in cls.SECONDARY_ROLES:
@@ -148,6 +192,7 @@ class DetectedSlotService:
         card.overrides["slot_filled"] = True
         card.overrides["slot_product_id"] = product.id
         card.overrides["hidden"] = True
+        card.locked = True
 
     @classmethod
     def restore_template(cls, page: Page, card: ProductCard) -> None:
@@ -160,6 +205,7 @@ class DetectedSlotService:
         card.overrides["slot_filled"] = False
         card.overrides.pop("slot_product_id", None)
         card.overrides["hidden"] = True
+        card.locked = True
 
     @staticmethod
     def _apply_price_role(element: dict[str, Any], role: str, parts, unit: str) -> None:
