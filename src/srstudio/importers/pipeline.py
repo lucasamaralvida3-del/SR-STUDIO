@@ -452,11 +452,14 @@ class UnifiedImportPipeline:
         if element.kind == "text":
             font_size_pt = float(metadata.get("font_size_pt", 0.0) or 0.0)
             text_fill = str(metadata.get("text_fill") or "")
+            source_font = str(metadata.get("font_name") or "")
+            display_font = str(metadata.get("display_font_name") or source_font)
             return {
                 **common,
                 "type": "text",
                 "text": element.text,
-                "font_name": str(metadata.get("font_name") or ""),
+                "font_name": display_font,
+                "source_font_name": source_font,
                 "font_size": font_size_pt if font_size_pt > 0 else max(8, min(64, height * 0.42)),
                 "bold": bool(metadata.get("bold", False)),
                 "italic": bool(metadata.get("italic", False)),
