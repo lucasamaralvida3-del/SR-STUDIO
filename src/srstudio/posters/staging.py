@@ -71,7 +71,7 @@ class PosterStagingService:
             "promotion_type": product.metadata.get("promotion_type"),
             "model": decision.filename,
             "model_revision": self._model_revision(decision.path),
-            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v4-turbo",
+            "profile": f"print-{self.PRINT_WIDTH}x{self.PRINT_HEIGHT}-v4-turbo-safe",
         }
         raw = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")
         return hashlib.sha256(raw).hexdigest()[:40]
@@ -113,7 +113,7 @@ class PosterStagingService:
                     campaign,
                     width=self.PRINT_WIDTH,
                     height=self.PRINT_HEIGHT,
-                    cache_namespace="staging-print-v4-turbo-fallback",
+                    cache_namespace="staging-print-v4-turbo-safe-fallback",
                 )
             if rendered != destination:
                 shutil.copy2(rendered, destination)
@@ -130,7 +130,12 @@ class PosterStagingService:
         *,
         on_progress: StageProgress | None = None,
     ) -> StagingBatchResult:
-        """Render only uncached posters in one persistent hidden PowerPoint session."""
+        """Render uncached posters in one PowerPoint session with per-item safe fallback.
+
+        A Turbo item error is never considered final. Every item whose Turbo output is
+        missing/invalid is retried through the proven single-item renderer. Therefore
+        an Office-specific Turbo incompatibility cannot turn a valid batch into 0 posters.
+        """
         selected = list(products)
         total = len(selected)
         result = StagingBatchResult()
@@ -154,7 +159,8 @@ class PosterStagingService:
         if missing:
             outputs = {product.id: destination for _, product, destination, _ in missing}
             by_batch_index = {batch_index: item for batch_index, item in enumerate(missing, start=1)}
-            completed_ids: set[str] = set()
+            turbo_success: set[str] = set()
+            turbo_errors: dict[str, str] = {}
 
             def turbo_progress(event: str, batch_index: int, detail: str) -> None:
                 item = by_batch_index.get(batch_index)
@@ -163,27 +169,25 @@ class PosterStagingService:
                 original_index, product, destination, signature = item
                 if event == "start":
                     if on_progress is not None:
-                        on_progress("start", original_index, total, product, False, "")
+                        on_progress("start", original_index, total, product, False, "turbo")
                     return
                 if event == "ok":
                     valid, width, height, error = self._validate_image(destination)
-                    artifact = StagedPoster(product.id, signature, destination, width, height, valid, error)
-                    artifacts[product.id] = artifact
-                    completed_ids.add(product.id)
                     if valid:
-                        result.generated += 1
+                        artifacts[product.id] = StagedPoster(
+                            product.id, signature, destination, width, height, True
+                        )
+                        if product.id not in turbo_success:
+                            turbo_success.add(product.id)
+                            result.generated += 1
+                            if on_progress is not None:
+                                on_progress("done", original_index, total, product, True, "turbo")
                     else:
-                        result.failed += 1
-                    if on_progress is not None:
-                        on_progress("done", original_index, total, product, valid, error)
+                        turbo_errors[product.id] = error or "Turbo gerou arquivo inválido"
                 elif event == "err":
-                    artifact = StagedPoster(product.id, signature, destination, 0, 0, False, detail)
-                    artifacts[product.id] = artifact
-                    completed_ids.add(product.id)
-                    result.failed += 1
-                    if on_progress is not None:
-                        on_progress("done", original_index, total, product, False, detail)
+                    turbo_errors[product.id] = detail or "Falha no Turbo Renderer"
 
+            batch_error = ""
             try:
                 with _POWERPOINT_STAGE_LOCK:
                     self.renderer.render_many_to(
@@ -195,35 +199,56 @@ class PosterStagingService:
                         height=self.PRINT_HEIGHT,
                         on_progress=turbo_progress,
                     )
-            except Exception:
-                # Safe fallback: if the Turbo protocol fails on an Office installation,
-                # keep functionality by rendering only the missing posters one by one.
-                for original_index, product, _, _ in missing:
-                    if product.id in completed_ids:
-                        continue
+            except Exception as exc:
+                batch_error = str(exc)
+
+            # Some Office versions can emit per-item ERR while still returning exit code 0.
+            # Validate every missing output and retry every non-valid item individually.
+            for original_index, product, destination, signature in missing:
+                if product.id in turbo_success:
+                    continue
+
+                valid, width, height, validation_error = self._validate_image(destination)
+                if valid:
+                    artifacts[product.id] = StagedPoster(
+                        product.id, signature, destination, width, height, True
+                    )
+                    result.generated += 1
+                    turbo_success.add(product.id)
                     if on_progress is not None:
-                        on_progress("start", original_index, total, product, False, "fallback")
-                    artifact = self.stage_one(product, kind, campaign)
-                    artifacts[product.id] = artifact
-                    if artifact.valid:
-                        result.generated += 1
-                    else:
-                        result.failed += 1
+                        on_progress("done", original_index, total, product, True, "turbo")
+                    continue
+
+                if on_progress is not None:
+                    on_progress("start", original_index, total, product, False, "fallback")
+                fallback = self.stage_one(product, kind, campaign)
+                if fallback.valid:
+                    artifacts[product.id] = fallback
+                    result.generated += 1
                     if on_progress is not None:
-                        on_progress("done", original_index, total, product, artifact.valid, artifact.error)
-            else:
-                for original_index, product, destination, signature in missing:
-                    if product.id in completed_ids:
-                        continue
-                    valid, width, height, error = self._validate_image(destination)
-                    artifact = StagedPoster(product.id, signature, destination, width, height, valid, error)
-                    artifacts[product.id] = artifact
-                    if valid:
-                        result.generated += 1
-                    else:
-                        result.failed += 1
-                    if on_progress is not None:
-                        on_progress("done", original_index, total, product, valid, error)
+                        on_progress("done", original_index, total, product, True, "fallback")
+                    continue
+
+                parts = [
+                    turbo_errors.get(product.id, ""),
+                    batch_error,
+                    validation_error,
+                    fallback.error,
+                ]
+                detail = " | ".join(dict.fromkeys(part.strip() for part in parts if part and part.strip()))
+                final = StagedPoster(
+                    product.id,
+                    signature,
+                    destination,
+                    fallback.width,
+                    fallback.height,
+                    False,
+                    detail or "Turbo e fallback não conseguiram gerar o cartaz.",
+                )
+                artifacts[product.id] = final
+                result.failed += 1
+                if on_progress is not None:
+                    on_progress("done", original_index, total, product, False, final.error)
 
         result.artifacts = [artifacts[product.id] for product in selected if product.id in artifacts]
         return result
@@ -289,4 +314,4 @@ class PosterStagingService:
                 return False, width, height, "resolução temporária diferente do padrão 300 dpi"
             return True, width, height, ""
         except Exception as exc:
-            return False, 0, 0, str(exc)
+            return False, 0, 0, str(exc))
