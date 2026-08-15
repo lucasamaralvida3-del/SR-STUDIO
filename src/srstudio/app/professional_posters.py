@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from concurrent.futures import Future, ThreadPoolExecutor
 import tkinter as tk
 from pathlib import Path
 from tkinter import filedialog, messagebox
+
+from PIL import Image, ImageTk
 
 from srstudio.app.design import COLORS, FONT, PAGE_META
 from srstudio.app.poster_models_view import PosterModelsView
@@ -11,10 +14,12 @@ from srstudio.app.professional import PRIMARY_WORKFLOWS, SRStudioProfessional, _
 from srstudio.core.models import Product
 from srstudio.importers.excel.reader import ExcelImporter
 from srstudio.posters import PosterKind
+from srstudio.posters.auto_model import PosterAutoModelResolver, PosterModelDecision
 from srstudio.posters.catalog import PosterModelCatalog, PosterModelEntry
 from srstudio.posters.history import WholesaleHistoryStore
 from srstudio.posters.importers import PromotionWorkbookImporter, WholesaleReportImporter
 from srstudio.posters.legacy_bridge import legacy_template
+from srstudio.posters.preview import LegacyPosterPreviewService
 from srstudio.pricing.engine import PriceEngine
 
 
@@ -30,9 +35,7 @@ class _PosterQueueMixin:
             groups={PosterModelCatalog.GROUP_OFFICIAL, PosterModelCatalog.GROUP_CUSTOM},
         )
         if catalog_entries:
-            # When the real programmed PPTX models are available, hide the generic
-            # renderer presets from the chooser. They remain available as fallback in
-            # the service, but no longer make the official models look like they vanished.
+            # Real programmed PPTX models replace generic presets in the chooser.
             self.templates = [item for item in self.templates if item.uses_pptx]
             for entry in catalog_entries:
                 template = catalog.to_template(entry, self.analyzer)
@@ -46,19 +49,38 @@ class _PosterQueueMixin:
         automatic = legacy_template(self.kind)
         if automatic is not None and not any(item.id == automatic.id for item in self.templates):
             automatic.name = (
-                "SR OFICIAL · Automático (1 preço / 2 preços / Clube / limite)"
+                "SR OFICIAL · Automático — detecta por produto"
                 if self.kind == PosterKind.PROMOTION
                 else "SR OFICIAL · Atacado automático"
             )
             self.templates.insert(0, automatic)
 
-        preferred = self.project.settings.get("preferred_poster_model", {})
-        preferred_path = str(preferred.get(self.kind.value) or "") if isinstance(preferred, dict) else ""
-        if preferred_path:
+        # Automatic detection is always the normal/default workflow, as in Stable.
+        # A model picked from the Model Library is a one-time explicit override.
+        override = str(self.project.settings.pop("poster_model_override_once", "") or "")
+        if override:
             for index, template in enumerate(self.templates):
-                if template.source_pptx and Path(template.source_pptx) == Path(preferred_path):
+                if template.source_pptx and Path(template.source_pptx) == Path(override):
                     self.templates.insert(0, self.templates.pop(index))
                     break
+
+    def _ensure_auto_services(self) -> None:
+        if not hasattr(self, "_model_resolver"):
+            self._model_resolver = PosterAutoModelResolver()
+        if not hasattr(self, "_official_preview_service"):
+            self._official_preview_service = LegacyPosterPreviewService()
+        if not hasattr(self, "_preview_executor"):
+            self._preview_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="sr-poster-preview")
+            self._official_preview_request = ""
+            self.bind("<Destroy>", self._shutdown_preview_executor, add="+")
+
+    def _shutdown_preview_executor(self, event=None) -> None:
+        if event is not None and event.widget is not self:
+            return
+        executor = getattr(self, "_preview_executor", None)
+        if executor is not None:
+            executor.shutdown(wait=False, cancel_futures=True)
+            self._preview_executor = None
 
     def _import_template(self) -> None:
         path = filedialog.askopenfilename(
@@ -87,8 +109,6 @@ class _PosterQueueMixin:
         saved_entry = {"path": template.source_pptx, "kind": self.kind.value}
         if saved_entry not in saved:
             saved.append(saved_entry)
-        preferred = self.project.settings.setdefault("preferred_poster_model", {})
-        preferred[self.kind.value] = template.source_pptx
         if self.on_changed:
             self.on_changed()
         roles = ", ".join(sorted(template.fields)) or "campos do modelo preservados"
@@ -98,29 +118,98 @@ class _PosterQueueMixin:
         )
         self._refresh_preview()
 
+    def _is_automatic_template(self, template) -> bool:
+        return bool(template.metadata.get("automatic_model_detection")) or template.id in {
+            "sr-legacy-promocao-auto",
+            "sr-legacy-atacado",
+        }
+
     def _refresh_preview(self) -> None:
         super()._refresh_preview()
         if not getattr(self, "templates", None):
             return
+        self._ensure_auto_services()
         template = self._current_template()
+        product = self._current_product()
         group = str(template.metadata.get("catalog_group") or "")
-        if template.metadata.get("legacy_engine"):
+
+        if product is not None and self._is_automatic_template(template):
+            decision = self._model_resolver.decide(product, self.kind)
+            self.template_status.configure(text=f"AUTO · {decision.short_label}")
+            current = self.info_label.cget("text")
+            detection = (
+                f"\nModelo detectado automaticamente: {decision.label}"
+                f"\nArquivo: {decision.filename}"
+                f"\n{decision.reason}"
+            )
+            self.info_label.configure(text=current + detection)
+            self._schedule_official_preview(product, decision)
+        elif template.metadata.get("legacy_engine"):
             suffix = f" · {group}" if group else ""
-            self.template_status.configure(text=f"SR OFICIAL · modelo programado{suffix}")
-        if self.is_wholesale:
-            product = self._current_product()
-            if product is not None:
-                status = str(product.metadata.get("atacado_status") or "")
-                reason = str(product.metadata.get("atacado_reason") or "")
-                alert = str(product.metadata.get("atacado_alert") or "")
-                details = []
-                if status:
-                    details.append(f"Histórico: {status}" + (f" · {reason}" if reason else ""))
-                if alert:
-                    details.append(f"Atenção: {alert}")
-                if details:
-                    current = self.info_label.cget("text")
-                    self.info_label.configure(text=current + "\n" + "\n".join(details))
+            model_name = str(template.metadata.get("legacy_model") or Path(template.source_pptx).name or "PPTX")
+            self.template_status.configure(text=f"MANUAL · {model_name}{suffix}")
+
+        if self.is_wholesale and product is not None:
+            status = str(product.metadata.get("atacado_status") or "")
+            reason = str(product.metadata.get("atacado_reason") or "")
+            alert = str(product.metadata.get("atacado_alert") or "")
+            details = []
+            if status:
+                details.append(f"Histórico: {status}" + (f" · {reason}" if reason else ""))
+            if alert:
+                details.append(f"Atenção: {alert}")
+            if details:
+                current = self.info_label.cget("text")
+                self.info_label.configure(text=current + "\n" + "\n".join(details))
+
+    def _schedule_official_preview(self, product: Product, decision: PosterModelDecision) -> None:
+        service = self._official_preview_service
+        if not service.available():
+            self.template_status.configure(text=f"AUTO · {decision.short_label} · prévia simplificada")
+            return
+        campaign = self._campaign_override()
+        request = "|".join((self.kind.value, product.id, campaign, decision.filename))
+        if request == getattr(self, "_official_preview_request", ""):
+            return
+        self._official_preview_request = request
+        self.template_status.configure(text=f"AUTO · {decision.short_label} · carregando prévia oficial…")
+        executor = self._preview_executor
+        if executor is None:
+            return
+        future = executor.submit(service.render, product, self.kind, campaign)
+        self.after(90, lambda: self._poll_official_preview(request, decision, future))
+
+    def _poll_official_preview(
+        self,
+        request: str,
+        decision: PosterModelDecision,
+        future: Future,
+    ) -> None:
+        if request != getattr(self, "_official_preview_request", ""):
+            return
+        try:
+            exists = bool(self.winfo_exists())
+        except tk.TclError:
+            return
+        if not exists:
+            return
+        if not future.done():
+            self.after(90, lambda: self._poll_official_preview(request, decision, future))
+            return
+        try:
+            preview_path = Path(future.result())
+            with Image.open(preview_path) as raw:
+                image = raw.convert("RGB")
+                image.thumbnail((440, 590), Image.Resampling.LANCZOS)
+            self._preview_photo = ImageTk.PhotoImage(image, master=self.preview)
+            self.preview.configure(image=self._preview_photo, text="")
+            self.template_status.configure(text=f"AUTO · {decision.short_label} · prévia oficial")
+        except Exception as exc:
+            self.template_status.configure(text=f"AUTO · {decision.short_label} · prévia simplificada")
+            current = self.info_label.cget("text")
+            detail = str(exc).strip().replace("\n", " ")
+            if detail:
+                self.info_label.configure(text=current + f"\nPrévia PowerPoint indisponível: {detail[:180]}")
 
     def _queue_products(self):
         queues = self.project.settings.get("poster_queues", {})
@@ -130,21 +219,24 @@ class _PosterQueueMixin:
         lookup = {product.id: product for product in self.project.products}
         return [lookup[product_id] for product_id in ids if product_id in lookup]
 
-    def _ensure_status_column(self) -> None:
-        if not self.is_wholesale:
-            return
+    def _ensure_extra_columns(self) -> None:
         columns = tuple(self.tree["columns"])
-        if "status" in columns:
-            return
-        self.tree.configure(columns=(*columns, "status"))
-        self.tree.heading("status", text="Status")
-        self.tree.column("status", width=105, minwidth=85, stretch=False)
+        if self.is_wholesale:
+            if "status" not in columns:
+                self.tree.configure(columns=(*columns, "status"))
+                self.tree.heading("status", text="Status")
+                self.tree.column("status", width=105, minwidth=85, stretch=False)
+        elif "model" not in columns:
+            self.tree.configure(columns=(*columns, "model"))
+            self.tree.heading("model", text="Modelo auto")
+            self.tree.column("model", width=145, minwidth=115, stretch=False)
 
     def refresh_products(self) -> None:
+        self._ensure_auto_services()
         previous_ids = set(self.tree.selection()) if hasattr(self, "tree") else set()
         for item in self.tree.get_children():
             self.tree.delete(item)
-        self._ensure_status_column()
+        self._ensure_extra_columns()
         price_engine = PriceEngine()
         products = self._queue_products()
         preferred_ids: list[str] = []
@@ -175,6 +267,8 @@ class _PosterQueueMixin:
                 values.append(status or "—")
                 if status in {"NOVO", "ALTERADO"}:
                     preferred_ids.append(product.id)
+            else:
+                values.append(self._model_resolver.promotion(product).short_label)
             self.tree.insert("", "end", iid=product.id, values=values)
         if previous_ids:
             available = [item for item in previous_ids if self.tree.exists(item)]
@@ -191,7 +285,16 @@ class _PosterQueueMixin:
                 text=f"{len(products)} produto(s) · {new_count} novo(s) · {changed_count} alterado(s)"
             )
         else:
-            self.count_label.configure(text=f"{len(products)} produto(s) na fila")
+            summary = self._model_resolver.summarize(products, PosterKind.PROMOTION)
+            main_parts = []
+            for label in ("1 PREÇO", "1 PREÇO + LIMITE", "2 PREÇOS", "2 PREÇOS + LIMITE", "CLUBE EXCLUSIVO", "CLUBE + LIMITE"):
+                count = summary.get(label, 0)
+                if count:
+                    main_parts.append(f"{count} {label.lower()}")
+            detail = " · ".join(main_parts[:4])
+            self.count_label.configure(
+                text=f"{len(products)} produto(s) na fila" + (f" · {detail}" if detail else "")
+            )
         self._refresh_preview()
 
     def _selected_products(self):
@@ -247,11 +350,10 @@ class SRStudioPosterProfessional(SRStudioProfessional):
         )
 
     def _use_poster_model(self, entry: PosterModelEntry) -> None:
-        preferred = self.project.settings.setdefault("preferred_poster_model", {})
-        preferred[entry.kind.value] = entry.path
+        self.project.settings["poster_model_override_once"] = entry.path
         self._mark_changed()
         module = "Atacado" if entry.kind == PosterKind.WHOLESALE else "Promoções"
-        self.toast.show(f"Modelo selecionado: {entry.name}. Abrindo {module}...", "success", 3600)
+        self.toast.show(f"Modelo manual selecionado: {entry.name}. Abrindo {module}...", "success", 3600)
         self.navigate(module)
 
     def _show_poster_module(self, name: str, kind: PosterKind) -> None:
@@ -352,6 +454,12 @@ class SRStudioPosterProfessional(SRStudioProfessional):
             message = f"{len(imported.products)} produto(s) carregados no módulo de cartazes."
             if imported.campaigns:
                 message += f" {len(imported.campaigns)} campanha(s) reconhecida(s)."
+            if kind == PosterKind.PROMOTION:
+                resolver = PosterAutoModelResolver()
+                summary = resolver.summarize(imported.products, kind)
+                detected = ", ".join(f"{count}× {label}" for label, count in summary.items())
+                if detected:
+                    message += f" Modelos detectados: {detected}."
             if history_summary is not None:
                 message += (
                     f" Atacado: {history_summary.new} novo(s), {history_summary.changed} alterado(s), "
@@ -361,7 +469,7 @@ class SRStudioPosterProfessional(SRStudioProfessional):
                     message += " Relatório já conhecido; histórico reaproveitado."
             if imported.warnings:
                 message += f" {len(imported.warnings)} aviso(s) para revisar."
-            self.toast.show(message, "success", 5200)
+            self.toast.show(message, "success", 6200)
             if imported.warnings:
                 messagebox.showwarning("Importação concluída com avisos", "\n".join(imported.warnings[:15]))
             return len(imported.products)
