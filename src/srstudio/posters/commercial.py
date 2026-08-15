@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
+import re
 from typing import Iterable
 
 from openpyxl import load_workbook
@@ -59,9 +60,6 @@ class PosterCommercialValidator:
             promo = product.wholesale_price
             club = None
             price_specs = (("ATACADO", promo, "wholesale_price", "club"),)
-            # Report 782 does not carry cost. Only flag missing cost when another import
-            # explicitly claimed it should exist; otherwise wholesale would be all-yellow.
-            expects_cost = bool(product.metadata.get("expects_cost"))
         else:
             poster_type = int(product.metadata.get("promotion_type", 0) or 0)
             if poster_type == 3:
@@ -74,29 +72,9 @@ class PosterCommercialValidator:
                 ("PROMOÇÃO", promo, "price", "sale"),
                 ("CLUBE", club, "app_price", "club"),
             )
-            expects_cost = True
 
-        if cost is None and expects_cost:
-            issues.append(
-                CommercialIssue(
-                    "CUSTO_AUSENTE",
-                    self.WARNING,
-                    "cost",
-                    "Custo não informado na planilha; não foi possível validar margem/abaixo do custo.",
-                    "cost",
-                )
-            )
-        if sale is None:
-            issues.append(
-                CommercialIssue(
-                    "VENDA_AUSENTE",
-                    self.WARNING,
-                    "sale",
-                    "Preço de venda não informado; a comparação com o preço normal não pôde ser feita.",
-                    "retail_price",
-                )
-            )
-
+        # Stable only compared references that were actually present. Missing CUSTO or
+        # VENDA is therefore neutral (N/D in the UI), not a warning for every product.
         for label, price, field_name, group in price_specs:
             if price is None:
                 continue
@@ -218,7 +196,7 @@ class PosterCommercialValidator:
         unit = str(product.unit or "").upper()
         if "A GRANEL" in name and unit != "KG":
             return "Produto indica 'A GRANEL', mas a unidade do cartaz não está como KG."
-        if unit == "KG" and __import__("re").search(r"\b\d+(?:[.,]\d+)?\s*(?:ML|L)\b", name):
+        if unit == "KG" and re.search(r"\b\d+(?:[.,]\d+)?\s*(?:ML|L)\b", name):
             return "Produto está marcado como KG, mas a descrição contém medida em ML/L."
         return ""
 
