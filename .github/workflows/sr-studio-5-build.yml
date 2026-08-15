@@ -24,7 +24,7 @@ jobs:
       - name: Build executable
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src src/srstudio/app/main.py
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src src/srstudio/app/workspace.py
       - name: Smoke check executable
         shell: pwsh
         run: |
@@ -39,7 +39,7 @@ jobs:
       - name: Verify update manifest
         shell: pwsh
         run: |
-          python -c "from srstudio.updater.manifest import UpdateManifest; from pathlib import Path; m=UpdateManifest.load('release/update-manifest.json'); assert m.verify_package('release/SR-Studio-5-Windows.zip'); print(m.version, m.channel, m.sha256)"
+          python -c "from srstudio.updater.manifest import UpdateManifest; m=UpdateManifest.load('release/update-manifest.json'); assert m.verify_package('release/SR-Studio-5-Windows.zip'); print(m.version, m.channel, m.sha256)"
       - uses: actions/upload-artifact@v4
         with:
           name: SR-Studio-5-Windows
