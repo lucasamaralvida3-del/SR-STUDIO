@@ -23,7 +23,9 @@ jobs:
         run: python -m pip install -e . pyinstaller
       - name: Build application directory
         shell: pwsh
-        run: pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src src/srstudio/app/professional.py
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" src/srstudio/app/professional.py
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Aplicativo não foi gerado" }
       - name: Read application version
         shell: pwsh
         run: |
