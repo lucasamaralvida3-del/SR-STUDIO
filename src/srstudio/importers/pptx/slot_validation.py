@@ -24,7 +24,7 @@ class SmartSlotValidator:
 
     MIN_CONFIDENCE = 0.68
     MAX_SLOT_AREA = 0.18
-    MAX_SLOT_WIDTH = 0.42
+    MAX_SLOT_WIDTH = 0.52
     MAX_SLOT_HEIGHT = 0.48
     MAX_NAME_DX = 0.18
     MAX_NAME_DY = 0.30
@@ -44,8 +44,6 @@ class SmartSlotValidator:
             if cls._prepare(candidate, slide):
                 prepared.append(candidate)
 
-        # Prefer the strongest local interpretation when two candidates consume
-        # the same visual area/elements.
         prepared.sort(key=lambda item: item.confidence, reverse=True)
         accepted: list[SemanticCard] = []
         used_elements: set[int] = set()
@@ -75,12 +73,9 @@ class SmartSlotValidator:
             return False
         if not cls._has_usable_price(candidate):
             return False
-
         if not cls._near(anchor, candidate.name, slide, cls.MAX_NAME_DX, cls.MAX_NAME_DY):
             return False
 
-        # Decorative/full-width Canva pictures are frequent. If an image looks
-        # suspicious, keep the text/price slot but do not bind the image at all.
         if candidate.image is not None:
             if cls._unsafe_image(candidate.image, slide) or not cls._near(
                 anchor,
@@ -107,8 +102,6 @@ class SmartSlotValidator:
         if bounds is None:
             return False
 
-        # Add a small hit-area padding without allowing the slot to swallow
-        # neighbouring cards.
         pad_x = max(2, int(slide.width * 0.008))
         pad_y = max(2, int(slide.height * 0.008))
         left, top, right, bottom = bounds
