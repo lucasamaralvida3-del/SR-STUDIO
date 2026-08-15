@@ -202,8 +202,6 @@ class PosterStagingService:
             except Exception as exc:
                 batch_error = str(exc)
 
-            # Some Office versions can emit per-item ERR while still returning exit code 0.
-            # Validate every missing output and retry every non-valid item individually.
             for original_index, product, destination, signature in missing:
                 if product.id in turbo_success:
                     continue
@@ -314,4 +312,4 @@ class PosterStagingService:
                 return False, width, height, "resolução temporária diferente do padrão 300 dpi"
             return True, width, height, ""
         except Exception as exc:
-            return False, 0, 0, str(exc))
+            return False, 0, 0, str(exc)
