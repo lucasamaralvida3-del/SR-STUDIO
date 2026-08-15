@@ -99,7 +99,7 @@ class ProductCardRegistry:
             image_path=image_path,
             currency=parts.currency,
             integer=parts.integer,
-            decimal=parts.decimal,
+            decimal=parts.cents,
             unit=unit,
             limit=limit,
             style=style,
