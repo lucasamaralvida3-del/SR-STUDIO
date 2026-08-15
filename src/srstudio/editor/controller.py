@@ -78,16 +78,17 @@ class EditorController:
     def apply_auto_layout(self, highlighted: int = 0) -> None:
         if not self.page.cards:
             return
+        highlighted = max(0, min(int(highlighted), len(self.page.cards)))
         before = {card.id: (card.x, card.y, card.width, card.height, card.highlighted) for card in self.page.cards}
         plan = self.layout.best(len(self.page.cards), self.page.width, self.page.height, highlighted=highlighted)
 
         def do() -> None:
-            for card, slot in zip(self.page.cards, plan.slots, strict=False):
+            for index, (card, slot) in enumerate(zip(self.page.cards, plan.slots, strict=False)):
                 card.x = slot.rect.x
                 card.y = slot.rect.y
                 card.width = slot.rect.width
                 card.height = slot.rect.height
-                card.highlighted = slot.role == "hero"
+                card.highlighted = slot.role == "hero" or index < highlighted
 
         def undo() -> None:
             for card in self.page.cards:
