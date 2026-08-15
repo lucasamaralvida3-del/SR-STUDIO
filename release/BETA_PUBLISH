@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.7 Professional
-Editable realtime poster workspace for Promotion and Atacado.
-Adds inline editing of product name, prices, unit, limit and wholesale quantity; automatic per-item model recalculation; commercial Custo/Venda/Clube diagnostics with hover details; row status, filters, batch context actions and restore-imported-data. Spreadsheet/report import and 300 dpi poster staging now have subtle progress bars, while edits invalidate and re-render only the affected poster before final PDF validation.
-Triggered: 2026-08-15T10:21:00-03:00
+SR Studio 5.0 Beta 7.8 Professional
+Responsive poster workspace proportions.
+Rebalances the Gerador de Cartazes into an adaptive product-list/preview split, enlarges and dynamically rescales the preview without distortion, adapts table columns to the available width, adds horizontal scrolling only when needed, and keeps the commercial status strip visually balanced across different window sizes and Windows DPI scaling.
+Triggered: 2026-08-15T10:54:00-03:00
