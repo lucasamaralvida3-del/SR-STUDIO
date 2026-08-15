@@ -75,7 +75,7 @@ class UnifiedImportPipeline:
         if self.image_library is None or product.image_path:
             return
         match = self.image_library.find_best_for_product(product.name)
-        if match is None:
+        if match is None or match.asset.review_status != "accepted":
             return
         product.image_path = match.asset.path
         product.metadata["image_bank_asset_id"] = match.asset.id
@@ -208,7 +208,6 @@ class UnifiedImportPipeline:
             elements.append(candidate.price)
         if candidate.secondary_price is not None:
             elements.extend(candidate.secondary_price.elements)
-        # Keep order while removing duplicate references.
         unique: list[PptxElement] = []
         seen: set[int] = set()
         for element in elements:
