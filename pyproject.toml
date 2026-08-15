@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "srstudio"
-version = "5.0.0a1"
+dynamic = ["version"]
 description = "SR Studio 5.0 Professional"
 requires-python = ">=3.11"
 dependencies = [
@@ -21,6 +21,9 @@ sr-studio-5 = "srstudio.app.workspace:run"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
+
+[tool.setuptools.dynamic]
+version = {attr = "srstudio.__version__"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
