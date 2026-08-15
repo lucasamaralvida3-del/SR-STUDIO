@@ -9,7 +9,7 @@ from srstudio.posters import PosterKind
 
 
 class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
-    """Responsive poster shell with persistent-session PowerPoint batch staging."""
+    """Responsive poster shell with safe fast batch staging based on legacy engines."""
 
     def _start_background_staging(self, products, kind: PosterKind, campaign: str) -> None:
         self._staging_generation += 1
@@ -23,11 +23,11 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             product.metadata.pop("render_error", None)
         view = self._active_poster_view
         if hasattr(view, "set_render_progress"):
-            view.set_render_progress(0, f"0/{total} · Turbo Renderer preparando lote")
+            view.set_render_progress(0, f"0/{total} · Renderização rápida preparando lote")
         if hasattr(view, "refresh_products"):
             view.refresh_products()
         self.toast.show(
-            f"Turbo Renderer · preparando {total} cartaz(es) em uma única sessão do PowerPoint.",
+            f"Renderização rápida · preparando {total} cartaz(es) com o engine SR compatível.",
             "info",
             3600,
         )
@@ -52,12 +52,12 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
                 ("finished", generation, total, result.generated, result.reused, result.failed)
             )
 
-        threading.Thread(target=worker, name="sr-poster-turbo-staging", daemon=True).start()
+        threading.Thread(target=worker, name="sr-poster-fast-staging", daemon=True).start()
 
     def _staging_finished(self, total: int, generated: int, reused: int, failed: int) -> None:
         if hasattr(self._active_poster_view, "set_render_progress"):
             ready = total - failed
-            detail = f"{ready}/{total} prontos · Turbo"
+            detail = f"{ready}/{total} prontos · Rápida"
             if reused:
                 detail += f" · {reused} cache"
             if failed:
@@ -65,13 +65,13 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             self._active_poster_view.set_render_progress(100, detail)
         if failed:
             self.toast.show(
-                f"Turbo concluído: {total - failed}/{total} prontos · {failed} precisam de revisão.",
+                f"Renderização concluída: {total - failed}/{total} prontos · {failed} precisam de revisão.",
                 "warning",
                 4800,
             )
         else:
             self.toast.show(
-                f"Turbo concluído · {generated} renderizado(s) + {reused} reaproveitado(s) do cache.",
+                f"Renderização rápida concluída · {generated} renderizado(s) + {reused} reaproveitado(s).",
                 "success",
                 4200,
             )
