@@ -49,9 +49,9 @@ class _PosterQueueMixin:
         automatic = legacy_template(self.kind)
         if automatic is not None and not any(item.id == automatic.id for item in self.templates):
             automatic.name = (
-                "SR OFICIAL · Automático — detecta por produto"
+                "AUTO · Detectar modelo por produto"
                 if self.kind == PosterKind.PROMOTION
-                else "SR OFICIAL · Atacado automático"
+                else "AUTO · Atacado oficial"
             )
             self.templates.insert(0, automatic)
 
@@ -226,10 +226,11 @@ class _PosterQueueMixin:
                 self.tree.configure(columns=(*columns, "status"))
                 self.tree.heading("status", text="Status")
                 self.tree.column("status", width=105, minwidth=85, stretch=False)
-        elif "model" not in columns:
-            self.tree.configure(columns=(*columns, "model"))
-            self.tree.heading("model", text="Modelo auto")
-            self.tree.column("model", width=145, minwidth=115, stretch=False)
+        else:
+            # Promotion has no minimum-quantity concept. Reuse that existing slot to
+            # expose the automatic PPTX decision without making the table wider.
+            self.tree.heading("quantity", text="Modelo auto")
+            self.tree.column("quantity", width=145, minwidth=115, stretch=False)
 
     def refresh_products(self) -> None:
         self._ensure_auto_services()
@@ -244,9 +245,11 @@ class _PosterQueueMixin:
             if self.is_wholesale:
                 first = product.retail_price if product.retail_price is not None else product.price
                 second = product.wholesale_price
+                quantity_or_model = product.quantity or "—"
             else:
                 first = product.price if product.price is not None else product.retail_price
                 second = product.app_price
+                quantity_or_model = self._model_resolver.promotion(product).short_label
             first_text = price_engine.split(first, "").formatted.replace("/", "") if first is not None else "—"
             second_text = price_engine.split(second, "").formatted.replace("/", "") if second is not None else "—"
             poster_type = int(product.metadata.get("promotion_type", 0) or 0)
@@ -258,7 +261,7 @@ class _PosterQueueMixin:
                 product.name,
                 first_text,
                 second_text,
-                product.quantity or "—",
+                quantity_or_model,
                 product.unit,
                 product.cpf_limit or "—",
             ]
@@ -267,8 +270,6 @@ class _PosterQueueMixin:
                 values.append(status or "—")
                 if status in {"NOVO", "ALTERADO"}:
                     preferred_ids.append(product.id)
-            else:
-                values.append(self._model_resolver.promotion(product).short_label)
             self.tree.insert("", "end", iid=product.id, values=values)
         if previous_ids:
             available = [item for item in previous_ids if self.tree.exists(item)]
@@ -287,7 +288,14 @@ class _PosterQueueMixin:
         else:
             summary = self._model_resolver.summarize(products, PosterKind.PROMOTION)
             main_parts = []
-            for label in ("1 PREÇO", "1 PREÇO + LIMITE", "2 PREÇOS", "2 PREÇOS + LIMITE", "CLUBE EXCLUSIVO", "CLUBE + LIMITE"):
+            for label in (
+                "1 PREÇO",
+                "1 PREÇO + LIMITE",
+                "2 PREÇOS",
+                "2 PREÇOS + LIMITE",
+                "CLUBE EXCLUSIVO",
+                "CLUBE + LIMITE",
+            ):
                 count = summary.get(label, 0)
                 if count:
                     main_parts.append(f"{count} {label.lower()}")
