@@ -1,5 +1,7 @@
 #define MyAppName "SR Studio 5 Professional"
-#define MyAppVersion "5.0.0-alpha.1"
+#ifndef MyAppVersion
+  #define MyAppVersion "development"
+#endif
 #define MyAppPublisher "SR"
 #define MyAppExeName "SR Studio 5.exe"
 
@@ -36,9 +38,3 @@ Name: "desktopicon"; Description: "Criar atalho na Área de Trabalho"; GroupDesc
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "Abrir SR Studio 5"; Flags: nowait postinstall skipifsilent
-
-[Code]
-function InitializeSetup(): Boolean;
-begin
-  Result := True;
-end;
