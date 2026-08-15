@@ -20,9 +20,11 @@ def _slot_fixture(tmp_path):
         height=180,
         overrides={
             "slot_detected": True,
+            "slot_validated": True,
             "slot_filled": False,
             "slot_template_product_id": template.id,
             "hidden": True,
+            "recognition_confidence": 0.92,
         },
     )
     page.cards.append(card)
@@ -59,6 +61,7 @@ def test_detected_slot_updates_native_canva_elements_and_undoes(tmp_path):
     bound = {element["slot_role"]: element for element in page.elements}
     assert card.product_id == product.id
     assert card.overrides["slot_filled"] is True
+    assert card.locked is True
     assert bound["name"]["text"] == "FEIJAO NOVO 1KG"
     assert bound["image"]["path"] == str(new_image)
     assert bound["price_currency"]["text"] == "R$"
@@ -76,7 +79,7 @@ def test_detected_slot_updates_native_canva_elements_and_undoes(tmp_path):
     assert bound["price_integer"]["text"] == "10"
 
 
-def test_detected_slot_hides_secondary_price_when_product_has_no_app_price(tmp_path):
+def test_detected_slot_hides_secondary_price_and_image_when_product_has_no_image(tmp_path):
     project, page, card, _template = _slot_fixture(tmp_path)
     product = Product(original_name="OLEO 900ML", price=Decimal("6.99"), unit="UN")
     project.products.append(product)
@@ -87,6 +90,7 @@ def test_detected_slot_hides_secondary_price_when_product_has_no_app_price(tmp_p
     image = next(element for element in page.elements if element["slot_role"] == "image")
     assert secondary["hidden"] is True
     assert image["path"] == ""
+    assert image["hidden"] is True
 
 
 def test_next_empty_slot_uses_visual_order_and_skips_filled(tmp_path):
@@ -95,16 +99,61 @@ def test_next_empty_slot_uses_visual_order_and_skips_filled(tmp_path):
         product_id=first.product_id,
         x=10,
         y=300,
-        overrides={"slot_detected": True, "slot_filled": False, "hidden": True},
+        width=220,
+        height=170,
+        overrides={
+            "slot_detected": True,
+            "slot_validated": True,
+            "slot_filled": False,
+            "hidden": True,
+            "recognition_confidence": 0.9,
+        },
     )
     page.cards.append(second)
-    page.elements.append({"type": "text", "text": "X", "template_text": "X", "slot_id": second.id, "slot_role": "name"})
+    page.elements.extend(
+        [
+            {"type": "text", "text": "X PRODUTO", "template_text": "X PRODUTO", "slot_id": second.id, "slot_role": "name"},
+            {"type": "text", "text": "5", "template_text": "5", "slot_id": second.id, "slot_role": "price_integer"},
+            {"type": "text", "text": ",90", "template_text": ",90", "slot_id": second.id, "slot_role": "price_cents"},
+        ]
+    )
 
     assert DetectedSlotService.next_empty(page) is first
     first.overrides["slot_filled"] = True
     assert DetectedSlotService.next_empty(page) is second
     second.overrides["slot_filled"] = True
     assert DetectedSlotService.next_empty(page) is None
+
+
+def test_giant_or_incomplete_detected_region_is_not_fillable(tmp_path):
+    _project, page, _first, _template = _slot_fixture(tmp_path)
+    giant = ProductCard(
+        x=5,
+        y=5,
+        width=1000,
+        height=1100,
+        overrides={"slot_detected": True, "recognition_confidence": 0.99, "hidden": True},
+    )
+    page.cards.append(giant)
+    page.elements.extend(
+        [
+            {"type": "text", "text": "ACEM", "slot_id": giant.id, "slot_role": "name"},
+            {"type": "text", "text": "33", "slot_id": giant.id, "slot_role": "price_integer"},
+            {"type": "text", "text": ",64", "slot_id": giant.id, "slot_role": "price_cents"},
+        ]
+    )
+    incomplete = ProductCard(
+        x=300,
+        y=300,
+        width=180,
+        height=150,
+        overrides={"slot_detected": True, "recognition_confidence": 0.99, "hidden": True},
+    )
+    page.cards.append(incomplete)
+    page.elements.append({"type": "text", "text": "SEM PRECO", "slot_id": incomplete.id, "slot_role": "name"})
+
+    assert DetectedSlotService.can_fill(page, giant) is False
+    assert DetectedSlotService.can_fill(page, incomplete) is False
 
 
 def test_clear_slot_restores_original_canva_content(tmp_path):
