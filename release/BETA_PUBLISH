@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.8 Professional
-Responsive poster workspace proportions.
-Rebalances the Gerador de Cartazes into an adaptive product-list/preview split, enlarges and dynamically rescales the preview without distortion, adapts table columns to the available width, adds horizontal scrolling only when needed, and keeps the commercial status strip visually balanced across different window sizes and Windows DPI scaling.
-Triggered: 2026-08-15T10:54:00-03:00
+SR Studio 5.0 Beta 7.9 Professional
+Turbo Renderer for Promotion and Atacado poster staging.
+Replaces per-product PowerPoint startup during background staging with one hidden persistent PowerPoint session per batch. Official PPTX models stay open, the source slide is duplicated in memory for each product, exported at final 1772x2480 quality and discarded. Persistent cache remains selective, so only new or commercially changed posters are rendered; existing valid posters are reused instantly. Responsive layout, editable grid, commercial diagnostics and final PDF validation remain unchanged.
+Triggered: 2026-08-15T11:10:00-03:00
