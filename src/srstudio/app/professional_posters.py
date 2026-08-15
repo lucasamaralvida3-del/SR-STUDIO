@@ -10,6 +10,82 @@ from srstudio.app.professional import PRIMARY_WORKFLOWS, SRStudioProfessional, _
 from srstudio.core.models import Product
 from srstudio.importers.excel.reader import ExcelImporter
 from srstudio.posters import PosterKind
+from srstudio.pricing.engine import PriceEngine
+
+
+class _PosterQueueMixin:
+    """Keeps poster work queues independent from products used by Encartes Studio."""
+
+    def _queue_products(self):
+        queues = self.project.settings.get("poster_queues", {})
+        ids = list(queues.get(self.kind.value, [])) if isinstance(queues, dict) else []
+        if not ids:
+            return []
+        lookup = {product.id: product for product in self.project.products}
+        return [lookup[product_id] for product_id in ids if product_id in lookup]
+
+    def refresh_products(self) -> None:
+        previous_ids = set(self.tree.selection()) if hasattr(self, "tree") else set()
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        price_engine = PriceEngine()
+        products = self._queue_products()
+        for product in products:
+            if self.is_wholesale:
+                first = product.retail_price if product.retail_price is not None else product.price
+                second = product.wholesale_price
+            else:
+                first = product.price if product.price is not None else product.retail_price
+                second = product.app_price
+            first_text = price_engine.split(first, "").formatted.replace("/", "") if first is not None else "—"
+            second_text = price_engine.split(second, "").formatted.replace("/", "") if second is not None else "—"
+            self.tree.insert(
+                "",
+                "end",
+                iid=product.id,
+                values=(
+                    product.code or "—",
+                    product.name,
+                    first_text,
+                    second_text,
+                    product.quantity or "—",
+                    product.unit,
+                    product.cpf_limit or "—",
+                ),
+            )
+        if previous_ids:
+            available = [item for item in previous_ids if self.tree.exists(item)]
+            if available:
+                self.tree.selection_set(available)
+        elif self.tree.get_children():
+            self.tree.selection_set(self.tree.get_children())
+        self.count_label.configure(text=f"{len(products)} produto(s) na fila")
+        self._refresh_preview()
+
+    def _selected_products(self):
+        products = self._queue_products()
+        selected = set(self.tree.selection())
+        if not selected:
+            return products
+        return [product for product in products if product.id in selected]
+
+    def _current_product(self):
+        products = self._queue_products()
+        if not products:
+            return None
+        selected = list(self.tree.selection())
+        if not selected:
+            return products[0]
+        product_id = selected[0]
+        return next((product for product in products if product.id == product_id), products[0])
+
+
+class PromotionPosterModule(_PosterQueueMixin, PromotionPostersView):
+    pass
+
+
+class WholesalePosterModule(_PosterQueueMixin, WholesalePostersView):
+    pass
 
 
 class SRStudioPosterProfessional(SRStudioProfessional):
@@ -45,7 +121,7 @@ class SRStudioPosterProfessional(SRStudioProfessional):
         self.topbar_title.configure(text=title)
         self.topbar_subtitle.configure(text=subtitle)
         self._clear()
-        view_cls = WholesalePostersView if kind == PosterKind.WHOLESALE else PromotionPostersView
+        view_cls = WholesalePosterModule if kind == PosterKind.WHOLESALE else PromotionPosterModule
         view_cls(
             self.content,
             self.project,
