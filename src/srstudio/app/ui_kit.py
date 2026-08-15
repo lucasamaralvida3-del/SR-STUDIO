@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import tkinter as tk
 from dataclasses import dataclass
 from typing import Callable
@@ -183,12 +184,32 @@ class IconButton(tk.Canvas):
             self.create_line(c + s, c - 1, c + s - 6, c - 7, fill=color, width=2)
         elif self.icon == "layers":
             for offset in (-5, 0, 5):
-                self.create_polygon(c, c - 8 + offset, c + 10, c - 3 + offset, c, c + 2 + offset, c - 10, c - 3 + offset, outline=color, fill="", width=1)
+                self.create_polygon(
+                    c,
+                    c - 8 + offset,
+                    c + 10,
+                    c - 3 + offset,
+                    c,
+                    c + 2 + offset,
+                    c - 10,
+                    c - 3 + offset,
+                    outline=color,
+                    fill="",
+                    width=1,
+                )
         elif self.icon == "grid":
             for dx in (-7, 0, 7):
                 self.create_line(c + dx, c - 9, c + dx, c + 9, fill=color, width=w)
             for dy in (-7, 0, 7):
                 self.create_line(c - 9, c + dy, c + 9, c + dy, fill=color, width=w)
+        elif self.icon == "layout":
+            self.create_rectangle(c - 10, c - 9, c - 2, c + 9, outline=color, width=2)
+            self.create_rectangle(c + 2, c - 9, c + 10, c - 1, outline=color, width=2)
+            self.create_rectangle(c + 2, c + 3, c + 10, c + 9, outline=color, width=2)
+        elif self.icon == "ruler":
+            self.create_rectangle(c - 10, c - 4, c + 10, c + 4, outline=color, width=2)
+            for offset, height in ((-7, 4), (-3, 6), (1, 4), (5, 6)):
+                self.create_line(c + offset, c - 4, c + offset, c - 4 + height, fill=color, width=1)
         elif self.icon == "lock":
             self.create_rectangle(c - 8, c - 1, c + 8, c + 10, outline=color, width=2)
             self.create_arc(c - 6, c - 10, c + 6, c + 4, start=0, extent=180, style="arc", outline=color, width=2)
@@ -207,8 +228,6 @@ class IconButton(tk.Canvas):
             self.create_polygon(c + 7, c - 9, c + 11, c - 3, c + 4, c - 3, fill=color)
         elif self.icon == "star":
             points = []
-            import math
-
             for index in range(10):
                 radius = 10 if index % 2 == 0 else 4
                 angle = -math.pi / 2 + index * math.pi / 5
@@ -218,5 +237,10 @@ class IconButton(tk.Canvas):
             self.create_line(c, c - 10, c, c + 10, fill=color, width=1)
             for width, y in ((16, -6), (10, 0), (18, 6)):
                 self.create_line(c - width / 2, c + y, c + width / 2, c + y, fill=color, width=2)
+        elif self.icon == "distribute":
+            self.create_line(c - 10, c - 9, c - 10, c + 9, fill=color, width=1)
+            self.create_line(c + 10, c - 9, c + 10, c + 9, fill=color, width=1)
+            for x in (-5, 0, 5):
+                self.create_rectangle(c + x - 2, c - 6, c + x + 2, c + 6, outline=color, width=1)
         else:
             self.create_oval(c - 3, c - 3, c + 3, c + 3, fill=color, outline="")
