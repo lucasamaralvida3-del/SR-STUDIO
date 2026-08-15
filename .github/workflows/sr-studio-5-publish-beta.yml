@@ -51,7 +51,7 @@ jobs:
       - name: Build SR Studio 5 Professional
         shell: pwsh
         run: |
-          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" --paths src src/srstudio/app/turbo_posters.py
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" --paths src src/srstudio/app/turbo_posters.py
           if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Executável profissional não foi gerado." }
           $modelA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
           $modelB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
@@ -59,13 +59,12 @@ jobs:
           $engineA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           $engineB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           if (!(Test-Path $engineA) -and !(Test-Path $engineB)) { throw "Engine oficial de Promoções ausente do executável." }
-          $fastPromoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/FastPromotionBatch.ps1"
-          $fastPromoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/FastPromotionBatch.ps1"
-          if (!(Test-Path $fastPromoA) -and !(Test-Path $fastPromoB)) { throw "Renderização rápida compatível de Promoções ausente do executável." }
-          $fastAtacadoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/FastAtacadoBatch.ps1"
-          $fastAtacadoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/FastAtacadoBatch.ps1"
-          if (!(Test-Path $fastAtacadoA) -and !(Test-Path $fastAtacadoB)) { throw "Renderização rápida compatível de Atacado ausente do executável." }
-          python -c "from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; assert poster_pane_ratio(1500) == (68, 32); print(SRStudioTurboPosters.__name__)"
+          $atacadoA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/engines/AtacadoEngine.ps1"
+          $atacadoB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/engines/AtacadoEngine.ps1"
+          if (!(Test-Path $atacadoA) -and !(Test-Path $atacadoB)) { throw "Engine oficial de Atacado ausente do executável." }
+          $pdfium = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "pdfium.dll" | Select-Object -First 1
+          if ($null -eq $pdfium) { throw "PDFium nativo ausente do executável." }
+          python -c "import pypdfium2; from srstudio.posters.legacy_batch import LegacyBatchRenderer; from srstudio.app.turbo_posters import SRStudioTurboPosters; from srstudio.app.responsive_posters import poster_pane_ratio; assert poster_pane_ratio(1500) == (68, 32); print(LegacyBatchRenderer.__name__, SRStudioTurboPosters.__name__)"
 
       - name: Assemble launcher-compatible hybrid bundle
         shell: pwsh
@@ -134,12 +133,11 @@ jobs:
           $legacyEngineA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           $legacyEngineB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1"
           if (!(Test-Path $legacyEngineA) -and !(Test-Path $legacyEngineB)) { throw "Bundle Beta sem engine oficial de Promoções." }
-          $fastPromoA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/engines/FastPromotionBatch.ps1"
-          $fastPromoB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/engines/FastPromotionBatch.ps1"
-          if (!(Test-Path $fastPromoA) -and !(Test-Path $fastPromoB)) { throw "Bundle Beta sem renderização rápida compatível de Promoções." }
-          $fastAtacadoA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/engines/FastAtacadoBatch.ps1"
-          $fastAtacadoB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/engines/FastAtacadoBatch.ps1"
-          if (!(Test-Path $fastAtacadoA) -and !(Test-Path $fastAtacadoB)) { throw "Bundle Beta sem renderização rápida compatível de Atacado." }
+          $legacyAtacadoA = "$validation/files/SRStudio5/_internal/srstudio/assets/poster_templates/legacy/engines/AtacadoEngine.ps1"
+          $legacyAtacadoB = "$validation/files/SRStudio5/srstudio/assets/poster_templates/legacy/engines/AtacadoEngine.ps1"
+          if (!(Test-Path $legacyAtacadoA) -and !(Test-Path $legacyAtacadoB)) { throw "Bundle Beta sem engine oficial de Atacado." }
+          $pdfium = Get-ChildItem "$validation/files/SRStudio5" -Recurse -File -Filter "pdfium.dll" | Select-Object -First 1
+          if ($null -eq $pdfium) { throw "Bundle Beta sem PDFium nativo." }
           $got = (Get-FileHash $env:BETA_ZIP -Algorithm SHA256).Hash.ToLower()
           if ($got -ne $env:BETA_SHA256) { throw "SHA-256 mudou após empacotamento." }
 
@@ -153,11 +151,12 @@ jobs:
 
           Atualização do SR Studio 5 Professional no canal Beta oficial.
           Versão: $env:DIST_VERSION
-          Renderização rápida refeita sobre os engines históricos comprovados PowerPointEngine/AtacadoEngine.
-          O lote mantém uma única instância do PowerPoint, usa o ciclo antigo de abrir/preencher/salvar/fechar cada modelo e gera PDF temporário + PNG de prévia na mesma passagem.
-          Se um item não aceitar o modo rápido, somente ele cai automaticamente para o renderer normal comprovado.
-          O PDF final usa os PDFs temporários vetoriais quando todos estiverem válidos, evitando nova renderização.
-          Layout responsivo, grade editável, diagnóstico Custo/Venda/Clube e cache seletivo continuam preservados.
+          Renderização rápida refeita sem alterar a automação antiga do PowerPoint.
+          PowerPointEngine.ps1 e AtacadoEngine.ps1 geram os PDFs oficiais exatamente como nas versões anteriores; o SR Studio usa PDFium local para criar as prévias PNG sem abrir PowerPoint novamente.
+          PDFs e prévias ficam em cache por produto/modelo/dados comerciais. Reimportar dados iguais não chama Office novamente; alterar um item invalida apenas esse cartaz.
+          O PDF final junta os PDFs vetoriais já preparados, sem nova renderização.
+          Se o lote histórico falhar em um item, apenas os ausentes caem para o renderer normal comprovado.
+          Layout responsivo, grade editável e diagnóstico Custo/Venda/Clube continuam preservados.
 
           Compatível com o Launcher Beta Base 3.4 através do shim SR_Studio_Gerador.py.
           "@
@@ -206,7 +205,7 @@ jobs:
             size = [int64]$env:BETA_SIZE
             member_prefix = "files/"
             previous_version = $previousVersion
-            notes = "SR Studio $env:RELEASE_LABEL - renderização rápida baseada nos engines históricos comprovados, com PDF + PNG temporários na mesma passagem e fallback por item."
+            notes = "SR Studio $env:RELEASE_LABEL - engine antigo intacto para PDF + PDFium local para prévias rápidas e cache seletivo."
           }
           $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
 
