@@ -17,7 +17,7 @@ dependencies = [
 dev = ["pytest>=8.0", "ruff>=0.6"]
 
 [project.scripts]
-sr-studio-5 = "srstudio.app.advanced_posters:run"
+sr-studio-5 = "srstudio.app.responsive_posters:run"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
