@@ -242,10 +242,14 @@ class WholesaleHistoryStore:
             alerts.append("Quantidade inválida")
         if retail is not None and wholesale is not None and wholesale >= retail:
             alerts.append("Atacado ≥ varejo")
+
+        # In CISS report 782 the middle value on "A partir de" is the
+        # absolute monetary discount, not a percentage. Compare it directly
+        # with varejo - atacado so correct reports do not receive false alerts.
         discount = to_decimal(product.metadata.get("discount"))
-        if retail is not None and retail > 0 and wholesale is not None and discount is not None:
-            calculated = (retail - wholesale) / retail * Decimal("100")
-            if abs(calculated - discount) > Decimal("0.75"):
+        if retail is not None and wholesale is not None and discount is not None:
+            calculated_discount = retail - wholesale
+            if abs(calculated_discount - discount) > Decimal("0.02"):
                 alerts.append("Desconto divergente")
         return " • ".join(alerts)
 
