@@ -76,12 +76,25 @@ class TemplateRegistry:
 
     def seed_defaults(self) -> list[TemplateDefinition]:
         defaults = [
+            TemplateDefinition(
+                "promocao",
+                "Promoção SR",
+                category="Promoções",
+                layout="auto",
+                settings={"mode": "promotion", "price_mode": "single"},
+            ),
             TemplateDefinition("terca-verde", "Terça Verde", category="Hortifruti", layout="grid"),
             TemplateDefinition("quarta-cafe", "Quarta Café", category="Padaria", layout="hero"),
             TemplateDefinition("quinta-file", "Quinta Filé", category="Açougue", layout="hero"),
             TemplateDefinition("segunda-limpeza", "Segunda da Limpeza", category="Limpeza", layout="grid"),
             TemplateDefinition("fim-semana", "Fim de Semana", category="Geral", layout="auto"),
-            TemplateDefinition("atacado", "Atacado", category="Atacado", layout="grid", settings={"two_prices": True}),
+            TemplateDefinition(
+                "atacado",
+                "Atacado",
+                category="Atacado",
+                layout="grid",
+                settings={"mode": "wholesale", "two_prices": True, "show_quantity": True},
+            ),
         ]
         for item in defaults:
             path = self.root / f"{item.id}.json"
