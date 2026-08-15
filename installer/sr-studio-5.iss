@@ -22,6 +22,7 @@ PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayIcon={app}\{#MyAppExeName}
+SetupIconFile=..\src\srstudio\assets\brand\SR_Studio.ico
 SetupLogging=yes
 CloseApplications=yes
 RestartApplications=no
