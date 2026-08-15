@@ -271,10 +271,11 @@ class UnifiedImportPipeline:
 
         project.settings["pptx_source"] = str(path)
         project.settings["pptx_media_dir"] = str(media_dir)
-        project.settings["canva_import_version"] = 6
+        project.settings["canva_import_version"] = 7
         project.settings["canva_native_visual"] = True
         project.settings["canva_smart_slots"] = True
         project.settings["canva_slot_detector_version"] = 3
+        project.settings["canva_rendering_version"] = 7
         project.settings["canva_slot_stats"] = slot_stats
         if learned_profiles:
             project.settings["canva_layout_profiles"] = list(dict.fromkeys(learned_profiles))
@@ -378,7 +379,7 @@ class UnifiedImportPipeline:
 
     @staticmethod
     def _stabilize_canva_text_box(element: dict, role: str) -> None:
-        """Keep Canva one-line price tokens horizontal when fonts are substituted."""
+        """Keep split Canva price tokens horizontal without changing their geometry."""
         role = str(role or "")
         if role not in {
             "price_currency",
@@ -394,29 +395,9 @@ class UnifiedImportPipeline:
         }:
             return
         text = str(element.get("text") or "")
-        if not text or "\n" in text:
-            return
-        try:
-            font_size = float(element.get("font_size", 0.0) or 0.0)
-            width = float(element.get("width", 0.0) or 0.0)
-            x = float(element.get("x", 0.0) or 0.0)
-        except (TypeError, ValueError):
-            return
-        if font_size <= 0:
-            return
-        minimum = font_size * 1.333 * max(1.8, len(text) * 0.78 + 0.9)
-        if minimum <= width:
+        if text and "\n" not in text:
             element["canva_no_wrap"] = True
-            return
-        delta = minimum - width
-        align = str(element.get("align") or "").lower()
-        if align in {"ctr", "center"}:
-            x -= delta / 2
-        elif align in {"r", "right"}:
-            x -= delta
-        element["x"] = x
-        element["width"] = minimum
-        element["canva_no_wrap"] = True
+            element["canva_fit_inside_box"] = True
 
     @staticmethod
     def _unit_text(value: str) -> str:
@@ -486,6 +467,17 @@ class UnifiedImportPipeline:
             raw_outline = str(metadata.get("outline") or "")
             fill = raw_fill if raw_fill.startswith("#") else ""
             outline = raw_outline if raw_outline.startswith("#") else ""
+            geometry = str(metadata.get("shape_geometry") or "")
+            if geometry == "line":
+                if not outline and not fill:
+                    return None
+                return {
+                    **common,
+                    "type": "line",
+                    "fill": fill,
+                    "outline": outline or fill,
+                    "line_width": max(1.0, float(metadata.get("line_width_px", 1.0) or 1.0)),
+                }
             if not fill and not outline:
                 return None
             return {
@@ -493,5 +485,8 @@ class UnifiedImportPipeline:
                 "type": "rect",
                 "fill": fill,
                 "outline": outline,
+                "shape_geometry": geometry,
+                "corner_radius_ratio": float(metadata.get("corner_radius_ratio", 0.0) or 0.0),
+                "line_width": max(0.0, float(metadata.get("line_width_px", 0.0) or 0.0)),
             }
         return None
