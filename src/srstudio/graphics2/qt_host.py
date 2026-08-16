@@ -4,10 +4,11 @@ from argparse import ArgumentParser
 from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 import copy
 import json
 import sys
+import threading
 
 from .command_router import GraphicsCommandRouter
 from .fonts import register_qt_document_fonts
@@ -107,14 +108,6 @@ def build_editor_diagnostics(
     source: str | Path | None = None,
     graphics_api: str = "auto",
 ) -> dict[str, Any]:
-    """Monta o estado de qualidade consumido pelo painel do editor.
-
-    O Production Gate é recalculado sobre o SR Scene atual, portanto undo/redo,
-    edição de texto, drag-and-drop e qualquer outra mutação aparecem no painel
-    sem depender do snapshot criado no momento da importação. Os relatórios de
-    importação/fidelidade são copiados para impedir mutação acidental pelo QML.
-    """
-
     gate = inspect_production_gate(document, require_visual_fidelity=False)
     metadata = dict(document.metadata or {})
     audit = copy.deepcopy(import_audit if import_audit is not None else metadata.get("graphics2_import_audit") or {})
@@ -122,7 +115,6 @@ def build_editor_diagnostics(
     mapping = copy.deepcopy(metadata.get("pptx_mapping_audit") or {})
     pptx_fidelity = copy.deepcopy(metadata.get("pptx_fidelity") or {})
     semantic = copy.deepcopy(metadata.get("semantic_recovery_complete") or metadata.get("semantic_blocks") or {})
-    source_text = str(source or "")
     return {
         "production_gate": gate.to_dict(),
         "import_audit": audit,
@@ -131,23 +123,11 @@ def build_editor_diagnostics(
         "pptx_fidelity": pptx_fidelity,
         "semantic_recovery": semantic,
         "graphics_api_requested": _normalize_graphics_api(graphics_api),
-        "source": source_text,
+        "source": str(source or ""),
     }
 
 
 def prepare_qml_payload(scene: dict[str, Any]) -> dict[str, Any]:
-    """Normaliza somente o payload do preview sem alterar o SR Scene persistido.
-
-    O QML legado ainda interpreta ``nowrap`` como ``Text.Fit``. Para PriceBlocks
-    isso é perigoso: R$, reais, centavos e unidade podem ser reduzidos de forma
-    independente. O renderer de produção já separa linha única de auto-fit.
-
-    Até o componente de texto QML consumir ``semantic_fit_policy`` nativamente,
-    o preview recebe esses tokens como palavras indivisíveis em tamanho fixo.
-    Os textos de preço não possuem espaços, portanto ``WordWrap`` não os divide.
-    O documento, a exportação e o round-trip permanecem intocados.
-    """
-
     for page in scene.get("pages") or []:
         nodes = page.get("nodes") if isinstance(page, dict) else None
         if not isinstance(nodes, dict):
@@ -178,8 +158,6 @@ def _attach_context_qml_tool(
     QQuickWindow,
     QUrl,
 ):
-    """Cria uma ferramenta QML contextual como filho visual do editor."""
-
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(qml_path.resolve())))
     if component.isError():
         details = "; ".join(error.toString() for error in component.errors())
@@ -193,6 +171,10 @@ def _attach_context_qml_tool(
         tool.setParentItem(parent_item)
     tool.setParent(root_window)
     return component, tool
+
+
+def _snapshot_document(session: GraphicsSession) -> GraphicsDocument:
+    return GraphicsDocument.from_dict(session.document.to_dict())
 
 
 def launch_qt_quick_editor(
@@ -225,10 +207,13 @@ def launch_qt_quick_editor(
     class SceneBridge(QObject):
         sceneChanged = Signal()
         statusChanged = Signal()
+        fileJobDone = Signal(bool, str, str, str)
 
         def __init__(self) -> None:
             super().__init__()
             self._status = _startup_status(context, gate, requested_api)
+            self._busy = False
+            self.fileJobDone.connect(self._finish_file_job)
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
@@ -247,6 +232,10 @@ def launch_qt_quick_editor(
         def status(self) -> str:
             return self._status
 
+        @Property(bool, notify=statusChanged)
+        def busy(self) -> bool:
+            return self._busy
+
         def _run(self, command: dict) -> None:
             result = router.dispatch(command)
             self._status = result.message or ("Concluído" if result.ok else "Falha")
@@ -256,6 +245,39 @@ def launch_qt_quick_editor(
         def set_status(self, text: str) -> None:
             self._status = str(text)
             self.statusChanged.emit()
+
+        def _start_file_job(
+            self,
+            kind: str,
+            target: Path,
+            task: Callable[[GraphicsDocument, Path], str],
+        ) -> None:
+            if self._busy:
+                self._status = "Aguarde a operação de arquivo atual terminar."
+                self.statusChanged.emit()
+                return
+            snapshot = _snapshot_document(session)
+            self._busy = True
+            labels = {"save": "Salvando projeto", "pdf": "Exportando PDF", "png": "Exportando PNG"}
+            self._status = f"{labels.get(kind, 'Processando')} · {target.name}..."
+            self.statusChanged.emit()
+
+            def worker() -> None:
+                try:
+                    message = task(snapshot, target)
+                    self.fileJobDone.emit(True, kind, str(target), message)
+                except Exception as exc:
+                    self.fileJobDone.emit(False, kind, str(target), f"{type(exc).__name__}: {exc}")
+
+            threading.Thread(target=worker, name=f"sr-graphics2-{kind}", daemon=True).start()
+
+        def _finish_file_job(self, ok: bool, kind: str, target: str, message: str) -> None:
+            self._busy = False
+            if ok and kind == "save":
+                context.source = Path(target)
+            self._status = message if ok else f"Falha: {message}"
+            self.statusChanged.emit()
+            self.sceneChanged.emit()
 
         @Slot(str)
         def selectNode(self, node_id: str) -> None:
@@ -305,6 +327,55 @@ def launch_qt_quick_editor(
             self.sceneChanged.emit()
             return result_raw
 
+        @Slot(str)
+        def saveSceneAs(self, raw_target: str) -> None:
+            target = _qml_file_path(raw_target, ".srscene", QUrl)
+            if target is None:
+                return
+
+            def task(snapshot: GraphicsDocument, output: Path) -> str:
+                from .package import save_package
+
+                final = save_package(snapshot, output, embed_local_assets=True)
+                return f"Projeto salvo · {final.name}"
+
+            self._start_file_job("save", target, task)
+
+        @Slot(str)
+        def exportPdf(self, raw_target: str) -> None:
+            target = _qml_file_path(raw_target, ".pdf", QUrl)
+            if target is None:
+                return
+
+            def task(snapshot: GraphicsDocument, output: Path) -> str:
+                from .qt_renderer import render_pdf
+
+                report = render_pdf(snapshot, output, dpi=600)
+                warning = f" · {len(report.warnings)} aviso(s)" if report.warnings else ""
+                return f"PDF exportado · {report.pages} página(s){warning}"
+
+            self._start_file_job("pdf", target, task)
+
+        @Slot(str)
+        def exportPng(self, raw_target: str) -> None:
+            target = _qml_file_path(raw_target, ".png", QUrl)
+            if target is None:
+                return
+            active_id = session.document.active_page_id
+            page_index = next(
+                (index for index, page in enumerate(session.document.pages) if page.id == active_id),
+                0,
+            )
+
+            def task(snapshot: GraphicsDocument, output: Path) -> str:
+                from .qt_renderer import render_png
+
+                report = render_png(snapshot, output, page_index=page_index, dpi=300)
+                warning = f" · {len(report.warnings)} aviso(s)" if report.warnings else ""
+                return f"PNG exportado · {report.width}×{report.height}px{warning}"
+
+            self._start_file_job("png", target, task)
+
     font_report = register_qt_document_fonts(session.document)
     engine = QQmlApplicationEngine()
     engine.addImageProvider(PREVIEW_PROVIDER_NAME, preview_provider)
@@ -318,9 +389,6 @@ def launch_qt_quick_editor(
         raise RuntimeError("Falha ao carregar a interface Qt Quick do SR Graphics Engine 2.")
 
     root_window = roots[0]
-    # Referências locais permanecem vivas durante app.exec(), enquanto QObject
-    # parent/root_window garante ownership Qt. Os painéis flutuam sobre a coluna
-    # de propriedades sem poluir o canvas e somem/encolhem conforme o contexto.
     image_component, image_inspector = _attach_context_qml_tool(
         engine,
         root_window,
@@ -339,12 +407,23 @@ def launch_qt_quick_editor(
         QQuickWindow=QQuickWindow,
         QUrl=QUrl,
     )
+    actions_component, project_actions = _attach_context_qml_tool(
+        engine,
+        root_window,
+        qml_dir / "ProjectActions.qml",
+        QQmlComponent=QQmlComponent,
+        QQuickItem=QQuickItem,
+        QQuickWindow=QQuickWindow,
+        QUrl=QUrl,
+    )
     _context_tools = (
         preview_provider,
         image_component,
         image_inspector,
         quality_component,
         quality_inspector,
+        actions_component,
+        project_actions,
     )
 
     app.processEvents()
@@ -363,9 +442,21 @@ def launch_qt_quick_editor(
     return int(app.exec())
 
 
-def probe_graphics_api(graphics_api: str = "auto") -> GraphicsApiProbe:
-    """Verifica o backend que o Qt Quick realmente resolve neste computador."""
+def _qml_file_path(raw: str, suffix: str, QUrl) -> Path | None:
+    text = str(raw or "").strip()
+    if not text:
+        return None
+    url = QUrl(text)
+    value = url.toLocalFile() if url.isLocalFile() else text
+    if not value:
+        return None
+    path = Path(value).expanduser()
+    if suffix and path.suffix.lower() != suffix.lower():
+        path = path.with_suffix(suffix)
+    return path.resolve()
 
+
+def probe_graphics_api(graphics_api: str = "auto") -> GraphicsApiProbe:
     try:
         from PySide6.QtGui import QGuiApplication
         from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
