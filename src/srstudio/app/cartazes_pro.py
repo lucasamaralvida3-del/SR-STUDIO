@@ -13,6 +13,92 @@ from srstudio.app import responsive_posters as responsive
 from srstudio.posters.preflight import PosterBatchPreflight, PosterPreflightReport
 
 
+TABLE_COLUMNS = ("code", "name", "price1", "price2", "quantity", "unit", "limit", "check")
+TABLE_MIN_WIDTHS = {
+    "code": 58,
+    "name": 138,
+    "price1": 82,
+    "price2": 78,
+    "quantity": 72,
+    "unit": 62,
+    "limit": 58,
+    "check": 64,
+}
+TABLE_IDEAL_WIDTHS = {
+    "code": 82,
+    "name": 300,
+    "price1": 106,
+    "price2": 106,
+    "quantity": 92,
+    "unit": 74,
+    "limit": 84,
+    "check": 96,
+}
+
+
+def cartazes_table_headers(is_wholesale: bool = False) -> dict[str, str]:
+    """Human-readable headings for the professional poster queue."""
+
+    if is_wholesale:
+        return {
+            "code": "Código",
+            "name": "Produto",
+            "price1": "Varejo",
+            "price2": "Atacado",
+            "quantity": "Quantidade",
+            "unit": "Entrada",
+            "limit": "Limite",
+            "check": "Status",
+        }
+    return {
+        "code": "Código",
+        "name": "Produto",
+        "price1": "Promoção",
+        "price2": "Clube",
+        "quantity": "Modo",
+        "unit": "Entrada",
+        "limit": "Limite",
+        "check": "Status",
+    }
+
+
+def cartazes_table_widths(available: int) -> dict[str, int]:
+    """Fit all queue columns to the available pane while keeping readable minimums.
+
+    The responsive workspace normally provides at least the sum of the minimums. If a
+    window is made even narrower, the existing horizontal scrollbar remains the safe
+    fallback instead of hiding a column entirely.
+    """
+
+    minimum_total = sum(TABLE_MIN_WIDTHS.values())
+    target = max(minimum_total, int(available or 0))
+    ideal_extra = sum(TABLE_IDEAL_WIDTHS[key] - TABLE_MIN_WIDTHS[key] for key in TABLE_COLUMNS)
+    available_extra = max(0, target - minimum_total)
+    factor = min(1.0, available_extra / ideal_extra) if ideal_extra else 0.0
+
+    widths = {
+        key: TABLE_MIN_WIDTHS[key]
+        + int(round((TABLE_IDEAL_WIDTHS[key] - TABLE_MIN_WIDTHS[key]) * factor))
+        for key in TABLE_COLUMNS
+    }
+    used = sum(widths.values())
+    remainder = target - used
+    if remainder:
+        # Product absorbs residual pixels first because descriptions benefit most from space.
+        widths["name"] += remainder
+    return widths
+
+
+def cartazes_generation_gate(critical: int, warnings: int, allow_errors: bool) -> str:
+    """Return the final-print policy without coupling the decision to Tk dialogs."""
+
+    if int(critical) > 0:
+        return "confirm_errors" if allow_errors else "block"
+    if int(warnings) > 0:
+        return "confirm_warnings"
+    return "proceed"
+
+
 class _CartazesProViewMixin:
     """Professional final gate layered on top of the existing poster workflow.
 
@@ -26,6 +112,7 @@ class _CartazesProViewMixin:
         super()._build()
         self._cartazes_preflight = PosterBatchPreflight()
         self._cartazes_generation_active = False
+        self._cartazes_allow_errors_var = tk.BooleanVar(master=self, value=False)
         footer = getattr(self, "_poster_footer", None)
         if footer is not None:
             self._cartazes_preflight_button = ttk.Button(
@@ -35,6 +122,39 @@ class _CartazesProViewMixin:
                 command=self._show_batch_preflight,
             )
             self._cartazes_preflight_button.pack(side="right", padx=6, pady=9)
+            self._cartazes_allow_errors_check = ttk.Checkbutton(
+                footer,
+                text="Gerar cartazes com erro?",
+                variable=self._cartazes_allow_errors_var,
+            )
+            self._cartazes_allow_errors_check.pack(side="right", padx=(10, 4), pady=9)
+        self.after_idle(self._fit_table_columns)
+
+    def _ensure_extra_columns(self) -> None:
+        super()._ensure_extra_columns()
+        headers = cartazes_table_headers(bool(self.is_wholesale))
+        self.tree.configure(show="headings")
+        for column in TABLE_COLUMNS:
+            if column in self.tree["columns"]:
+                self.tree.heading(column, text=headers[column], anchor="center")
+
+    def _fit_table_columns(self) -> None:
+        left = getattr(self, "_responsive_left", None)
+        if left is None or not self.tree.winfo_exists():
+            return
+        available = max(sum(TABLE_MIN_WIDTHS.values()), left.winfo_width() - 30)
+        widths = cartazes_table_widths(available)
+        for column in TABLE_COLUMNS:
+            if column not in self.tree["columns"]:
+                continue
+            anchor = "w" if column == "name" else "center"
+            self.tree.column(
+                column,
+                width=widths[column],
+                minwidth=TABLE_MIN_WIDTHS[column],
+                anchor=anchor,
+                stretch=False,
+            )
 
     def _batch_products_for_preflight(self):
         products = list(self._selected_products())
@@ -138,9 +258,15 @@ class _CartazesProViewMixin:
 
         footer = tk.Frame(window, bg=COLORS.bg)
         footer.pack(fill="x", padx=20, pady=(0, 18))
+        allow_errors = bool(getattr(self, "_cartazes_allow_errors_var", tk.BooleanVar(value=False)).get())
+        guidance = (
+            "Exceção ativada: erros críticos ainda exigirão confirmação antes do PDF e serão registrados na auditoria."
+            if allow_errors
+            else "Erros críticos bloqueiam a geração final. Marque ‘Gerar cartazes com erro?’ apenas para uma exceção consciente."
+        )
         tk.Label(
             footer,
-            text="Erros críticos bloqueiam a geração final. Alertas podem ser revisados antes de imprimir.",
+            text=guidance,
             bg=COLORS.bg,
             fg=COLORS.text_muted,
             font=(FONT["family"], 8),
@@ -153,7 +279,7 @@ class _CartazesProViewMixin:
         if footer is None:
             return
         for child in footer.winfo_children():
-            if isinstance(child, ttk.Button):
+            if isinstance(child, (ttk.Button, ttk.Checkbutton)):
                 try:
                     child.state(["disabled"] if busy else ["!disabled"])
                 except tk.TclError:
@@ -174,13 +300,32 @@ class _CartazesProViewMixin:
             close_editor(commit=True)
 
         report = self._cartazes_preflight.evaluate(products, self.kind)
-        if report.critical:
+        allow_errors = bool(self._cartazes_allow_errors_var.get())
+        gate = cartazes_generation_gate(report.critical, report.warnings, allow_errors)
+        forced_with_errors = False
+
+        if gate == "block":
             self.status_label.configure(
                 text=f"Geração bloqueada · {report.critical} erro(s) crítico(s) no preflight."
             )
             self._open_preflight_dialog(report)
             return
-        if report.warnings:
+        if gate == "confirm_errors":
+            proceed = messagebox.askyesno(
+                "Gerar cartazes com erro?",
+                (
+                    f"O lote contém {report.critical} erro(s) crítico(s) e {report.warnings} alerta(s).\n\n"
+                    "Você ativou a exceção ‘Gerar cartazes com erro?’.\n"
+                    "O PDF poderá conter dados incorretos e será marcado na auditoria como GERADO COM ERROS.\n\n"
+                    "Deseja realmente continuar?"
+                ),
+                parent=self,
+            )
+            if not proceed:
+                self._open_preflight_dialog(report)
+                return
+            forced_with_errors = True
+        elif gate == "confirm_warnings":
             proceed = messagebox.askyesno(
                 "Pré-validação concluída",
                 (
@@ -212,9 +357,13 @@ class _CartazesProViewMixin:
         snapshot = list(products)
 
         self._set_final_generation_busy(True)
-        self.status_label.configure(text="Montando PDF final em segundo plano · o SR Studio continua disponível.")
+        if forced_with_errors:
+            self.status_label.configure(text="Montando PDF COM ERROS autorizados · a exceção será auditada.")
+        else:
+            self.status_label.configure(text="Montando PDF final em segundo plano · o SR Studio continua disponível.")
         if hasattr(self, "set_render_progress"):
-            self.set_render_progress(8, f"preflight aprovado · {len(snapshot)} cartaz(es) · montando PDF")
+            stage_text = "preflight com erros autorizado" if forced_with_errors else "preflight aprovado"
+            self.set_render_progress(8, f"{stage_text} · {len(snapshot)} cartaz(es) · montando PDF")
 
         def worker() -> None:
             try:
@@ -238,6 +387,7 @@ class _CartazesProViewMixin:
                     generated,
                     skipped,
                     warnings,
+                    forced_with_errors,
                 )
             except Exception as exc:
                 self.after(0, lambda e=exc: self._finish_final_generation_error(e))
@@ -245,7 +395,7 @@ class _CartazesProViewMixin:
             self.after(
                 0,
                 lambda: self._finish_final_generation(
-                    output, generated, skipped, warnings, audit, report
+                    output, generated, skipped, warnings, audit, report, forced_with_errors
                 ),
             )
 
@@ -261,6 +411,7 @@ class _CartazesProViewMixin:
         generated: int,
         skipped: int,
         warnings: list[str],
+        forced_with_errors: bool,
     ) -> Path:
         audit_path = output.with_suffix(".sr-audit.json")
         payload = {
@@ -272,6 +423,11 @@ class _CartazesProViewMixin:
             },
             "kind": self.kind.value,
             "campaign_override": campaign,
+            "release_policy": {
+                "forced_with_errors": bool(forced_with_errors),
+                "critical_errors": int(report.critical),
+                "warnings": int(report.warnings),
+            },
             "template": {
                 "id": str(getattr(template, "id", "")),
                 "name": str(getattr(template, "name", "")),
@@ -313,21 +469,41 @@ class _CartazesProViewMixin:
         warnings: list[str],
         audit: Path,
         report: PosterPreflightReport,
+        forced_with_errors: bool,
     ) -> None:
         self._set_final_generation_busy(False)
         self._last_pdf = output if output.is_file() else None
         if hasattr(self, "set_render_progress"):
-            self.set_render_progress(100, f"{generated} cartaz(es) · PDF final pronto")
-        self.status_label.configure(
-            text=f"PDF final pronto · {generated} gerado(s) · {skipped} ignorado(s) · auditoria salva."
-        )
-        if warnings:
+            detail = "PDF pronto · COM ERROS autorizados" if forced_with_errors else "PDF final pronto"
+            self.set_render_progress(100, f"{generated} cartaz(es) · {detail}")
+        if forced_with_errors:
+            self.status_label.configure(
+                text=(
+                    f"PDF gerado COM ERROS autorizados · {generated} gerado(s) · "
+                    f"{skipped} ignorado(s) · auditoria salva."
+                )
+            )
+            messagebox.showwarning(
+                "Cartazes gerados com erro",
+                (
+                    f"O PDF foi gerado por exceção com {report.critical} erro(s) crítico(s).\n\n"
+                    f"A autorização ficou registrada em {audit.name}."
+                ),
+                parent=self,
+            )
+        elif warnings:
+            self.status_label.configure(
+                text=f"PDF final pronto · {generated} gerado(s) · {skipped} ignorado(s) · auditoria salva."
+            )
             messagebox.showwarning(
                 "Cartazes gerados com avisos",
                 "\n".join(warnings[:12]),
                 parent=self,
             )
         else:
+            self.status_label.configure(
+                text=f"PDF final pronto · {generated} gerado(s) · {skipped} ignorado(s) · auditoria salva."
+            )
             self._notify(
                 f"PDF liberado pelo preflight · {report.products} cartaz(es) · auditoria: {audit.name}",
                 "success",
