@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from srstudio.graphics2.command_router import GraphicsCommandRouter
 from srstudio.graphics2.drop_target import find_drop_target, smart_slot_bounds
-from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, SmartSlot, Transform
+from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsNode, NodeKind, SmartSlot, Transform
+from srstudio.graphics2.operations import GraphicsSession
 
 
 def _slot(page, slot_id: str, x: float, y: float, width: float, height: float, *, confidence: float = 1.0):
@@ -66,3 +68,50 @@ def test_locked_slot_never_receives_drop():
     slot.locked = True
 
     assert find_drop_target(page, 50, 50, magnet_distance=50) is None
+
+
+def test_router_drop_product_resolves_slot_and_binds_product():
+    document = GraphicsDocument(name="Drag Drop")
+    page = document.active_page
+    name = GraphicsNode(
+        kind=NodeKind.TEXT,
+        name="Nome do produto",
+        text="PRODUTO ANTIGO",
+        transform=Transform(x=100, y=100, width=260, height=90),
+    )
+    page.add_node(name)
+    slot = SmartSlot(
+        id="slot-drop",
+        page_id=page.id,
+        node_by_role={BindingRole.NAME.value: name.id},
+        metadata={"source": "canva-smart-slot"},
+    )
+    page.slots[slot.id] = slot
+    document.metadata["products"] = [
+        {"id": "produto-1", "display_name": "CAFÉ CAJUBÁ 500G", "price": "18,99", "unit": "UN"}
+    ]
+    router = GraphicsCommandRouter(GraphicsSession(document))
+
+    result = router.dispatch(
+        {"name": "drop_product", "product_id": "produto-1", "x": 180, "y": 140, "magnet_distance": 12}
+    )
+
+    assert result.ok and result.changed
+    assert result.message == "Produto aplicado ao card pelo drag-and-drop."
+    assert result.payload["drop_target"]["slot_id"] == "slot-drop"
+    assert page.node(name.id).text == "CAFÉ CAJUBÁ 500G"
+    assert page.slots[slot.id].product_id == "produto-1"
+
+
+def test_router_drop_product_rejects_empty_canvas_area():
+    document = GraphicsDocument(name="Drop vazio")
+    page = document.active_page
+    _slot(page, "slot", 100, 100, 100, 100)
+    document.metadata["products"] = [{"id": "p", "display_name": "Produto"}]
+    router = GraphicsCommandRouter(GraphicsSession(document))
+
+    result = router.dispatch({"name": "drop_product", "product_id": "p", "x": 600, "y": 600})
+
+    assert result.ok is False
+    assert result.changed is False
+    assert "Nenhum Smart Slot" in result.message
