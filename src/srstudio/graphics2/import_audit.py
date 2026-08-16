@@ -109,8 +109,8 @@ def _audit_pptx_mapping(document: GraphicsDocument, report: ImportAuditReport) -
     """Transforma perda entre OOXML fonte e SR Scene em risco de importação.
 
     Esta camada é deliberadamente conservadora: diferenças moderadas viram
-    warning; perda severa de páginas/imagens vira error e impede o Production
-    Gate de aprovar silenciosamente um PPTX visualmente incompleto.
+    warning; perda severa de páginas/imagens/fillRect vira error e impede o
+    Production Gate de aprovar silenciosamente um PPTX visualmente incompleto.
     """
 
     mapping = document.metadata.get("pptx_mapping_audit")
@@ -129,9 +129,13 @@ def _audit_pptx_mapping(document: GraphicsDocument, report: ImportAuditReport) -
     text_coverage = _coverage_value(mapping.get("text_coverage", 1.0))
     image_coverage = _coverage_value(mapping.get("image_coverage", 1.0))
     group_coverage = _coverage_value(mapping.get("group_coverage", 1.0))
+    fill_rect_coverage = _coverage_value(mapping.get("fill_rect_coverage", 1.0))
+    fill_outset_coverage = _coverage_value(mapping.get("fill_outset_coverage", 1.0))
     source_text = _int(mapping.get("source_text_shapes", 0))
     source_images = _int(mapping.get("source_image_shapes", 0))
     source_groups = _int(mapping.get("source_groups", 0))
+    source_fill_rects = _int(mapping.get("source_fill_rects", 0))
+    source_fill_outsets = _int(mapping.get("source_fill_outsets", 0))
 
     if source_text >= 4 and text_coverage < 0.70:
         report.issues.append(
@@ -174,6 +178,41 @@ def _audit_pptx_mapping(document: GraphicsDocument, report: ImportAuditReport) -
                 "warning",
                 "PPTX_GROUP_MAPPING_RISK",
                 f"Cobertura de grupos DrawingML baixa: {group_coverage * 100:.2f}%.",
+            )
+        )
+
+    if source_fill_rects and fill_rect_coverage < 0.80:
+        report.issues.append(
+            ImportAuditIssue(
+                "error",
+                "PPTX_FILL_RECT_MAPPING_LOSS",
+                f"Apenas {fill_rect_coverage * 100:.2f}% dos stretch/fillRect DrawingML foram preservados. "
+                "Fotos do Canva podem usar enquadramento incorreto.",
+            )
+        )
+    elif source_fill_rects and fill_rect_coverage < 0.95:
+        report.issues.append(
+            ImportAuditIssue(
+                "warning",
+                "PPTX_FILL_RECT_MAPPING_RISK",
+                f"Cobertura de stretch/fillRect DrawingML abaixo do alvo: {fill_rect_coverage * 100:.2f}%.",
+            )
+        )
+
+    if source_fill_outsets and fill_outset_coverage < 0.80:
+        report.issues.append(
+            ImportAuditIssue(
+                "error",
+                "PPTX_FILL_OUTSET_MAPPING_LOSS",
+                f"Apenas {fill_outset_coverage * 100:.2f}% dos fillRect com outset negativo foram preservados.",
+            )
+        )
+    elif source_fill_outsets and fill_outset_coverage < 0.95:
+        report.issues.append(
+            ImportAuditIssue(
+                "warning",
+                "PPTX_FILL_OUTSET_MAPPING_RISK",
+                f"Cobertura de fillRect com outset negativo abaixo do alvo: {fill_outset_coverage * 100:.2f}%.",
             )
         )
 
