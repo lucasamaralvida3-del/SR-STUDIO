@@ -5,6 +5,8 @@ from pathlib import Path
 import sys
 
 import srstudio
+from srstudio.graphics2 import ENGINE_VERSION
+from srstudio.graphics2.host_runtime import write_runtime_manifest
 from srstudio.graphics2.studio_bridge import HOST_EXE_NAME, discover_packaged_host
 
 
@@ -61,3 +63,35 @@ def test_bridge_discovers_explicit_packaged_host(tmp_path, monkeypatch):
     discovered = discover_packaged_host()
 
     assert discovered == host.resolve()
+
+
+def _canonical_bundle(tmp_path: Path, monkeypatch, *, version: str = ENGINE_VERSION) -> tuple[Path, Path]:
+    monkeypatch.delenv("SR_GRAPHICS_ENGINE_2_HOST", raising=False)
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+    bundle = tmp_path / "SRStudio" / "App" / "Graphics2Host"
+    bundle.mkdir(parents=True)
+    host = bundle / HOST_EXE_NAME
+    host.write_bytes(b"MZ-canonical-host")
+    (bundle / "_internal").mkdir()
+    (bundle / "_internal" / "Qt6Core.dll").write_bytes(b"qt-core")
+    write_runtime_manifest(bundle, engine_version=version)
+    return bundle, host
+
+
+def test_bridge_accepts_canonical_host_only_with_valid_runtime_manifest(tmp_path, monkeypatch):
+    _, host = _canonical_bundle(tmp_path, monkeypatch)
+
+    assert discover_packaged_host() == host.resolve()
+
+
+def test_bridge_rejects_corrupted_canonical_host(tmp_path, monkeypatch):
+    _, host = _canonical_bundle(tmp_path, monkeypatch)
+    host.write_bytes(b"MZ-corrupted-after-manifest")
+
+    assert discover_packaged_host() is None
+
+
+def test_bridge_rejects_canonical_host_from_other_engine_version(tmp_path, monkeypatch):
+    _canonical_bundle(tmp_path, monkeypatch, version="2.0.0-alpha.other")
+
+    assert discover_packaged_host() is None
