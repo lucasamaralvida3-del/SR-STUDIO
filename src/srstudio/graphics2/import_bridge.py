@@ -222,8 +222,8 @@ def _style_from_element(element: dict[str, Any], kind: NodeKind) -> dict[str, An
             "font_weight": 700 if bool(element.get("bold")) else 400,
             "italic": bool(element.get("italic")),
             "color": str(element.get("fill") or "#162033"),
-            "align": str(element.get("align") or "left"),
-            "v_align": str(element.get("vertical_anchor") or "center"),
+            "align": _canonical_horizontal_align(element.get("align")),
+            "v_align": _canonical_vertical_align(element.get("vertical_anchor")),
             "nowrap": bool(element.get("canva_no_wrap") or element.get("canva_single_line")),
             "fit_inside_box": bool(element.get("canva_fit_inside_box")),
         }
@@ -251,6 +251,30 @@ def _style_from_element(element: dict[str, Any], kind: NodeKind) -> dict[str, An
             "stroke_width": float(element.get("line_width", 1) or 1),
         }
     return {}
+
+
+def _canonical_horizontal_align(value: object) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"l", "left"}:
+        return "left"
+    if raw in {"r", "right"}:
+        return "right"
+    if raw in {"ctr", "center", "centre"}:
+        return "center"
+    # O renderer ainda não possui justificação completa. Manter o fallback
+    # central histórico é mais seguro do que transformar silenciosamente em left.
+    return "center" if not raw else raw
+
+
+def _canonical_vertical_align(value: object) -> str:
+    raw = str(value or "").strip().lower()
+    if raw in {"t", "top"}:
+        return "top"
+    if raw in {"b", "bottom"}:
+        return "bottom"
+    if raw in {"ctr", "center", "centre", "mid", "middle"}:
+        return "center"
+    return "center" if not raw else raw
 
 
 def _ensure_asset(document: GraphicsDocument, source: str) -> str:
@@ -292,7 +316,8 @@ class CanvaBindingService:
                         continue
                     if node.kind is not NodeKind.TEXT:
                         continue
-                    value = _binding_text(role, product)
+                    template_text = str(node.metadata.get("template_text") or node.text or "")
+                    value = _binding_text(role, product, template_text=template_text)
                     node.text = value
                     if role in {
                         "limit",
@@ -307,7 +332,7 @@ class CanvaBindingService:
         return True
 
 
-def _binding_text(role: str, product: dict[str, Any]) -> str:
+def _binding_text(role: str, product: dict[str, Any], *, template_text: str = "") -> str:
     role = str(role)
     if role in {"name", BindingRole.NAME.value}:
         return str(product.get("display_name") or product.get("name") or product.get("original_name") or "")
@@ -321,8 +346,7 @@ def _binding_text(role: str, product: dict[str, Any]) -> str:
         whole, cents = _price_parts(product.get("price"))
         return f"R$ {whole}{cents}" if whole else ""
     if role in {"unit", BindingRole.UNIT.value}:
-        unit = str(product.get("unit") or "UN").upper().strip().lstrip("/")
-        return f"/{unit}" if unit else ""
+        return _template_unit_text(product.get("unit"), template_text)
     if role in {"limit", BindingRole.LIMIT.value}:
         limit = str(product.get("cpf_limit") or product.get("limit") or "").strip()
         return f"LIMITE DE {limit} POR CPF" if limit else ""
@@ -336,6 +360,21 @@ def _binding_text(role: str, product: dict[str, Any]) -> str:
         whole, cents = _price_parts(product.get("app_price"))
         return f"R$ {whole}{cents}" if whole else ""
     if role == "app_unit":
-        unit = str(product.get("unit") or "UN").upper().strip().lstrip("/")
-        return f"/{unit}" if unit and product.get("app_price") not in (None, "") else ""
+        return (
+            _template_unit_text(product.get("unit"), template_text)
+            if product.get("app_price") not in (None, "")
+            else ""
+        )
     return ""
+
+
+def _template_unit_text(value: object, template_text: str) -> str:
+    unit = str(value or "UN").upper().strip().lstrip("/")
+    if not unit:
+        return ""
+    template = str(template_text or "").strip()
+    # Canva alterna entre "KG" e "/KG". O prefixo faz parte do design e não
+    # do dado do produto, portanto deve seguir o token do template. Quando não
+    # existe token de origem, preserva o comportamento legado com barra.
+    prefix = "/" if not template or "/" in template else ""
+    return f"{prefix}{unit}"
