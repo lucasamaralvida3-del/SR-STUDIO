@@ -36,6 +36,8 @@ class HostBuildManifest:
     files: int
     bytes: int
     pyinstaller: str
+    runtime_manifest: str
+    runtime_manifest_sha256: str
 
 
 def pyinstaller_args(
@@ -101,6 +103,7 @@ def build(
     if str(SRC) not in sys.path:
         sys.path.insert(0, str(SRC))
     from srstudio.graphics2 import ENGINE_VERSION
+    from srstudio.graphics2.host_runtime import write_runtime_manifest
 
     output_root = Path(output).resolve()
     dist_root = output_root
@@ -129,10 +132,17 @@ def build(
     if not executable.is_file():
         raise RuntimeError(f"PyInstaller não gerou o executável esperado: {executable}")
 
+    # O manifesto de runtime vive dentro do próprio bundle e cataloga todas as
+    # DLLs/plugins/QML. O manifesto de build externo referencia esse catálogo.
+    runtime_manifest_path = write_runtime_manifest(
+        bundle,
+        engine_version=ENGINE_VERSION,
+        executable=executable.name,
+    )
     files = [item for item in bundle.rglob("*") if item.is_file()]
     total_bytes = sum(item.stat().st_size for item in files)
     manifest = HostBuildManifest(
-        schema="srstudio/graphics2-host-build-1",
+        schema="srstudio/graphics2-host-build-2",
         engine_version=ENGINE_VERSION,
         platform=platform.system(),
         architecture=platform.machine(),
@@ -141,11 +151,14 @@ def build(
         files=len(files),
         bytes=total_bytes,
         pyinstaller=str(getattr(PyInstaller, "__version__", "unknown")),
+        runtime_manifest=str(runtime_manifest_path.relative_to(dist_root)).replace("\\", "/"),
+        runtime_manifest_sha256=_sha256_file(runtime_manifest_path),
     )
     manifest_path = dist_root / "graphics2-host-manifest.json"
     manifest_path.write_text(json.dumps(asdict(manifest), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Graphics Engine 2 host: {executable}")
     print(f"Manifest: {manifest_path}")
+    print(f"Runtime integrity: {runtime_manifest_path}")
     return manifest
 
 
