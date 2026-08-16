@@ -6,13 +6,20 @@ Este diretório define o processo de paridade visual do SR Graphics Engine 2.0.
 
 Todo encarte real que já expôs uma falha de importação/renderização deve virar um caso permanente de regressão visual. O fluxo esperado é:
 
-1. preservar uma imagem de referência exportada do Canva/PowerPoint;
+1. preservar uma imagem/PDF de referência exportado do Canva/PowerPoint;
 2. importar o projeto no SR Graphics Engine 2;
-3. renderizar a mesma página pelo `qt_renderer`;
-4. comparar referência e candidata com `sr-fidelity-lab`;
-5. bloquear a alteração se o gate visual regredir.
+3. gerar e registrar o fingerprint determinístico da estrutura SR Scene 2;
+4. renderizar a mesma página pelo `qt_renderer`;
+5. comparar referência e candidata com o Fidelity Lab;
+6. bloquear a alteração se o gate estrutural ou visual regredir.
 
 O laboratório mede fidelidade de cor, luminância, bordas/estrutura, proporção de pixels dentro da tolerância, área alterada, erro absoluto e RMS. Diferença de dimensão reprova por padrão.
+
+## Privacidade do corpus real
+
+PPTX, PDF, imagens e fontes extraídas dos projetos reais **não precisam ser versionados no GitHub**. Use `visual-fidelity/local/` ou `visual-fidelity/private/`; ambos estão no `.gitignore`. Relatórios em `build/fidelity/` e `build/golden-master/` também são locais.
+
+O repositório pode manter somente código, manifestos, testes sintéticos e, quando necessário, hashes/fingerprints aprovados. Assim o projeto real do usuário é usado para validação sem ser publicado como fixture.
 
 ## Comandos
 
@@ -27,6 +34,29 @@ Executar corpus:
 ```text
 sr-fidelity-lab suite visual-fidelity/manifest.json --out build/fidelity
 ```
+
+Auditar um PPTX real sem referência visual:
+
+```text
+sr-fidelity-lab pptx-audit "OFERTAS QUINTA FILÉ NOVO.pptx" --save-scene --out build/fidelity/quinta-file
+```
+
+Comparar uma única página do PPTX com PNG de referência:
+
+```text
+sr-fidelity-lab pptx-render-compare "OFERTAS QUINTA FILÉ NOVO.pptx" pagina-1.png --page 0 --save-scene
+```
+
+Golden Master multipágina contra o PDF oficial:
+
+```text
+sr-pptx-golden-master "OFERTAS QUINTA FILÉ NOVO.pptx" "OFERTAS QUINTA FILÉ NOVO.pdf" \
+  --target-width 2160 \
+  --save-scene \
+  --out build/golden-master/quinta-file
+```
+
+O Golden Master compara todas as páginas e usa **o pior score visual**, não a média, no Production Gate. A quantidade de páginas também deve ser idêntica. O relatório inclui o fingerprint estrutural do SR Scene 2 para detectar drift mesmo quando IDs de runtime e caminhos de cache mudam.
 
 Renderizar um pacote SR Scene e comparar com uma referência (requer o extra `graphics2` / PySide6):
 
@@ -64,4 +94,4 @@ O primeiro lote deve incluir, no mínimo:
 - projeto Canva/PPTX com fontes não instaladas;
 - projeto com crop, rotação, transparência, sombras, grupos e camadas.
 
-Os arquivos pesados de referência podem ser mantidos fora do repositório principal e materializados no CI futuramente. O manifesto permanece a interface estável entre o corpus e o engine.
+Os arquivos pesados de referência ficam fora do repositório principal. O manifesto, os hashes e os fingerprints permanecem como interfaces estáveis entre o corpus e o engine.
