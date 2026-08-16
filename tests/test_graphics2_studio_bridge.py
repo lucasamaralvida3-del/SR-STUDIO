@@ -57,7 +57,9 @@ def test_prepare_studio_project_creates_valid_srscene_snapshot_with_products(tmp
 
 def test_enabled_bridge_launches_isolated_host_with_snapshot_and_software_backend(tmp_path, monkeypatch):
     _set_flags(tmp_path, engine=True, gpu=False)
-    monkeypatch.setenv("SR_GRAPHICS_ENGINE_2_HOST", "sr-graphics-engine-2-host.exe")
+    host = tmp_path / "sr-graphics-engine-2-host.exe"
+    host.write_bytes(b"MZ-test-host")
+    monkeypatch.setenv("SR_GRAPHICS_ENGINE_2_HOST", str(host))
     calls = []
 
     class Process:
@@ -75,7 +77,7 @@ def test_enabled_bridge_launches_isolated_host_with_snapshot_and_software_backen
     assert result.package_path.endswith(".srscene")
     assert len(calls) == 1
     args, kwargs = calls[0]
-    assert args[0] == "sr-graphics-engine-2-host.exe"
+    assert args[0] == str(host.resolve())
     assert "--graphics-api" in args
     assert args[args.index("--graphics-api") + 1] == "software"
     assert kwargs["env"]["SR_GRAPHICS_ENGINE_2_BRIDGE"] == "1"
@@ -84,7 +86,9 @@ def test_enabled_bridge_launches_isolated_host_with_snapshot_and_software_backen
 
 def test_gpu_flag_uses_automatic_accelerated_backend_selection(tmp_path, monkeypatch):
     _set_flags(tmp_path, engine=True, gpu=True)
-    monkeypatch.setenv("SR_GRAPHICS_ENGINE_2_HOST", "graphics2-host")
+    host = tmp_path / "graphics2-host.exe"
+    host.write_bytes(b"MZ-test-host")
+    monkeypatch.setenv("SR_GRAPHICS_ENGINE_2_HOST", str(host))
 
     class Process:
         pid = 99
@@ -99,6 +103,7 @@ def test_gpu_flag_uses_automatic_accelerated_backend_selection(tmp_path, monkeyp
 
     assert result.launched
     assert result.graphics_api == "auto"
+    assert captured["args"][0] == str(host.resolve())
     assert captured["args"][captured["args"].index("--graphics-api") + 1] == "auto"
 
 
