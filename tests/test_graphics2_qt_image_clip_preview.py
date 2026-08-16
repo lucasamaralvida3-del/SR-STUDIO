@@ -56,8 +56,8 @@ def test_qt_preview_applies_custom_clip_path_before_returning_image():
         clip_path=_triangle_clip(),
     )
 
-    assert QtGui.QColor(result.pixel(10, 10)).alpha() > 240
-    assert QtGui.QColor(result.pixel(90, 90)).alpha() == 0
+    assert result.pixelColor(10, 10).alpha() > 240
+    assert result.pixelColor(90, 90).alpha() == 0
 
 
 def test_qt_preview_pre_mirrors_clip_when_qml_will_mirror_image():
@@ -79,5 +79,5 @@ def test_qt_preview_pre_mirrors_clip_when_qml_will_mirror_image():
 
     # O provider entrega a máscara pré-espelhada. O Image QML fará o segundo
     # espelhamento e o contorno final voltará à orientação original do template.
-    assert QtGui.QColor(result.pixel(90, 10)).alpha() > 240
-    assert QtGui.QColor(result.pixel(10, 90)).alpha() == 0
+    assert result.pixelColor(90, 10).alpha() > 240
+    assert result.pixelColor(10, 90).alpha() == 0
