@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
+import copy
 import json
 import sys
 
@@ -98,6 +99,41 @@ def load_launch_context(source: str | Path | None, *, project_name: str = "") ->
     )
 
 
+def build_editor_diagnostics(
+    document: GraphicsDocument,
+    *,
+    import_audit: dict[str, Any] | None = None,
+    source: str | Path | None = None,
+    graphics_api: str = "auto",
+) -> dict[str, Any]:
+    """Monta o estado de qualidade consumido pelo painel do editor.
+
+    O Production Gate é recalculado sobre o SR Scene atual, portanto undo/redo,
+    edição de texto, drag-and-drop e qualquer outra mutação aparecem no painel
+    sem depender do snapshot criado no momento da importação. Os relatórios de
+    importação/fidelidade são copiados para impedir mutação acidental pelo QML.
+    """
+
+    gate = inspect_production_gate(document, require_visual_fidelity=False)
+    metadata = dict(document.metadata or {})
+    audit = copy.deepcopy(import_audit if import_audit is not None else metadata.get("graphics2_import_audit") or {})
+    visual = copy.deepcopy(metadata.get("visual_fidelity_last") or {})
+    mapping = copy.deepcopy(metadata.get("pptx_mapping_audit") or {})
+    pptx_fidelity = copy.deepcopy(metadata.get("pptx_fidelity") or {})
+    semantic = copy.deepcopy(metadata.get("semantic_recovery_complete") or metadata.get("semantic_blocks") or {})
+    source_text = str(source or "")
+    return {
+        "production_gate": gate.to_dict(),
+        "import_audit": audit,
+        "visual_fidelity": visual,
+        "pptx_mapping": mapping,
+        "pptx_fidelity": pptx_fidelity,
+        "semantic_recovery": semantic,
+        "graphics_api_requested": _normalize_graphics_api(graphics_api),
+        "source": source_text,
+    }
+
+
 def prepare_qml_payload(scene: dict[str, Any]) -> dict[str, Any]:
     """Normaliza somente o payload do preview sem alterar o SR Scene persistido.
 
@@ -167,7 +203,15 @@ def launch_qt_quick_editor(
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
-            return json.dumps(prepare_qml_payload(router.payload()), ensure_ascii=False, separators=(",", ":"))
+            payload = router.payload()
+            editor = payload.setdefault("editor", {})
+            editor["diagnostics"] = build_editor_diagnostics(
+                session.document,
+                import_audit=context.import_audit,
+                source=context.source,
+                graphics_api=requested_api,
+            )
+            return json.dumps(prepare_qml_payload(payload), ensure_ascii=False, separators=(",", ":"))
 
         @Property(str, notify=statusChanged)
         def status(self) -> str:
