@@ -15,10 +15,19 @@ PRESENTATION_XML = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 """
 
 
-def _text_shape(shape_id: int, name: str, text: str, *, image_fill: bool = False, custom: bool = False) -> str:
+def _text_shape(
+    shape_id: int,
+    name: str,
+    text: str,
+    *,
+    image_fill: bool = False,
+    custom: bool = False,
+    fill_rect_attrs: str = "",
+) -> str:
+    fill_rect = f"<a:fillRect {fill_rect_attrs}/>" if fill_rect_attrs else "<a:fillRect/>"
     fill = (
         '<a:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
-        f'r:embed="rId{shape_id}"/><a:stretch><a:fillRect/></a:stretch></a:blipFill>'
+        f'r:embed="rId{shape_id}"/><a:stretch>{fill_rect}</a:stretch></a:blipFill>'
         if image_fill
         else ""
     )
@@ -46,7 +55,14 @@ def _slide_xml() -> str:
         _text_shape(4, "Cents", ",77"),
         _text_shape(5, "Unit", "KG"),
         _text_shape(6, "Name", "LINGUIÇA MISTA CASEIRA SR"),
-        _text_shape(7, "Canva Image Fill", "", image_fill=True, custom=True),
+        _text_shape(
+            7,
+            "Canva Image Fill",
+            "",
+            image_fill=True,
+            custom=True,
+            fill_rect_attrs='l="-30959" t="0" r="-30437" b="0"',
+        ),
     ]
     group = """
       <p:grpSp>
@@ -62,7 +78,7 @@ def _slide_xml() -> str:
     picture = """
       <p:pic>
         <p:nvPicPr><p:cNvPr id="30" name="Picture 1"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
-        <p:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId30"/></p:blipFill>
+        <p:blipFill><a:blip xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" r:embed="rId30"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>
         <p:spPr><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr>
       </p:pic>
     """
@@ -93,20 +109,28 @@ def test_structure_scanner_counts_canva_image_fills_split_prices_and_groups(tmp_
     assert report.text_shapes == 6
     assert report.pictures == 1
     assert report.image_fill_shapes == 1
+    assert report.image_fill_rects == 2
+    assert report.image_fill_outsets == 1
     assert report.groups == 1
     assert report.custom_geometry == 1
+    assert report.image_custom_geometry == 1
     assert report.estimated_split_prices == 1
     slide = report.slides[0]
     assert slide.image_fill_shape_names == ["Canva Image Fill"]
+    assert slide.image_fill_rects == 2
+    assert slide.image_fill_outsets == 1
+    assert slide.image_custom_geometry == 1
     assert (slide.currency_tokens, slide.integer_tokens, slide.cents_tokens, slide.unit_tokens) == (1, 1, 1, 1)
 
 
-def test_mapping_audit_treats_pictures_and_blipfill_shapes_as_images():
+def test_mapping_audit_treats_pictures_blipfills_and_fillrects_as_visual_contracts():
     report = PptxStructureReport(
         slide_count=1,
         text_shapes=10,
         pictures=1,
         image_fill_shapes=3,
+        image_fill_rects=4,
+        image_fill_outsets=2,
         groups=4,
     )
     document = GraphicsDocument()
@@ -120,14 +144,22 @@ def test_mapping_audit_treats_pictures_and_blipfill_shapes_as_images():
                 style={"font_family": "Arial"},
             )
         )
-    for index in range(2):
-        page.add_node(
-            GraphicsNode(
-                kind=NodeKind.IMAGE,
-                transform=Transform(x=200 + index * 100, y=200, width=80, height=80),
-                metadata={"bound_image_source": "https://example.invalid/image.png"},
-            )
+    page.add_node(
+        GraphicsNode(
+            kind=NodeKind.IMAGE,
+            transform=Transform(x=200, y=200, width=80, height=80),
+            style={"fill_rect": {"l": -0.2, "t": 0, "r": -0.1, "b": 0}},
+            metadata={"bound_image_source": "https://example.invalid/image.png"},
         )
+    )
+    page.add_node(
+        GraphicsNode(
+            kind=NodeKind.IMAGE,
+            transform=Transform(x=300, y=200, width=80, height=80),
+            style={"fill_rect": {"l": 0, "t": 0, "r": 0, "b": 0}},
+            metadata={"bound_image_source": "https://example.invalid/image.png"},
+        )
+    )
     page.add_node(GraphicsNode(kind=NodeKind.GROUP, transform=Transform(width=100, height=100)))
 
     mapping = report.audit_document(document)
@@ -136,7 +168,11 @@ def test_mapping_audit_treats_pictures_and_blipfill_shapes_as_images():
     assert mapping.text_coverage == 0.9
     assert mapping.image_coverage == 0.5
     assert mapping.group_coverage == 0.25
+    assert mapping.fill_rect_coverage == 0.5
+    assert mapping.fill_outset_coverage == 0.5
     assert any("p:sp/a:blipFill" in warning for warning in mapping.warnings)
+    assert any("stretch/fillRect" in warning for warning in mapping.warnings)
+    assert any("outset negativo" in warning for warning in mapping.warnings)
 
 
 def test_import_audit_and_production_gate_block_severe_pptx_mapping_loss():
@@ -150,10 +186,16 @@ def test_import_audit_and_production_gate_block_severe_pptx_mapping_loss():
         imported_image_nodes=4,
         source_groups=4,
         imported_group_nodes=1,
+        source_fill_rects=10,
+        imported_fill_rects=5,
+        source_fill_outsets=5,
+        imported_fill_outsets=2,
         page_count_match=True,
         text_coverage=0.6,
         image_coverage=0.4,
         group_coverage=0.25,
+        fill_rect_coverage=0.5,
+        fill_outset_coverage=0.4,
     ).to_dict()
 
     audit = audit_import(document, check_local_assets=False)
@@ -163,13 +205,19 @@ def test_import_audit_and_production_gate_block_severe_pptx_mapping_loss():
     assert "PPTX_TEXT_MAPPING_LOSS" in codes
     assert "PPTX_IMAGE_MAPPING_LOSS" in codes
     assert "PPTX_GROUP_MAPPING_RISK" in codes
-    assert audit.errors >= 2
+    assert "PPTX_FILL_RECT_MAPPING_LOSS" in codes
+    assert "PPTX_FILL_OUTSET_MAPPING_LOSS" in codes
+    assert audit.errors >= 4
     assert not gate.ready
     assert gate.mapping_text_coverage == 0.6
     assert gate.mapping_image_coverage == 0.4
     assert gate.mapping_group_coverage == 0.25
+    assert gate.mapping_fill_rect_coverage == 0.5
+    assert gate.mapping_fill_outset_coverage == 0.4
     assert gate.score <= 40
     assert any(issue.code == "PPTX_IMAGE_COVERAGE_FAILED" for issue in gate.issues)
+    assert any(issue.code == "PPTX_FILL_RECT_COVERAGE_FAILED" for issue in gate.issues)
+    assert any(issue.code == "PPTX_FILL_OUTSET_COVERAGE_FAILED" for issue in gate.issues)
 
 
 def test_production_gate_accepts_complete_mapping_metadata():
@@ -184,10 +232,16 @@ def test_production_gate_accepts_complete_mapping_metadata():
         imported_image_nodes=8,
         source_groups=2,
         imported_group_nodes=2,
+        source_fill_rects=8,
+        imported_fill_rects=8,
+        source_fill_outsets=3,
+        imported_fill_outsets=3,
         page_count_match=True,
         text_coverage=1.0,
         image_coverage=1.0,
         group_coverage=1.0,
+        fill_rect_coverage=1.0,
+        fill_outset_coverage=1.0,
     ).to_dict()
 
     gate = inspect_production_gate(document, require_visual_fidelity=False)
@@ -196,4 +250,6 @@ def test_production_gate_accepts_complete_mapping_metadata():
     assert gate.mapping_text_coverage == 1.0
     assert gate.mapping_image_coverage == 1.0
     assert gate.mapping_group_coverage == 1.0
+    assert gate.mapping_fill_rect_coverage == 1.0
+    assert gate.mapping_fill_outset_coverage == 1.0
     assert not any(issue.code.startswith("PPTX_") and "COVERAGE" in issue.code for issue in gate.issues)
