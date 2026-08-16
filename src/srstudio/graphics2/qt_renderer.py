@@ -14,6 +14,7 @@ import math
 
 from .fonts import register_qt_document_fonts
 from .image_crop import crop_pixel_box
+from .image_fill import drawingml_fill_destination, has_drawingml_fill_rect
 from .model import CoordinateUnit, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Rect
 from .preflight import run_preflight
 
@@ -317,10 +318,30 @@ def _draw_image(painter, document: GraphicsDocument, page: GraphicsPage, node: G
         image = image.mirrored(bool(node.style.get("flip_x")), bool(node.style.get("flip_y")))
     target = QtCore.QRectF(node.transform.x, node.transform.y, node.transform.width, node.transform.height)
     clip_path = _custom_path(node.metadata.get("clip_path"), target, QtGui)
-    if clip_path is not None:
+    fill_rect = node.style.get("fill_rect")
+    drawingml_stretch = has_drawingml_fill_rect(fill_rect)
+    needs_clip = drawingml_stretch or clip_path is not None
+    if needs_clip:
         painter.save()
-        painter.setClipPath(clip_path)
+        if drawingml_stretch:
+            # fillRect pode ter offsets negativos e estender a fotografia para
+            # fora da forma. O Office sempre recorta o preenchimento na forma.
+            painter.setClipRect(target)
+        if clip_path is not None:
+            operation = QtCore.Qt.ClipOperation.IntersectClip if drawingml_stretch else QtCore.Qt.ClipOperation.ReplaceClip
+            painter.setClipPath(clip_path, operation)
     try:
+        if drawingml_stretch:
+            destination = drawingml_fill_destination(target.width(), target.height(), fill_rect)
+            dest = QtCore.QRectF(
+                target.x() + destination.x,
+                target.y() + destination.y,
+                destination.width,
+                destination.height,
+            )
+            painter.drawImage(dest, image)
+            return
+
         fit = str(node.style.get("fit") or "contain").lower()
         focus_x = min(1.0, max(0.0, float(node.style.get("focus_x", 0.5) or 0.5)))
         focus_y = min(1.0, max(0.0, float(node.style.get("focus_y", 0.5) or 0.5)))
@@ -344,7 +365,7 @@ def _draw_image(painter, document: GraphicsDocument, page: GraphicsPage, node: G
         dest = QtCore.QRectF(target.x() + (tw - dw) * focus_x, target.y() + (th - dh) * focus_y, dw, dh)
         painter.drawImage(dest, image)
     finally:
-        if clip_path is not None:
+        if needs_clip:
             painter.restore()
 
 
