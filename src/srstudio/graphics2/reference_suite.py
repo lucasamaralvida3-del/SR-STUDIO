@@ -261,7 +261,8 @@ def run_reference_suite(args: Namespace) -> int:
             f"texto={float(pptx_mapping.get('text_coverage', 1.0)) * 100:.2f}% · "
             f"imagem={float(pptx_mapping.get('image_coverage', 1.0)) * 100:.2f}% · "
             f"fillRect={float(pptx_mapping.get('fill_rect_coverage', 1.0)) * 100:.2f}% · "
-            f"outset={float(pptx_mapping.get('fill_outset_coverage', 1.0)) * 100:.2f}%"
+            f"outset={float(pptx_mapping.get('fill_outset_coverage', 1.0)) * 100:.2f}% · "
+            f"máscaras={float(pptx_mapping.get('image_clip_coverage', 1.0)) * 100:.2f}%"
         )
     for case, result, case_payload in zip(manifest.cases, results, case_payloads):
         triage = case_payload["triage"]
