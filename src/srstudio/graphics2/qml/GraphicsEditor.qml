@@ -113,7 +113,38 @@ ApplicationWindow {
     function imageSource(node) {
         if (!node)
             return ""
-        return localSource((node.metadata || {}).bound_image_source || (node.metadata || {}).source_url || "")
+        var metadata = node.metadata || {}
+        var assetSource = ""
+        if (node.asset_id && scene.assets && scene.assets[node.asset_id])
+            assetSource = scene.assets[node.asset_id].source || ""
+        return localSource(metadata.bound_image_source || metadata.source_url || assetSource)
+    }
+
+    function textInset(style, key) {
+        var insets = style && style.text_insets ? style.text_insets : {}
+        return Math.max(0, Number(insets[key] || 0)) * zoom
+    }
+
+    function textLineHeightMode(style) {
+        if (style && Number(style.line_spacing_px || 0) > 0)
+            return Text.FixedHeight
+        return Text.ProportionalHeight
+    }
+
+    function textLineHeight(style) {
+        if (!style)
+            return 1.0
+        var fixed = Number(style.line_spacing_px || 0)
+        if (fixed > 0)
+            return Math.max(1, fixed * zoom)
+        var proportional = Number(style.line_spacing_percent || 0)
+        if (proportional > 10)
+            proportional = proportional / 100.0
+        return proportional > 0 ? proportional : 1.0
+    }
+
+    function hasCustomPath(node) {
+        return !!(node && node.metadata && node.metadata.custom_path && node.metadata.custom_path.paths && node.metadata.custom_path.paths.length)
     }
 
     function slotBounds(slot) {
@@ -366,7 +397,7 @@ ApplicationWindow {
                                     required property var modelData
                                     width: layerList.width
                                     highlighted: isSelected(modelData)
-                                    text: (modelData.visible === false ? "◌  " : "◉  ") + (modelData.locked ? "🔒  " : "") + (modelData.name || modelData.kind)
+                                    text: (modelData.visible === false ? "◌  " : "◉  ") + (modelData.locked ? "🔒  " : "") + (modelData.kind === "group" ? "▣  " : "") + (modelData.name || modelData.kind)
                                     onClicked: sceneBridge.selectNodeAdvanced(modelData.id, false, (Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0)
                                 }
                             }
@@ -484,11 +515,64 @@ ApplicationWindow {
 
                                     Rectangle {
                                         anchors.fill: parent
-                                        visible: modelData.kind === "rect" || modelData.kind === "group"
+                                        visible: (modelData.kind === "rect" && !hasCustomPath(modelData)) || modelData.kind === "group"
                                         color: modelData.kind === "group" ? "transparent" : (modelData.style.fill || "transparent")
                                         border.width: modelData.kind === "group" ? 1 : Number(modelData.style.stroke_width || 0) * zoom
                                         border.color: modelData.kind === "group" ? "#0F5BD866" : (modelData.style.stroke || "transparent")
-                                        radius: Number(modelData.style.radius || 0) * zoom
+                                        radius: modelData.kind === "group" ? 0 : (Number(modelData.style.radius || 0) > 0 ? Number(modelData.style.radius) * zoom : Number(modelData.style.radius_ratio || 0) * Math.min(width, height))
+                                    }
+                                    Canvas {
+                                        id: customPathCanvas
+                                        anchors.fill: parent
+                                        visible: (modelData.kind === "rect" || modelData.kind === "path") && hasCustomPath(modelData)
+                                        renderTarget: Canvas.FramebufferObject
+                                        renderStrategy: Canvas.Threaded
+                                        onWidthChanged: requestPaint()
+                                        onHeightChanged: requestPaint()
+                                        onVisibleChanged: if (visible) requestPaint()
+                                        Component.onCompleted: requestPaint()
+                                        onPaint: {
+                                            var ctx = getContext("2d")
+                                            ctx.reset()
+                                            ctx.clearRect(0, 0, width, height)
+                                            var spec = modelData.metadata.custom_path || {}
+                                            var paths = spec.paths || []
+                                            for (var p = 0; p < paths.length; ++p) {
+                                                var path = paths[p]
+                                                var sourceW = Math.max(0.0001, Number(path.width || spec.width || 1))
+                                                var sourceH = Math.max(0.0001, Number(path.height || spec.height || 1))
+                                                var sx = width / sourceW
+                                                var sy = height / sourceH
+                                                ctx.beginPath()
+                                                var commands = path.commands || []
+                                                for (var c = 0; c < commands.length; ++c) {
+                                                    var command = commands[c]
+                                                    var pts = command.points || []
+                                                    if (command.op === "M" && pts.length)
+                                                        ctx.moveTo(Number(pts[0][0]) * sx, Number(pts[0][1]) * sy)
+                                                    else if (command.op === "L" && pts.length)
+                                                        ctx.lineTo(Number(pts[0][0]) * sx, Number(pts[0][1]) * sy)
+                                                    else if (command.op === "C" && pts.length >= 3)
+                                                        ctx.bezierCurveTo(Number(pts[0][0]) * sx, Number(pts[0][1]) * sy, Number(pts[1][0]) * sx, Number(pts[1][1]) * sy, Number(pts[2][0]) * sx, Number(pts[2][1]) * sy)
+                                                    else if (command.op === "Q" && pts.length >= 2)
+                                                        ctx.quadraticCurveTo(Number(pts[0][0]) * sx, Number(pts[0][1]) * sy, Number(pts[1][0]) * sx, Number(pts[1][1]) * sy)
+                                                    else if (command.op === "Z")
+                                                        ctx.closePath()
+                                                }
+                                                var fill = String(modelData.style.fill || "transparent")
+                                                if (fill !== "transparent" && fill !== "none" && fill !== "") {
+                                                    ctx.fillStyle = fill
+                                                    ctx.fill()
+                                                }
+                                                var strokeWidth = Number(modelData.style.stroke_width || 0) * zoom
+                                                var stroke = String(modelData.style.stroke || "transparent")
+                                                if (strokeWidth > 0 && stroke !== "transparent" && stroke !== "none" && stroke !== "") {
+                                                    ctx.lineWidth = strokeWidth
+                                                    ctx.strokeStyle = stroke
+                                                    ctx.stroke()
+                                                }
+                                            }
+                                        }
                                     }
                                     Rectangle {
                                         anchors.fill: parent
@@ -500,25 +584,40 @@ ApplicationWindow {
                                     }
                                     Text {
                                         anchors.fill: parent
+                                        anchors.leftMargin: textInset(modelData.style, "left")
+                                        anchors.topMargin: textInset(modelData.style, "top")
+                                        anchors.rightMargin: textInset(modelData.style, "right")
+                                        anchors.bottomMargin: textInset(modelData.style, "bottom")
                                         visible: modelData.kind === "text"
+                                        clip: true
                                         text: modelData.text || ""
                                         color: modelData.style.color || "#111827"
                                         font.family: modelData.style.font_family || "Segoe UI"
                                         font.pixelSize: Math.max(4, Number(modelData.style.font_size || 20) * (String(modelData.style.font_size_unit || "pt") === "pt" ? 1.333333 : 1) * zoom)
                                         font.bold: Number(modelData.style.font_weight || 400) >= 700
                                         font.italic: !!modelData.style.italic
+                                        font.letterSpacing: Number(modelData.style.letter_spacing || 0) * zoom
                                         horizontalAlignment: modelData.style.align === "left" ? Text.AlignLeft : modelData.style.align === "right" ? Text.AlignRight : Text.AlignHCenter
                                         verticalAlignment: modelData.style.v_align === "top" ? Text.AlignTop : modelData.style.v_align === "bottom" ? Text.AlignBottom : Text.AlignVCenter
                                         wrapMode: modelData.style.nowrap ? Text.NoWrap : Text.WordWrap
-                                        fontSizeMode: modelData.style.fit_inside_box ? Text.Fit : Text.FixedSize
-                                        minimumPixelSize: Math.max(3, 4 * zoom)
-                                        elide: modelData.style.fit_inside_box ? Text.ElideNone : Text.ElideRight
+                                        maximumLineCount: modelData.style.nowrap ? 1 : 2147483647
+                                        fontSizeMode: (modelData.style.fit_inside_box || modelData.style.nowrap) ? Text.Fit : Text.FixedSize
+                                        minimumPixelSize: Math.max(1, 4 * zoom)
+                                        elide: (modelData.style.fit_inside_box || modelData.style.nowrap) ? Text.ElideNone : Text.ElideRight
+                                        lineHeightMode: textLineHeightMode(modelData.style)
+                                        lineHeight: textLineHeight(modelData.style)
                                     }
                                     Image {
+                                        id: nodeImage
                                         anchors.fill: parent
                                         visible: modelData.kind === "image" || modelData.kind === "background"
                                         source: imageSource(modelData)
                                         fillMode: modelData.style.fit === "cover" ? Image.PreserveAspectCrop : modelData.style.fit === "fill" ? Image.Stretch : Image.PreserveAspectFit
+                                        horizontalAlignment: Image.AlignHCenter
+                                        verticalAlignment: Image.AlignVCenter
+                                        mirror: !!modelData.style.flip_x
+                                        mirrorVertically: !!modelData.style.flip_y
+                                        clip: fillMode === Image.PreserveAspectCrop
                                         asynchronous: true
                                         cache: true
                                         mipmap: true
@@ -585,7 +684,42 @@ ApplicationWindow {
 
                                 Rectangle { anchors.fill: parent; color: "transparent"; border.width: 2; border.color: "#0F5BD8" }
                                 Rectangle { x: parent.width / 2; y: -30; width: 1; height: 30; color: "#0F5BD8" }
-                                Rectangle { width: 13; height: 13; radius: 7; x: parent.width / 2 - 6.5; y: -42; color: "white"; border.width: 2; border.color: "#0F5BD8" }
+                                Rectangle {
+                                    id: rotateHandle
+                                    width: 13
+                                    height: 13
+                                    radius: 7
+                                    x: parent.width / 2 - 6.5
+                                    y: -42
+                                    color: "white"
+                                    border.width: 2
+                                    border.color: "#0F5BD8"
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.CrossCursor
+                                        enabled: !!anchorNode && !effectiveLocked(anchorNode)
+                                        preventStealing: true
+                                        property real pressAngle: 0
+                                        property real startRotation: 0
+                                        function angleAt(px, py) {
+                                            var dx = rotateHandle.x + px - selectionOverlay.width / 2
+                                            var dy = rotateHandle.y + py - selectionOverlay.height / 2
+                                            return Math.atan2(dy, dx) * 180 / Math.PI + 90
+                                        }
+                                        onPressed: {
+                                            pressAngle = angleAt(mouse.x, mouse.y)
+                                            startRotation = anchorNode ? Number(anchorNode.transform.rotation || 0) : 0
+                                        }
+                                        onReleased: {
+                                            if (!anchorNode) return
+                                            var delta = angleAt(mouse.x, mouse.y) - pressAngle
+                                            while (delta > 180) delta -= 360
+                                            while (delta < -180) delta += 360
+                                            var target = startRotation + delta
+                                            sceneBridge.dispatch(JSON.stringify({"name":"rotate","angle":target,"snap":(mouse.modifiers & Qt.ShiftModifier) !== 0 ? 15 : null}))
+                                        }
+                                    }
+                                }
 
                                 Repeater {
                                     model: [
@@ -731,7 +865,7 @@ ApplicationWindow {
                             Button { text: "▼ Fundo"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"layer","mode":"back"}') }
                         }
                         Item { Layout.preferredHeight: 8 }
-                        Label { text: "Qt Quick / RHI · interface preparada para GPU dedicada"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Label { text: "Qt Quick / RHI · preview com fontes, spacing, custGeom e GPU"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
                 }
             }
