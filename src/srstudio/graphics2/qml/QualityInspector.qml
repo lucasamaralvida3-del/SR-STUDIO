@@ -157,4 +157,9 @@ Rectangle {
             }
         }
     }
+
+    PageInspector {
+        parent: panel.parent
+        visible: panel.parent !== null
+    }
 }
