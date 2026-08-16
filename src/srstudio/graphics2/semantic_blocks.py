@@ -64,6 +64,11 @@ _REAIS_RE = re.compile(r"^\d{1,3}$")
 _CENTS_RE = re.compile(r"^[,.]\d{1,2}$")
 _UNIT_RE = re.compile(r"^/?(?:KG|UN|UND|G|L|ML|LT|CX|PCT|PC|BDJ)$", re.IGNORECASE)
 _ALPHA_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]")
+_DATE_RE = re.compile(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b")
+_GLOBAL_COPY_RE = re.compile(
+    r"\b(?:OFERTAS?\s+V[ÁA]LIDAS?|V[ÁA]LIDAS?\s+SOMENTE|SOMENTE\s+DIA|SANTA\s+JULIANA)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(slots=True)
@@ -88,6 +93,8 @@ class SemanticBlockReport:
     recovered_price_blocks: int = 0
     product_cards: int = 0
     recovered_product_cards: int = 0
+    recovered_group_product_cards: int = 0
+    recovered_spatial_product_cards: int = 0
     recovered_smart_slots: int = 0
     protected_price_nodes: int = 0
     incomplete_price_blocks: int = 0
@@ -103,6 +110,11 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
     A função é idempotente e nunca muda x/y/w/h nem parent/children dos nodes.
     Isso é essencial porque ``pptx_groups`` já reconstrói a hierarquia real do
     arquivo fonte e os compostos semânticos são uma camada ortogonal.
+
+    Recuperação de ProductCard usa duas fontes de verdade, nesta ordem:
+    1. grupo real DrawingML reconstruído pelo ``pptx_groups``;
+    2. região espacial/Voronoi local do PriceBlock quando o Canva exportou os
+       elementos do card soltos no slide.
     """
 
     report = SemanticBlockReport()
@@ -139,17 +151,19 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
             report.recovered_price_blocks += 1
             report.protected_price_nodes += len(block.members)
 
-        # Quando o PPTX possui um grupo real envolvendo o preço e o restante do
-        # card, usamos esse grupo como unidade semântica de ProductCard. Isso é
-        # muito mais seguro que adivinhar o card inteiro somente por distância.
-        #
-        # Um mesmo grupo pode conter mais de um preço (por exemplo preço normal
-        # + APP). Nesse caso o ProductCard/SmartSlot deve nascer uma única vez;
-        # preços adicionais são apenas associados ao card já criado.
+        # Nomes/imagens usados por um card espacial não podem ser roubados por
+        # um card vizinho. PriceBlocks, por outro lado, continuam independentes.
+        reserved_context: set[str] = set()
+
         for price_block in recovered:
             card = _recover_product_card_from_group(page, price_block)
+            recovery_kind = "group"
+            if card is None:
+                card = _recover_product_card_spatial(page, price_block, recovered, reserved_context)
+                recovery_kind = "spatial"
             if card is None:
                 continue
+
             existing = page_blocks.get(card.id)
             if isinstance(existing, dict):
                 metadata = existing.setdefault("metadata", {})
@@ -169,12 +183,16 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
             page_blocks[card.id] = card.to_dict()
             report.product_cards += 1
             report.recovered_product_cards += 1
+            if recovery_kind == "group":
+                report.recovered_group_product_cards += 1
+            else:
+                report.recovered_spatial_product_cards += 1
 
         page.metadata["semantic_blocks"] = page_blocks
-        page.metadata["semantic_blocks_version"] = 6
+        page.metadata["semantic_blocks_version"] = 7
 
     document.metadata["semantic_blocks"] = report.to_dict()
-    document.metadata["semantic_blocks_version"] = 6
+    document.metadata["semantic_blocks_version"] = 7
     return report
 
 
@@ -264,8 +282,13 @@ def _build_price_block(
     if not members:
         return None
     block_id = f"priceblock:{slot.id}:{suffix}"
-    block = _make_price_block(page, block_id, slot.id, roles, source=str(slot.metadata.get("source") or "smart-slot"))
-    return block
+    return _make_price_block(
+        page,
+        block_id,
+        slot.id,
+        roles,
+        source=str(slot.metadata.get("source") or "smart-slot"),
+    )
 
 
 def _make_price_block(
@@ -377,10 +400,7 @@ def _recover_product_card_from_group(page: GraphicsPage, price_block: SemanticBl
     price_members = set(price_block.members)
     context_nodes = [page.nodes[node_id] for node_id in content if node_id not in price_members]
     has_image = any(node.kind in {NodeKind.IMAGE, NodeKind.BACKGROUND} for node in context_nodes)
-    has_name_like_text = any(
-        node.kind is NodeKind.TEXT and bool(_ALPHA_RE.search(_clean_text(node.text)))
-        for node in context_nodes
-    )
+    has_name_like_text = any(_is_product_name_candidate(node) for node in context_nodes)
     if not (has_image or has_name_like_text):
         return None
 
@@ -409,6 +429,8 @@ def _recover_product_card_from_group(page: GraphicsPage, price_block: SemanticBl
             "price_blocks": [price_block.id],
             "content_members": content,
             "source_group_id": group_id,
+            "stable_key": stable,
+            "confidence": 0.96,
             "atomic": True,
             "editable": not group.locked,
             "recovered": True,
@@ -416,6 +438,216 @@ def _recover_product_card_from_group(page: GraphicsPage, price_block: SemanticBl
             "source": "pptx-group-recovery",
         },
     )
+
+
+def _recover_product_card_spatial(
+    page: GraphicsPage,
+    price_block: SemanticBlock,
+    price_blocks: list[SemanticBlock],
+    reserved_context: set[str],
+) -> SemanticBlock | None:
+    """Reconstrói card Canva quando nome/imagem/preço vieram soltos no slide.
+
+    A região candidata é local e limitada pelos centros dos PriceBlocks vizinhos
+    (uma aproximação de célula de Voronoi). Isso evita que um preço de uma coluna
+    capture o nome ou a imagem da coluna ao lado, sem depender de uma grade fixa.
+    """
+
+    region = _spatial_card_region(page, price_block, price_blocks)
+    price_members = set(price_block.members)
+    candidates = [
+        node
+        for node in page.nodes.values()
+        if node.id not in price_members
+        and node.id not in reserved_context
+        and node.kind is not NodeKind.GROUP
+        and node.visible
+        and _node_intersects_region(node, region)
+        and not node.metadata.get("semantic_price_block_id")
+    ]
+    name_node = _best_spatial_name_node(candidates, price_block, region)
+    image_node = _best_spatial_image_node(candidates, price_block, region, page)
+    if name_node is None and image_node is None:
+        return None
+
+    context_ids: list[str] = []
+    if name_node is not None:
+        context_ids.append(name_node.id)
+    if image_node is not None and image_node.id not in context_ids:
+        context_ids.append(image_node.id)
+    reserved_context.update(context_ids)
+
+    content = _unique([*price_block.members, *context_ids])
+    stable = str(price_block.id).removeprefix("priceblock:recovered:") or _stable_from_bounds(price_block.bounds)
+    block_id = f"productcard:recovered:spatial:{stable}"
+    bounds = _bounds_dict(page, content)
+    for node_id in content:
+        page.nodes[node_id].metadata["semantic_product_card_id"] = block_id
+    confidence = 0.93 if name_node is not None and image_node is not None else 0.84
+    return SemanticBlock(
+        id=block_id,
+        kind="product_card",
+        slot_id="",
+        # Sem grupo de origem o composto é virtual: mover o card seleciona os
+        # poucos membros semanticamente seguros, nunca shapes vizinhos arbitrários.
+        members=content,
+        roles={},
+        bounds=bounds,
+        template_geometry={node_id: _geometry(page.nodes[node_id], bounds) for node_id in content},
+        metadata={
+            "price_blocks": [price_block.id],
+            "content_members": content,
+            "source_group_id": "",
+            "stable_key": f"spatial-{stable}",
+            "confidence": confidence,
+            "region": region,
+            "name_node_id": name_node.id if name_node is not None else "",
+            "image_node_id": image_node.id if image_node is not None else "",
+            "atomic": True,
+            "editable": True,
+            "recovered": True,
+            "spatial": True,
+            "preserve_source_geometry": True,
+            "source": "spatial-card-recovery",
+        },
+    )
+
+
+def _spatial_card_region(
+    page: GraphicsPage,
+    price_block: SemanticBlock,
+    price_blocks: list[SemanticBlock],
+) -> dict[str, float]:
+    pb = _rect_from_bounds(price_block.bounds)
+    cx, cy = pb.center_x, pb.center_y
+    base_left = max(0.0, pb.x - max(pb.width * 1.8, page.width * 0.10))
+    base_right = min(page.width, pb.right + max(pb.width * 1.3, page.width * 0.08))
+    base_top = max(0.0, pb.y - max(pb.height * 3.0, page.height * 0.18))
+    base_bottom = min(page.height, pb.bottom + max(pb.height * 0.9, page.height * 0.05))
+
+    left, right, top, bottom = base_left, base_right, base_top, base_bottom
+    row_tolerance = max(pb.height * 2.3, page.height * 0.14)
+    column_tolerance = max(pb.width * 1.7, page.width * 0.13)
+    for other in price_blocks:
+        if other.id == price_block.id:
+            continue
+        ob = _rect_from_bounds(other.bounds)
+        ox, oy = ob.center_x, ob.center_y
+        if abs(oy - cy) <= row_tolerance:
+            midpoint = (ox + cx) / 2.0
+            if ox < cx:
+                left = max(left, midpoint)
+            elif ox > cx:
+                right = min(right, midpoint)
+        if abs(ox - cx) <= column_tolerance:
+            midpoint = (oy + cy) / 2.0
+            if oy < cy:
+                top = max(top, midpoint)
+            elif oy > cy:
+                bottom = min(bottom, midpoint)
+
+    # Nunca deixe um vizinho degenerar a célula. O PriceBlock precisa caber por
+    # inteiro e manter uma faixa mínima acima para nome/imagem.
+    left = min(left, pb.x)
+    right = max(right, pb.right)
+    top = min(top, max(0.0, pb.y - max(pb.height * 1.2, 24.0)))
+    bottom = max(bottom, pb.bottom)
+    return {
+        "x": left,
+        "y": top,
+        "width": max(1.0, right - left),
+        "height": max(1.0, bottom - top),
+    }
+
+
+def _best_spatial_name_node(
+    nodes: list[GraphicsNode],
+    price_block: SemanticBlock,
+    region: dict[str, float],
+) -> GraphicsNode | None:
+    candidates = [node for node in nodes if _is_product_name_candidate(node)]
+    if not candidates:
+        return None
+    pb = _rect_from_bounds(price_block.bounds)
+    rr = _rect_from_bounds(region)
+    scale_x = max(rr.width, pb.width, 1.0)
+    scale_y = max(pb.height, 1.0)
+
+    def score(node: GraphicsNode) -> tuple[float, float, float, str]:
+        t = node.transform
+        cx, cy = t.x + t.width / 2.0, t.y + t.height / 2.0
+        dx = abs(cx - pb.center_x) / scale_x
+        vertical_gap = (pb.y - (t.y + t.height)) / scale_y
+        # Nome de produto normalmente está acima do preço. Conteúdo abaixo do
+        # PriceBlock ainda pode existir, mas recebe penalidade forte.
+        if t.y >= pb.bottom:
+            vertical = 3.0 + (t.y - pb.bottom) / scale_y
+        elif vertical_gap >= 0:
+            vertical = abs(vertical_gap - 0.65)
+        else:
+            vertical = 0.8 + abs(vertical_gap)
+        font_size = float(node.style.get("font_size") or 0.0)
+        return (vertical + dx * 1.7, -font_size, -t.width, node.id)
+
+    winner = min(candidates, key=score)
+    # Um candidato no limite extremo da região é mais provavelmente cabeçalho
+    # global que nome de produto.
+    wt = winner.transform
+    if wt.y + wt.height < rr.y + rr.height * 0.02:
+        return None
+    return winner
+
+
+def _best_spatial_image_node(
+    nodes: list[GraphicsNode],
+    price_block: SemanticBlock,
+    region: dict[str, float],
+    page: GraphicsPage,
+) -> GraphicsNode | None:
+    rr = _rect_from_bounds(region)
+    pb = _rect_from_bounds(price_block.bounds)
+    page_area = max(page.width * page.height, 1.0)
+    candidates = [
+        node
+        for node in nodes
+        if node.kind in {NodeKind.IMAGE, NodeKind.BACKGROUND}
+        and (node.transform.width * node.transform.height) / page_area < 0.60
+    ]
+    if not candidates:
+        return None
+
+    def score(node: GraphicsNode) -> tuple[float, float, float, str]:
+        t = node.transform
+        cx, cy = t.x + t.width / 2.0, t.y + t.height / 2.0
+        dx = abs(cx - pb.center_x) / max(rr.width, 1.0)
+        # Imagem do produto tende a ocupar área relevante e ficar acima/ao lado
+        # do preço; imagens decorativas minúsculas perdem por área.
+        dy = abs(cy - (pb.y - pb.height * 0.8)) / max(rr.height, 1.0)
+        area_ratio = (t.width * t.height) / max(rr.width * rr.height, 1.0)
+        return (dx + dy - min(area_ratio, 0.8) * 0.9, -area_ratio, float(node.z_index), node.id)
+
+    return min(candidates, key=score)
+
+
+def _is_product_name_candidate(node: GraphicsNode) -> bool:
+    if node.kind is not NodeKind.TEXT or not node.visible:
+        return False
+    text = _clean_text(node.text)
+    if len(text) < 3 or len(text) > 120 or not _ALPHA_RE.search(text):
+        return False
+    if _CURRENCY_RE.fullmatch(text) or _UNIT_RE.fullmatch(text):
+        return False
+    if _DATE_RE.search(text) or _GLOBAL_COPY_RE.search(text):
+        return False
+    if text.casefold() in {"válidas somente dia", "validas somente dia", "oferta válida", "oferta valida"}:
+        return False
+    return True
+
+
+def _node_intersects_region(node: GraphicsNode, region: dict[str, float]) -> bool:
+    a = node.rect.normalized()
+    b = _rect_from_bounds(region)
+    return not (a.right < b.x or a.x > b.right or a.bottom < b.y or a.y > b.bottom)
 
 
 def _promote_recovered_card_to_slot(
@@ -454,20 +686,26 @@ def _promote_recovered_card_to_slot(
 
     group_id = str(card.metadata.get("source_group_id") or "")
     group = page.node(group_id)
-    stable = _stable_node_key(group) if group is not None else card.id
+    stable = str(card.metadata.get("stable_key") or "").strip()
+    if not stable:
+        stable = _stable_node_key(group) if group is not None else _stable_from_bounds(card.bounds)
     slot_id = f"slot:recovered:{stable}"
+    confidence = float(card.metadata.get("confidence") or 0.0)
+    if confidence <= 0:
+        confidence = 0.92 if name_node is not None and image_node is not None else 0.86
     slot = SmartSlot(
         id=slot_id,
         name=_clean_text(name_node.text) if name_node is not None else f"Produto recuperado {len(page.slots) + 1}",
         page_id=page.id,
         node_by_role=node_by_role,
-        confidence=0.92 if name_node is not None and image_node is not None else 0.86,
+        confidence=max(0.0, min(1.0, confidence)),
         metadata={
             # Mantemos o mesmo contrato do CanvaBindingService; o flag separado
             # identifica que o slot foi inferido e pode ser reconstruído.
             "source": "canva-smart-slot",
             "semantic_recovered": True,
-            "recovered_from_pptx_group": True,
+            "recovered_from_pptx_group": bool(group_id),
+            "recovered_spatial": not bool(group_id),
             "semantic_product_card_id": card.id,
             "semantic_price_block_ids": [price_block.id],
             "source_group_id": group_id,
@@ -483,13 +721,7 @@ def _promote_recovered_card_to_slot(
 
 
 def _best_name_node(nodes: list[GraphicsNode], price_block: SemanticBlock) -> GraphicsNode | None:
-    candidates = [
-        node
-        for node in nodes
-        if node.kind is NodeKind.TEXT
-        and bool(_ALPHA_RE.search(_clean_text(node.text)))
-        and len(_clean_text(node.text)) <= 120
-    ]
+    candidates = [node for node in nodes if _is_product_name_candidate(node)]
     if not candidates:
         return None
     px = float(price_block.bounds.get("x") or 0.0) + float(price_block.bounds.get("width") or 0.0) / 2.0
@@ -648,6 +880,20 @@ def _stable_node_key(node: GraphicsNode) -> str:
             return cleaned
     t = node.transform
     return f"x{round(t.x, 3)}-y{round(t.y, 3)}-w{round(t.width, 3)}-h{round(t.height, 3)}"
+
+
+def _stable_from_bounds(bounds: dict[str, float]) -> str:
+    rect = _rect_from_bounds(bounds)
+    return f"x{round(rect.x, 3)}-y{round(rect.y, 3)}-w{round(rect.width, 3)}-h{round(rect.height, 3)}"
+
+
+def _rect_from_bounds(bounds: dict[str, float]) -> Rect:
+    return Rect(
+        float(bounds.get("x") or 0.0),
+        float(bounds.get("y") or 0.0),
+        max(0.0, float(bounds.get("width") or 0.0)),
+        max(0.0, float(bounds.get("height") or 0.0)),
+    )
 
 
 def _bounds_dict(page: GraphicsPage, members: list[str]) -> dict[str, float]:
