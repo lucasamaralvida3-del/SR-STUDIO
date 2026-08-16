@@ -149,25 +149,29 @@ def _render_compare(args: Namespace) -> int:
 def _pptx_audit(args: Namespace) -> int:
     from .import_bridge import GraphicsImportService
     from .package import save_package
+    from .quality import inspect_production_gate
 
     source = _require_pptx(args.pptx)
     output = args.out
     output.mkdir(parents=True, exist_ok=True)
     imported = GraphicsImportService().import_file(source, project_name=source.stem)
+    gate = inspect_production_gate(imported.document, require_visual_fidelity=False)
     stem = _slug(args.name or source.stem)
     scene_path = ""
     if args.save_scene:
         scene_path = str(save_package(imported.document, output / f"{stem}.srscene"))
     payload = _pptx_diagnostic_payload(source, imported)
+    payload["production_gate"] = gate.to_dict()
     payload["scene"] = scene_path
     report = output / f"{stem}-audit.json"
     _write_json(report, payload)
     print(
-        f"SR Fidelity Lab: {'PASS' if imported.audit.ready else 'FAIL'} | PPTX audit | "
+        f"SR Fidelity Lab: {'PASS' if gate.ready else 'FAIL'} | PPTX audit | "
         f"{imported.audit.pages} pág. | {imported.audit.nodes} nodes | "
-        f"{imported.audit.slots} slots | confiança {imported.audit.confidence * 100:.2f}% | {report}"
+        f"{imported.audit.slots} slots | confiança {imported.audit.confidence * 100:.2f}% | "
+        f"gate {gate.score}/100 | {report}"
     )
-    return 0 if imported.audit.ready else 1
+    return 0 if gate.ready else 1
 
 
 def _pptx_render_compare(args: Namespace) -> int:
@@ -175,6 +179,7 @@ def _pptx_render_compare(args: Namespace) -> int:
 
     from .import_bridge import GraphicsImportService
     from .package import save_package
+    from .quality import inspect_production_gate, store_visual_fidelity
     from .qt_renderer import qt_renderer_available, render_png
 
     if not qt_renderer_available():
@@ -209,6 +214,8 @@ def _pptx_render_compare(args: Namespace) -> int:
         policy=_policy_from(args),
         diff_path=output / f"{stem}-diff.png",
     )
+    store_visual_fidelity(imported.document, fidelity)
+    gate = inspect_production_gate(imported.document, require_visual_fidelity=True)
 
     scene_path = ""
     if args.save_scene:
@@ -219,6 +226,7 @@ def _pptx_render_compare(args: Namespace) -> int:
         "target_width": target_width,
         "scene": scene_path,
         "import": _pptx_diagnostic_payload(source, imported),
+        "production_gate": gate.to_dict(),
         "render": {
             "output": str(render_report.output),
             "width": render_report.width,
@@ -238,9 +246,11 @@ def _pptx_render_compare(args: Namespace) -> int:
     report = output / f"{stem}-pipeline-report.json"
     _write_json(report, payload)
     _print_case(fidelity, report)
-    if not imported.audit.ready:
-        print(f"  - import audit contém {imported.audit.errors} erro(s) estrutural(is)")
-    return 0 if fidelity.passed and imported.audit.ready else 1
+    print(f"  Production Gate: {'PASS' if gate.ready else 'FAIL'} · {gate.score}/100")
+    for issue in gate.issues:
+        if issue.severity == "blocker":
+            print(f"  - {issue.code}: {issue.message}")
+    return 0 if gate.ready else 1
 
 
 def _pptx_diagnostic_payload(source: Path, imported) -> dict:
