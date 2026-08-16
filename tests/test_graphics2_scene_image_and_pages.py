@@ -21,8 +21,10 @@ def test_scene_image_encodes_renderer_fit_zoom_focus_contract():
     assert 'fit === "cover" || imageZoom > 1.0001' in source
     assert "Math.max(width / naturalWidth, height / naturalHeight)" in source
     assert "Math.min(width / naturalWidth, height / naturalHeight)" in source
-    assert "(root.width - width) * Math.max(0, Math.min(1, root.focusX))" in source
-    assert "(root.height - height) * Math.max(0, Math.min(1, root.focusY))" in source
+    assert "visualFocusX: flipX ? 1.0 -" in source
+    assert "visualFocusY: flipY ? 1.0 -" in source
+    assert "(root.width - width) * root.visualFocusX" in source
+    assert "(root.height - height) * root.visualFocusY" in source
     assert "mirror: root.flipX" in source
     assert "mirrorVertically: root.flipY" in source
     assert "clip: true" in source
