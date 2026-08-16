@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Iterable
+import math
 
 from .image_crop import MAX_CROP_SIDE, MAX_CROP_TOTAL
 from .model import GraphicsDocument, GraphicsNode, NodeKind
@@ -122,6 +123,48 @@ def _image_style_issues(page_id: str, node: GraphicsNode) -> list[PreflightIssue
                 )
             )
 
+    fill_rect = style.get("fill_rect")
+    if fill_rect not in (None, "", {}):
+        if not isinstance(fill_rect, dict):
+            issues.append(
+                PreflightIssue(
+                    "error",
+                    "INVALID_IMAGE_FILL_RECT",
+                    "fillRect DrawingML precisa ser um objeto com bordas L/T/R/B.",
+                    page_id,
+                    node.id,
+                )
+            )
+        else:
+            values: dict[str, float] = {}
+            for short, long_name in (("l", "left"), ("t", "top"), ("r", "right"), ("b", "bottom")):
+                raw = fill_rect.get(short, fill_rect.get(long_name, 0.0))
+                value = _safe_float(raw)
+                if value is None:
+                    issues.append(
+                        PreflightIssue(
+                            "error",
+                            "INVALID_IMAGE_FILL_RECT",
+                            f"Offset {short.upper()} do fillRect DrawingML não é numérico/finito.",
+                            page_id,
+                            node.id,
+                        )
+                    )
+                    continue
+                if abs(value) > 10.0:
+                    value /= 100000.0
+                values[short] = value
+            if len(values) == 4 and (values["l"] + values["r"] >= 1.0 or values["t"] + values["b"] >= 1.0):
+                issues.append(
+                    PreflightIssue(
+                        "error",
+                        "INVALID_IMAGE_FILL_RECT",
+                        "fillRect DrawingML elimina ou inverte toda a área de preenchimento.",
+                        page_id,
+                        node.id,
+                    )
+                )
+
     crop = style.get("crop")
     if crop in (None, "", {}):
         return issues
@@ -175,9 +218,10 @@ def _image_style_issues(page_id: str, node: GraphicsNode) -> list[PreflightIssue
 
 def _safe_float(value: object) -> float | None:
     try:
-        return float(value)
+        result = float(value)
     except (TypeError, ValueError):
         return None
+    return result if math.isfinite(result) else None
 
 
 def _cycle_issues(page_id: str, nodes: dict[str, GraphicsNode]) -> list[PreflightIssue]:
