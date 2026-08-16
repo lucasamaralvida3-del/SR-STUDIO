@@ -7,16 +7,22 @@ não consegue representar sozinho ``zoom + focus_x + focus_y``. Em vez de
 duplicar mais lógica dentro do QML principal, este módulo entrega ao canvas uma
 imagem já composta no aspect ratio exato do node. O documento SR Scene nunca é
 alterado: apenas o payload de preview recebe URLs ``image://srscene/...``.
+
+QQuickImageProvider pode atender requests fora da thread da UI. Por isso o
+provider não toca no ``GraphicsSession`` durante ``requestImage``: a UI publica
+snapshots imutáveis por ``sync_document`` e o worker consome somente cópias sob
+lock. Undo/redo e edições continuam atualizando o preview sem corrida de dados.
 """
 
+from copy import deepcopy
 from hashlib import sha256
 from pathlib import Path
+from threading import RLock
 from typing import Any
 import json
 import re
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind
-from .operations import GraphicsSession
 
 PREVIEW_PROVIDER_NAME = "srscene"
 
@@ -50,14 +56,8 @@ def inject_preview_image_urls(scene: dict[str, Any], document: GraphicsDocument)
     return scene
 
 
-def create_live_scene_image_provider(session: GraphicsSession):
-    """Cria provider tardio sempre apontando para ``session.document`` atual.
-
-    ``GraphicsSession.undo()/redo()`` substitui o objeto GraphicsDocument por um
-    snapshot restaurado. Capturar o documento no construtor faria o preview ficar
-    preso numa versão antiga da cena. Por isso cada request consulta a sessão e
-    resolve o documento vigente naquele instante.
-    """
+def create_live_scene_image_provider():
+    """Cria um QQuickImageProvider baseado em snapshots sincronizados pela UI."""
 
     try:
         from PySide6 import QtCore, QtGui
@@ -68,24 +68,45 @@ def create_live_scene_image_provider(session: GraphicsSession):
     class LiveSceneImageProvider(QQuickImageProvider):
         def __init__(self) -> None:
             super().__init__(QQuickImageProvider.Image)
+            self._lock = RLock()
+            self._nodes: dict[str, dict[str, Any]] = {}
+
+        def sync_document(self, document: GraphicsDocument) -> None:
+            snapshot: dict[str, dict[str, Any]] = {}
+            for page in document.pages:
+                for node in page.nodes.values():
+                    if node.kind not in {NodeKind.IMAGE, NodeKind.BACKGROUND}:
+                        continue
+                    source = _model_source(document, node)
+                    if not source:
+                        continue
+                    snapshot[node.id] = {
+                        "source": source,
+                        "width": float(node.transform.width or 1.0),
+                        "height": float(node.transform.height or 1.0),
+                        "style": deepcopy(node.style),
+                    }
+            with self._lock:
+                self._nodes = snapshot
 
         def requestImage(self, image_id, size, requested_size):  # noqa: N802 - contrato Qt
-            document = session.document
             node_id = str(image_id or "").split("/", 1)[0]
-            node = _find_node(document, node_id)
-            if node is None:
+            with self._lock:
+                raw = self._nodes.get(node_id)
+                spec = deepcopy(raw) if raw is not None else None
+            if spec is None:
                 return _transparent_image(QtGui, 1, 1)
-            source = _model_source(document, node)
-            local = _local_path(source, QtCore)
+
+            local = _local_path(str(spec.get("source") or ""), QtCore)
             if local is None or not local.is_file():
                 return _transparent_image(QtGui, 1, 1)
             image = QtGui.QImage(str(local))
             if image.isNull():
                 return _transparent_image(QtGui, 1, 1)
-            image = _apply_crop(image, dict(node.style.get("crop") or {}), QtCore)
-
-            width, height = _target_size(node, requested_size)
-            composed = _compose(image, width, height, node.style, QtCore, QtGui)
+            style = dict(spec.get("style") or {})
+            image = _apply_crop(image, dict(style.get("crop") or {}), QtCore)
+            width, height = _target_size(spec, requested_size)
+            composed = _compose(image, width, height, style, QtCore, QtGui)
             try:
                 size.setWidth(composed.width())
                 size.setHeight(composed.height())
@@ -130,14 +151,6 @@ def _preview_signature(node: dict[str, Any], source: str) -> str:
     return sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
 
 
-def _find_node(document: GraphicsDocument, node_id: str) -> GraphicsNode | None:
-    for page in document.pages:
-        node = page.nodes.get(node_id)
-        if node is not None and node.kind in {NodeKind.IMAGE, NodeKind.BACKGROUND}:
-            return node
-    return None
-
-
 def _model_source(document: GraphicsDocument, node: GraphicsNode) -> str:
     metadata = node.metadata or {}
     bound = str(metadata.get("bound_image_source") or "")
@@ -164,9 +177,9 @@ def _local_path(source: str, QtCore) -> Path | None:
     return None
 
 
-def _target_size(node: GraphicsNode, requested_size) -> tuple[int, int]:
-    width = max(1, round(float(node.transform.width or 1.0)))
-    height = max(1, round(float(node.transform.height or 1.0)))
+def _target_size(spec: dict[str, Any], requested_size) -> tuple[int, int]:
+    width = max(1, round(float(spec.get("width") or 1.0)))
+    height = max(1, round(float(spec.get("height") or 1.0)))
     try:
         requested_w = int(requested_size.width())
         requested_h = int(requested_size.height())
