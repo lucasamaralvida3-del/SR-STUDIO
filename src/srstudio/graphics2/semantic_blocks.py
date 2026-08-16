@@ -142,23 +142,39 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
         # Quando o PPTX possui um grupo real envolvendo o preço e o restante do
         # card, usamos esse grupo como unidade semântica de ProductCard. Isso é
         # muito mais seguro que adivinhar o card inteiro somente por distância.
+        #
+        # Um mesmo grupo pode conter mais de um preço (por exemplo preço normal
+        # + APP). Nesse caso o ProductCard/SmartSlot deve nascer uma única vez;
+        # preços adicionais são apenas associados ao card já criado.
         for price_block in recovered:
             card = _recover_product_card_from_group(page, price_block)
             if card is None:
                 continue
-            if card.id not in page_blocks:
-                page_blocks[card.id] = card.to_dict()
-                report.product_cards += 1
-                report.recovered_product_cards += 1
+            existing = page_blocks.get(card.id)
+            if isinstance(existing, dict):
+                metadata = existing.setdefault("metadata", {})
+                price_ids = metadata.setdefault("price_blocks", [])
+                if price_block.id not in price_ids:
+                    price_ids.append(price_block.id)
+                continue
+
             slot = _promote_recovered_card_to_slot(page, card, price_block)
             if slot is not None:
                 report.recovered_smart_slots += 1
+                # A promoção atualiza slot_id/metadados no card e no PriceBlock;
+                # grave o snapshot somente depois para não persistir informação
+                # obsoleta no page.metadata['semantic_blocks'].
+                page_blocks[price_block.id] = price_block.to_dict()
+
+            page_blocks[card.id] = card.to_dict()
+            report.product_cards += 1
+            report.recovered_product_cards += 1
 
         page.metadata["semantic_blocks"] = page_blocks
-        page.metadata["semantic_blocks_version"] = 5
+        page.metadata["semantic_blocks_version"] = 6
 
     document.metadata["semantic_blocks"] = report.to_dict()
-    document.metadata["semantic_blocks_version"] = 5
+    document.metadata["semantic_blocks_version"] = 6
     return report
 
 
@@ -461,6 +477,8 @@ def _promote_recovered_card_to_slot(
     page.slots[slot.id] = slot
     card.slot_id = slot.id
     card.metadata["smart_slot_id"] = slot.id
+    price_block.slot_id = slot.id
+    price_block.metadata["smart_slot_id"] = slot.id
     return slot
 
 
