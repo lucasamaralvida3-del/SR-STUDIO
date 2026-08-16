@@ -20,6 +20,8 @@ import sys
 RUNTIME_MANIFEST_NAME = "graphics2-host-runtime.json"
 RUNTIME_MANIFEST_SCHEMA = "srstudio/graphics2-host-runtime-1"
 DEFAULT_HOST_EXE = "SRGraphicsEngine2Host.exe"
+INSTALL_RECEIPT_NAME = "graphics2-host-install.json"
+_DEPLOYMENT_METADATA_NAMES = {RUNTIME_MANIFEST_NAME, INSTALL_RECEIPT_NAME}
 
 
 @dataclass(slots=True, frozen=True)
@@ -71,7 +73,7 @@ def build_runtime_manifest(
 
     entries: list[RuntimeFileEntry] = []
     for path in sorted(root.rglob("*"), key=lambda item: item.as_posix().lower()):
-        if not path.is_file() or path.name == RUNTIME_MANIFEST_NAME:
+        if not path.is_file() or path.name in _DEPLOYMENT_METADATA_NAMES:
             continue
         relative = path.relative_to(root).as_posix()
         entries.append(RuntimeFileEntry(relative, path.stat().st_size, _sha256_file(path)))
@@ -198,10 +200,14 @@ def validate_runtime_host(
             if _sha256_file(candidate) != entry.sha256:
                 errors.append(f"SHA-256 divergente: {entry.path}.")
 
+        # O manifesto de runtime e o receipt de instalação são metadados de
+        # deployment, não payload executável. O receipt nasce somente depois
+        # que a cópia staged já passou na validação integral; ignorá-lo aqui
+        # permite revalidar uma instalação real sem mascarar DLL/QML extra.
         actual = {
             path.relative_to(root).as_posix()
             for path in root.rglob("*")
-            if path.is_file() and path.name != RUNTIME_MANIFEST_NAME
+            if path.is_file() and path.name not in _DEPLOYMENT_METADATA_NAMES
         }
         catalog = {entry.path for entry in manifest.files if entry.path}
         extras = sorted(actual - catalog)
@@ -220,11 +226,30 @@ def validate_runtime_host(
     )
 
 
-def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    temporary = path.with_name(path.name + ".tmp")
-    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    temporary.replace(path)
+def build_parser() -> ArgumentParser:
+    parser = ArgumentParser(prog="sr-graphics2-host-runtime", description="Valida integridade do host Qt congelado.")
+    parser.add_argument("bundle", type=Path)
+    parser.add_argument("--full", action="store_true")
+    parser.add_argument("--engine-version", default="")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    report = validate_runtime_host(
+        args.bundle,
+        full=bool(args.full),
+        expected_engine_version=(str(args.engine_version) or None),
+    )
+    if report.ok:
+        print(
+            f"SR Graphics2 Host: OK · {report.engine_version} · "
+            f"{report.checked_files}/{report.total_files} arquivo(s) verificado(s)"
+        )
+        return 0
+    for error in report.errors:
+        print(f"ERRO: {error}", file=sys.stderr)
+    return 1
 
 
 def _sha256_file(path: Path) -> str:
@@ -235,34 +260,18 @@ def _sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def _write_json_atomic(path: Path, payload: dict[str, Any]) -> None:
+    temporary = path.with_name(path.name + ".tmp")
+    temporary.write_text(json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    temporary.replace(path)
+
+
 def _is_within(path: Path, root: Path) -> bool:
     try:
         path.relative_to(root)
+        return True
     except ValueError:
         return False
-    return True
-
-
-def main(argv: list[str] | None = None) -> int:
-    parser = ArgumentParser(description="Valida o bundle congelado do SR Graphics Engine 2.")
-    parser.add_argument("bundle", type=Path)
-    parser.add_argument("--full", action="store_true", help="Valida SHA-256 de todo o catálogo, não só do EXE.")
-    parser.add_argument("--expected-version", default="")
-    args = parser.parse_args(argv)
-    result = validate_runtime_host(
-        args.bundle,
-        full=args.full,
-        expected_engine_version=args.expected_version or None,
-    )
-    if result.ok:
-        print(
-            f"Graphics2 host OK · versão {result.engine_version} · "
-            f"{result.checked_files}/{result.total_files} arquivo(s) verificado(s)."
-        )
-        return 0
-    for error in result.errors:
-        print(f"ERRO: {error}", file=sys.stderr)
-    return 2
 
 
 if __name__ == "__main__":
