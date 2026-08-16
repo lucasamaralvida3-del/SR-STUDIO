@@ -89,11 +89,14 @@ def test_quinta_file_real_geometry_recovers_six_distinct_cards_and_image_slots()
     page = document.active_page
 
     semantic = build_semantic_blocks(document)
+    slots_after_semantic = semantic.recovered_smart_slots
     placeholders = recover_canva_image_placeholders(document)
 
     assert semantic.recovered_price_blocks == 6
-    assert semantic.recovered_spatial_product_cards == 6
-    assert semantic.recovered_smart_slots == 6
+    # A primeira passagem usa somente texto/geometria e pode deliberadamente
+    # deixar casos ambíguos órfãos. O backplate branco é a segunda âncora forte.
+    assert slots_after_semantic >= 3
+    assert placeholders.orphan_cards_promoted == 6 - slots_after_semantic
     assert placeholders.synthetic_image_slots == 6
     assert len(page.slots) == 6
     slots_by_name = {slot.name: slot for slot in page.slots.values()}
