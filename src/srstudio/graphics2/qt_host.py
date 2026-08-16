@@ -152,11 +152,24 @@ def launch_qt_quick_editor(
 
         @Slot(str)
         def selectNode(self, node_id: str) -> None:
+            # Seleção exata continua disponível para inspector/ações internas.
             self._run({"name": "select", "node_id": node_id})
 
         @Slot(str, bool, bool)
         def selectNodeAdvanced(self, node_id: str, additive: bool, toggle: bool) -> None:
-            self._run({"name": "select", "node_id": node_id, "additive": additive, "toggle": toggle})
+            # O canvas e a lista de camadas usam a seleção avançada. Quando o
+            # node pertence a um PriceBlock, R$ + reais + centavos + KG/UN
+            # entram juntos na seleção e não podem mais se separar ao arrastar.
+            self._run(
+                {
+                    "name": "select",
+                    "node_id": node_id,
+                    "additive": additive,
+                    "toggle": toggle,
+                    "semantic": True,
+                    "semantic_scope": "auto",
+                }
+            )
 
         @Slot(float, float)
         def moveSelection(self, dx: float, dy: float) -> None:
