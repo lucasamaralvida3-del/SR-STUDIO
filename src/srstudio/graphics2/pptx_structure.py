@@ -4,9 +4,9 @@ from __future__ import annotations
 
 O Graphics Engine 2 não pode considerar um PPTX fiel apenas porque o número de
 slides bate. O Canva frequentemente grava imagens como ``p:sp`` + ``a:blipFill``
-(em vez de ``p:pic``), além de usar grupos e ``custGeom`` em grande escala.
-Este módulo mede a estrutura fonte antes da conversão e compara o que chegou ao
-SR Scene sem modificar geometria ou conteúdo.
+(em vez de ``p:pic``), além de usar grupos, ``custGeom`` e ``stretch/fillRect``
+em grande escala. Este módulo mede a estrutura fonte antes da conversão e
+compara o que chegou ao SR Scene sem modificar geometria ou conteúdo.
 """
 
 from argparse import ArgumentParser
@@ -20,6 +20,7 @@ import re
 import sys
 import zipfile
 
+from .image_fill import has_drawingml_fill_rect, normalize_fill_rect
 from .model import GraphicsDocument, NodeKind
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -38,8 +39,11 @@ class PptxSlideStructure:
     text_shapes: int = 0
     pictures: int = 0
     image_fill_shapes: int = 0
+    image_fill_rects: int = 0
+    image_fill_outsets: int = 0
     groups: int = 0
     custom_geometry: int = 0
+    image_custom_geometry: int = 0
     currency_tokens: int = 0
     integer_tokens: int = 0
     cents_tokens: int = 0
@@ -61,10 +65,19 @@ class PptxMappingAudit:
     imported_image_nodes: int = 0
     source_groups: int = 0
     imported_group_nodes: int = 0
+    source_fill_rects: int = 0
+    imported_fill_rects: int = 0
+    source_fill_outsets: int = 0
+    imported_fill_outsets: int = 0
+    source_image_custom_geometry: int = 0
+    imported_image_clips: int = 0
     page_count_match: bool = True
     text_coverage: float = 1.0
     image_coverage: float = 1.0
     group_coverage: float = 1.0
+    fill_rect_coverage: float = 1.0
+    fill_outset_coverage: float = 1.0
+    image_clip_coverage: float = 1.0
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -87,8 +100,11 @@ class PptxStructureReport:
     text_shapes: int = 0
     pictures: int = 0
     image_fill_shapes: int = 0
+    image_fill_rects: int = 0
+    image_fill_outsets: int = 0
     groups: int = 0
     custom_geometry: int = 0
+    image_custom_geometry: int = 0
     estimated_split_prices: int = 0
     slides: list[PptxSlideStructure] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
@@ -119,6 +135,21 @@ class PptxStructureReport:
             for node in page.nodes.values()
             if node.kind is NodeKind.GROUP
         )
+        imported_fill_rects = 0
+        imported_fill_outsets = 0
+        imported_image_clips = 0
+        for page in document.pages:
+            for node in page.nodes.values():
+                if node.kind not in {NodeKind.IMAGE, NodeKind.BACKGROUND}:
+                    continue
+                fill_rect = node.style.get("fill_rect")
+                if has_drawingml_fill_rect(fill_rect):
+                    imported_fill_rects += 1
+                    if any(value < 0.0 for value in normalize_fill_rect(fill_rect).values()):
+                        imported_fill_outsets += 1
+                if isinstance(node.metadata.get("clip_path"), dict):
+                    imported_image_clips += 1
+
         source_images = self.pictures + self.image_fill_shapes
         audit = PptxMappingAudit(
             source_slides=self.slide_count,
@@ -129,10 +160,19 @@ class PptxStructureReport:
             imported_image_nodes=imported_images,
             source_groups=self.groups,
             imported_group_nodes=imported_groups,
+            source_fill_rects=self.image_fill_rects,
+            imported_fill_rects=imported_fill_rects,
+            source_fill_outsets=self.image_fill_outsets,
+            imported_fill_outsets=imported_fill_outsets,
+            source_image_custom_geometry=self.image_custom_geometry,
+            imported_image_clips=imported_image_clips,
             page_count_match=len(document.pages) == self.slide_count,
             text_coverage=_coverage(imported_text, self.text_shapes),
             image_coverage=_coverage(imported_images, source_images),
             group_coverage=_coverage(imported_groups, self.groups),
+            fill_rect_coverage=_coverage(imported_fill_rects, self.image_fill_rects),
+            fill_outset_coverage=_coverage(imported_fill_outsets, self.image_fill_outsets),
+            image_clip_coverage=_coverage(imported_image_clips, self.image_custom_geometry),
         )
         if not audit.page_count_match:
             audit.warnings.append(
@@ -152,6 +192,21 @@ class PptxStructureReport:
             audit.warnings.append(
                 f"Cobertura de grupos DrawingML baixa: {audit.group_coverage * 100:.2f}% "
                 f"({imported_groups}/{self.groups})."
+            )
+        if self.image_fill_rects and audit.fill_rect_coverage < 0.95:
+            audit.warnings.append(
+                f"Cobertura de stretch/fillRect DrawingML baixa: {audit.fill_rect_coverage * 100:.2f}% "
+                f"({imported_fill_rects}/{self.image_fill_rects})."
+            )
+        if self.image_fill_outsets and audit.fill_outset_coverage < 0.95:
+            audit.warnings.append(
+                f"Cobertura de fillRect com outset negativo baixa: {audit.fill_outset_coverage * 100:.2f}% "
+                f"({imported_fill_outsets}/{self.image_fill_outsets})."
+            )
+        if self.image_custom_geometry and audit.image_clip_coverage < 0.90:
+            audit.warnings.append(
+                f"Cobertura de máscaras custGeom em imagens baixa: {audit.image_clip_coverage * 100:.2f}% "
+                f"({imported_image_clips}/{self.image_custom_geometry})."
             )
         return audit
 
@@ -187,8 +242,11 @@ def inspect_pptx_structure(source: str | Path) -> PptxStructureReport:
                 report.text_shapes += item.text_shapes
                 report.pictures += item.pictures
                 report.image_fill_shapes += item.image_fill_shapes
+                report.image_fill_rects += item.image_fill_rects
+                report.image_fill_outsets += item.image_fill_outsets
                 report.groups += item.groups
                 report.custom_geometry += item.custom_geometry
+                report.image_custom_geometry += item.image_custom_geometry
                 report.estimated_split_prices += item.estimated_split_prices
     except (OSError, zipfile.BadZipFile) as exc:
         report.warnings.append(f"Não foi possível abrir o PPTX: {exc}")
@@ -219,8 +277,9 @@ def main(argv: list[str] | None = None) -> int:
         f"slides={report.slide_count} · textos={report.text_shapes} · "
         f"imagens={report.pictures + report.image_fill_shapes} "
         f"(pic={report.pictures}, blipFill={report.image_fill_shapes}) · "
-        f"grupos={report.groups} · custGeom={report.custom_geometry} · "
-        f"preços~={report.estimated_split_prices}"
+        f"fillRect={report.image_fill_rects} (outset={report.image_fill_outsets}) · "
+        f"máscaras={report.image_custom_geometry} · grupos={report.groups} · "
+        f"custGeom={report.custom_geometry} · preços~={report.estimated_split_prices}"
     )
     print(f"SHA-256: {report.source_sha256 or '-'}")
     if args.slides:
@@ -228,7 +287,9 @@ def main(argv: list[str] | None = None) -> int:
             print(
                 f"  slide {slide.slide}: shapes={slide.shapes} textos={slide.text_shapes} "
                 f"imagens={slide.pictures + slide.image_fill_shapes} grupos={slide.groups} "
-                f"custGeom={slide.custom_geometry} preços~={slide.estimated_split_prices}"
+                f"custGeom={slide.custom_geometry} fillRect={slide.image_fill_rects} "
+                f"outset={slide.image_fill_outsets} máscaras={slide.image_custom_geometry} "
+                f"preços~={slide.estimated_split_prices}"
             )
     for warning in report.warnings:
         print(f"AVISO: {warning}", file=sys.stderr)
@@ -249,13 +310,35 @@ def _inspect_slide(root: ET.Element, slide_no: int) -> PptxSlideStructure:
             integers += int(bool(_INTEGER_RE.fullmatch(cleaned)))
             cents += int(bool(_CENTS_RE.fullmatch(cleaned)))
             units += int(bool(_UNIT_RE.fullmatch(cleaned)))
-        if shape.find(f".//{{{A_NS}}}blip") is not None:
+
+        has_image_fill = shape.find(f".//{{{A_NS}}}blip") is not None
+        has_custom_geometry = shape.find(f"./{{{P_NS}}}spPr/{{{A_NS}}}custGeom") is not None
+        if has_image_fill:
             item.image_fill_shapes += 1
             if name:
                 item.image_fill_shape_names.append(name)
-        if shape.find(f"./{{{P_NS}}}spPr/{{{A_NS}}}custGeom") is not None:
+            fill_rect = shape.find(f".//{{{A_NS}}}stretch/{{{A_NS}}}fillRect")
+            if fill_rect is not None:
+                item.image_fill_rects += 1
+                if any(value < 0.0 for value in _rect_percent(fill_rect).values()):
+                    item.image_fill_outsets += 1
+            if has_custom_geometry:
+                item.image_custom_geometry += 1
+        if has_custom_geometry:
             item.custom_geometry += 1
+
     item.pictures = len(root.findall(f".//{{{P_NS}}}pic"))
+    # p:pic também pode possuir stretch/fillRect. Contar aqui evita que o gate
+    # trate somente o formato p:sp usado pelo Canva como relevante.
+    for picture in root.findall(f".//{{{P_NS}}}pic"):
+        fill_rect = picture.find(f".//{{{A_NS}}}stretch/{{{A_NS}}}fillRect")
+        if fill_rect is not None:
+            item.image_fill_rects += 1
+            if any(value < 0.0 for value in _rect_percent(fill_rect).values()):
+                item.image_fill_outsets += 1
+        if picture.find(f"./{{{P_NS}}}spPr/{{{A_NS}}}custGeom") is not None:
+            item.image_custom_geometry += 1
+
     item.groups = len(root.findall(f".//{{{P_NS}}}grpSp"))
     item.currency_tokens = currencies
     item.integer_tokens = integers
@@ -287,6 +370,16 @@ def _shape_text(shape: ET.Element) -> str:
 
 def _clean_text(value: str) -> str:
     return " ".join(str(value or "").replace("\n", " ").split()).strip()
+
+
+def _rect_percent(node: ET.Element) -> dict[str, float]:
+    values: dict[str, float] = {}
+    for key in ("l", "t", "r", "b"):
+        try:
+            values[key] = float(node.get(key, 0) or 0) / 100000.0
+        except (TypeError, ValueError):
+            values[key] = 0.0
+    return values
 
 
 def _slide_number(path: str) -> int:
