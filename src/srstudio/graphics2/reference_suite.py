@@ -20,6 +20,7 @@ import sys
 from PIL import Image
 
 from .fidelity import FidelityPolicy, compare_images
+from .fidelity_triage import analyze_fidelity_regions, write_triage_report
 
 
 @dataclass(slots=True, frozen=True)
@@ -189,6 +190,16 @@ def run_reference_suite(args: Namespace) -> int:
             policy=policy,
             diff_path=output / "diff" / f"slide-{case.page + 1:03d}-{slug}-diff.png",
         )
+        triage = analyze_fidelity_regions(
+            baseline,
+            candidate,
+            pixel_tolerance=policy.pixel_tolerance,
+            heatmap_path=output / "triage" / f"slide-{case.page + 1:03d}-{slug}-heatmap.png",
+        )
+        triage_path = write_triage_report(
+            triage,
+            output / "triage" / f"slide-{case.page + 1:03d}-{slug}-triage.json",
+        )
         results.append(result)
         render_reports.append(report)
         case_payloads.append(
@@ -198,6 +209,8 @@ def run_reference_suite(args: Namespace) -> int:
                 "slide": case.page + 1,
                 "reference": _identity(baseline),
                 "result": result.to_dict(),
+                "triage": triage.to_dict(),
+                "triage_report": str(triage_path),
             }
         )
 
@@ -238,8 +251,20 @@ def run_reference_suite(args: Namespace) -> int:
         f"{len(results)} referência(s) | mínimo {aggregate['minimum_score'] * 100:.4f}% | "
         f"média {aggregate['average_score'] * 100:.4f}% | gate {gate.score}/100"
     )
-    for case, result in zip(manifest.cases, results):
-        print(f"  {'PASS' if result.passed else 'FAIL'} slide {case.page + 1}: {case.name} · {result.metrics.percent:.4f}%")
+    for case, result, case_payload in zip(manifest.cases, results, case_payloads):
+        triage = case_payload["triage"]
+        regions = list(triage.get("regions") or [])
+        region_note = ""
+        if regions:
+            first = regions[0]
+            region_note = (
+                f" · maior região x={first['x']} y={first['y']} "
+                f"{first['width']}×{first['height']}"
+            )
+        print(
+            f"  {'PASS' if result.passed else 'FAIL'} slide {case.page + 1}: "
+            f"{case.name} · {result.metrics.percent:.4f}%{region_note}"
+        )
     print(f"  Relatório: {report_path}")
     return 0 if gate.ready and aggregate["passed"] else 1
 
