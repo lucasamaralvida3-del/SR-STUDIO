@@ -5,6 +5,7 @@ import json
 import sys
 
 from .command_router import GraphicsCommandRouter
+from .fonts import register_qt_document_fonts
 from .model import GraphicsDocument
 from .operations import GraphicsSession
 
@@ -60,7 +61,13 @@ def launch_qt_quick_editor(document: GraphicsDocument | None = None) -> int:
             self.statusChanged.emit(); self.sceneChanged.emit(); return result_raw
 
     app = QGuiApplication.instance() or QGuiApplication(sys.argv); app.setApplicationName("SR Graphics Engine 2")
-    engine = QQmlApplicationEngine(); bridge = SceneBridge(); engine.rootContext().setContextProperty("sceneBridge", bridge)
+    font_report = register_qt_document_fonts(session.document)
+    engine = QQmlApplicationEngine(); bridge = SceneBridge()
+    if font_report.families:
+        bridge._status = "Fontes do projeto carregadas: " + ", ".join(font_report.families)
+    elif font_report.warnings:
+        bridge._status = font_report.warnings[0]
+    engine.rootContext().setContextProperty("sceneBridge", bridge)
     qml = Path(__file__).with_name("qml") / "GraphicsEditor.qml"; engine.load(QUrl.fromLocalFile(str(qml.resolve())))
     if not engine.rootObjects(): raise RuntimeError("Falha ao carregar a interface Qt Quick do SR Graphics Engine 2.")
     return int(app.exec())
