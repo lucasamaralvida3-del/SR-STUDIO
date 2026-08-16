@@ -14,6 +14,7 @@ def build(channel: str, output: Path) -> None:
     installer_t = (ROOT / 'installer' / 'SRStudioInstaller.ps1').read_text(encoding='utf-8-sig')
     bootstrap = (ROOT / 'launcher' / 'files' / 'SRStudioBootstrap.ps1').read_bytes()
     launcher = (ROOT / 'launcher' / 'files' / 'SRStudioLauncher.ps1').read_bytes()
+    graphics2_updater = (ROOT / 'launcher' / 'files' / 'SRGraphics2Component.ps1').read_bytes()
     icon = (ROOT / 'staging' / 'logo_update' / 'source' / 'SR_Studio.ico').read_bytes()
 
     replacements = {
@@ -21,6 +22,8 @@ def build(channel: str, output: Path) -> None:
         '__BOOTSTRAP_SIZE__': str(len(bootstrap)),
         '__LAUNCHER_SHA__': sha256(launcher),
         '__LAUNCHER_SIZE__': str(len(launcher)),
+        '__GRAPHICS2_UPDATER_SHA__': sha256(graphics2_updater),
+        '__GRAPHICS2_UPDATER_SIZE__': str(len(graphics2_updater)),
         '__ICON_SHA__': sha256(icon),
         '__ICON_SIZE__': str(len(icon)),
     }
@@ -55,7 +58,7 @@ if not exist "%PS%" (
 
 mkdir "%SR_SETUP_TEMP%\payload" >nul 2>&1
 
-"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $txt=[IO.File]::ReadAllText($env:SR_SETUP_SELF); function X([string]$n,[string]$d){{$m=[regex]::Match($txt,'(?s)::BEGIN_'+$n+'\r?\n(.*?)\r?\n::END_'+$n); if(-not $m.Success){{throw ('Payload ausente: '+$n)}}; $b=($m.Groups[1].Value -replace '\s',''); [IO.File]::WriteAllBytes($d,[Convert]::FromBase64String($b))}}; X 'INSTALLER' (Join-Path $env:SR_SETUP_TEMP 'SRStudioInstaller.ps1'); X 'BOOTSTRAP' (Join-Path $env:SR_SETUP_TEMP 'payload\SRStudioBootstrap.ps1'); X 'LAUNCHER' (Join-Path $env:SR_SETUP_TEMP 'payload\SRStudioLauncher.ps1'); X 'ICON' (Join-Path $env:SR_SETUP_TEMP 'payload\SR_Studio.ico')"
+"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $txt=[IO.File]::ReadAllText($env:SR_SETUP_SELF); function X([string]$n,[string]$d){{$m=[regex]::Match($txt,'(?s)::BEGIN_'+$n+'\r?\n(.*?)\r?\n::END_'+$n); if(-not $m.Success){{throw ('Payload ausente: '+$n)}}; $b=($m.Groups[1].Value -replace '\s',''); [IO.File]::WriteAllBytes($d,[Convert]::FromBase64String($b))}}; X 'INSTALLER' (Join-Path $env:SR_SETUP_TEMP 'SRStudioInstaller.ps1'); X 'BOOTSTRAP' (Join-Path $env:SR_SETUP_TEMP 'payload\SRStudioBootstrap.ps1'); X 'LAUNCHER' (Join-Path $env:SR_SETUP_TEMP 'payload\SRStudioLauncher.ps1'); X 'GRAPHICS2_UPDATER' (Join-Path $env:SR_SETUP_TEMP 'payload\SRGraphics2Component.ps1'); X 'ICON' (Join-Path $env:SR_SETUP_TEMP 'payload\SR_Studio.ico')"
 if errorlevel 1 (
   echo Nao foi possivel preparar o instalador.
   rmdir /s /q "%SR_SETUP_TEMP%" >nul 2>&1
@@ -77,6 +80,7 @@ exit /b %RC%
         ('INSTALLER', installer_bytes),
         ('BOOTSTRAP', bootstrap),
         ('LAUNCHER', launcher),
+        ('GRAPHICS2_UPDATER', graphics2_updater),
         ('ICON', icon),
     ]
     parts = [batch.rstrip('\n')]
