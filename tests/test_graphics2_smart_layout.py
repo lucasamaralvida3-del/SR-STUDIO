@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from srstudio.core.models import Page, Product, ProductCard, StudioProject
 from srstudio.graphics2.import_bridge import from_imported_project
-from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsNode, NodeKind, SmartSlot, Transform
+from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsNode, NodeKind, Transform
 from srstudio.graphics2.operations import GraphicsSession
 from srstudio.graphics2.smart_layout import LayoutOptions, SmartLayoutEngine
-from srstudio.core.models import Page, Product, ProductCard, StudioProject
 
 
 def test_auto_layout_moves_group_and_children_as_one_geometry():
@@ -20,12 +20,15 @@ def test_auto_layout_moves_group_and_children_as_one_geometry():
         options=LayoutOptions(margin_left=0, margin_top=0, margin_right=0, margin_bottom=0, gap_x=0, gap_y=0, keep_size=False, fill_ratio=1.0),
     )
     assert result.moved == 1
+    expected_y = (page.height - page.width) / 2
     assert group.transform.x == 0
-    assert group.transform.y == 0
+    assert group.transform.y == expected_y
     assert group.transform.width == page.width
+    assert group.transform.height == page.width
     assert child.transform.x == page.width * 0.1
-    assert child.transform.y == page.height * 0.1
+    assert child.transform.y == expected_y + page.width * 0.1
     assert child.transform.width == page.width * 0.8
+    assert child.transform.height == page.width * 0.2
 
 
 def test_auto_layout_keeps_fidelity_layer_untouched():
