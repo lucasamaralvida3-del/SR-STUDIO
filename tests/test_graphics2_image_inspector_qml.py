@@ -23,7 +23,8 @@ def test_image_inspector_exposes_crop_focus_zoom_and_flip_controls():
     assert '"flip_x"' in source
     assert '"flip_y"' in source
     assert '"fit": "contain"' in source
-    assert '"fit": "cover"' in source
+    assert '? "cover"' in source
+    assert '? "fill"' in source
     assert "property real baseScale" in source
     assert "property bool cropMode" in source
 
