@@ -4,7 +4,7 @@ import QtQuick.Layouts
 
 Rectangle {
     id: panel
-    width: Math.min(parent ? parent.width - 700 : 720, 760)
+    width: Math.max(320, Math.min(parent ? parent.width - 700 : 720, 760))
     height: expanded ? 112 : 38
     anchors.horizontalCenter: parent ? parent.horizontalCenter : undefined
     anchors.bottom: parent ? parent.bottom : undefined
@@ -109,22 +109,35 @@ Rectangle {
                         onClicked: movePage(modelData.id, "previous")
                     }
 
-                    ColumnLayout {
+                    Item {
                         Layout.fillWidth: true
-                        spacing: 1
-                        Label {
-                            Layout.fillWidth: true
-                            text: (index + 1) + " · " + (modelData.name || "Página")
-                            color: "#111827"
-                            font.bold: true
-                            font.pixelSize: 9
-                            elide: Text.ElideRight
+                        Layout.fillHeight: true
+
+                        Column {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.verticalCenter: parent.verticalCenter
+                            spacing: 2
+                            Label {
+                                width: parent.width
+                                text: (index + 1) + " · " + (modelData.name || "Página")
+                                color: "#111827"
+                                font.bold: true
+                                font.pixelSize: 9
+                                elide: Text.ElideRight
+                            }
+                            Label {
+                                width: parent.width
+                                text: modelData.id === scene.active_page_id ? "Página atual" : "Clique para abrir"
+                                color: modelData.id === scene.active_page_id ? "#0F5BD8" : "#94A3B8"
+                                font.pixelSize: 8
+                            }
                         }
-                        Label {
-                            Layout.fillWidth: true
-                            text: modelData.id === scene.active_page_id ? "Página atual" : "Clique para abrir"
-                            color: modelData.id === scene.active_page_id ? "#0F5BD8" : "#94A3B8"
-                            font.pixelSize: 8
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: sceneBridge.dispatch(JSON.stringify({"name": "select_page", "page_id": modelData.id}))
                         }
                     }
 
@@ -137,13 +150,6 @@ Rectangle {
                         ToolTip.visible: hovered
                         onClicked: movePage(modelData.id, "next")
                     }
-                }
-
-                MouseArea {
-                    anchors.fill: parent
-                    acceptedButtons: Qt.LeftButton
-                    z: -1
-                    onClicked: sceneBridge.dispatch(JSON.stringify({"name": "select_page", "page_id": modelData.id}))
                 }
             }
         }
