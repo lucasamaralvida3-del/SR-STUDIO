@@ -136,30 +136,16 @@ Rectangle {
                 border.color: "#CBD5E1"
                 clip: true
 
-                Image {
+                SceneImage {
                     id: previewImage
-                    property real iw: Math.max(1, Number(sourceSize.width || implicitWidth || 1))
-                    property real ih: Math.max(1, Number(sourceSize.height || implicitHeight || 1))
-                    property string fit: imageNode ? String(styleValue("fit", "contain")) : "contain"
-                    property real focusX: imageNode ? Math.max(0, Math.min(1, Number(styleValue("focus_x", 0.5)))) : 0.5
-                    property real focusY: imageNode ? Math.max(0, Math.min(1, Number(styleValue("focus_y", 0.5)))) : 0.5
-                    property real imageZoom: imageNode ? Math.max(0.05, Number(styleValue("zoom", 1.0))) : 1.0
-                    property bool cropMode: fit === "cover" || imageZoom > 1.0001
-                    property real baseScale: fit === "fill" ? 1 : (cropMode ? Math.max(previewFrame.width / iw, previewFrame.height / ih) : Math.min(previewFrame.width / iw, previewFrame.height / ih))
-                    property real scaleValue: fit === "fill" ? 1 : baseScale * (cropMode ? imageZoom : 1)
-
-                    source: imageSource(imageNode)
-                    width: fit === "fill" ? previewFrame.width : iw * scaleValue
-                    height: fit === "fill" ? previewFrame.height : ih * scaleValue
-                    x: fit === "fill" ? 0 : (previewFrame.width - width) * focusX
-                    y: fit === "fill" ? 0 : (previewFrame.height - height) * focusY
-                    fillMode: Image.Stretch
-                    mirror: imageNode ? !!styleValue("flip_x", false) : false
-                    mirrorVertically: imageNode ? !!styleValue("flip_y", false) : false
-                    asynchronous: true
-                    cache: true
-                    mipmap: true
-                    smooth: true
+                    anchors.fill: parent
+                    sourceUrl: imageSource(imageNode)
+                    fit: fitCombo.currentIndex === 1 ? "cover" : fitCombo.currentIndex === 2 ? "fill" : "contain"
+                    imageZoom: zoomSlider.value
+                    focusX: focusXSlider.value
+                    focusY: focusYSlider.value
+                    flipX: imageNode ? !!styleValue("flip_x", false) : false
+                    flipY: imageNode ? !!styleValue("flip_y", false) : false
                 }
 
                 Rectangle {
@@ -254,7 +240,7 @@ Rectangle {
 
             Label {
                 Layout.fillWidth: true
-                text: "O preview usa o mesmo contrato fit + zoom + foco do renderer de produção."
+                text: "Preview e canvas passam a compartilhar o componente SceneImage (fit + zoom + foco)."
                 wrapMode: Text.WordWrap
                 color: "#64748B"
                 font.pixelSize: 9
