@@ -63,6 +63,7 @@ _CURRENCY_RE = re.compile(r"^R\s*\$$", re.IGNORECASE)
 _REAIS_RE = re.compile(r"^\d{1,3}$")
 _CENTS_RE = re.compile(r"^[,.]\d{1,2}$")
 _UNIT_RE = re.compile(r"^/?(?:KG|UN|UND|G|L|ML|LT|CX|PCT|PC|BDJ)$", re.IGNORECASE)
+_ALPHA_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]")
 
 
 @dataclass(slots=True)
@@ -86,6 +87,7 @@ class SemanticBlockReport:
     app_price_blocks: int = 0
     recovered_price_blocks: int = 0
     product_cards: int = 0
+    recovered_product_cards: int = 0
     protected_price_nodes: int = 0
     incomplete_price_blocks: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -95,7 +97,7 @@ class SemanticBlockReport:
 
 
 def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
-    """Constrói PriceBlock/ProductCard e recupera preços estáticos do PPTX.
+    """Constrói PriceBlock/ProductCard e recupera compostos estáticos do PPTX.
 
     A função é idempotente e nunca muda x/y/w/h nem parent/children dos nodes.
     Isso é essencial porque ``pptx_groups`` já reconstrói a hierarquia real do
@@ -135,11 +137,23 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
             report.recovered_price_blocks += 1
             report.protected_price_nodes += len(block.members)
 
+        # Quando o PPTX possui um grupo real envolvendo o preço e o restante do
+        # card, usamos esse grupo como unidade semântica de ProductCard. Isso é
+        # muito mais seguro que adivinhar por distância e permite mover o grupo
+        # inteiro sem descolar nome, imagem, backplate e preço.
+        for price_block in recovered:
+            card = _recover_product_card_from_group(page, price_block)
+            if card is None or card.id in page_blocks:
+                continue
+            page_blocks[card.id] = card.to_dict()
+            report.product_cards += 1
+            report.recovered_product_cards += 1
+
         page.metadata["semantic_blocks"] = page_blocks
-        page.metadata["semantic_blocks_version"] = 3
+        page.metadata["semantic_blocks_version"] = 4
 
     document.metadata["semantic_blocks"] = report.to_dict()
-    document.metadata["semantic_blocks_version"] = 3
+    document.metadata["semantic_blocks_version"] = 4
     return report
 
 
@@ -316,6 +330,94 @@ def _build_product_card(
             "source": str(slot.metadata.get("source") or "smart-slot"),
         },
     )
+
+
+def _recover_product_card_from_group(page: GraphicsPage, price_block: SemanticBlock) -> SemanticBlock | None:
+    group_id = _nearest_common_pptx_group(page, price_block.members)
+    if not group_id:
+        return None
+    group = page.node(group_id)
+    if group is None:
+        return None
+    descendants = [node_id for node_id in page.descendants(group_id) if node_id in page.nodes]
+    content = [node_id for node_id in descendants if page.nodes[node_id].kind is not NodeKind.GROUP]
+    if len(content) < len(price_block.members) or len(content) > 30:
+        return None
+    price_members = set(price_block.members)
+    context_nodes = [page.nodes[node_id] for node_id in content if node_id not in price_members]
+    has_image = any(node.kind in {NodeKind.IMAGE, NodeKind.BACKGROUND} for node in context_nodes)
+    has_name_like_text = any(
+        node.kind is NodeKind.TEXT and bool(_ALPHA_RE.search(_clean_text(node.text)))
+        for node in context_nodes
+    )
+    if not (has_image or has_name_like_text):
+        return None
+
+    stable = _stable_node_key(group)
+    block_id = f"productcard:recovered:{stable}"
+    group.metadata["semantic_product_card_id"] = block_id
+    for node_id in content:
+        page.nodes[node_id].metadata["semantic_product_card_id"] = block_id
+    bounds = {
+        "x": group.transform.x,
+        "y": group.transform.y,
+        "width": group.transform.width,
+        "height": group.transform.height,
+    }
+    return SemanticBlock(
+        id=block_id,
+        kind="product_card",
+        slot_id="",
+        # Selecionar o grupo em vez de dezenas de filhos preserva a semântica
+        # real do PPTX; GraphicsSession já propaga transformações aos descendentes.
+        members=[group_id],
+        roles={},
+        bounds=bounds,
+        template_geometry={group_id: _geometry(group, bounds)},
+        metadata={
+            "price_blocks": [price_block.id],
+            "content_members": content,
+            "source_group_id": group_id,
+            "atomic": True,
+            "editable": not group.locked,
+            "recovered": True,
+            "preserve_source_geometry": True,
+            "source": "pptx-group-recovery",
+        },
+    )
+
+
+def _nearest_common_pptx_group(page: GraphicsPage, node_ids: list[str]) -> str:
+    chains = [_ancestor_chain(page, node_id) for node_id in node_ids if node_id in page.nodes]
+    if not chains or len(chains) != len(node_ids):
+        return ""
+    common = set(chains[0])
+    for chain in chains[1:]:
+        common.intersection_update(chain)
+    candidates: list[tuple[int, int, str]] = []
+    for group_id in common:
+        group = page.node(group_id)
+        if group is None or group.kind is not NodeKind.GROUP:
+            continue
+        if not bool(group.metadata.get("pptx_group_generated")):
+            continue
+        distance = sum(chain.index(group_id) for chain in chains if group_id in chain)
+        depth = int(group.metadata.get("pptx_group_depth", 0) or 0)
+        candidates.append((distance, -depth, group_id))
+    return min(candidates)[2] if candidates else ""
+
+
+def _ancestor_chain(page: GraphicsPage, node_id: str) -> list[str]:
+    out: list[str] = []
+    node = page.node(node_id)
+    parent_id = node.parent_id if node is not None else None
+    seen: set[str] = set()
+    while parent_id and parent_id not in seen:
+        seen.add(parent_id)
+        out.append(parent_id)
+        parent = page.node(parent_id)
+        parent_id = parent.parent_id if parent is not None else None
+    return out
 
 
 def _recover_unbound_price_blocks(page: GraphicsPage) -> list[SemanticBlock]:
