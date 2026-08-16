@@ -7,7 +7,6 @@ import pytest
 from PIL import Image as PILImage
 
 from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, Transform
-from srstudio.graphics2.operations import GraphicsSession
 from srstudio.graphics2.qt_image_provider import (
     PREVIEW_PROVIDER_NAME,
     create_live_scene_image_provider,
@@ -58,10 +57,12 @@ def test_preview_signature_changes_when_crop_contract_changes():
     assert first_url != second_url
 
 
-def test_qt_host_registers_provider_before_loading_main_qml():
+def test_qt_host_registers_and_syncs_provider_before_main_qml_consumes_payload():
     source = Path(qt_host.__file__).read_text(encoding="utf-8")
     provider_index = source.index("engine.addImageProvider(PREVIEW_PROVIDER_NAME, preview_provider)")
     load_index = source.index("engine.load(QUrl.fromLocalFile")
+    assert "preview_provider = create_live_scene_image_provider()" in source
+    assert "preview_provider.sync_document(session.document)" in source
     assert "inject_preview_image_urls(router.payload(), session.document)" in source
     assert provider_index < load_index
 
@@ -71,7 +72,7 @@ def test_image_inspector_prefers_original_source_in_injected_payload():
     assert "metadata.graphics2_preview_original_source || metadata.bound_image_source" in source
 
 
-def test_live_provider_tracks_replaced_session_document_after_undo_style_snapshot(tmp_path):
+def test_live_provider_snapshot_can_be_replaced_after_undo_redo_style_document_swap(tmp_path):
     pytest.importorskip("PySide6")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -82,8 +83,8 @@ def test_live_provider_tracks_replaced_session_document_after_undo_style_snapsho
     PILImage.new("RGB", (400, 200), (220, 40, 40)).save(source)
 
     first_document, first_node = _document_with_image(str(source), width=120, height=80)
-    session = GraphicsSession(first_document)
-    provider = create_live_scene_image_provider(session)
+    provider = create_live_scene_image_provider()
+    provider.sync_document(first_document)
     app = QGuiApplication.instance() or QGuiApplication([])
     app.processEvents()
 
@@ -97,7 +98,7 @@ def test_live_provider_tracks_replaced_session_document_after_undo_style_snapsho
         width=240,
         height=100,
     )
-    session.document = second_document
+    provider.sync_document(second_document)
 
     second = provider.requestImage(f"{first_node.id}/two", QSize(), QSize())
     assert second.width() == 240
@@ -116,8 +117,8 @@ def test_live_provider_composes_cover_focus_and_crop_into_exact_target_size(tmp_
     document, node = _document_with_image(str(source), width=180, height=180)
     node.style["crop"] = {"left": 0.1, "right": 0.1, "top": 0.0, "bottom": 0.0}
     node.style["flip_x"] = True
-    session = GraphicsSession(document)
-    provider = create_live_scene_image_provider(session)
+    provider = create_live_scene_image_provider()
+    provider.sync_document(document)
     app = QGuiApplication.instance() or QGuiApplication([])
     app.processEvents()
 
