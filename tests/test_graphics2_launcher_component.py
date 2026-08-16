@@ -59,9 +59,10 @@ def test_graphics2_launcher_powershell_scripts_parse_on_windows():
         pytest.skip("Windows PowerShell não encontrado")
     for name in ("SRStudioBootstrap.ps1", "SRGraphics2Component.ps1"):
         path = LAUNCHER_DIR / name
+        escaped_path = str(path).replace("'", "''")
         command = (
             "$tokens=$null;$errors=$null;"
-            f"[System.Management.Automation.Language.Parser]::ParseFile('{str(path).replace("'", "''")}',"
+            f"[System.Management.Automation.Language.Parser]::ParseFile('{escaped_path}',"
             "[ref]$tokens,[ref]$errors)|Out-Null;"
             "if($errors.Count -gt 0){$errors|ForEach-Object{Write-Error $_.Message};exit 1}"
         )
