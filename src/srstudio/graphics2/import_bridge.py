@@ -13,6 +13,7 @@ from .model import AssetRef, BindingRole, CoordinateUnit, GraphicsDocument, Grap
 from .operations import GraphicsSession, _price_parts
 from .pptx_fidelity import enhance_pptx_document
 from .pptx_groups import rebuild_pptx_groups
+from .pptx_structure import PptxStructureReport, inspect_pptx_structure
 from .scene_fingerprint import store_scene_fingerprint
 from .semantic_blocks import build_semantic_blocks
 
@@ -56,12 +57,21 @@ class GraphicsImportService:
             "layouts_learned": summary.layouts_learned,
             "warnings": list(summary.warnings),
         }
+        structure: PptxStructureReport | None = None
         if source.suffix.lower() == ".pptx":
+            # Medir a estrutura antes das passagens de enriquecimento é
+            # importante: o Canva usa tanto p:pic quanto p:sp/a:blipFill para
+            # imagens. Contar apenas Picture perderia boa parte do documento.
+            structure = inspect_pptx_structure(source)
+            document.metadata["pptx_structure"] = structure.to_dict()
             media_root = str(project.settings.get("pptx_media_dir") or "").strip()
             cache_dir = Path(media_root) / "graphics2" if media_root else None
             enhance_pptx_document(source, document, cache_dir=cache_dir)
             rebuild_pptx_groups(source, document)
         build_semantic_blocks(document)
+        if structure is not None:
+            mapping = structure.audit_document(document)
+            document.metadata["pptx_mapping_audit"] = mapping.to_dict()
         fingerprint = store_scene_fingerprint(document)
         document.metadata["import_fingerprint_sha256"] = fingerprint.sha256
         audit = audit_import(document)
