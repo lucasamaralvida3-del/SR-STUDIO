@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import srstudio
 from srstudio.core.models import Page, Product, ProductCard, StudioProject
 from srstudio.graphics2.package import load_package
 from srstudio.graphics2.studio_bridge import (
@@ -99,3 +100,15 @@ def test_gpu_flag_uses_automatic_accelerated_backend_selection(tmp_path, monkeyp
     assert result.launched
     assert result.graphics_api == "auto"
     assert captured["args"][captured["args"].index("--graphics-api") + 1] == "auto"
+
+
+def test_turbo_shell_exposes_engine2_only_through_feature_flagged_launcher():
+    source = (Path(srstudio.__file__).with_name("app") / "turbo_posters.py").read_text(encoding="utf-8")
+
+    assert 'if name == "Encartes Studio":' in source
+    assert "self._attach_graphics2_launcher()" in source
+    assert "engine_enabled, gpu_enabled = bridge_flags(self.data_dir)" in source
+    assert "if not engine_enabled:" in source
+    assert 'label = "ENGINE 2 · GPU" if gpu_enabled else "ENGINE 2 · TESTE"' in source
+    assert "launch_studio_project_if_enabled(self.project, self.data_dir)" in source
+    assert 'tone = "warning" if result.ok else "danger"' in source
