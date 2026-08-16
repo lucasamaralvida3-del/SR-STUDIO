@@ -169,6 +169,19 @@ def _extract_assets(
             document.assets[asset_id].source = str(out)
             document.assets[asset_id].embedded = False
             document.assets[asset_id].sha256 = sha256(raw).hexdigest()
+            _rebind_asset_nodes(document, asset_id, out)
+
+
+def _rebind_asset_nodes(document: GraphicsDocument, asset_id: str, extracted_path: Path) -> None:
+    """Atualiza o caminho visual usado pela UI após descompactar um `.srscene`."""
+
+    source = str(extracted_path)
+    for page in document.pages:
+        for node in page.nodes.values():
+            if node.asset_id != asset_id:
+                continue
+            node.metadata["bound_image_source"] = source
+            node.metadata["package_asset_extracted"] = True
 
 
 def _extract_fonts(
