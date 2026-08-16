@@ -14,6 +14,7 @@ from .fonts import register_qt_document_fonts
 from .model import GraphicsDocument
 from .operations import GraphicsSession
 from .quality import ProductionGateReport, inspect_production_gate
+from .qt_image_provider import PREVIEW_PROVIDER_NAME, create_live_scene_image_provider, inject_preview_image_urls
 
 GRAPHICS_API_CHOICES = ("auto", "d3d11", "d3d12", "vulkan", "opengl", "software")
 
@@ -230,7 +231,7 @@ def launch_qt_quick_editor(
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
-            payload = router.payload()
+            payload = inject_preview_image_urls(router.payload(), session.document)
             editor = payload.setdefault("editor", {})
             editor["diagnostics"] = build_editor_diagnostics(
                 session.document,
@@ -304,6 +305,8 @@ def launch_qt_quick_editor(
 
     font_report = register_qt_document_fonts(session.document)
     engine = QQmlApplicationEngine()
+    preview_provider = create_live_scene_image_provider(session)
+    engine.addImageProvider(PREVIEW_PROVIDER_NAME, preview_provider)
     bridge = SceneBridge()
     engine.rootContext().setContextProperty("sceneBridge", bridge)
     qml_dir = Path(__file__).with_name("qml")
@@ -335,7 +338,13 @@ def launch_qt_quick_editor(
         QQuickWindow=QQuickWindow,
         QUrl=QUrl,
     )
-    _context_tools = (image_component, image_inspector, quality_component, quality_inspector)
+    _context_tools = (
+        preview_provider,
+        image_component,
+        image_inspector,
+        quality_component,
+        quality_inspector,
+    )
 
     app.processEvents()
     resolved_value = _resolved_api_from_window(root_window, QQuickWindow)
