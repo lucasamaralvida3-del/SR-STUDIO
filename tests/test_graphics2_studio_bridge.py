@@ -107,9 +107,10 @@ def test_gpu_flag_uses_automatic_accelerated_backend_selection(tmp_path, monkeyp
     assert captured["args"][captured["args"].index("--graphics-api") + 1] == "auto"
 
 
-def test_turbo_shell_exposes_engine2_only_through_feature_flagged_launcher():
+def test_turbo_shell_exposes_engine2_only_through_feature_flagged_launcher_and_keeps_cartazes_pro():
     source = (Path(srstudio.__file__).with_name("app") / "turbo_posters.py").read_text(encoding="utf-8")
 
+    assert "import srstudio.app.cartazes_pro as cartazes" in source
     assert 'if name == "Encartes Studio":' in source
     assert "self._attach_graphics2_launcher()" in source
     assert "engine_enabled, gpu_enabled = bridge_flags(self.data_dir)" in source
@@ -117,3 +118,6 @@ def test_turbo_shell_exposes_engine2_only_through_feature_flagged_launcher():
     assert 'label = "ENGINE 2 · GPU" if gpu_enabled else "ENGINE 2 · TESTE"' in source
     assert "launch_studio_project_if_enabled(self.project, self.data_dir)" in source
     assert 'tone = "warning" if result.ok else "danger"' in source
+    assert "cartazes.CartazesProPromotionPosterModule" in source
+    assert "cartazes.CartazesProWholesalePosterModule" in source
+    assert "advanced.base.PromotionPosterModule = responsive.ResponsivePromotionPosterModule" not in source
