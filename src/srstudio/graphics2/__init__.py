@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """SR Graphics Engine 2.0 — novo núcleo gráfico independente da UI."""
 
+from .drop_target import DropTarget, find_drop_target, smart_slot_bounds
 from .fidelity import (
     FidelityCase,
     FidelityMetrics,
@@ -43,13 +44,14 @@ from .semantic_blocks import (
 )
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.10"
+ENGINE_VERSION = "2.0.0-alpha.11"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
     "AssetRef",
     "BindingRole",
     "CoordinateUnit",
+    "DropTarget",
     "ENGINE_NAME",
     "ENGINE_VERSION",
     "EmbeddedPptxFont",
@@ -85,6 +87,7 @@ __all__ = [
     "build_semantic_blocks",
     "compare_images",
     "enhance_pptx_document",
+    "find_drop_target",
     "fingerprint_document",
     "inspect_production_gate",
     "rebuild_pptx_groups",
@@ -96,6 +99,7 @@ __all__ = [
     "semantic_block",
     "semantic_member_ids",
     "semantic_owner",
+    "smart_slot_bounds",
     "store_scene_fingerprint",
     "store_visual_fidelity",
 ]
