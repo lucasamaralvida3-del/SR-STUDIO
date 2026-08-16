@@ -35,6 +35,10 @@ O caso `visual-fidelity/quinta-file-13-08-2026.json` registra o PPTX real pelo S
 
 As imagens continuam fora do GitHub. O manifesto guarda nome, dimensão e SHA-256 de cada exportação para impedir que uma imagem errada seja aceita silenciosamente como baseline.
 
+A auditoria OOXML das **quatro páginas oficiais** do PPTX hashado já mede o contrato estrutural que o Engine precisa preservar antes mesmo do score visual: **347 shapes, 157 caixas de texto, 71 imagens `p:sp + a:blipFill`, 71 `stretch/fillRect`, 18 fillRects com outset negativo, 29 máscaras `custGeom` irregulares, 54 grupos e aproximadamente 29 preços compostos**. Não há `p:pic` nessas páginas. `custGeom` retangular equivalente à própria caixa é tratado como geometria trivial e não cria um falso requisito de máscara; somente as 29 formas realmente irregulares entram no `image_clip_coverage` do Production Gate.
+
+Isso é especialmente relevante para a Quinta Filé porque o Canva usa `fillRect` negativo para estender a fotografia além da caixa antes do recorte. Um exemplo real do arquivo usa `l=-30959` e `r=-30437` (unidades OOXML), fazendo o BLIP ocupar aproximadamente **161,396% da largura da forma**. O G2 alpha.27 preserva esse contrato no import, preview Qt Quick e renderer QPainter em vez de cair no `cover` genérico.
+
 Para executar o conjunto real após colocar as quatro imagens em uma pasta local:
 
 ```text
