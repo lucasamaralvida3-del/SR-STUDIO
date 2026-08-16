@@ -17,9 +17,9 @@ def test_error_row_has_highest_visual_priority() -> None:
     assert cartazes_status_label("", "ERRO") == "⛔ ERRO"
 
 
-def test_warning_row_is_distinct_from_normal_rows() -> None:
+def test_attention_row_is_distinct_from_normal_rows() -> None:
     assert cartazes_row_tag(PosterCommercialValidator.WARNING, "", False, 0) == ROW_WARNING
-    assert cartazes_status_label(PosterCommercialValidator.WARNING) == "⚠ ALERTA"
+    assert cartazes_status_label(PosterCommercialValidator.WARNING) == "⚠ ATENÇÃO"
 
 
 def test_normal_rows_are_zebra_striped() -> None:

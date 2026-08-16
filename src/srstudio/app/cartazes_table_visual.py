@@ -42,7 +42,7 @@ def cartazes_status_label(status_overall: str, render_state: str = "", edited: b
     if status_overall == PosterCommercialValidator.ERROR or render == "ERRO":
         return "⛔ ERRO"
     if status_overall == PosterCommercialValidator.WARNING:
-        return "⚠ ALERTA"
+        return "⚠ ATENÇÃO"
     if edited or render == "ALTERADO":
         return "● ALTERADO"
     if render in {"AGUARDANDO", "RENDERIZANDO"}:
@@ -79,10 +79,11 @@ class _CartazesTableVisualMixin:
             borderwidth=1,
             relief="solid",
         )
+        # Keep selection visible, but do not force a generic selected foreground;
+        # error/attention rows retain their red text while selected.
         style.map(
             TABLE_STYLE,
             background=[("selected", "#CFE4FF")],
-            foreground=[("selected", "#102A43")],
         )
         style.map(
             f"{TABLE_STYLE}.Heading",
@@ -109,16 +110,19 @@ class _CartazesTableVisualMixin:
             foreground="#1D4ED8",
             font=(family, TABLE_FONT_SIZE, "bold"),
         )
+        # Attention is intentionally red too, but softer than a critical error.
+        # This keeps every item requiring review immediately visible without
+        # changing the table layout or introducing extra panels.
         self.tree.tag_configure(
             ROW_WARNING,
-            background="#FFF2CC",
-            foreground="#7A4B00",
+            background="#FFE8E8",
+            foreground="#A33A3A",
             font=(family, TABLE_FONT_SIZE, "bold"),
         )
         self.tree.tag_configure(
             ROW_ERROR,
-            background="#FFD9D9",
-            foreground="#8A1414",
+            background="#FFCACA",
+            foreground="#780A0A",
             font=(family, TABLE_FONT_SIZE, "bold"),
         )
 
