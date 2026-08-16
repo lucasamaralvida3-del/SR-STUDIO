@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
+import sys
 
 import srstudio
 from srstudio.graphics2.studio_bridge import HOST_EXE_NAME, discover_packaged_host
@@ -15,6 +16,7 @@ def _build_module():
     spec = spec_from_file_location("srstudio_graphics2_host_build", BUILD_SCRIPT)
     assert spec is not None and spec.loader is not None
     module = module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
