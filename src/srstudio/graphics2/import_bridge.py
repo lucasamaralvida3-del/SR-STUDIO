@@ -11,6 +11,7 @@ from .compat import from_studio_project
 from .import_audit import ImportAuditReport, audit_import
 from .model import AssetRef, BindingRole, CoordinateUnit, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, SmartSlot, Transform
 from .operations import GraphicsSession, _price_parts
+from .pptx_fidelity import enhance_pptx_document
 
 _SLOT_ROLE_MAP: dict[str, BindingRole] = {
     "name": BindingRole.NAME,
@@ -39,8 +40,9 @@ class GraphicsImportService:
         self.pipeline = UnifiedImportPipeline(image_library=image_library, layout_corpus=layout_corpus)
 
     def import_file(self, path: str | Path, *, project_name: str = "Novo Projeto SR") -> GraphicsImportResult:
+        source = Path(path)
         project = StudioProject(name=project_name)
-        summary = self.pipeline.import_file(path, project)
+        summary = self.pipeline.import_file(source, project)
         document = from_imported_project(project)
         document.metadata["import_summary"] = {
             "source": summary.source,
@@ -51,6 +53,10 @@ class GraphicsImportService:
             "layouts_learned": summary.layouts_learned,
             "warnings": list(summary.warnings),
         }
+        if source.suffix.lower() == ".pptx":
+            media_root = str(project.settings.get("pptx_media_dir") or "").strip()
+            cache_dir = Path(media_root) / "graphics2" if media_root else None
+            enhance_pptx_document(source, document, cache_dir=cache_dir)
         audit = audit_import(document)
         return GraphicsImportResult(document=document, summary=summary, legacy_project=project, audit=audit)
 
