@@ -42,6 +42,8 @@ class ProductionGateReport:
     mapping_text_coverage: float = 1.0
     mapping_image_coverage: float = 1.0
     mapping_group_coverage: float = 1.0
+    mapping_fill_rect_coverage: float = 1.0
+    mapping_fill_outset_coverage: float = 1.0
     issues: list[ProductionGateIssue] = field(default_factory=list)
 
     @property
@@ -83,9 +85,9 @@ def inspect_production_gate(
     - para ativação/release, ``require_visual_fidelity=True`` exige que a última
       comparação visual tenha passado antes do Engine 2 ser considerado pronto.
 
-    Para PPTX, cobertura de páginas/textos/imagens é parte do score. Isso evita
-    aprovar uma cena internamente válida quando o conversor simplesmente perdeu
-    conteúdo que existia no arquivo fonte.
+    Para PPTX, cobertura de páginas/textos/imagens e enquadramento DrawingML é
+    parte do score. Isso evita aprovar uma cena internamente válida quando o
+    conversor perdeu conteúdo ou a geometria de fotografia existente na fonte.
     """
 
     structural = inspect_quality(document, available_fonts=available_fonts)
@@ -134,9 +136,13 @@ def inspect_production_gate(
     mapping_text = _clamp01(mapping.get("text_coverage", 1.0))
     mapping_image = _clamp01(mapping.get("image_coverage", 1.0))
     mapping_group = _clamp01(mapping.get("group_coverage", 1.0))
+    mapping_fill_rect = _clamp01(mapping.get("fill_rect_coverage", 1.0))
+    mapping_fill_outset = _clamp01(mapping.get("fill_outset_coverage", 1.0))
     source_text = _as_int(mapping.get("source_text_shapes", 0))
     source_images = _as_int(mapping.get("source_image_shapes", 0))
     source_groups = _as_int(mapping.get("source_groups", 0))
+    source_fill_rects = _as_int(mapping.get("source_fill_rects", 0))
+    source_fill_outsets = _as_int(mapping.get("source_fill_outsets", 0))
     if mapping:
         if not mapping_page_match:
             issues.append(
@@ -184,6 +190,38 @@ def inspect_production_gate(
                     "warning",
                     "PPTX_GROUP_COVERAGE_LOW",
                     f"Cobertura de grupos DrawingML baixa: {mapping_group * 100:.2f}%.",
+                )
+            )
+        if source_fill_rects and mapping_fill_rect < 0.80:
+            issues.append(
+                ProductionGateIssue(
+                    "blocker",
+                    "PPTX_FILL_RECT_COVERAGE_FAILED",
+                    f"Cobertura de stretch/fillRect DrawingML crítica: {mapping_fill_rect * 100:.2f}%.",
+                )
+            )
+        elif source_fill_rects and mapping_fill_rect < 0.95:
+            issues.append(
+                ProductionGateIssue(
+                    "warning",
+                    "PPTX_FILL_RECT_COVERAGE_LOW",
+                    f"Cobertura de stretch/fillRect DrawingML abaixo do alvo: {mapping_fill_rect * 100:.2f}%.",
+                )
+            )
+        if source_fill_outsets and mapping_fill_outset < 0.80:
+            issues.append(
+                ProductionGateIssue(
+                    "blocker",
+                    "PPTX_FILL_OUTSET_COVERAGE_FAILED",
+                    f"Cobertura de fillRect com outset negativo crítica: {mapping_fill_outset * 100:.2f}%.",
+                )
+            )
+        elif source_fill_outsets and mapping_fill_outset < 0.95:
+            issues.append(
+                ProductionGateIssue(
+                    "warning",
+                    "PPTX_FILL_OUTSET_COVERAGE_LOW",
+                    f"Cobertura de fillRect com outset negativo abaixo do alvo: {mapping_fill_outset * 100:.2f}%.",
                 )
             )
 
@@ -235,11 +273,13 @@ def inspect_production_gate(
     score_candidates = [float(structural.score), import_confidence * 100.0]
     if mapping:
         # Grupos são editabilidade/semântica e não entram no score visual puro;
-        # páginas, texto e imagem entram porque representam conteúdo perceptível.
+        # páginas, texto, imagem e fillRect entram por serem conteúdo perceptível.
         mapping_score = min(
             1.0 if mapping_page_match else 0.0,
             mapping_text if source_text else 1.0,
             mapping_image if source_images else 1.0,
+            mapping_fill_rect if source_fill_rects else 1.0,
+            mapping_fill_outset if source_fill_outsets else 1.0,
         )
         score_candidates.append(mapping_score * 100.0)
     if visual_score is not None:
@@ -272,6 +312,8 @@ def inspect_production_gate(
         mapping_text_coverage=mapping_text,
         mapping_image_coverage=mapping_image,
         mapping_group_coverage=mapping_group,
+        mapping_fill_rect_coverage=mapping_fill_rect,
+        mapping_fill_outset_coverage=mapping_fill_outset,
         issues=issues,
     )
 
