@@ -48,6 +48,7 @@ def run_golden_master(args: Namespace) -> int:
     from .pdf_baseline import render_pdf_baselines
     from .quality import inspect_production_gate, store_visual_fidelity
     from .qt_renderer import qt_renderer_available, render_png
+    from .scene_fingerprint import store_scene_fingerprint
 
     if not qt_renderer_available():
         raise RuntimeError("PySide6 não está instalado. Instale o extra graphics2.")
@@ -65,6 +66,7 @@ def run_golden_master(args: Namespace) -> int:
         prefix=name,
     )
     imported = GraphicsImportService().import_file(source, project_name=source.stem)
+    fingerprint = store_scene_fingerprint(imported.document)
     engine_pages = len(imported.document.pages)
     reference_pages = len(baselines)
     count_matches = engine_pages == reference_pages
@@ -112,6 +114,7 @@ def run_golden_master(args: Namespace) -> int:
         "name": args.name,
         "source": _identity(source),
         "reference_pdf": _identity(reference_pdf),
+        "scene_fingerprint": fingerprint.to_dict(),
         "page_count": {
             "engine": engine_pages,
             "reference": reference_pages,
@@ -154,7 +157,8 @@ def run_golden_master(args: Namespace) -> int:
         f"SR Golden Master: {'PASS' if gate.ready else 'FAIL'} | "
         f"{engine_pages} pág. Engine / {reference_pages} pág. referência | "
         f"mín. {aggregate['metrics']['score'] * 100:.4f}% | "
-        f"média {aggregate['average_score'] * 100:.4f}% | gate {gate.score}/100"
+        f"média {aggregate['average_score'] * 100:.4f}% | gate {gate.score}/100 | "
+        f"scene {fingerprint.sha256[:12]}"
     )
     for index, result in enumerate(page_results, start=1):
         print(
