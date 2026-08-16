@@ -11,6 +11,7 @@ from srstudio.graphics2.fidelity import (
     run_suite,
     write_report,
 )
+from srstudio.graphics2.fidelity_lab import build_parser
 
 
 def _sample(path, *, shift: int = 0, size: tuple[int, int] = (320, 240)):
@@ -109,3 +110,30 @@ def test_manifest_suite_runs_multiple_cases_and_writes_json_report(tmp_path):
     payload = json.loads(report.read_text(encoding="utf-8"))
     assert payload["passed"] is False
     assert len(payload["cases"]) == 2
+
+
+def test_fidelity_lab_exposes_direct_pptx_audit_command():
+    args = build_parser().parse_args(["pptx-audit", "quinta-file.pptx", "--save-scene"])
+    assert args.command == "pptx-audit"
+    assert args.pptx.name == "quinta-file.pptx"
+    assert args.save_scene is True
+
+
+def test_fidelity_lab_exposes_direct_pptx_render_compare_command():
+    args = build_parser().parse_args(
+        [
+            "pptx-render-compare",
+            "quinta-file.pptx",
+            "quinta-file-reference.png",
+            "--page",
+            "1",
+            "--target-width",
+            "2160",
+            "--min-score",
+            "0.99",
+        ]
+    )
+    assert args.command == "pptx-render-compare"
+    assert args.page == 1
+    assert args.target_width == 2160
+    assert args.min_score == 0.99
