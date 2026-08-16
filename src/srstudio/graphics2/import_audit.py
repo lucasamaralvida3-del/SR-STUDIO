@@ -109,8 +109,8 @@ def _audit_pptx_mapping(document: GraphicsDocument, report: ImportAuditReport) -
     """Transforma perda entre OOXML fonte e SR Scene em risco de importação.
 
     Esta camada é deliberadamente conservadora: diferenças moderadas viram
-    warning; perda severa de páginas/imagens/fillRect vira error e impede o
-    Production Gate de aprovar silenciosamente um PPTX visualmente incompleto.
+    warning; perda severa de páginas/imagens/fillRect/máscaras vira error e
+    impede o Production Gate de aprovar silenciosamente um PPTX incompleto.
     """
 
     mapping = document.metadata.get("pptx_mapping_audit")
@@ -131,11 +131,13 @@ def _audit_pptx_mapping(document: GraphicsDocument, report: ImportAuditReport) -
     group_coverage = _coverage_value(mapping.get("group_coverage", 1.0))
     fill_rect_coverage = _coverage_value(mapping.get("fill_rect_coverage", 1.0))
     fill_outset_coverage = _coverage_value(mapping.get("fill_outset_coverage", 1.0))
+    image_clip_coverage = _coverage_value(mapping.get("image_clip_coverage", 1.0))
     source_text = _int(mapping.get("source_text_shapes", 0))
     source_images = _int(mapping.get("source_image_shapes", 0))
     source_groups = _int(mapping.get("source_groups", 0))
     source_fill_rects = _int(mapping.get("source_fill_rects", 0))
     source_fill_outsets = _int(mapping.get("source_fill_outsets", 0))
+    source_image_clips = _int(mapping.get("source_image_custom_geometry", 0))
 
     if source_text >= 4 and text_coverage < 0.70:
         report.issues.append(
@@ -213,6 +215,23 @@ def _audit_pptx_mapping(document: GraphicsDocument, report: ImportAuditReport) -
                 "warning",
                 "PPTX_FILL_OUTSET_MAPPING_RISK",
                 f"Cobertura de fillRect com outset negativo abaixo do alvo: {fill_outset_coverage * 100:.2f}%.",
+            )
+        )
+
+    if source_image_clips and image_clip_coverage < 0.80:
+        report.issues.append(
+            ImportAuditIssue(
+                "error",
+                "PPTX_IMAGE_CLIP_MAPPING_LOSS",
+                f"Apenas {image_clip_coverage * 100:.2f}% das máscaras custGeom irregulares de imagem foram preservadas.",
+            )
+        )
+    elif source_image_clips and image_clip_coverage < 0.95:
+        report.issues.append(
+            ImportAuditIssue(
+                "warning",
+                "PPTX_IMAGE_CLIP_MAPPING_RISK",
+                f"Cobertura de máscaras custGeom irregulares abaixo do alvo: {image_clip_coverage * 100:.2f}%.",
             )
         )
 
