@@ -108,3 +108,48 @@ def test_import_audit_detects_off_page_element():
     page.add_node(node)
     report = audit_import(document, check_local_assets=False)
     assert any(issue.code == "OUTSIDE_PAGE" for issue in report.issues)
+
+
+def test_import_audit_counts_custom_image_masks_and_drawingml_fill_outsets():
+    document = GraphicsDocument()
+    page = document.active_page
+    page.add_node(
+        GraphicsNode(
+            kind=NodeKind.IMAGE,
+            transform=Transform(x=20, y=20, width=200, height=150),
+            style={
+                "fit": "cover",
+                "fill_rect": {"l": -0.30959, "t": 0, "r": -0.30437, "b": 0},
+            },
+            metadata={
+                "bound_image_source": "https://example.invalid/produto.png",
+                "clip_path": {
+                    "width": 1000,
+                    "height": 1000,
+                    "paths": [
+                        {
+                            "width": 1000,
+                            "height": 1000,
+                            "commands": [
+                                {"op": "M", "points": [[0, 0]]},
+                                {"op": "L", "points": [[1000, 0]]},
+                                {"op": "L", "points": [[850, 1000]]},
+                                {"op": "Z"},
+                            ],
+                        }
+                    ],
+                },
+            },
+        )
+    )
+
+    report = audit_import(document, check_local_assets=False)
+    payload = report.to_dict()
+
+    assert report.images == 1
+    assert report.image_clips == 1
+    assert report.drawingml_fill_rects == 1
+    assert report.drawingml_fill_outsets == 1
+    assert payload["image_clips"] == 1
+    assert payload["drawingml_fill_rects"] == 1
+    assert payload["drawingml_fill_outsets"] == 1
