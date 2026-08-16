@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$BootstrapVersion = '4.0.1-hybrid.setup2'
+$BootstrapVersion = '4.0.1-hybrid.setup3'
 $OfficialRepositoryBase = 'https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $CfgDir = Join-Path $SrHomeRoot 'Config'
@@ -131,6 +131,20 @@ Test-BootScriptSyntax $launcherToRun
 if(-not $onlineUpdated) {
   Write-BootLog 'Using the installed Launcher fallback.'
 }
-Write-BootLog ('Starting installed Launcher via Bootstrap ' + $BootstrapVersion + '.')
 
+# Setup 3: o host Qt do Graphics Engine 2 é um componente opcional e isolado.
+# O updater lê `graphics2_host` do manifesto Stable/Beta. Se a propriedade não
+# existe ou enabled=false, nada é instalado. O updater nunca ativa feature flag.
+$graphics2Updater = Join-Path $InstalledLauncherDir 'SRGraphics2Component.ps1'
+if(Test-Path -LiteralPath $graphics2Updater -PathType Leaf) {
+  Test-BootScriptSyntax $graphics2Updater
+  Write-BootLog 'Checking optional SR Graphics Engine 2 host component.'
+  # O próprio componente trata falhas opcionais sem bloquear o Desktop Core.
+  # Se um manifesto futuro marcar required=true, a exceção é propagada.
+  & $graphics2Updater -FullRepair:$FullRepair
+} else {
+  Write-BootLog 'Graphics2Host component updater not installed; Desktop Core will continue normally.'
+}
+
+Write-BootLog ('Starting installed Launcher via Bootstrap ' + $BootstrapVersion + '.')
 & $launcherToRun -RepairOnly:$RepairOnly -NoLaunch:$NoLaunch -FullRepair:$FullRepair
