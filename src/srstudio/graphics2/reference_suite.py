@@ -220,6 +220,8 @@ def run_reference_suite(args: Namespace) -> int:
     scene_path = ""
     if args.save_scene:
         scene_path = str(save_package(imported.document, output / f"{_slug(manifest.name)}.srscene"))
+    pptx_structure = dict(imported.document.metadata.get("pptx_structure") or {})
+    pptx_mapping = dict(imported.document.metadata.get("pptx_mapping_audit") or {})
     payload = {
         "name": manifest.name,
         "source": source_identity,
@@ -240,6 +242,8 @@ def run_reference_suite(args: Namespace) -> int:
             for item in render_reports
         ],
         "import_audit": imported.audit.to_dict(),
+        "pptx_structure": pptx_structure,
+        "pptx_mapping": pptx_mapping,
         "pptx_fidelity": dict(imported.document.metadata.get("pptx_fidelity") or {}),
         "production_gate": gate.to_dict(),
         "scene": scene_path,
@@ -251,6 +255,14 @@ def run_reference_suite(args: Namespace) -> int:
         f"{len(results)} referência(s) | mínimo {aggregate['minimum_score'] * 100:.4f}% | "
         f"média {aggregate['average_score'] * 100:.4f}% | gate {gate.score}/100"
     )
+    if pptx_mapping:
+        print(
+            "  Mapeamento OOXML: "
+            f"texto={float(pptx_mapping.get('text_coverage', 1.0)) * 100:.2f}% · "
+            f"imagem={float(pptx_mapping.get('image_coverage', 1.0)) * 100:.2f}% · "
+            f"fillRect={float(pptx_mapping.get('fill_rect_coverage', 1.0)) * 100:.2f}% · "
+            f"outset={float(pptx_mapping.get('fill_outset_coverage', 1.0)) * 100:.2f}%"
+        )
     for case, result, case_payload in zip(manifest.cases, results, case_payloads):
         triage = case_payload["triage"]
         regions = list(triage.get("regions") or [])
