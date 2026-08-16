@@ -24,6 +24,7 @@ import json
 import re
 
 from .image_crop import crop_pixel_box
+from .image_fill import drawingml_fill_destination, has_drawingml_fill_rect
 from .model import GraphicsDocument, GraphicsNode, NodeKind
 
 PREVIEW_PROVIDER_NAME = "srscene"
@@ -167,6 +168,7 @@ def _preview_signature(node: dict[str, Any], source: str) -> str:
         "flip_x": style.get("flip_x"),
         "flip_y": style.get("flip_y"),
         "crop": style.get("crop"),
+        "fill_rect": style.get("fill_rect"),
         "clip_path": metadata.get("clip_path"),
     }
     return sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
@@ -344,6 +346,24 @@ def _compose(
         )
         if clip is not None:
             painter.setClipPath(clip)
+
+        fill_rect = style.get("fill_rect")
+        if has_drawingml_fill_rect(fill_rect):
+            # A imagem final ainda será espelhada pelo Image QML. Espelhar a
+            # geometria do fillRect agora faz a caixa voltar à posição original
+            # depois do flip, enquanto o conteúdo fotográfico permanece virado.
+            destination = drawingml_fill_destination(
+                width,
+                height,
+                fill_rect,
+                mirror_x=flip_x,
+                mirror_y=flip_y,
+            )
+            painter.drawImage(
+                QtCore.QRectF(destination.x, destination.y, destination.width, destination.height),
+                image,
+            )
+            return target
 
         fit = str(style.get("fit") or "contain").lower()
         focus_x = min(1.0, max(0.0, float(style.get("focus_x", 0.5) or 0.5)))
