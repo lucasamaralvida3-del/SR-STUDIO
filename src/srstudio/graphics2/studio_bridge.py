@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
 import os
+import shutil
 import subprocess
 import sys
 
@@ -20,7 +21,8 @@ from srstudio.settings.features import FeatureFlagStore
 
 from .compat import from_studio_project
 from .host_runtime import RUNTIME_MANIFEST_NAME, validate_runtime_host
-from .package import save_package
+from .legacy_sync import LegacySyncReport, fingerprint_studio_project, sync_graphics_to_studio
+from .package import load_package, save_package
 from .quality import ProductionGateReport, inspect_production_gate
 
 HOST_EXE_NAME = "SRGraphicsEngine2Host.exe"
@@ -31,6 +33,8 @@ class StudioBridgePreparation:
     package_path: Path
     gate: ProductionGateReport
     graphics_api: str
+    reused_session: bool = False
+    previous_package_path: Path | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -42,6 +46,15 @@ class StudioBridgeLaunchResult:
     gate_score: int = 0
     graphics_api: str = ""
     pid: int = 0
+    reused_session: bool = False
+
+
+@dataclass(slots=True, frozen=True)
+class StudioBridgeSyncResult:
+    ok: bool
+    message: str
+    package_path: str = ""
+    report: LegacySyncReport | None = None
 
 
 def bridge_flags(data_dir: str | Path) -> tuple[bool, bool]:
@@ -55,15 +68,125 @@ def prepare_studio_project(
     *,
     graphics_api: str = "auto",
 ) -> StudioBridgePreparation:
+    """Prepara ou reutiliza a sessão persistente do projeto no Engine 2.
+
+    Se o StudioProject ainda possui o mesmo fingerprint usado para criar a
+    sessão anterior, o `.srscene` é reaberto em vez de ser regenerado. Isso
+    preserva edições feitas somente no Engine 2. Se o projeto legado mudou, a
+    sessão anterior é copiada para `.previous.srscene` antes da nova conversão.
+    """
+
+    runtime_dir = _bridge_runtime_dir(data_dir)
+    runtime_dir.mkdir(parents=True, exist_ok=True)
+    package_path = _bridge_package_path(project, data_dir)
+    source_fingerprint = fingerprint_studio_project(project)
+    previous_path: Path | None = None
+
+    if package_path.is_file():
+        try:
+            existing = load_package(
+                package_path,
+                extract_assets_to=runtime_dir / "cache" / _safe_name(project.id or project.name),
+            )
+        except Exception:
+            existing = None
+        if existing is not None:
+            existing_project_id = str(existing.metadata.get("legacy_project_id") or "")
+            existing_fingerprint = str(existing.metadata.get("legacy_source_fingerprint") or "")
+            if existing_project_id == str(project.id) and existing_fingerprint == source_fingerprint:
+                gate = inspect_production_gate(existing, require_visual_fidelity=False)
+                return StudioBridgePreparation(
+                    package_path=package_path,
+                    gate=gate,
+                    graphics_api=graphics_api,
+                    reused_session=True,
+                )
+
+        previous_path = package_path.with_name(package_path.stem + ".previous.srscene")
+        try:
+            shutil.copy2(package_path, previous_path)
+        except OSError:
+            previous_path = None
+
     document = from_studio_project(project)
     gate = inspect_production_gate(document, require_visual_fidelity=False)
-    runtime_dir = Path(data_dir) / "graphics2-bridge"
-    runtime_dir.mkdir(parents=True, exist_ok=True)
-    package_path = runtime_dir / f"{_safe_name(project.id or project.name)}.srscene"
-    # O snapshot é local e transitório. Assets que já pertencem ao SR Scene são
-    # empacotados; image_path legado continua apontando ao Banco SR da máquina.
+    # O snapshot é local e persistente por projeto. Assets que pertencem ao SR
+    # Scene são empacotados; image_path legado continua apontando ao Banco SR.
     save_package(document, package_path, embed_local_assets=True)
-    return StudioBridgePreparation(package_path=package_path, gate=gate, graphics_api=graphics_api)
+    return StudioBridgePreparation(
+        package_path=package_path,
+        gate=gate,
+        graphics_api=graphics_api,
+        reused_session=False,
+        previous_package_path=previous_path,
+    )
+
+
+def sync_saved_session_to_project(
+    project: StudioProject,
+    data_dir: str | Path,
+    *,
+    allow_conflict: bool = False,
+) -> StudioBridgeSyncResult:
+    """Aplica ao Studio somente mudanças do G2 representáveis pelo modelo 5.x."""
+
+    package_path = _bridge_package_path(project, data_dir)
+    if not package_path.is_file():
+        return StudioBridgeSyncResult(
+            ok=False,
+            message="Nenhuma sessão salva do Graphics Engine 2 foi encontrada para este projeto.",
+            package_path=str(package_path),
+        )
+
+    runtime_dir = _bridge_runtime_dir(data_dir)
+    try:
+        document = load_package(
+            package_path,
+            extract_assets_to=runtime_dir / "sync-cache" / _safe_name(project.id or project.name),
+        )
+    except Exception as exc:
+        return StudioBridgeSyncResult(
+            ok=False,
+            message=f"A sessão do Graphics Engine 2 não pôde ser aberta: {exc}",
+            package_path=str(package_path),
+        )
+
+    report = sync_graphics_to_studio(document, project, allow_conflict=allow_conflict)
+    if not report.ok:
+        detail = report.warnings[0] if report.warnings else "conflito desconhecido"
+        return StudioBridgeSyncResult(
+            ok=False,
+            message=f"Sincronização bloqueada: {detail}",
+            package_path=str(package_path),
+            report=report,
+        )
+
+    try:
+        # O sync atualiza o fingerprint de origem dentro do próprio documento.
+        # Persisti-lo evita que uma segunda sincronização gere falso conflito.
+        save_package(document, package_path, embed_local_assets=True)
+    except Exception as exc:
+        return StudioBridgeSyncResult(
+            ok=False,
+            message=f"Alterações foram projetadas em memória, mas a sessão G2 não pôde ser atualizada: {exc}",
+            package_path=str(package_path),
+            report=report,
+        )
+
+    summary = (
+        f"{report.products_updated} produto(s), {report.cards_updated} card(s) e "
+        f"{report.pages_updated} página(s) atualizados"
+    )
+    if report.pages_reordered:
+        summary += " · páginas reordenadas"
+    if report.products_added:
+        summary += f" · {report.products_added} produto(s) recuperados"
+    return StudioBridgeSyncResult(
+        ok=True,
+        message=f"Alterações do Engine 2 aplicadas com segurança · {summary}.",
+        package_path=str(package_path),
+        report=report,
+    )
 
 
 def launch_studio_project_if_enabled(
@@ -138,17 +261,20 @@ def launch_studio_project_if_enabled(
             package_path=str(prepared.package_path),
             gate_score=prepared.gate.score,
             graphics_api=prepared.graphics_api,
+            reused_session=prepared.reused_session,
         )
 
     gate_note = "gate aprovado" if prepared.gate.ready else f"gate {prepared.gate.score}/100 em validação"
+    session_note = " · sessão G2 preservada" if prepared.reused_session else ""
     return StudioBridgeLaunchResult(
         ok=True,
         launched=True,
-        message=f"Graphics Engine 2 aberto em processo isolado · {gate_note}.",
+        message=f"Graphics Engine 2 aberto em processo isolado · {gate_note}{session_note}.",
         package_path=str(prepared.package_path),
         gate_score=prepared.gate.score,
         graphics_api=prepared.graphics_api,
         pid=int(getattr(process, "pid", 0) or 0),
+        reused_session=prepared.reused_session,
     )
 
 
@@ -214,6 +340,15 @@ def _runtime_candidate_valid(executable: Path, *, require_manifest: bool) -> boo
     except Exception:
         return False
     return report.ok and report.executable == executable.resolve()
+
+
+def _bridge_runtime_dir(data_dir: str | Path) -> Path:
+    return Path(data_dir) / "graphics2-bridge"
+
+
+def _bridge_package_path(project: StudioProject, data_dir: str | Path) -> Path:
+    runtime_dir = _bridge_runtime_dir(data_dir)
+    return runtime_dir / f"{_safe_name(project.id or project.name)}.srscene"
 
 
 def _host_command() -> list[str]:
