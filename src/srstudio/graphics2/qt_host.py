@@ -98,6 +98,39 @@ def load_launch_context(source: str | Path | None, *, project_name: str = "") ->
     )
 
 
+def prepare_qml_payload(scene: dict[str, Any]) -> dict[str, Any]:
+    """Normaliza somente o payload do preview sem alterar o SR Scene persistido.
+
+    O QML legado ainda interpreta ``nowrap`` como ``Text.Fit``. Para PriceBlocks
+    isso é perigoso: R$, reais, centavos e unidade podem ser reduzidos de forma
+    independente. O renderer de produção já separa linha única de auto-fit.
+
+    Até o componente de texto QML consumir ``semantic_fit_policy`` nativamente,
+    o preview recebe esses tokens como palavras indivisíveis em tamanho fixo.
+    Os textos de preço não possuem espaços, portanto ``WordWrap`` não os divide.
+    O documento, a exportação e o round-trip permanecem intocados.
+    """
+
+    for page in scene.get("pages") or []:
+        nodes = page.get("nodes") if isinstance(page, dict) else None
+        if not isinstance(nodes, dict):
+            continue
+        for node in nodes.values():
+            if not isinstance(node, dict):
+                continue
+            metadata = node.get("metadata")
+            if not isinstance(metadata, dict) or not metadata.get("semantic_price_block_id"):
+                continue
+            style = node.get("style")
+            if not isinstance(style, dict):
+                style = {}
+                node["style"] = style
+            style["fit_inside_box"] = False
+            style["nowrap"] = False
+            style["semantic_preview_fixed_size"] = True
+    return scene
+
+
 def launch_qt_quick_editor(
     document: GraphicsDocument | None = None,
     *,
@@ -134,7 +167,7 @@ def launch_qt_quick_editor(
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
-            return json.dumps(router.payload(), ensure_ascii=False, separators=(",", ":"))
+            return json.dumps(prepare_qml_payload(router.payload()), ensure_ascii=False, separators=(",", ":"))
 
         @Property(str, notify=statusChanged)
         def status(self) -> str:
