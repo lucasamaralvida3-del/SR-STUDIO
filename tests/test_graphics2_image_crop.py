@@ -111,5 +111,7 @@ def test_qml_crop_preview_has_source_clip_and_all_four_controls() -> None:
     assert "sourceClipRect: Qt.rect(" in scene_image
     for prop in ("cropLeft", "cropTop", "cropRight", "cropBottom"):
         assert f"property real {prop}" in scene_image
-    for command_key in ("crop_left", "crop_top", "crop_right", "crop_bottom", "crop_reset"):
-        assert command_key in inspector
+    assert 'command["crop_" + edge] = value' in inspector
+    for edge in ("left", "top", "right", "bottom"):
+        assert f'applyCrop("{edge}", value)' in inspector
+    assert '"crop_reset": true' in inspector
