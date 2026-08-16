@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
+from tkinter import messagebox
 
 import srstudio.app.advanced_posters as advanced
 import srstudio.app.responsive_posters as responsive
@@ -144,7 +145,29 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
 
         result = sync_saved_session_to_project(self.project, self.data_dir)
         if not result.ok:
-            tone = "warning" if result.report is not None and result.report.conflict else "danger"
+            has_conflict = result.report is not None and bool(getattr(result.report, "conflict", False))
+            if has_conflict:
+                apply_safe = messagebox.askyesno(
+                    "SR Graphics Engine 2 · conflito detectado",
+                    "O Studio e o Engine 2 foram alterados depois da mesma base.\n\n"
+                    "Deseja aplicar somente as mudanças do Engine 2 que NÃO entram em conflito?\n\n"
+                    "Os campos conflitantes continuarão preservados no arquivo .srscene para revisão posterior.",
+                    parent=self,
+                )
+                if apply_safe:
+                    result = sync_saved_session_to_project(
+                        self.project,
+                        self.data_dir,
+                        merge_non_conflicting=True,
+                    )
+                    if result.ok:
+                        self._mark_changed()
+                        remaining = int(getattr(result.report, "unresolved_conflicts", 0) or 0)
+                        tone = "warning" if remaining else "success"
+                        self.toast.show(result.message, tone, 7600)
+                        self.after(80, lambda: self.navigate("Encartes Studio"))
+                        return
+            tone = "warning" if has_conflict else "danger"
             self.toast.show(result.message, tone, 7200)
             return
         self._mark_changed()
