@@ -316,7 +316,8 @@ class CanvaBindingService:
                         continue
                     if node.kind is not NodeKind.TEXT:
                         continue
-                    template_text = str(node.metadata.get("template_text") or node.text or "")
+                    source_template = node.text if str(node.metadata.get("source") or "").lower() == "pptx" else ""
+                    template_text = str(node.metadata.get("template_text") or source_template or "")
                     value = _binding_text(role, product, template_text=template_text)
                     node.text = value
                     if role in {
