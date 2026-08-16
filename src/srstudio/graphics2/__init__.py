@@ -49,6 +49,7 @@ from .model import (
 )
 from .operations import GraphicsSession
 from .pdf_baseline import PdfBaselinePage, render_pdf_baselines
+from .pptx_effects import PptxEffectAudit, SlideEffectStats, audit_pptx_effects
 from .pptx_fidelity import EmbeddedPptxFont, PptxFidelityReport, enhance_pptx_document
 from .pptx_groups import PptxGroupReport, rebuild_pptx_groups
 from .pptx_structure import PptxMappingAudit, PptxSlideStructure, PptxStructureReport, inspect_pptx_structure
@@ -78,7 +79,7 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.27"
+ENGINE_VERSION = "2.0.0-alpha.28"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -113,6 +114,7 @@ __all__ = [
     "PageFingerprint",
     "PdfBaselinePage",
     "PlaceholderRecoveryReport",
+    "PptxEffectAudit",
     "PptxFidelityReport",
     "PptxGroupReport",
     "PptxMappingAudit",
@@ -127,6 +129,7 @@ __all__ = [
     "SceneFingerprint",
     "SemanticBlock",
     "SemanticBlockReport",
+    "SlideEffectStats",
     "SmartSlot",
     "StudioBridgeLaunchResult",
     "StudioBridgePreparation",
@@ -136,6 +139,7 @@ __all__ = [
     "analyze_legacy_merge",
     "analyze_saved_session_merge",
     "audit_import",
+    "audit_pptx_effects",
     "bridge_flags",
     "build_semantic_blocks",
     "compare_images",
