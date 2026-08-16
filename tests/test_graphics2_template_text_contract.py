@@ -49,6 +49,36 @@ def test_pptx_alignment_tokens_are_canonical_for_qml_and_qpainter():
     assert centered["v_align"] == "center"
 
 
+def test_single_line_observation_does_not_force_no_wrap_or_text_fit():
+    style = _style_from_element(
+        {
+            "font_name": "Anton",
+            "font_size": 32,
+            "canva_single_line": True,
+            "text_wrap": "square",
+            "canva_fit_inside_box": False,
+        },
+        NodeKind.TEXT,
+    )
+
+    assert style["nowrap"] is False
+    assert style["fit_inside_box"] is False
+
+
+def test_ooxml_wrap_none_and_semantic_price_override_preserve_no_wrap():
+    source_no_wrap = _style_from_element(
+        {"text_wrap": "none", "canva_single_line": False},
+        NodeKind.TEXT,
+    )
+    semantic_price = _style_from_element(
+        {"text_wrap": "square", "canva_no_wrap": True},
+        NodeKind.TEXT,
+    )
+
+    assert source_no_wrap["nowrap"] is True
+    assert semantic_price["nowrap"] is True
+
+
 def test_binding_preserves_unit_without_slash_when_canva_template_uses_plain_kg():
     session, slot_id = _session_with_unit("KG")
     node = session.page.node(session.page.slots[slot_id].node_by_role["unit"])
