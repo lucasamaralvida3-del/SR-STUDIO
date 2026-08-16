@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -35,6 +36,17 @@ def test_image_inspector_uses_shared_scene_image_component():
     assert "focusY: focusYSlider.value" in source
 
 
+def test_page_inspector_exposes_visual_reorder_controls_and_quality_panel_hosts_it():
+    source = _qml("PageInspector.qml")
+    quality = _qml("QualityInspector.qml")
+    assert '"name": "reorder_page"' in source
+    assert '"previous"' in source
+    assert '"next"' in source
+    assert '"name": "select_page"' in source
+    assert "PageInspector {" in quality
+    assert "parent: panel.parent" in quality
+
+
 def test_scene_image_qml_loads_offscreen_when_pyside_is_available():
     pytest.importorskip("PySide6")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -58,6 +70,39 @@ def _page_router() -> GraphicsCommandRouter:
     document.add_page(GraphicsPage(name="Página C"))
     document.active_page_id = document.pages[0].id
     return GraphicsCommandRouter(GraphicsSession(document))
+
+
+def test_page_inspector_qml_loads_offscreen_when_pyside_is_available():
+    pytest.importorskip("PySide6")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQml import QQmlApplicationEngine
+
+    router = _page_router()
+
+    class _Bridge(QObject):
+        sceneChanged = Signal()
+
+        @Property(str, notify=sceneChanged)
+        def sceneJson(self) -> str:
+            return json.dumps(router.payload(), ensure_ascii=False, separators=(",", ":"))
+
+        @Slot(str, result=str)
+        def dispatch(self, payload: str) -> str:
+            result = router.dispatch_json(payload)
+            self.sceneChanged.emit()
+            return result
+
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlApplicationEngine()
+    bridge = _Bridge()
+    engine.rootContext().setContextProperty("sceneBridge", bridge)
+    qml = Path(qt_host.__file__).with_name("qml") / "PageInspector.qml"
+    engine.load(QUrl.fromLocalFile(str(qml.resolve())))
+    app.processEvents()
+    assert engine.rootObjects(), "PageInspector.qml não carregou; há erro no reordenador visual."
 
 
 def test_reorder_page_moves_active_page_transactionally_and_preserves_identity():
