@@ -176,8 +176,8 @@ def launch_qt_quick_editor(
     try:
         from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl
         from PySide6.QtGui import QGuiApplication
-        from PySide6.QtQml import QQmlApplicationEngine
-        from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
+        from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
+        from PySide6.QtQuick import QQuickItem, QQuickWindow, QSGRendererInterface
     except Exception as exc:
         raise RuntimeError("SR Graphics Engine 2 requer a dependência opcional 'graphics2' (PySide6).") from exc
 
@@ -229,14 +229,10 @@ def launch_qt_quick_editor(
 
         @Slot(str)
         def selectNode(self, node_id: str) -> None:
-            # Seleção exata continua disponível para inspector/ações internas.
             self._run({"name": "select", "node_id": node_id})
 
         @Slot(str, bool, bool)
         def selectNodeAdvanced(self, node_id: str, additive: bool, toggle: bool) -> None:
-            # O canvas e a lista de camadas usam a seleção avançada. Quando o
-            # node pertence a um PriceBlock, R$ + reais + centavos + KG/UN
-            # entram juntos na seleção e não podem mais se separar ao arrastar.
             self._run(
                 {
                     "name": "select",
@@ -283,19 +279,39 @@ def launch_qt_quick_editor(
     engine = QQmlApplicationEngine()
     bridge = SceneBridge()
     engine.rootContext().setContextProperty("sceneBridge", bridge)
-    qml = Path(__file__).with_name("qml") / "GraphicsEditor.qml"
+    qml_dir = Path(__file__).with_name("qml")
+    qml = qml_dir / "GraphicsEditor.qml"
     engine.load(QUrl.fromLocalFile(str(qml.resolve())))
     roots = engine.rootObjects()
     if not roots:
         raise RuntimeError("Falha ao carregar a interface Qt Quick do SR Graphics Engine 2.")
 
+    # Ferramenta contextual de imagem. Mantida em arquivo QML separado para que
+    # crop/foco evoluam sem aumentar o acoplamento do canvas principal. O objeto
+    # é filho visual do contentItem da ApplicationWindow e só aparece quando a
+    # seleção atual é IMAGE/BACKGROUND.
+    image_component = QQmlComponent(engine, QUrl.fromLocalFile(str((qml_dir / "ImageInspector.qml").resolve())))
+    if image_component.isError():
+        details = "; ".join(error.toString() for error in image_component.errors())
+        raise RuntimeError(f"Falha ao carregar ImageInspector.qml: {details}")
+    image_inspector = image_component.create(engine.rootContext())
+    if image_inspector is None:
+        details = "; ".join(error.toString() for error in image_component.errors())
+        raise RuntimeError(f"Falha ao criar editor visual de imagem: {details or 'erro QML desconhecido'}")
+    root_window = roots[0]
+    parent_item = root_window.contentItem() if isinstance(root_window, QQuickWindow) else None
+    if parent_item is not None and isinstance(image_inspector, QQuickItem):
+        image_inspector.setParentItem(parent_item)
+    image_inspector.setParent(root_window)
+
     app.processEvents()
-    resolved_value = _resolved_api_from_window(roots[0], QQuickWindow)
+    resolved_value = _resolved_api_from_window(root_window, QQuickWindow)
     resolved_api = _graphics_api_name(resolved_value, QSGRendererInterface)
     details = [f"GPU: {resolved_api}"]
     if context.source:
         details.insert(0, context.source.name)
-    details.append(f"gate {gate.score}/100")
+    live_gate = inspect_production_gate(session.document, require_visual_fidelity=False)
+    details.append(f"gate {live_gate.score}/100")
     if font_report.families:
         details.append("fontes: " + ", ".join(font_report.families))
     elif font_report.warnings:
