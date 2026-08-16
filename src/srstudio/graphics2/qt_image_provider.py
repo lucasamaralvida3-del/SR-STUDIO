@@ -19,6 +19,7 @@ from hashlib import sha256
 from pathlib import Path
 from threading import RLock
 from typing import Any
+from urllib.parse import unquote, urlparse
 import json
 import re
 
@@ -61,13 +62,20 @@ def create_live_scene_image_provider():
 
     try:
         from PySide6 import QtCore, QtGui
+        from PySide6.QtQml import QQmlImageProviderBase
         from PySide6.QtQuick import QQuickImageProvider
     except Exception as exc:  # pragma: no cover - validado no job Qt/Windows
         raise RuntimeError("Provider de preview do Graphics Engine 2 requer PySide6.") from exc
 
+    image_type = (
+        QQmlImageProviderBase.ImageType.Image
+        if hasattr(QQmlImageProviderBase, "ImageType")
+        else QQmlImageProviderBase.Image
+    )
+
     class LiveSceneImageProvider(QQuickImageProvider):
         def __init__(self) -> None:
-            super().__init__(QQuickImageProvider.Image)
+            super().__init__(image_type)
             self._lock = RLock()
             self._nodes: dict[str, dict[str, Any]] = {}
 
@@ -137,6 +145,7 @@ def _preview_signature(node: dict[str, Any], source: str) -> str:
     transform = dict(node.get("transform") or {})
     payload = {
         "source": source,
+        "source_revision": _source_revision(source),
         "asset_id": node.get("asset_id"),
         "width": transform.get("width"),
         "height": transform.get("height"),
@@ -149,6 +158,27 @@ def _preview_signature(node: dict[str, Any], source: str) -> str:
         "crop": style.get("crop"),
     }
     return sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
+
+
+def _source_revision(source: str) -> str:
+    """Invalida cache do QML quando um arquivo é sobrescrito no mesmo caminho."""
+
+    text = str(source or "").strip()
+    if not text or text.startswith(("http://", "https://", "data:")):
+        return ""
+    raw = text
+    parsed = urlparse(text)
+    if parsed.scheme.lower() == "file":
+        raw = unquote(parsed.path)
+        if re.match(r"^/[A-Za-z]:/", raw):
+            raw = raw[1:]
+    elif parsed.scheme and not re.match(r"^[A-Za-z]:[\\/]", text):
+        return ""
+    try:
+        stat = Path(raw).stat()
+    except OSError:
+        return ""
+    return f"{stat.st_size}:{stat.st_mtime_ns}"
 
 
 def _model_source(document: GraphicsDocument, node: GraphicsNode) -> str:
