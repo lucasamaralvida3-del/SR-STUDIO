@@ -13,6 +13,13 @@ from .fidelity import (
     run_suite,
 )
 from .import_audit import ImportAuditIssue, ImportAuditReport, audit_import
+from .legacy_merge import (
+    LEGACY_SOURCE_SNAPSHOT_KEY,
+    LegacyMergeConflict,
+    LegacyMergeReport,
+    analyze_legacy_merge,
+    merge_graphics_to_studio_non_conflicting,
+)
 from .legacy_sync import (
     LegacySyncReport,
     fingerprint_studio_project,
@@ -61,7 +68,7 @@ from .studio_bridge import (
 )
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.20"
+ENGINE_VERSION = "2.0.0-alpha.21"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -84,6 +91,9 @@ __all__ = [
     "GraphicsSession",
     "ImportAuditIssue",
     "ImportAuditReport",
+    "LEGACY_SOURCE_SNAPSHOT_KEY",
+    "LegacyMergeConflict",
+    "LegacyMergeReport",
     "LegacySyncReport",
     "NodeKind",
     "PageFingerprint",
@@ -108,6 +118,7 @@ __all__ = [
     "StudioBridgePreparation",
     "StudioBridgeSyncResult",
     "Transform",
+    "analyze_legacy_merge",
     "audit_import",
     "bridge_flags",
     "build_semantic_blocks",
@@ -119,6 +130,7 @@ __all__ = [
     "inspect_pptx_structure",
     "inspect_production_gate",
     "launch_studio_project_if_enabled",
+    "merge_graphics_to_studio_non_conflicting",
     "prepare_studio_project",
     "rebuild_pptx_groups",
     "recover_canva_image_placeholders",
