@@ -21,6 +21,30 @@ PPTX, PDF, imagens e fontes extraídas dos projetos reais **não precisam ser ve
 
 O repositório pode manter somente código, manifestos, testes sintéticos e, quando necessário, hashes/fingerprints aprovados. Assim o projeto real do usuário é usado para validação sem ser publicado como fixture.
 
+## Quinta Filé — Golden Master real
+
+O caso `visual-fidelity/quinta-file-13-08-2026.json` registra o PPTX real pelo SHA-256 e associa as quatro exportações oficiais recebidas do Canva aos slides exatos do arquivo fonte:
+
+- slide 12 — grade Acém/Frango/Costela/Bacon/Picanha;
+- slide 13 — Costelinha/Linguiça Calabresa;
+- slide 14 — grade Frango Caipira/Linguiça/Mocotó/Almôndega/Salsicha;
+- slide 15 — destaque Linguiça Mista Caseira SR.
+
+As imagens continuam fora do GitHub. O manifesto guarda nome, dimensão e SHA-256 de cada exportação para impedir que uma imagem errada seja aceita silenciosamente como baseline.
+
+Para executar o conjunto real após colocar as quatro imagens em uma pasta local:
+
+```text
+python -m srstudio.graphics2.reference_suite \
+  "OFERTAS QUINTA FILÉ NOVO (1).pptx" \
+  visual-fidelity/quinta-file-13-08-2026.json \
+  --references visual-fidelity/private/quinta-file-13-08-2026 \
+  --save-scene \
+  --out build/golden-master/quinta-file-13-08-2026
+```
+
+Esse modo é propositalmente **esparso**: o PPTX pode conter dezenas de slides históricos, mas somente as páginas que possuem exportação oficial são usadas no gate visual. Cada referência aponta explicitamente para o índice zero-based da página importada.
+
 ## Comandos
 
 Comparação direta:
