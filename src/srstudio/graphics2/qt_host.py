@@ -26,6 +26,12 @@ class GraphicsLaunchContext:
     import_audit: dict[str, Any] | None = None
 
 
+@dataclass(slots=True, frozen=True)
+class GraphicsApiProbe:
+    requested: str
+    resolved: str
+
+
 def qt_quick_available() -> bool:
     try:
         import PySide6  # noqa: F401
@@ -52,6 +58,11 @@ def build_parser() -> ArgumentParser:
         help="Backend do Qt Quick. 'auto' deixa o Qt escolher conforme a plataforma/GPU.",
     )
     parser.add_argument("--project-name", default="", help="Nome opcional para o projeto importado.")
+    parser.add_argument(
+        "--probe-graphics-api",
+        action="store_true",
+        help="Inicializa uma janela mínima, informa o backend Qt Quick realmente resolvido e encerra.",
+    )
     return parser
 
 
@@ -184,13 +195,16 @@ def launch_qt_quick_editor(
     engine.rootContext().setContextProperty("sceneBridge", bridge)
     qml = Path(__file__).with_name("qml") / "GraphicsEditor.qml"
     engine.load(QUrl.fromLocalFile(str(qml.resolve())))
-    if not engine.rootObjects():
+    roots = engine.rootObjects()
+    if not roots:
         raise RuntimeError("Falha ao carregar a interface Qt Quick do SR Graphics Engine 2.")
 
-    resolved_api = _graphics_api_name(QQuickWindow.graphicsApi(), QSGRendererInterface)
+    app.processEvents()
+    resolved_value = _resolved_api_from_window(roots[0], QQuickWindow)
+    resolved_api = _graphics_api_name(resolved_value, QSGRendererInterface)
     details = [f"GPU: {resolved_api}"]
     if context.source:
-        details.insert(0, f"{context.source.name}")
+        details.insert(0, context.source.name)
     details.append(f"gate {gate.score}/100")
     if font_report.families:
         details.append("fontes: " + ", ".join(font_report.families))
@@ -198,6 +212,31 @@ def launch_qt_quick_editor(
         details.append(font_report.warnings[0])
     bridge.set_status(" · ".join(details))
     return int(app.exec())
+
+
+def probe_graphics_api(graphics_api: str = "auto") -> GraphicsApiProbe:
+    """Verifica o backend que o Qt Quick realmente resolve neste computador."""
+
+    try:
+        from PySide6.QtGui import QGuiApplication
+        from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
+    except Exception as exc:
+        raise RuntimeError("Diagnóstico GPU requer a dependência opcional 'graphics2' (PySide6).") from exc
+
+    requested = _normalize_graphics_api(graphics_api)
+    app = QGuiApplication.instance() or QGuiApplication(["sr-graphics-engine-2-probe"])
+    _set_graphics_api(requested, QQuickWindow, QSGRendererInterface)
+    window = QQuickWindow()
+    try:
+        window.resize(64, 64)
+        window.show()
+        app.processEvents()
+        value = window.rendererInterface().graphicsApi()
+        return GraphicsApiProbe(requested=requested, resolved=_graphics_api_name(value, QSGRendererInterface))
+    finally:
+        window.close()
+        window.deleteLater()
+        app.processEvents()
 
 
 def _set_graphics_api(name: str, QQuickWindow, QSGRendererInterface) -> None:
@@ -210,8 +249,16 @@ def _set_graphics_api(name: str, QQuickWindow, QSGRendererInterface) -> None:
         "opengl": api.OpenGL,
         "software": api.Software,
     }
-    requested = mapping[name]
-    QQuickWindow.setGraphicsApi(requested)
+    QQuickWindow.setGraphicsApi(mapping[name])
+
+
+def _resolved_api_from_window(root: object, QQuickWindow):
+    if isinstance(root, QQuickWindow):
+        try:
+            return root.rendererInterface().graphicsApi()
+        except Exception:
+            pass
+    return QQuickWindow.graphicsApi()
 
 
 def _graphics_api_name(value, QSGRendererInterface) -> str:
@@ -262,12 +309,20 @@ def _startup_status(context: GraphicsLaunchContext, gate: ProductionGateReport, 
 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
-    context = load_launch_context(args.source, project_name=args.project_name)
-    return launch_qt_quick_editor(
-        context.document,
-        graphics_api=args.graphics_api,
-        launch_context=context,
-    )
+    try:
+        if args.probe_graphics_api:
+            probe = probe_graphics_api(args.graphics_api)
+            print(f"SR Graphics Engine 2 GPU: solicitado={probe.requested} | resolvido={probe.resolved}")
+            return 0
+        context = load_launch_context(args.source, project_name=args.project_name)
+        return launch_qt_quick_editor(
+            context.document,
+            graphics_api=args.graphics_api,
+            launch_context=context,
+        )
+    except Exception as exc:
+        print(f"SR Graphics Engine 2: ERRO: {exc}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":
