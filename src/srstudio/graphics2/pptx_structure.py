@@ -43,6 +43,8 @@ class PptxSlideStructure:
     image_fill_outsets: int = 0
     groups: int = 0
     custom_geometry: int = 0
+    # Conta somente custGeom de imagem que realmente exige máscara. Um
+    # custGeom retangular equivalente à caixa não precisa gerar clip_path.
     image_custom_geometry: int = 0
     currency_tokens: int = 0
     integer_tokens: int = 0
@@ -104,6 +106,7 @@ class PptxStructureReport:
     image_fill_outsets: int = 0
     groups: int = 0
     custom_geometry: int = 0
+    # Máscaras irregulares de imagem, excluindo custGeom retangular trivial.
     image_custom_geometry: int = 0
     estimated_split_prices: int = 0
     slides: list[PptxSlideStructure] = field(default_factory=list)
@@ -203,9 +206,9 @@ class PptxStructureReport:
                 f"Cobertura de fillRect com outset negativo baixa: {audit.fill_outset_coverage * 100:.2f}% "
                 f"({imported_fill_outsets}/{self.image_fill_outsets})."
             )
-        if self.image_custom_geometry and audit.image_clip_coverage < 0.90:
+        if self.image_custom_geometry and audit.image_clip_coverage < 0.95:
             audit.warnings.append(
-                f"Cobertura de máscaras custGeom em imagens baixa: {audit.image_clip_coverage * 100:.2f}% "
+                f"Cobertura de máscaras custGeom irregulares em imagens baixa: {audit.image_clip_coverage * 100:.2f}% "
                 f"({imported_image_clips}/{self.image_custom_geometry})."
             )
         return audit
@@ -278,7 +281,7 @@ def main(argv: list[str] | None = None) -> int:
         f"imagens={report.pictures + report.image_fill_shapes} "
         f"(pic={report.pictures}, blipFill={report.image_fill_shapes}) · "
         f"fillRect={report.image_fill_rects} (outset={report.image_fill_outsets}) · "
-        f"máscaras={report.image_custom_geometry} · grupos={report.groups} · "
+        f"máscaras irregulares={report.image_custom_geometry} · grupos={report.groups} · "
         f"custGeom={report.custom_geometry} · preços~={report.estimated_split_prices}"
     )
     print(f"SHA-256: {report.source_sha256 or '-'}")
@@ -288,7 +291,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"  slide {slide.slide}: shapes={slide.shapes} textos={slide.text_shapes} "
                 f"imagens={slide.pictures + slide.image_fill_shapes} grupos={slide.groups} "
                 f"custGeom={slide.custom_geometry} fillRect={slide.image_fill_rects} "
-                f"outset={slide.image_fill_outsets} máscaras={slide.image_custom_geometry} "
+                f"outset={slide.image_fill_outsets} máscaras irregulares={slide.image_custom_geometry} "
                 f"preços~={slide.estimated_split_prices}"
             )
     for warning in report.warnings:
@@ -312,7 +315,8 @@ def _inspect_slide(root: ET.Element, slide_no: int) -> PptxSlideStructure:
             units += int(bool(_UNIT_RE.fullmatch(cleaned)))
 
         has_image_fill = shape.find(f".//{{{A_NS}}}blip") is not None
-        has_custom_geometry = shape.find(f"./{{{P_NS}}}spPr/{{{A_NS}}}custGeom") is not None
+        custom = shape.find(f"./{{{P_NS}}}spPr/{{{A_NS}}}custGeom")
+        has_custom_geometry = custom is not None
         if has_image_fill:
             item.image_fill_shapes += 1
             if name:
@@ -322,21 +326,23 @@ def _inspect_slide(root: ET.Element, slide_no: int) -> PptxSlideStructure:
                 item.image_fill_rects += 1
                 if any(value < 0.0 for value in _rect_percent(fill_rect).values()):
                     item.image_fill_outsets += 1
-            if has_custom_geometry:
+            if _custom_geometry_requires_clip(custom):
                 item.image_custom_geometry += 1
         if has_custom_geometry:
             item.custom_geometry += 1
 
-    item.pictures = len(root.findall(f".//{{{P_NS}}}pic"))
-    # p:pic também pode possuir stretch/fillRect. Contar aqui evita que o gate
-    # trate somente o formato p:sp usado pelo Canva como relevante.
-    for picture in root.findall(f".//{{{P_NS}}}pic"):
+    pictures = root.findall(f".//{{{P_NS}}}pic")
+    item.pictures = len(pictures)
+    # p:pic também pode possuir stretch/fillRect e custGeom. Contar aqui evita
+    # tratar somente o formato p:sp usado pelo Canva como relevante.
+    for picture in pictures:
         fill_rect = picture.find(f".//{{{A_NS}}}stretch/{{{A_NS}}}fillRect")
         if fill_rect is not None:
             item.image_fill_rects += 1
             if any(value < 0.0 for value in _rect_percent(fill_rect).values()):
                 item.image_fill_outsets += 1
-        if picture.find(f"./{{{P_NS}}}spPr/{{{A_NS}}}custGeom") is not None:
+        custom = picture.find(f"./{{{P_NS}}}spPr/{{{A_NS}}}custGeom")
+        if _custom_geometry_requires_clip(custom):
             item.image_custom_geometry += 1
 
     item.groups = len(root.findall(f".//{{{P_NS}}}grpSp"))
@@ -346,6 +352,54 @@ def _inspect_slide(root: ET.Element, slide_no: int) -> PptxSlideStructure:
     item.unit_tokens = units
     item.estimated_split_prices = min(currencies, integers, cents, units)
     return item
+
+
+def _custom_geometry_requires_clip(custom: ET.Element | None) -> bool:
+    """Distingue máscara visual real de custGeom retangular trivial.
+
+    O Canva grava muitas fotos retangulares como ``custGeom`` mesmo quando o
+    caminho coincide exatamente com a caixa da forma. Exigir ``clip_path`` para
+    todas elas produziria um falso déficit de cobertura. Somente caminhos não
+    retangulares, múltiplos ou curvos entram no contrato de máscara.
+    """
+
+    if custom is None:
+        return False
+    path_list = custom.find(f"{{{A_NS}}}pathLst")
+    if path_list is None:
+        return True
+    paths = path_list.findall(f"{{{A_NS}}}path")
+    if len(paths) != 1:
+        return True
+    path = paths[0]
+    width = _number(path.get("w"))
+    height = _number(path.get("h"))
+    if width <= 0 or height <= 0:
+        return True
+
+    points: list[tuple[float, float]] = []
+    for command in list(path):
+        tag = command.tag.rsplit("}", 1)[-1]
+        if tag in {"moveTo", "lnTo"}:
+            point = command.find(f".//{{{A_NS}}}pt")
+            if point is None:
+                return True
+            points.append((round(_number(point.get("x")), 3), round(_number(point.get("y")), 3)))
+        elif tag == "close":
+            continue
+        else:
+            # Bézier, arco, quadrática ou qualquer comando não linear exige clip.
+            return True
+
+    if len(points) not in {4, 5}:
+        return True
+    expected = {
+        (0.0, 0.0),
+        (round(width, 3), 0.0),
+        (round(width, 3), round(height, 3)),
+        (0.0, round(height, 3)),
+    }
+    return not expected.issubset(set(points))
 
 
 def _presentation_size(archive: zipfile.ZipFile) -> tuple[int, int]:
@@ -385,6 +439,13 @@ def _rect_percent(node: ET.Element) -> dict[str, float]:
 def _slide_number(path: str) -> int:
     match = re.search(r"slide(\d+)\.xml$", path)
     return int(match.group(1)) if match else 0
+
+
+def _number(value: object) -> float:
+    try:
+        return float(value or 0)
+    except (TypeError, ValueError):
+        return 0.0
 
 
 def _int(value: object) -> int:
