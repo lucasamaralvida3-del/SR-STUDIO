@@ -16,7 +16,7 @@ from .pptx_groups import rebuild_pptx_groups
 from .pptx_structure import PptxStructureReport, inspect_pptx_structure
 from .scene_fingerprint import store_scene_fingerprint
 from .semantic_blocks import build_semantic_blocks
-from .semantic_placeholders import recover_canva_image_placeholders
+from .semantic_recovery import recover_canva_semantic_cards
 
 _SLOT_ROLE_MAP: dict[str, BindingRole] = {
     "name": BindingRole.NAME,
@@ -70,10 +70,10 @@ class GraphicsImportService:
             enhance_pptx_document(source, document, cache_dir=cache_dir)
             rebuild_pptx_groups(source, document)
         build_semantic_blocks(document)
-        # Alguns layouts SR/Canva deixam o quadro branco da foto vazio no PPTX.
-        # Depois de recuperar PriceBlock/ProductCard, derive uma área de imagem
-        # sintética e invisível dentro do placeholder, sem remover o backplate.
-        recover_canva_image_placeholders(document)
+        # Recuperação em duas passagens: PriceBlock/ProductCard primeiro;
+        # placeholder/backplate + IMAGE sintética depois. O orquestrador garante
+        # que slots criados na segunda passagem também recebam binding IMAGE.
+        recover_canva_semantic_cards(document)
         if structure is not None:
             mapping = structure.audit_document(document)
             document.metadata["pptx_mapping_audit"] = mapping.to_dict()
