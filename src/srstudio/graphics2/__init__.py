@@ -19,6 +19,7 @@ from .fidelity_triage import (
     write_triage_report,
 )
 from .image_crop import CropInsets, crop_pixel_box, normalize_crop, update_crop
+from .image_fill import FillDestination, drawingml_fill_destination, has_drawingml_fill_rect, normalize_fill_rect
 from .import_audit import ImportAuditIssue, ImportAuditReport, audit_import
 from .legacy_merge import (
     LEGACY_SOURCE_SNAPSHOT_KEY,
@@ -96,6 +97,7 @@ __all__ = [
     "FidelityResult",
     "FidelitySuiteResult",
     "FidelityTriageReport",
+    "FillDestination",
     "FitMode",
     "GraphicsDocument",
     "GraphicsNode",
@@ -138,15 +140,18 @@ __all__ = [
     "build_semantic_blocks",
     "compare_images",
     "crop_pixel_box",
+    "drawingml_fill_destination",
     "enhance_pptx_document",
     "find_drop_target",
     "fingerprint_document",
     "fingerprint_studio_project",
+    "has_drawingml_fill_rect",
     "inspect_pptx_structure",
     "inspect_production_gate",
     "launch_studio_project_if_enabled",
     "merge_graphics_to_studio_non_conflicting",
     "normalize_crop",
+    "normalize_fill_rect",
     "prepare_studio_project",
     "rebuild_pptx_groups",
     "recover_canva_image_placeholders",
