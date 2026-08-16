@@ -235,11 +235,34 @@ def _draw_text(painter, node: GraphicsNode, QtCore, QtGui) -> None:
     if style.get("letter_spacing") not in (None, ""):
         font.setLetterSpacing(QtGui.QFont.AbsoluteSpacing, float(style.get("letter_spacing") or 0))
     flags = _text_flags(style, QtCore)
-    if bool(style.get("fit_inside_box")) or bool(style.get("nowrap")):
-        font = _fit_font(font, str(node.text or ""), rect, flags, QtCore, QtGui, min_px=max(3, round(float(style.get("min_font_size") or 4))))
+    if _should_fit_text(style):
+        font = _fit_font(
+            font,
+            str(node.text or ""),
+            rect,
+            flags,
+            QtCore,
+            QtGui,
+            min_px=max(3, round(float(style.get("min_font_size") or 4))),
+        )
     painter.setFont(font)
     painter.setPen(QtGui.QPen(QtGui.QColor(str(style.get("color") or "#111827"))))
     painter.drawText(rect, flags, str(node.text or ""))
+
+
+def _should_fit_text(style: dict) -> bool:
+    """Decide se o renderer pode reduzir o tamanho da fonte.
+
+    ``nowrap`` significa somente linha única e nunca deve, sozinho, mudar a
+    tipografia. Esse acoplamento fazia tokens como R$, 25, ,77 e KG receberem
+    tamanhos diferentes no render de produção. ``overflow_only`` é reservado
+    aos PriceBlocks: mantém o tamanho original e só permite redução caso o
+    conteúdo realmente não caiba na caixa de origem.
+    """
+
+    if bool(style.get("fit_inside_box")):
+        return True
+    return str(style.get("semantic_fit_policy") or "").lower() == "overflow_only"
 
 
 def _fit_font(font, text: str, rect, flags, QtCore, QtGui, *, min_px: int) -> object:
