@@ -1,0 +1,64 @@
+name: SR Graphics Engine 2 CI
+
+on:
+  push:
+    branches:
+      - feature/sr-graphics-engine-2
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'src/srstudio/settings/features.py'
+      - 'tests/test_graphics2_*.py'
+      - 'pyproject.toml'
+      - '.github/workflows/graphics-engine-2-ci.yml'
+  pull_request:
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'src/srstudio/settings/features.py'
+      - 'tests/test_graphics2_*.py'
+      - 'pyproject.toml'
+
+permissions:
+  contents: read
+
+jobs:
+  core-and-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install SR Studio + dev tools
+        run: python -m pip install -U pip && python -m pip install -e '.[dev]'
+      - name: Compile Python
+        run: python -m compileall -q src/srstudio
+      - name: Runtime lint gate
+        run: python -m ruff check src/srstudio/graphics2 tests/test_graphics2_core.py tests/test_graphics2_compat.py
+      - name: Graphics Engine 2 tests
+        run: python -m pytest -q tests/test_graphics2_core.py tests/test_graphics2_compat.py
+      - name: Full SR Studio regression suite
+        run: python -m pytest -q
+
+  qt-quick-host:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install GPU host dependencies
+        shell: pwsh
+        run: python -m pip install -U pip; python -m pip install -e '.[dev,graphics2]'
+      - name: Validate Qt Quick runtime
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "from pathlib import Path; from srstudio.graphics2.qt_host import qt_quick_available; import srstudio.graphics2.qt_host as h; assert qt_quick_available(); assert (Path(h.__file__).with_name('qml')/'GraphicsEditor.qml').is_file(); print('Qt Quick host OK')"
+      - name: Graphics Engine 2 tests on Windows
+        shell: pwsh
+        run: python -m pytest -q tests/test_graphics2_core.py tests/test_graphics2_compat.py
