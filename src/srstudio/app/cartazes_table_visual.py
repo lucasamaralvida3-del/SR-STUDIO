@@ -3,11 +3,14 @@ from __future__ import annotations
 from tkinter import ttk
 
 from srstudio.app import cartazes_pro as cartazes
-from srstudio.app.design import COLORS, FONT
+from srstudio.app.design import FONT
 from srstudio.posters.commercial import PosterCommercialValidator
 
 
 TABLE_STYLE = "CartazesPro.Treeview"
+TABLE_FONT_SIZE = 10
+TABLE_HEADING_FONT_SIZE = 10
+TABLE_ROW_HEIGHT = 32
 ROW_ERROR = "cartazes_error"
 ROW_WARNING = "cartazes_warning"
 ROW_EDITED = "cartazes_edited"
@@ -59,8 +62,8 @@ class _CartazesTableVisualMixin:
         style = ttk.Style(self)
         style.configure(
             TABLE_STYLE,
-            font=(FONT["family"], 10),
-            rowheight=32,
+            font=(FONT["family"], TABLE_FONT_SIZE),
+            rowheight=TABLE_ROW_HEIGHT,
             background="#FFFFFF",
             fieldbackground="#FFFFFF",
             foreground="#172033",
@@ -69,7 +72,7 @@ class _CartazesTableVisualMixin:
         )
         style.configure(
             f"{TABLE_STYLE}.Heading",
-            font=(FONT["family"], 10, "bold"),
+            font=(FONT["family"], TABLE_HEADING_FONT_SIZE, "bold"),
             padding=(7, 8),
             background="#E7ECF3",
             foreground="#101828",
@@ -88,25 +91,35 @@ class _CartazesTableVisualMixin:
         self.tree.configure(style=TABLE_STYLE)
 
         family = FONT["family"]
-        self.tree.tag_configure(ROW_EVEN, background="#FFFFFF", foreground="#172033", font=(family, 10))
-        self.tree.tag_configure(ROW_ODD, background="#F1F5F9", foreground="#172033", font=(family, 10))
+        self.tree.tag_configure(
+            ROW_EVEN,
+            background="#FFFFFF",
+            foreground="#172033",
+            font=(family, TABLE_FONT_SIZE),
+        )
+        self.tree.tag_configure(
+            ROW_ODD,
+            background="#F1F5F9",
+            foreground="#172033",
+            font=(family, TABLE_FONT_SIZE),
+        )
         self.tree.tag_configure(
             ROW_EDITED,
             background="#EAF2FF",
             foreground="#1D4ED8",
-            font=(family, 10, "bold"),
+            font=(family, TABLE_FONT_SIZE, "bold"),
         )
         self.tree.tag_configure(
             ROW_WARNING,
             background="#FFF2CC",
             foreground="#7A4B00",
-            font=(family, 10, "bold"),
+            font=(family, TABLE_FONT_SIZE, "bold"),
         )
         self.tree.tag_configure(
             ROW_ERROR,
             background="#FFD9D9",
             foreground="#8A1414",
-            font=(family, 10, "bold"),
+            font=(family, TABLE_FONT_SIZE, "bold"),
         )
 
     def refresh_products(self) -> None:
