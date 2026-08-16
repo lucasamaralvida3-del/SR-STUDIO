@@ -4,6 +4,7 @@ from pathlib import Path
 
 from srstudio.graphics2.host_runtime import (
     DEFAULT_HOST_EXE,
+    INSTALL_RECEIPT_NAME,
     RUNTIME_MANIFEST_NAME,
     RUNTIME_MANIFEST_SCHEMA,
     build_runtime_manifest,
@@ -22,8 +23,9 @@ def _bundle(tmp_path: Path) -> Path:
     return root
 
 
-def test_runtime_manifest_catalogs_every_bundle_file_except_itself(tmp_path):
+def test_runtime_manifest_catalogs_every_bundle_file_except_deployment_metadata(tmp_path):
     root = _bundle(tmp_path)
+    (root / INSTALL_RECEIPT_NAME).write_text("{}", encoding="utf-8")
     manifest = build_runtime_manifest(root, engine_version="2.0.0-alpha.test")
 
     assert manifest.schema == RUNTIME_MANIFEST_SCHEMA
@@ -34,6 +36,7 @@ def test_runtime_manifest_catalogs_every_bundle_file_except_itself(tmp_path):
     assert "_internal/python311.dll" in paths
     assert "_internal/PySide6/plugins/platforms/qwindows.dll" in paths
     assert RUNTIME_MANIFEST_NAME not in paths
+    assert INSTALL_RECEIPT_NAME not in paths
 
 
 def test_full_validation_detects_missing_corrupt_and_extra_files(tmp_path):
@@ -56,6 +59,21 @@ def test_full_validation_detects_missing_corrupt_and_extra_files(tmp_path):
     with_extra = validate_runtime_host(root, full=True, expected_engine_version="2.0.0-alpha.test")
     assert not with_extra.ok
     assert any("fora do catálogo" in error for error in with_extra.errors)
+
+
+def test_full_validation_accepts_installer_receipt_but_not_other_extras(tmp_path):
+    root = _bundle(tmp_path)
+    write_runtime_manifest(root, engine_version="2.0.0-alpha.test")
+    (root / INSTALL_RECEIPT_NAME).write_text('{"schema":"srstudio/graphics2-host-install-1"}', encoding="utf-8")
+
+    installed = validate_runtime_host(root, full=True, expected_engine_version="2.0.0-alpha.test")
+    assert installed.ok
+    assert installed.checked_files == installed.total_files
+
+    (root / "receipt-lookalike.json").write_text("{}", encoding="utf-8")
+    invalid = validate_runtime_host(root, full=True, expected_engine_version="2.0.0-alpha.test")
+    assert not invalid.ok
+    assert any("fora do catálogo" in error for error in invalid.errors)
 
 
 def test_quick_validation_checks_executable_and_engine_version(tmp_path):
