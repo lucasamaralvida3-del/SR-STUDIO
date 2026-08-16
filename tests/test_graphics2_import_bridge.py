@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from srstudio.core.models import Page, Product, ProductCard, StudioProject
-from srstudio.graphics2.import_bridge import CanvaBindingService, from_imported_project
+from srstudio.graphics2.import_bridge import CanvaBindingService, GraphicsImportService, from_imported_project
 from srstudio.graphics2.operations import GraphicsSession
+from srstudio.importers.pipeline import ImportSummary
 
 
 def test_canva_visual_elements_become_scene_nodes_with_smart_slot():
@@ -35,3 +36,44 @@ def test_canva_binding_updates_split_price_without_moving_geometry():
     integer = session.page.node(slot.node_by_role["price_reais"]); cents = session.page.node(slot.node_by_role["price_cents"]); before = (integer.transform.x, integer.transform.y, integer.transform.width, integer.transform.height)
     assert CanvaBindingService.bind(session, card.id, {"id": "new", "display_name": "COSTELA", "price": "128,79", "unit": "KG"})
     assert integer.text == "128"; assert cents.text == ",79"; assert (integer.transform.x, integer.transform.y, integer.transform.width, integer.transform.height) == before
+
+
+def test_import_service_runs_complete_semantic_recovery_for_ungrouped_canva_placeholder(tmp_path):
+    class FakePipeline:
+        def import_file(self, path, project):
+            project.pages = [
+                Page(
+                    width=1080,
+                    height=1350,
+                    elements=[
+                        {"type": "text", "x": 20, "y": 458, "width": 345, "height": 44, "text": "ACÉM BOVINO", "font_name": "Anton", "font_size": 38, "source": "pptx"},
+                        {"type": "rect", "x": 41, "y": 503, "width": 289, "height": 244, "fill": "#FFFFFF", "z_index": 10, "source": "pptx", "name": "Freeform 13"},
+                        {"type": "text", "x": 233, "y": 676, "width": 39, "height": 48, "text": "R$", "font_name": "Anton", "font_size": 26, "source": "pptx"},
+                        {"type": "text", "x": 278, "y": 646, "width": 98, "height": 116, "text": "33", "font_name": "Anton", "font_size": 82, "source": "pptx"},
+                        {"type": "text", "x": 382, "y": 651, "width": 43, "height": 41, "text": ",64", "font_name": "Anton", "font_size": 30, "source": "pptx"},
+                        {"type": "text", "x": 390, "y": 705, "width": 38, "height": 41, "text": "KG", "font_name": "Anton", "font_size": 26, "source": "pptx"},
+                    ],
+                )
+            ]
+            return ImportSummary(str(path))
+
+    source = tmp_path / "fake.xlsx"
+    source.write_bytes(b"fake")
+    service = GraphicsImportService()
+    service.pipeline = FakePipeline()
+
+    result = service.import_file(source, project_name="Quinta Filé")
+
+    page = result.document.active_page
+    assert len(page.slots) == 1
+    slot = next(iter(page.slots.values()))
+    assert slot.name == "ACÉM BOVINO"
+    assert set(slot.node_by_role) >= {"name", "image", "currency", "price_reais", "price_cents", "unit"}
+    image = page.node(slot.node_by_role["image"])
+    assert image is not None
+    assert image.metadata["semantic_synthetic_image_slot"] is True
+    assert image.visible is False
+    recovery = result.document.metadata["semantic_recovery_complete"]
+    assert recovery["ready"] is True
+    assert recovery["slots"] == 1
+    assert recovery["synthetic_image_slots"] == 1
