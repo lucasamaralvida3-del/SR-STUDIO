@@ -23,6 +23,7 @@ from urllib.parse import unquote, urlparse
 import json
 import re
 
+from .image_crop import crop_pixel_box
 from .model import GraphicsDocument, GraphicsNode, NodeKind
 
 PREVIEW_PROVIDER_NAME = "srscene"
@@ -234,18 +235,10 @@ def _transparent_image(QtGui, width: int, height: int):
 def _apply_crop(image, crop: dict[str, Any], QtCore):
     if not crop:
         return image
-    try:
-        left = min(0.98, max(0.0, float(crop.get("l", crop.get("left", 0.0)) or 0.0)))
-        top = min(0.98, max(0.0, float(crop.get("t", crop.get("top", 0.0)) or 0.0)))
-        right = min(0.98, max(0.0, float(crop.get("r", crop.get("right", 0.0)) or 0.0)))
-        bottom = min(0.98, max(0.0, float(crop.get("b", crop.get("bottom", 0.0)) or 0.0)))
-    except (TypeError, ValueError):
+    x, y, width, height = crop_pixel_box(image.width(), image.height(), crop)
+    if x == 0 and y == 0 and width == image.width() and height == image.height():
         return image
-    x = round(image.width() * left)
-    y = round(image.height() * top)
-    width = round(image.width() * max(0.001, 1.0 - left - right))
-    height = round(image.height() * max(0.001, 1.0 - top - bottom))
-    return image.copy(QtCore.QRect(x, y, max(1, width), max(1, height)))
+    return image.copy(QtCore.QRect(x, y, width, height))
 
 
 def _compose(image, width: int, height: int, style: dict[str, Any], QtCore, QtGui):
@@ -258,10 +251,6 @@ def _compose(image, width: int, height: int, style: dict[str, Any], QtCore, QtGu
         fit = str(style.get("fit") or "contain").lower()
         focus_x = min(1.0, max(0.0, float(style.get("focus_x", 0.5) or 0.5)))
         focus_y = min(1.0, max(0.0, float(style.get("focus_y", 0.5) or 0.5)))
-        # GraphicsEditor.qml ainda aplica mirror/mirrorVertically no item Image.
-        # O renderer, porém, espelha a fonte antes de escolher o recorte. Inverter
-        # o foco aqui torna "compor sem flip + mirror QML" equivalente ao renderer
-        # e evita aplicar o espelhamento duas vezes no canvas principal.
         if bool(style.get("flip_x")):
             focus_x = 1.0 - focus_x
         if bool(style.get("flip_y")):
