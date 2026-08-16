@@ -16,6 +16,7 @@ import json
 import re
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind
+from .operations import GraphicsSession
 
 PREVIEW_PROVIDER_NAME = "srscene"
 
@@ -49,8 +50,14 @@ def inject_preview_image_urls(scene: dict[str, Any], document: GraphicsDocument)
     return scene
 
 
-def create_live_scene_image_provider(document: GraphicsDocument):
-    """Cria QQuickImageProvider tardio para não tornar PySide6 dependência core."""
+def create_live_scene_image_provider(session: GraphicsSession):
+    """Cria provider tardio sempre apontando para ``session.document`` atual.
+
+    ``GraphicsSession.undo()/redo()`` substitui o objeto GraphicsDocument por um
+    snapshot restaurado. Capturar o documento no construtor faria o preview ficar
+    preso numa versão antiga da cena. Por isso cada request consulta a sessão e
+    resolve o documento vigente naquele instante.
+    """
 
     try:
         from PySide6 import QtCore, QtGui
@@ -63,6 +70,7 @@ def create_live_scene_image_provider(document: GraphicsDocument):
             super().__init__(QQuickImageProvider.Image)
 
         def requestImage(self, image_id, size, requested_size):  # noqa: N802 - contrato Qt
+            document = session.document
             node_id = str(image_id or "").split("/", 1)[0]
             node = _find_node(document, node_id)
             if node is None:
