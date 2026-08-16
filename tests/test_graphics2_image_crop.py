@@ -7,8 +7,9 @@ import pytest
 import srstudio
 from srstudio.graphics2.command_router import GraphicsCommandRouter
 from srstudio.graphics2.image_crop import MAX_CROP_TOTAL, crop_pixel_box, normalize_crop, update_crop
-from srstudio.graphics2.model import GraphicsNode, NodeKind, Transform
+from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, Transform
 from srstudio.graphics2.operations import GraphicsSession
+from srstudio.graphics2.preflight import run_preflight
 
 
 def _image_session(kind: NodeKind = NodeKind.IMAGE) -> tuple[GraphicsSession, str]:
@@ -102,6 +103,46 @@ def test_router_exposes_crop_edges_and_rejects_non_images() -> None:
     session.page.add_node(text)
     rejected = router.dispatch({"name": "crop", "node_id": text.id, "crop_left": 0.1})
     assert not rejected.ok
+
+
+def test_preflight_accepts_normalized_crop_and_framing() -> None:
+    document = GraphicsDocument()
+    image = GraphicsNode(
+        kind=NodeKind.IMAGE,
+        transform=Transform(width=200, height=100),
+        style={
+            "fit": "cover",
+            "focus_x": 0.3,
+            "focus_y": 0.8,
+            "zoom": 1.5,
+            "crop": {"l": 0.1, "t": 0.05, "r": 0.2, "b": 0.1},
+        },
+    )
+    document.active_page.add_node(image)
+    codes = {issue.code for issue in run_preflight(document)}
+    assert "INVALID_IMAGE_CROP" not in codes
+    assert "INVALID_IMAGE_FIT" not in codes
+    assert "INVALID_IMAGE_FOCUS" not in codes
+    assert "INVALID_IMAGE_ZOOM" not in codes
+
+
+def test_preflight_blocks_invalid_crop_focus_zoom_and_fit() -> None:
+    document = GraphicsDocument()
+    image = GraphicsNode(
+        kind=NodeKind.BACKGROUND,
+        transform=Transform(width=200, height=100),
+        style={
+            "fit": "mystery",
+            "focus_x": 1.2,
+            "focus_y": "invalid",
+            "zoom": 0,
+            "crop": {"l": 0.8, "t": 0.0, "r": 0.7, "b": 0.0},
+        },
+    )
+    document.active_page.add_node(image)
+    issues = run_preflight(document)
+    codes = {issue.code for issue in issues if issue.severity == "error"}
+    assert {"INVALID_IMAGE_CROP", "INVALID_IMAGE_FIT", "INVALID_IMAGE_FOCUS", "INVALID_IMAGE_ZOOM"} <= codes
 
 
 def test_qml_crop_preview_has_source_clip_and_all_four_controls() -> None:
