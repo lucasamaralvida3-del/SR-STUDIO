@@ -11,9 +11,12 @@ Todo encarte real que já expôs uma falha de importação/renderização deve v
 3. gerar e registrar o fingerprint determinístico da estrutura SR Scene 2;
 4. renderizar a mesma página pelo `qt_renderer`;
 5. comparar referência e candidata com o Fidelity Lab;
-6. bloquear a alteração se o gate estrutural ou visual regredir.
+6. localizar automaticamente as regiões de maior divergência com o Fidelity Triage;
+7. bloquear a alteração se o gate estrutural ou visual regredir.
 
 O laboratório mede fidelidade de cor, luminância, bordas/estrutura, proporção de pixels dentro da tolerância, área alterada, erro absoluto e RMS. Diferença de dimensão reprova por padrão.
+
+A partir da `2.0.0-alpha.25`, o **Fidelity Triage** complementa o score global com análise espacial. A página é dividida em tiles, regiões adjacentes são agrupadas e ordenadas por impacto (`pixels alterados × erro médio`). Isso permite atacar primeiro a área que mais derruba a fidelidade — por exemplo preço composto, nome, crop do produto ou fundo — em vez de corrigir a página inteira no escuro.
 
 ## Privacidade do corpus real
 
@@ -45,12 +48,24 @@ python -m srstudio.graphics2.reference_suite \
 
 Esse modo é propositalmente **esparso**: o PPTX pode conter dezenas de slides históricos, mas somente as páginas que possuem exportação oficial são usadas no gate visual. Cada referência aponta explicitamente para o índice zero-based da página importada.
 
+O Reference Suite agora produz, por página, três artefatos complementares: imagem `diff`, heatmap espacial e JSON de triagem. O relatório principal incorpora as regiões ordenadas por impacto e o console informa a maior região divergente (`x/y/largura/altura`). Portanto, quando a Quinta Filé real for executada, o primeiro ajuste do renderer será escolhido pelo pior caso **medido**, não por estimativa visual.
+
 ## Comandos
 
 Comparação direta:
 
 ```text
 sr-fidelity-lab compare referencia.png candidata.png --name quinta-file --out build/fidelity/quinta-file
+```
+
+Triagem espacial de uma comparação já renderizada:
+
+```text
+python -m srstudio.graphics2.fidelity_triage \
+  referencia.png candidata.png \
+  --pixel-tolerance 12 \
+  --out build/fidelity/triage.json \
+  --heatmap build/fidelity/triage-heatmap.png
 ```
 
 Executar corpus:
@@ -99,6 +114,8 @@ A política inicial é propositalmente exigente, mas tolera pequenas diferenças
 - tamanho da imagem: deve ser idêntico.
 
 Casos críticos podem usar limites mais altos por projeto. O objetivo final para os modelos oficiais SR é elevar gradualmente o score para `99.x%` sem mascarar regressões.
+
+O Triage usa a mesma tolerância de pixel do caso visual. A prioridade de uma região não altera o resultado PASS/FAIL: ela serve apenas para decidir a ordem de correção. O gate continua sendo definido pelas métricas globais e pelo pior caso real.
 
 ## Regra de ouro
 
