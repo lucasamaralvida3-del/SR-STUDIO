@@ -206,6 +206,7 @@ def load_manifest(path: str | Path) -> list[FidelityCase]:
     raw = json.loads(source.read_text(encoding="utf-8-sig"))
     if not isinstance(raw, dict) or not isinstance(raw.get("cases"), list):
         raise ValueError("Manifesto de fidelidade deve conter uma lista 'cases'.")
+    manifest_defaults = FidelityPolicy()
     defaults = dict(raw.get("defaults") or {})
     result: list[FidelityCase] = []
     for index, item in enumerate(raw["cases"], start=1):
@@ -214,13 +215,13 @@ def load_manifest(path: str | Path) -> list[FidelityCase]:
         merged = dict(defaults)
         merged.update(dict(item.get("policy") or {}))
         policy = FidelityPolicy(
-            min_score=float(merged.get("min_score", FidelityPolicy.min_score)),
+            min_score=float(merged.get("min_score", manifest_defaults.min_score)),
             min_pixel_pass_ratio=float(
-                merged.get("min_pixel_pass_ratio", FidelityPolicy.min_pixel_pass_ratio)
+                merged.get("min_pixel_pass_ratio", manifest_defaults.min_pixel_pass_ratio)
             ),
-            pixel_tolerance=int(merged.get("pixel_tolerance", FidelityPolicy.pixel_tolerance)),
-            max_changed_ratio=float(merged.get("max_changed_ratio", FidelityPolicy.max_changed_ratio)),
-            require_same_size=bool(merged.get("require_same_size", FidelityPolicy.require_same_size)),
+            pixel_tolerance=int(merged.get("pixel_tolerance", manifest_defaults.pixel_tolerance)),
+            max_changed_ratio=float(merged.get("max_changed_ratio", manifest_defaults.max_changed_ratio)),
+            require_same_size=bool(merged.get("require_same_size", manifest_defaults.require_same_size)),
         ).normalized()
         baseline = _resolve_manifest_path(source.parent, item.get("baseline"), index, "baseline")
         candidate = _resolve_manifest_path(source.parent, item.get("candidate"), index, "candidate")
