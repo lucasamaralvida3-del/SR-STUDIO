@@ -20,6 +20,11 @@ ApplicationWindow {
     property real gridStep: 50
     property string selectedSlotId: ""
     property var anchorNode: selectedNode()
+    property var draggedProduct: null
+    property bool productDragActive: false
+    property real productDragX: 0
+    property real productDragY: 0
+    property string dragHoverSlotId: ""
 
     function activePage() {
         if (!scene.pages || !scene.pages.length)
@@ -150,6 +155,15 @@ ApplicationWindow {
     function slotBounds(slot) {
         if (!page || !slot)
             return {"x": 0, "y": 0, "width": 0, "height": 0}
+        var cardId = slot.metadata ? String(slot.metadata.semantic_product_card_id || "") : ""
+        var blocks = page.metadata && page.metadata.semantic_blocks ? page.metadata.semantic_blocks : {}
+        if (cardId && blocks[cardId] && blocks[cardId].bounds) {
+            var semantic = blocks[cardId].bounds
+            var sw = Math.max(0, Number(semantic.width || 0))
+            var sh = Math.max(0, Number(semantic.height || 0))
+            if (sw > 0 && sh > 0)
+                return {"x": Number(semantic.x || 0), "y": Number(semantic.y || 0), "width": sw, "height": sh}
+        }
         var ids = Object.values(slot.node_by_role || {})
         var minX = 1e18, minY = 1e18, maxX = -1e18, maxY = -1e18
         for (var i = 0; i < ids.length; ++i) {
@@ -165,6 +179,89 @@ ApplicationWindow {
         if (minX === 1e18)
             return {"x": 0, "y": 0, "width": 0, "height": 0}
         return {"x": minX, "y": minY, "width": Math.max(1, maxX - minX), "height": Math.max(1, maxY - minY)}
+    }
+
+    function productLabel(product) {
+        if (!product)
+            return "Produto"
+        return String(product.display_name || product.name || product.original_name || "Produto")
+    }
+
+    function slotAtDocumentPoint(x, y) {
+        var available = slots()
+        var winner = null
+        var winnerArea = 1e30
+        for (var i = 0; i < available.length; ++i) {
+            var bounds = slotBounds(available[i])
+            if (x < bounds.x || y < bounds.y || x > bounds.x + bounds.width || y > bounds.y + bounds.height)
+                continue
+            var area = Math.max(1, bounds.width * bounds.height)
+            if (area < winnerArea) {
+                winner = available[i]
+                winnerArea = area
+            }
+        }
+        return winner
+    }
+
+    function beginProductDrag(sourceItem, mouseX, mouseY, product) {
+        draggedProduct = product
+        productDragActive = true
+        updateProductDrag(sourceItem, mouseX, mouseY, product)
+    }
+
+    function updateProductDrag(sourceItem, mouseX, mouseY, product) {
+        if (!sourceItem || !product)
+            return
+        draggedProduct = product
+        var globalPoint = sourceItem.mapToItem(window.contentItem, mouseX, mouseY)
+        productDragX = globalPoint.x
+        productDragY = globalPoint.y
+        if (!page || !sheet) {
+            dragHoverSlotId = ""
+            return
+        }
+        var sheetPoint = sourceItem.mapToItem(sheet, mouseX, mouseY)
+        if (sheetPoint.x < 0 || sheetPoint.y < 0 || sheetPoint.x > sheet.width || sheetPoint.y > sheet.height) {
+            dragHoverSlotId = ""
+            return
+        }
+        var target = slotAtDocumentPoint(sheetPoint.x / zoom, sheetPoint.y / zoom)
+        dragHoverSlotId = target ? target.id : ""
+    }
+
+    function finishProductDrag(sourceItem, mouseX, mouseY, product) {
+        if (!sourceItem || !product || !page || !sheet) {
+            cancelProductDrag()
+            return
+        }
+        var point = sourceItem.mapToItem(sheet, mouseX, mouseY)
+        if (point.x >= 0 && point.y >= 0 && point.x <= sheet.width && point.y <= sheet.height) {
+            var productId = String(product.id || product.product_id || "")
+            if (productId) {
+                var resultRaw = sceneBridge.dispatch(JSON.stringify({
+                    "name": "drop_product",
+                    "product_id": productId,
+                    "x": point.x / zoom,
+                    "y": point.y / zoom,
+                    "magnet_distance": 12 / Math.max(zoom, 0.01)
+                }))
+                try {
+                    var result = JSON.parse(resultRaw)
+                    if (result.ok && result.payload && result.payload.drop_target)
+                        selectedSlotId = String(result.payload.drop_target.slot_id || selectedSlotId)
+                } catch (error) {
+                    console.warn("SR drag-and-drop: resposta inválida", error)
+                }
+            }
+        }
+        cancelProductDrag()
+    }
+
+    function cancelProductDrag() {
+        productDragActive = false
+        draggedProduct = null
+        dragHoverSlotId = ""
     }
 
     function bindProduct(product) {
@@ -293,7 +390,7 @@ ApplicationWindow {
                     spacing: 8
 
                     Label { text: "Studio de Encartes"; font.bold: true; font.pixelSize: 18; color: "#111827" }
-                    Label { text: "Produtos, Smart Slots e camadas"; color: "#64748B"; font.pixelSize: 11 }
+                    Label { text: "Arraste um produto até o card ou use o botão +"; color: "#64748B"; font.pixelSize: 11 }
 
                     TabBar {
                         id: leftTabs
@@ -335,7 +432,8 @@ ApplicationWindow {
                                     height: 84
                                     radius: 6
                                     color: productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF"
-                                    border.color: "#D9E4F2"
+                                    border.color: productMouse.dragging ? "#0F5BD8" : "#D9E4F2"
+                                    border.width: productMouse.dragging ? 2 : 1
                                     property var productData: modelData
 
                                     RowLayout {
@@ -371,6 +469,38 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         hoverEnabled: true
                                         acceptedButtons: Qt.LeftButton
+                                        preventStealing: dragging
+                                        property real pressX: 0
+                                        property real pressY: 0
+                                        property bool dragging: false
+                                        onPressed: {
+                                            pressX = mouse.x
+                                            pressY = mouse.y
+                                            dragging = false
+                                        }
+                                        onPositionChanged: {
+                                            if (!pressed)
+                                                return
+                                            var dx = mouse.x - pressX
+                                            var dy = mouse.y - pressY
+                                            if (!dragging && Math.sqrt(dx * dx + dy * dy) >= 8) {
+                                                dragging = true
+                                                beginProductDrag(productMouse, mouse.x, mouse.y, productCard.productData)
+                                            }
+                                            if (dragging)
+                                                updateProductDrag(productMouse, mouse.x, mouse.y, productCard.productData)
+                                        }
+                                        onReleased: {
+                                            if (dragging)
+                                                finishProductDrag(productMouse, mouse.x, mouse.y, productCard.productData)
+                                            else
+                                                cancelProductDrag()
+                                            dragging = false
+                                        }
+                                        onCanceled: {
+                                            dragging = false
+                                            cancelProductDrag()
+                                        }
                                         onDoubleClicked: if (selectedSlotId) bindProduct(productCard.productData)
                                     }
                                 }
@@ -486,7 +616,8 @@ ApplicationWindow {
                             width: (page ? page.width : 1080) * zoom
                             height: (page ? page.height : 1350) * zoom
                             color: page ? page.background : "white"
-                            border.color: "#BFCBDA"
+                            border.color: productDragActive && dragHoverSlotId ? "#16A34A" : "#BFCBDA"
+                            border.width: productDragActive && dragHoverSlotId ? 2 : 1
                             clip: false
 
                             Repeater {
@@ -646,6 +777,7 @@ ApplicationWindow {
                                 delegate: Item {
                                     required property var modelData
                                     property var bounds: slotBounds(modelData)
+                                    property bool isDropTarget: productDragActive && dragHoverSlotId === modelData.id
                                     x: bounds.x * zoom
                                     y: bounds.y * zoom
                                     width: bounds.width * zoom
@@ -654,19 +786,19 @@ ApplicationWindow {
                                     z: 100000
                                     Rectangle {
                                         anchors.fill: parent
-                                        color: selectedSlotId === modelData.id ? "#0F5BD811" : "transparent"
-                                        border.width: selectedSlotId === modelData.id ? 2 : 1
-                                        border.color: selectedSlotId === modelData.id ? "#0F5BD8" : "#0F5BD855"
+                                        color: isDropTarget ? "#16A34A2A" : (selectedSlotId === modelData.id ? "#0F5BD811" : "transparent")
+                                        border.width: isDropTarget ? 3 : (selectedSlotId === modelData.id ? 2 : 1)
+                                        border.color: isDropTarget ? "#16A34A" : (selectedSlotId === modelData.id ? "#0F5BD8" : "#0F5BD855")
                                         radius: 4
                                     }
                                     Label {
                                         x: 4; y: 4
-                                        text: modelData.name || "Smart Slot"
+                                        text: isDropTarget ? "SOLTAR PRODUTO AQUI" : (modelData.name || "Smart Slot")
                                         color: "white"
                                         font.bold: true
                                         font.pixelSize: 9
                                         padding: 3
-                                        background: Rectangle { color: selectedSlotId === modelData.id ? "#0F5BD8" : "#64748BAA"; radius: 3 }
+                                        background: Rectangle { color: isDropTarget ? "#16A34A" : (selectedSlotId === modelData.id ? "#0F5BD8" : "#64748BAA"); radius: 3 }
                                     }
                                     MouseArea { anchors.fill: parent; acceptedButtons: Qt.LeftButton; onClicked: selectedSlotId = modelData.id }
                                 }
@@ -894,7 +1026,49 @@ ApplicationWindow {
                 }
                 Button { text: "+"; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
                 Item { Layout.fillWidth: true }
-                Label { text: "Snap ✓  ·  Grid " + (showGrid ? "✓" : "—") + "  ·  Réguas " + (showRulers ? "✓" : "—"); color: "#64748B"; font.pixelSize: 10 }
+                Label { text: productDragActive ? (dragHoverSlotId ? "Solte para aplicar o produto" : "Arraste sobre um card") : ("Snap ✓  ·  Grid " + (showGrid ? "✓" : "—") + "  ·  Réguas " + (showRulers ? "✓" : "—")); color: productDragActive ? (dragHoverSlotId ? "#16A34A" : "#0F5BD8") : "#64748B"; font.bold: productDragActive; font.pixelSize: 10 }
+            }
+        }
+    }
+
+    Rectangle {
+        id: productDragGhost
+        visible: productDragActive && !!draggedProduct
+        x: productDragX - width / 2
+        y: productDragY - height / 2
+        width: 250
+        height: 74
+        z: 1000000
+        radius: 8
+        color: "#FFFFFFF4"
+        border.width: 2
+        border.color: dragHoverSlotId ? "#16A34A" : "#0F5BD8"
+        opacity: 0.94
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 8
+            spacing: 9
+            Rectangle {
+                Layout.preferredWidth: 54
+                Layout.preferredHeight: 54
+                radius: 5
+                color: "#F8FAFC"
+                border.color: "#E5EAF1"
+                clip: true
+                Image {
+                    anchors.fill: parent
+                    anchors.margins: 3
+                    source: localSource(draggedProduct ? (draggedProduct.image_path || draggedProduct.image || "") : "")
+                    fillMode: Image.PreserveAspectFit
+                    asynchronous: true
+                }
+            }
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: 2
+                Label { Layout.fillWidth: true; text: productLabel(draggedProduct); color: "#111827"; font.bold: true; font.pixelSize: 11; elide: Text.ElideRight }
+                Label { text: dragHoverSlotId ? "Soltar no card" : "Arraste até um Smart Slot"; color: dragHoverSlotId ? "#16A34A" : "#0F5BD8"; font.bold: true; font.pixelSize: 10 }
             }
         }
     }
