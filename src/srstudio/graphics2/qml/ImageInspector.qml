@@ -57,7 +57,7 @@ Rectangle {
         var assetSource = ""
         if (node.asset_id && scene.assets && scene.assets[node.asset_id])
             assetSource = scene.assets[node.asset_id].source || ""
-        return localSource(metadata.bound_image_source || metadata.source_url || assetSource)
+        return localSource(metadata.graphics2_preview_original_source || metadata.bound_image_source || metadata.source_url || assetSource)
     }
 
     function styleValue(key, fallbackValue) {
@@ -240,7 +240,7 @@ Rectangle {
 
             Label {
                 Layout.fillWidth: true
-                text: "Preview e canvas passam a compartilhar o componente SceneImage (fit + zoom + foco)."
+                text: "Preview e canvas usam o mesmo contrato de enquadramento; este painel sempre edita a imagem-fonte original."
                 wrapMode: Text.WordWrap
                 color: "#64748B"
                 font.pixelSize: 9
