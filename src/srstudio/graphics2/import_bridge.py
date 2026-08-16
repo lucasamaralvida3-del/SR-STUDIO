@@ -215,6 +215,13 @@ def _element_to_node(document: GraphicsDocument, element: dict[str, Any], index:
 
 def _style_from_element(element: dict[str, Any], kind: NodeKind) -> dict[str, Any]:
     if kind is NodeKind.TEXT:
+        source_wrap = str(element.get("text_wrap") or "").strip().lower()
+        # ``canva_single_line`` descreve somente o conteúdo atual; não é uma
+        # instrução de layout. Usá-lo como nowrap fazia o Qt Quick habilitar
+        # Text.Fit e reduzir fontes que no PPTX apenas cabiam em uma linha.
+        # No-wrap agora vem do contrato OOXML (wrap="none") ou da estabilização
+        # explícita dos tokens semânticos de preço.
+        no_wrap = bool(element.get("canva_no_wrap")) or source_wrap == "none"
         return {
             "font_family": str(element.get("font_name") or element.get("source_font_name") or "Segoe UI"),
             "source_font_family": str(element.get("source_font_name") or element.get("font_name") or ""),
@@ -224,7 +231,7 @@ def _style_from_element(element: dict[str, Any], kind: NodeKind) -> dict[str, An
             "color": str(element.get("fill") or "#162033"),
             "align": _canonical_horizontal_align(element.get("align")),
             "v_align": _canonical_vertical_align(element.get("vertical_anchor")),
-            "nowrap": bool(element.get("canva_no_wrap") or element.get("canva_single_line")),
+            "nowrap": no_wrap,
             "fit_inside_box": bool(element.get("canva_fit_inside_box")),
         }
     if kind is NodeKind.IMAGE:
