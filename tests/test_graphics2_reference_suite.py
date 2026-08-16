@@ -1,0 +1,100 @@
+from __future__ import annotations
+
+from hashlib import sha256
+from pathlib import Path
+import json
+
+from PIL import Image
+import pytest
+
+from srstudio.graphics2.reference_suite import load_reference_manifest, verify_reference_case
+
+
+def _write_image(path: Path, size=(120, 160)) -> str:
+    Image.new("RGB", size, "white").save(path, quality=95)
+    return sha256(path.read_bytes()).hexdigest()
+
+
+def test_reference_manifest_maps_sparse_pptx_pages_and_verifies_identity(tmp_path):
+    image = tmp_path / "page.jpg"
+    digest = _write_image(image, (1229, 1536))
+    manifest_path = tmp_path / "quinta.json"
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "name": "Quinta Filé",
+                "source": {"name": "quinta.pptx", "sha256": "a" * 64},
+                "cases": [
+                    {
+                        "name": "grade principal",
+                        "page": 13,
+                        "file": image.name,
+                        "sha256": digest,
+                        "width": 1229,
+                        "height": 1536,
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    manifest = load_reference_manifest(manifest_path)
+    assert manifest.name == "Quinta Filé"
+    assert manifest.source_name == "quinta.pptx"
+    assert manifest.cases[0].page == 13
+    assert verify_reference_case(manifest.cases[0], tmp_path) == image.resolve()
+
+
+def test_reference_manifest_rejects_duplicate_slide_mapping(tmp_path):
+    manifest = tmp_path / "bad.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {"page": 1, "file": "a.png"},
+                    {"page": 1, "file": "b.png"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicado"):
+        load_reference_manifest(manifest)
+
+
+def test_reference_case_rejects_changed_export(tmp_path):
+    image = tmp_path / "page.jpg"
+    _write_image(image)
+    manifest = tmp_path / "manifest.json"
+    manifest.write_text(
+        json.dumps(
+            {
+                "cases": [
+                    {
+                        "page": 0,
+                        "file": image.name,
+                        "sha256": "0" * 64,
+                        "width": 120,
+                        "height": 160,
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    case = load_reference_manifest(manifest).cases[0]
+    with pytest.raises(ValueError, match="SHA-256"):
+        verify_reference_case(case, tmp_path)
+
+
+def test_real_quinta_manifest_keeps_confirmed_slide_mapping():
+    path = Path(__file__).parents[1] / "visual-fidelity" / "quinta-file-13-08-2026.json"
+    manifest = load_reference_manifest(path)
+    assert manifest.source_sha256 == "7c45cfa205c7e14af69e41c8d63b1c6a9d1a06df3cf9d0131ed612029884e536"
+    assert [case.page for case in manifest.cases] == [13, 14, 11, 12]
+    assert [case.file for case in manifest.cases] == [
+        "1000255373.jpg",
+        "1000255374.jpg",
+        "1000255371.jpg",
+        "1000255372.jpg",
+    ]
