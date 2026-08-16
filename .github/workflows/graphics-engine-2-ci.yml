@@ -50,8 +50,10 @@ jobs:
           tests/test_graphics2_scene_fingerprint.py
           tests/test_graphics2_pptx_groups.py
           tests/test_graphics2_pptx_fidelity.py
+          tests/test_graphics2_pptx_structure.py
           tests/test_graphics2_semantic_blocks.py
           tests/test_graphics2_semantic_product_card.py
+          tests/test_graphics2_semantic_spatial_card.py
           tests/test_graphics2_drop_target.py
           tests/test_graphics2_text_fit_policy.py
           tests/test_graphics2_qml_price_preview.py
@@ -102,8 +104,10 @@ jobs:
           tests/test_graphics2_scene_fingerprint.py
           tests/test_graphics2_pptx_groups.py
           tests/test_graphics2_pptx_fidelity.py
+          tests/test_graphics2_pptx_structure.py
           tests/test_graphics2_semantic_blocks.py
           tests/test_graphics2_semantic_product_card.py
+          tests/test_graphics2_semantic_spatial_card.py
           tests/test_graphics2_drop_target.py
           tests/test_graphics2_text_fit_policy.py
           tests/test_graphics2_qml_price_preview.py
