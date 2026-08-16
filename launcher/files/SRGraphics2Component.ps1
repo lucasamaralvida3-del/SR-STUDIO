@@ -298,17 +298,17 @@ function Install-G2Component($Resolved) {
 $resolved = Resolve-G2ComponentManifest
 if($null -eq $resolved) {
   Write-G2Log 'nenhum componente opcional habilitado no manifesto atual.'
-  exit 0
+  return
 }
 $required = [bool](Get-G2Property $resolved.component 'required' $false)
 try {
   Install-G2Component $resolved
-  exit 0
+  return
 } catch {
   if($required) {
     Write-G2Log ('ERRO obrigatório: ' + $_.Exception.Message)
     throw
   }
   Write-G2Log ('aviso opcional: ' + $_.Exception.Message + ' · Desktop Core continuará normalmente.')
-  exit 0
+  return
 }
