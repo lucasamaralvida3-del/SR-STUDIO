@@ -4,6 +4,7 @@ from hashlib import sha256
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 import json
+import sys
 import zipfile
 
 import srstudio
@@ -15,6 +16,7 @@ MODULE_PATH = ROOT / "build" / "package_graphics2_component.py"
 SPEC = spec_from_file_location("sr_package_graphics2_component", MODULE_PATH)
 assert SPEC is not None and SPEC.loader is not None
 MODULE = module_from_spec(SPEC)
+sys.modules[SPEC.name] = MODULE
 SPEC.loader.exec_module(MODULE)
 
 
