@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import threading
+import tkinter as tk
 
 import srstudio.app.advanced_posters as advanced
 import srstudio.app.responsive_posters as responsive
 from srstudio.app.cloud_image_bank_view import CloudImageBankView
 from srstudio.app.layout_corpus_view import LayoutCorpusView
 from srstudio.app.professional import _show_splash
+from srstudio.graphics2.studio_bridge import bridge_flags, launch_studio_project_if_enabled
 from srstudio.images.cloud_sync import ImageBankCloudSync
 from srstudio.posters import PosterKind
 
@@ -63,6 +65,9 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
                 on_changed=self._mark_changed,
             )
             return
+        if name == "Encartes Studio":
+            self._attach_graphics2_launcher()
+            return
         if name != "Modelos":
             return
         self._clear()
@@ -75,6 +80,44 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             on_open_encartes=lambda: self.navigate("Encartes Studio"),
             on_train=self.train_canva_library,
         )
+
+    def _attach_graphics2_launcher(self) -> None:
+        """Mostra o Engine 2 somente quando a feature flag foi ligada manualmente."""
+
+        engine_enabled, gpu_enabled = bridge_flags(self.data_dir)
+        if not engine_enabled:
+            return
+        children = list(self.content.winfo_children())
+        if not children:
+            return
+        editor = children[-1]
+        label = "ENGINE 2 · GPU" if gpu_enabled else "ENGINE 2 · TESTE"
+        button = tk.Button(
+            editor,
+            text=label,
+            command=self._launch_graphics2_optional,
+            bg="#0F5BD8",
+            fg="white",
+            activebackground="#0B46AA",
+            activeforeground="white",
+            relief="flat",
+            bd=0,
+            padx=12,
+            pady=6,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+        )
+        # Overlay intencional e isolado: não altera o layout Tk antigo e só
+        # existe no modo experimental. Quando a flag está off, nem é criado.
+        button.place(relx=1.0, x=-150, y=13, anchor="ne")
+
+    def _launch_graphics2_optional(self) -> None:
+        result = launch_studio_project_if_enabled(self.project, self.data_dir)
+        if result.launched:
+            self.toast.show(result.message, "success", 5200)
+            return
+        tone = "warning" if result.ok else "error"
+        self.toast.show(result.message, tone, 6200)
 
     def _start_background_staging(self, products, kind: PosterKind, campaign: str) -> None:
         self._staging_generation += 1
