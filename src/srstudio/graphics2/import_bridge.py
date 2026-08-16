@@ -14,6 +14,7 @@ from .operations import GraphicsSession, _price_parts
 from .pptx_fidelity import enhance_pptx_document
 from .pptx_groups import rebuild_pptx_groups
 from .scene_fingerprint import store_scene_fingerprint
+from .semantic_blocks import build_semantic_blocks
 
 _SLOT_ROLE_MAP: dict[str, BindingRole] = {
     "name": BindingRole.NAME,
@@ -60,6 +61,7 @@ class GraphicsImportService:
             cache_dir = Path(media_root) / "graphics2" if media_root else None
             enhance_pptx_document(source, document, cache_dir=cache_dir)
             rebuild_pptx_groups(source, document)
+        build_semantic_blocks(document)
         fingerprint = store_scene_fingerprint(document)
         document.metadata["import_fingerprint_sha256"] = fingerprint.sha256
         audit = audit_import(document)
