@@ -3,6 +3,7 @@ from __future__ import annotations
 """CLI de regressão visual para projetos reais do SR Graphics Engine 2."""
 
 from argparse import ArgumentParser, Namespace
+from hashlib import sha256
 from pathlib import Path
 import json
 import sys
@@ -36,6 +37,34 @@ def build_parser() -> ArgumentParser:
     render.add_argument("--out", type=Path, default=Path("build/fidelity"))
     render.add_argument("--name", default="srscene")
     _add_policy_arguments(render)
+
+    pptx_audit = sub.add_parser(
+        "pptx-audit",
+        help="Importa um PPTX/Canva real e grava auditoria estrutural + relatório de fidelidade OOXML",
+    )
+    pptx_audit.add_argument("pptx", type=Path)
+    pptx_audit.add_argument("--out", type=Path, default=Path("build/fidelity"))
+    pptx_audit.add_argument("--name", default="pptx-audit")
+    pptx_audit.add_argument("--save-scene", action="store_true")
+
+    pptx_render = sub.add_parser(
+        "pptx-render-compare",
+        help="Importa PPTX/Canva -> SR Scene 2 -> Qt PNG e compara diretamente com uma referência",
+    )
+    pptx_render.add_argument("pptx", type=Path)
+    pptx_render.add_argument("baseline", type=Path)
+    pptx_render.add_argument("--page", type=int, default=0)
+    pptx_render.add_argument("--dpi", type=int, default=300)
+    pptx_render.add_argument(
+        "--target-width",
+        type=int,
+        default=0,
+        help="Largura do PNG candidato. Zero usa automaticamente a largura da imagem de referência.",
+    )
+    pptx_render.add_argument("--out", type=Path, default=Path("build/fidelity"))
+    pptx_render.add_argument("--name", default="pptx")
+    pptx_render.add_argument("--save-scene", action="store_true")
+    _add_policy_arguments(pptx_render)
     return parser
 
 
@@ -48,6 +77,10 @@ def main(argv: list[str] | None = None) -> int:
             return _suite(args)
         if args.command == "render-compare":
             return _render_compare(args)
+        if args.command == "pptx-audit":
+            return _pptx_audit(args)
+        if args.command == "pptx-render-compare":
+            return _pptx_render_compare(args)
     except Exception as exc:
         print(f"SR Fidelity Lab: ERRO: {exc}", file=sys.stderr)
         return 2
@@ -111,6 +144,144 @@ def _render_compare(args: Namespace) -> int:
     report = write_report(result, output / f"{_slug(args.name)}-report.json")
     _print_case(result, report)
     return 0 if result.passed else 1
+
+
+def _pptx_audit(args: Namespace) -> int:
+    from .import_bridge import GraphicsImportService
+    from .package import save_package
+
+    source = _require_pptx(args.pptx)
+    output = args.out
+    output.mkdir(parents=True, exist_ok=True)
+    imported = GraphicsImportService().import_file(source, project_name=source.stem)
+    stem = _slug(args.name or source.stem)
+    scene_path = ""
+    if args.save_scene:
+        scene_path = str(save_package(imported.document, output / f"{stem}.srscene"))
+    payload = _pptx_diagnostic_payload(source, imported)
+    payload["scene"] = scene_path
+    report = output / f"{stem}-audit.json"
+    _write_json(report, payload)
+    print(
+        f"SR Fidelity Lab: {'PASS' if imported.audit.ready else 'FAIL'} | PPTX audit | "
+        f"{imported.audit.pages} pág. | {imported.audit.nodes} nodes | "
+        f"{imported.audit.slots} slots | confiança {imported.audit.confidence * 100:.2f}% | {report}"
+    )
+    return 0 if imported.audit.ready else 1
+
+
+def _pptx_render_compare(args: Namespace) -> int:
+    from PIL import Image
+
+    from .import_bridge import GraphicsImportService
+    from .package import save_package
+    from .qt_renderer import qt_renderer_available, render_png
+
+    if not qt_renderer_available():
+        raise RuntimeError("PySide6 não está instalado. Instale o extra graphics2.")
+    source = _require_pptx(args.pptx)
+    baseline = Path(args.baseline)
+    if not baseline.is_file():
+        raise FileNotFoundError(f"Imagem de referência não encontrada: {baseline}")
+
+    output = args.out
+    output.mkdir(parents=True, exist_ok=True)
+    stem = _slug(args.name or source.stem)
+    imported = GraphicsImportService().import_file(source, project_name=source.stem)
+    if not 0 <= args.page < len(imported.document.pages):
+        raise IndexError(f"Página {args.page} inexistente no PPTX importado.")
+
+    with Image.open(baseline) as reference:
+        baseline_width = int(reference.width)
+    target_width = int(args.target_width) if int(args.target_width or 0) > 0 else baseline_width
+    candidate = output / f"{stem}-candidate.png"
+    render_report = render_png(
+        imported.document,
+        candidate,
+        page_index=args.page,
+        dpi=args.dpi,
+        target_width=target_width,
+    )
+    fidelity = compare_images(
+        baseline,
+        candidate,
+        name=args.name,
+        policy=_policy_from(args),
+        diff_path=output / f"{stem}-diff.png",
+    )
+
+    scene_path = ""
+    if args.save_scene:
+        scene_path = str(save_package(imported.document, output / f"{stem}.srscene"))
+    payload = {
+        "source": _source_identity(source),
+        "page": args.page,
+        "target_width": target_width,
+        "scene": scene_path,
+        "import": _pptx_diagnostic_payload(source, imported),
+        "render": {
+            "output": str(render_report.output),
+            "width": render_report.width,
+            "height": render_report.height,
+            "warnings": [
+                {
+                    "code": warning.code,
+                    "message": warning.message,
+                    "page_id": warning.page_id,
+                    "node_id": warning.node_id,
+                }
+                for warning in render_report.warnings
+            ],
+        },
+        "fidelity": fidelity.to_dict(),
+    }
+    report = output / f"{stem}-pipeline-report.json"
+    _write_json(report, payload)
+    _print_case(fidelity, report)
+    if not imported.audit.ready:
+        print(f"  - import audit contém {imported.audit.errors} erro(s) estrutural(is)")
+    return 0 if fidelity.passed and imported.audit.ready else 1
+
+
+def _pptx_diagnostic_payload(source: Path, imported) -> dict:
+    return {
+        "source": _source_identity(source),
+        "summary": {
+            "products_added": imported.summary.products_added,
+            "cards_added": imported.summary.cards_added,
+            "images_matched": imported.summary.images_matched,
+            "images_learned": imported.summary.images_learned,
+            "layouts_learned": imported.summary.layouts_learned,
+            "warnings": list(imported.summary.warnings),
+        },
+        "audit": imported.audit.to_dict(),
+        "pptx_fidelity": dict(imported.document.metadata.get("pptx_fidelity") or {}),
+        "embedded_fonts": list(imported.document.metadata.get("embedded_fonts") or []),
+    }
+
+
+def _source_identity(source: Path) -> dict:
+    raw = source.read_bytes()
+    return {
+        "name": source.name,
+        "size": len(raw),
+        "sha256": sha256(raw).hexdigest(),
+    }
+
+
+def _require_pptx(path: Path) -> Path:
+    source = Path(path)
+    if source.suffix.lower() != ".pptx":
+        raise ValueError(f"Arquivo deve ser .pptx: {source}")
+    if not source.is_file():
+        raise FileNotFoundError(f"PPTX não encontrado: {source}")
+    return source
+
+
+def _write_json(path: Path, payload: dict) -> Path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return path
 
 
 def _add_policy_arguments(parser: ArgumentParser) -> None:
