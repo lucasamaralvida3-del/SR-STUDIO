@@ -23,6 +23,7 @@ def _plain_text(name: str, x: float, y: float, w: float, h: float, text: str) ->
         name=name,
         transform=Transform(x=x, y=y, width=w, height=h),
         text=text,
+        locked=True,
         style={"font_family": "Anton", "font_size": 80},
         metadata={"source_name": name},
     )
@@ -163,9 +164,15 @@ def test_static_canva_price_is_recovered_from_text_and_geometry_without_smart_sl
     block = semantic_block(page, first_id)
     assert block is not None
     assert block["metadata"]["recovered"] is True
+    assert block["metadata"]["editable"] is True
     assert block["metadata"]["source"] == "spatial-recovery"
     assert set(block["roles"]) == {"currency", "reais", "cents", "unit"}
     assert page.metadata["semantic_blocks"] == first_snapshot
     assert "semantic_price_block_id" not in date.metadata
+    assert date.locked is True
+    for node in (currency, reais, cents, unit):
+        assert node.locked is False
+        assert node.metadata["semantic_source_locked"] is True
+        assert node.metadata["semantic_recovered_editable"] is True
     for node in (currency, reais, cents, unit, date):
         assert node.transform == before[node.id]
