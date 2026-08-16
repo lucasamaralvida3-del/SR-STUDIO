@@ -30,6 +30,7 @@ from .operations import GraphicsSession
 from .pdf_baseline import PdfBaselinePage, render_pdf_baselines
 from .pptx_fidelity import EmbeddedPptxFont, PptxFidelityReport, enhance_pptx_document
 from .pptx_groups import PptxGroupReport, rebuild_pptx_groups
+from .pptx_structure import PptxMappingAudit, PptxSlideStructure, PptxStructureReport, inspect_pptx_structure
 from .preflight import PreflightIssue, run_preflight
 from .quality import ProductionGateIssue, ProductionGateReport, inspect_production_gate, store_visual_fidelity
 from .qt_renderer import RenderReport, render_pdf, render_png
@@ -44,7 +45,7 @@ from .semantic_blocks import (
 )
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.11"
+ENGINE_VERSION = "2.0.0-alpha.12"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -72,6 +73,9 @@ __all__ = [
     "PdfBaselinePage",
     "PptxFidelityReport",
     "PptxGroupReport",
+    "PptxMappingAudit",
+    "PptxSlideStructure",
+    "PptxStructureReport",
     "PreflightIssue",
     "ProductionGateIssue",
     "ProductionGateReport",
@@ -89,6 +93,7 @@ __all__ = [
     "enhance_pptx_document",
     "find_drop_target",
     "fingerprint_document",
+    "inspect_pptx_structure",
     "inspect_production_gate",
     "rebuild_pptx_groups",
     "render_pdf",
