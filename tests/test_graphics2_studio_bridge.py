@@ -107,10 +107,10 @@ def test_gpu_flag_uses_automatic_accelerated_backend_selection(tmp_path, monkeyp
     assert captured["args"][captured["args"].index("--graphics-api") + 1] == "auto"
 
 
-def test_turbo_shell_exposes_engine2_only_through_feature_flagged_launcher_and_keeps_beta726_cartazes():
+def test_turbo_shell_exposes_engine2_only_through_feature_flagged_launcher_and_keeps_beta727_cartazes():
     source = (Path(srstudio.__file__).with_name("app") / "turbo_posters.py").read_text(encoding="utf-8")
 
-    assert "import srstudio.app.cartazes_table_visual as cartazes_visual" in source
+    assert "import srstudio.app.cartazes_productivity as cartazes_productivity" in source
     assert "from srstudio.graphics2.saved_merge import analyze_saved_session_merge, resolve_saved_session_merge" in source
     assert 'if name == "Encartes Studio":' in source
     assert "self._attach_graphics2_launcher()" in source
@@ -120,6 +120,6 @@ def test_turbo_shell_exposes_engine2_only_through_feature_flagged_launcher_and_k
     assert "launch_studio_project_if_enabled(self.project, self.data_dir)" in source
     assert "ask_graphics2_merge_resolutions(self, analysis.report)" in source
     assert "resolve_saved_session_merge(" in source
-    assert "cartazes_visual.CartazesVisualPromotionPosterModule" in source
-    assert "cartazes_visual.CartazesVisualWholesalePosterModule" in source
+    assert "cartazes_productivity.CartazesProductivityPromotionPosterModule" in source
+    assert "cartazes_productivity.CartazesProductivityWholesalePosterModule" in source
     assert "advanced.base.PromotionPosterModule = responsive.ResponsivePromotionPosterModule" not in source
