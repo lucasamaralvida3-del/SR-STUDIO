@@ -88,6 +88,7 @@ class SemanticBlockReport:
     recovered_price_blocks: int = 0
     product_cards: int = 0
     recovered_product_cards: int = 0
+    recovered_smart_slots: int = 0
     protected_price_nodes: int = 0
     incomplete_price_blocks: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -106,6 +107,7 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
 
     report = SemanticBlockReport()
     for page in document.pages:
+        _clear_recovered_slots(page)
         _clear_semantic_marks(page)
         page_blocks: dict[str, dict[str, Any]] = {}
         for slot in page.slots.values():
@@ -139,21 +141,24 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
 
         # Quando o PPTX possui um grupo real envolvendo o preço e o restante do
         # card, usamos esse grupo como unidade semântica de ProductCard. Isso é
-        # muito mais seguro que adivinhar por distância e permite mover o grupo
-        # inteiro sem descolar nome, imagem, backplate e preço.
+        # muito mais seguro que adivinhar o card inteiro somente por distância.
         for price_block in recovered:
             card = _recover_product_card_from_group(page, price_block)
-            if card is None or card.id in page_blocks:
+            if card is None:
                 continue
-            page_blocks[card.id] = card.to_dict()
-            report.product_cards += 1
-            report.recovered_product_cards += 1
+            if card.id not in page_blocks:
+                page_blocks[card.id] = card.to_dict()
+                report.product_cards += 1
+                report.recovered_product_cards += 1
+            slot = _promote_recovered_card_to_slot(page, card, price_block)
+            if slot is not None:
+                report.recovered_smart_slots += 1
 
         page.metadata["semantic_blocks"] = page_blocks
-        page.metadata["semantic_blocks_version"] = 4
+        page.metadata["semantic_blocks_version"] = 5
 
     document.metadata["semantic_blocks"] = report.to_dict()
-    document.metadata["semantic_blocks_version"] = 4
+    document.metadata["semantic_blocks_version"] = 5
     return report
 
 
@@ -181,6 +186,16 @@ def semantic_member_ids(page: GraphicsPage, block_id: str) -> list[str]:
     if not block:
         return []
     return [str(node_id) for node_id in block.get("members") or [] if str(node_id) in page.nodes]
+
+
+def _clear_recovered_slots(page: GraphicsPage) -> None:
+    recovered = [
+        slot_id
+        for slot_id, slot in page.slots.items()
+        if bool(slot.metadata.get("semantic_recovered"))
+    ]
+    for slot_id in recovered:
+        page.slots.pop(slot_id, None)
 
 
 def _clear_semantic_marks(page: GraphicsPage) -> None:
@@ -257,14 +272,7 @@ def _make_price_block(
             node.metadata["semantic_price_block_id"] = block_id
             node.metadata["semantic_price_role"] = canonical
             if recovered:
-                # Elementos PPTX sem Smart Slot chegam bloqueados por segurança.
-                # Se os quatro tokens formam inequivocamente um preço, somente
-                # esses tokens são liberados para edição; o restante do layout
-                # continua protegido. O estado original é restaurável/idempotente.
-                if "semantic_source_locked" not in node.metadata:
-                    node.metadata["semantic_source_locked"] = bool(node.locked)
-                node.metadata["semantic_recovered_editable"] = True
-                node.locked = False
+                _mark_recovered_editable(node)
             if node.kind is NodeKind.TEXT:
                 node.style["nowrap"] = True
                 node.style["semantic_fit_policy"] = "overflow_only"
@@ -288,6 +296,13 @@ def _make_price_block(
             "source": source,
         },
     )
+
+
+def _mark_recovered_editable(node: GraphicsNode) -> None:
+    if "semantic_source_locked" not in node.metadata:
+        node.metadata["semantic_source_locked"] = bool(node.locked)
+    node.metadata["semantic_recovered_editable"] = True
+    node.locked = False
 
 
 def _build_product_card(
@@ -385,6 +400,101 @@ def _recover_product_card_from_group(page: GraphicsPage, price_block: SemanticBl
             "source": "pptx-group-recovery",
         },
     )
+
+
+def _promote_recovered_card_to_slot(
+    page: GraphicsPage,
+    card: SemanticBlock,
+    price_block: SemanticBlock,
+) -> SmartSlot | None:
+    content_ids = [str(item) for item in card.metadata.get("content_members") or [] if str(item) in page.nodes]
+    price_members = set(price_block.members)
+    context = [page.nodes[node_id] for node_id in content_ids if node_id not in price_members]
+    name_node = _best_name_node(context, price_block)
+    image_node = _best_image_node(context)
+    if name_node is None and image_node is None:
+        return None
+
+    node_by_role: dict[str, str] = {}
+    canonical_to_binding = {
+        "currency": BindingRole.CURRENCY.value,
+        "reais": BindingRole.PRICE_REAIS.value,
+        "cents": BindingRole.PRICE_CENTS.value,
+        "unit": BindingRole.UNIT.value,
+        "complete": BindingRole.RETAIL_PRICE.value,
+    }
+    for canonical, node_ids in price_block.roles.items():
+        binding = canonical_to_binding.get(canonical)
+        if binding and node_ids:
+            node_by_role[binding] = str(node_ids[0])
+    if name_node is not None:
+        node_by_role[BindingRole.NAME.value] = name_node.id
+        _mark_recovered_editable(name_node)
+    if image_node is not None:
+        node_by_role[BindingRole.IMAGE.value] = image_node.id
+        _mark_recovered_editable(image_node)
+    if not node_by_role:
+        return None
+
+    group_id = str(card.metadata.get("source_group_id") or "")
+    group = page.node(group_id)
+    stable = _stable_node_key(group) if group is not None else card.id
+    slot_id = f"slot:recovered:{stable}"
+    slot = SmartSlot(
+        id=slot_id,
+        name=_clean_text(name_node.text) if name_node is not None else f"Produto recuperado {len(page.slots) + 1}",
+        page_id=page.id,
+        node_by_role=node_by_role,
+        confidence=0.92 if name_node is not None and image_node is not None else 0.86,
+        metadata={
+            # Mantemos o mesmo contrato do CanvaBindingService; o flag separado
+            # identifica que o slot foi inferido e pode ser reconstruído.
+            "source": "canva-smart-slot",
+            "semantic_recovered": True,
+            "recovered_from_pptx_group": True,
+            "semantic_product_card_id": card.id,
+            "semantic_price_block_ids": [price_block.id],
+            "source_group_id": group_id,
+            "product_snapshot": {},
+        },
+    )
+    page.slots[slot.id] = slot
+    card.slot_id = slot.id
+    card.metadata["smart_slot_id"] = slot.id
+    return slot
+
+
+def _best_name_node(nodes: list[GraphicsNode], price_block: SemanticBlock) -> GraphicsNode | None:
+    candidates = [
+        node
+        for node in nodes
+        if node.kind is NodeKind.TEXT
+        and bool(_ALPHA_RE.search(_clean_text(node.text)))
+        and len(_clean_text(node.text)) <= 120
+    ]
+    if not candidates:
+        return None
+    px = float(price_block.bounds.get("x") or 0.0) + float(price_block.bounds.get("width") or 0.0) / 2.0
+    py = float(price_block.bounds.get("y") or 0.0) + float(price_block.bounds.get("height") or 0.0) / 2.0
+
+    def score(node: GraphicsNode) -> tuple[float, float, float, str]:
+        t = node.transform
+        cx = t.x + t.width / 2.0
+        cy = t.y + t.height / 2.0
+        scale = max(float(price_block.bounds.get("height") or 1.0), 1.0)
+        distance = hypot((cx - px) / scale, (cy - py) / scale)
+        above_bonus = -0.6 if cy <= py else 0.0
+        font_size = float(node.style.get("font_size") or 0.0)
+        return (distance + above_bonus, -font_size, -t.width, node.id)
+
+    return min(candidates, key=score)
+
+
+def _best_image_node(nodes: list[GraphicsNode]) -> GraphicsNode | None:
+    candidates = [node for node in nodes if node.kind in {NodeKind.IMAGE, NodeKind.BACKGROUND}]
+    if not candidates:
+        return None
+    return max(candidates, key=lambda node: (node.transform.width * node.transform.height, -node.z_index, node.id))
 
 
 def _nearest_common_pptx_group(page: GraphicsPage, node_ids: list[str]) -> str:
