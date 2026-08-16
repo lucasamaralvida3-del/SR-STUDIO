@@ -43,7 +43,7 @@ from .semantic_blocks import (
 )
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.8"
+ENGINE_VERSION = "2.0.0-alpha.9"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
