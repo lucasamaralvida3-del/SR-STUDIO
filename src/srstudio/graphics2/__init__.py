@@ -12,6 +12,12 @@ from .fidelity import (
     compare_images,
     run_suite,
 )
+from .fidelity_triage import (
+    FidelityRegion,
+    FidelityTriageReport,
+    analyze_fidelity_regions,
+    write_triage_report,
+)
 from .image_crop import CropInsets, crop_pixel_box, normalize_crop, update_crop
 from .import_audit import ImportAuditIssue, ImportAuditReport, audit_import
 from .legacy_merge import (
@@ -71,7 +77,7 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.24"
+ENGINE_VERSION = "2.0.0-alpha.25"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -86,8 +92,10 @@ __all__ = [
     "FidelityCase",
     "FidelityMetrics",
     "FidelityPolicy",
+    "FidelityRegion",
     "FidelityResult",
     "FidelitySuiteResult",
+    "FidelityTriageReport",
     "FitMode",
     "GraphicsDocument",
     "GraphicsNode",
@@ -122,6 +130,7 @@ __all__ = [
     "StudioBridgePreparation",
     "StudioBridgeSyncResult",
     "Transform",
+    "analyze_fidelity_regions",
     "analyze_legacy_merge",
     "analyze_saved_session_merge",
     "audit_import",
@@ -158,4 +167,5 @@ __all__ = [
     "sync_graphics_to_studio",
     "sync_saved_session_to_project",
     "update_crop",
+    "write_triage_report",
 ]
