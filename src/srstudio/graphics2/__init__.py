@@ -62,13 +62,12 @@ from .studio_bridge import (
     StudioBridgeLaunchResult,
     StudioBridgePreparation,
     StudioBridgeSyncResult,
-    analyze_saved_session_merge,
     bridge_flags,
     launch_studio_project_if_enabled,
     prepare_studio_project,
-    resolve_saved_session_merge,
     sync_saved_session_to_project,
 )
+from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
 ENGINE_VERSION = "2.0.0-alpha.23"
