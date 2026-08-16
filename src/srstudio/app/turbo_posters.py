@@ -4,7 +4,7 @@ import threading
 import tkinter as tk
 
 import srstudio.app.advanced_posters as advanced
-import srstudio.app.cartazes_table_visual as cartazes_visual
+import srstudio.app.cartazes_productivity as cartazes_productivity
 import srstudio.app.responsive_posters as responsive
 from srstudio.app.cloud_image_bank_view import CloudImageBankView
 from srstudio.app.graphics2_merge_dialog import ask_graphics2_merge_resolutions
@@ -268,10 +268,10 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
 
 
 def run() -> None:
-    # Beta 7.26: a camada de alta legibilidade fica somente em Promoções/Atacado.
-    # Encartes Studio mantém seu pipeline gráfico e os controles experimentais G2.
-    advanced.base.PromotionPosterModule = cartazes_visual.CartazesVisualPromotionPosterModule
-    advanced.base.WholesalePosterModule = cartazes_visual.CartazesVisualWholesalePosterModule
+    # Beta 7.27 preserva o layout atual e injeta somente produtividade em
+    # Promoções/Atacado. Encartes Studio mantém o pipeline G2 independente.
+    advanced.base.PromotionPosterModule = cartazes_productivity.CartazesProductivityPromotionPosterModule
+    advanced.base.WholesalePosterModule = cartazes_productivity.CartazesProductivityWholesalePosterModule
     app = SRStudioTurboPosters()
     _show_splash(app)
     app.mainloop()
