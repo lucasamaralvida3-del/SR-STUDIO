@@ -5,6 +5,7 @@ from typing import Any
 
 from srstudio.core.models import StudioProject
 
+from .legacy_sync import LEGACY_SOURCE_FINGERPRINT_KEY, fingerprint_studio_project
 from .model import BindingRole, CoordinateUnit, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, SmartSlot, Transform, _id
 
 
@@ -12,6 +13,7 @@ def from_studio_project(project: StudioProject) -> GraphicsDocument:
     pages: list[GraphicsPage] = []
     products = {product.id: product for product in project.products}
     product_payloads = [product.to_dict() for product in project.products]
+    source_fingerprint = fingerprint_studio_project(project)
     for old_page in project.pages:
         page = GraphicsPage(
             id=old_page.id,
@@ -40,6 +42,7 @@ def from_studio_project(project: StudioProject) -> GraphicsDocument:
             "legacy_settings": dict(project.settings),
             "products": product_payloads,
             "graphics2_bridge_source": "studio-project-5x",
+            LEGACY_SOURCE_FINGERPRINT_KEY: source_fingerprint,
         },
     )
 
