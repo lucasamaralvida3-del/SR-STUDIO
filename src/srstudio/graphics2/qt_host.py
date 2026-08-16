@@ -167,6 +167,33 @@ def prepare_qml_payload(scene: dict[str, Any]) -> dict[str, Any]:
     return scene
 
 
+def _attach_context_qml_tool(
+    engine,
+    root_window,
+    qml_path: Path,
+    *,
+    QQmlComponent,
+    QQuickItem,
+    QQuickWindow,
+    QUrl,
+):
+    """Cria uma ferramenta QML contextual como filho visual do editor."""
+
+    component = QQmlComponent(engine, QUrl.fromLocalFile(str(qml_path.resolve())))
+    if component.isError():
+        details = "; ".join(error.toString() for error in component.errors())
+        raise RuntimeError(f"Falha ao carregar {qml_path.name}: {details}")
+    tool = component.create(engine.rootContext())
+    if tool is None:
+        details = "; ".join(error.toString() for error in component.errors())
+        raise RuntimeError(f"Falha ao criar {qml_path.name}: {details or 'erro QML desconhecido'}")
+    parent_item = root_window.contentItem() if isinstance(root_window, QQuickWindow) else None
+    if parent_item is not None and isinstance(tool, QQuickItem):
+        tool.setParentItem(parent_item)
+    tool.setParent(root_window)
+    return component, tool
+
+
 def launch_qt_quick_editor(
     document: GraphicsDocument | None = None,
     *,
@@ -286,23 +313,29 @@ def launch_qt_quick_editor(
     if not roots:
         raise RuntimeError("Falha ao carregar a interface Qt Quick do SR Graphics Engine 2.")
 
-    # Ferramenta contextual de imagem. Mantida em arquivo QML separado para que
-    # crop/foco evoluam sem aumentar o acoplamento do canvas principal. O objeto
-    # é filho visual do contentItem da ApplicationWindow e só aparece quando a
-    # seleção atual é IMAGE/BACKGROUND.
-    image_component = QQmlComponent(engine, QUrl.fromLocalFile(str((qml_dir / "ImageInspector.qml").resolve())))
-    if image_component.isError():
-        details = "; ".join(error.toString() for error in image_component.errors())
-        raise RuntimeError(f"Falha ao carregar ImageInspector.qml: {details}")
-    image_inspector = image_component.create(engine.rootContext())
-    if image_inspector is None:
-        details = "; ".join(error.toString() for error in image_component.errors())
-        raise RuntimeError(f"Falha ao criar editor visual de imagem: {details or 'erro QML desconhecido'}")
     root_window = roots[0]
-    parent_item = root_window.contentItem() if isinstance(root_window, QQuickWindow) else None
-    if parent_item is not None and isinstance(image_inspector, QQuickItem):
-        image_inspector.setParentItem(parent_item)
-    image_inspector.setParent(root_window)
+    # Referências locais permanecem vivas durante app.exec(), enquanto QObject
+    # parent/root_window garante ownership Qt. Os painéis flutuam sobre a coluna
+    # de propriedades sem poluir o canvas e somem/encolhem conforme o contexto.
+    image_component, image_inspector = _attach_context_qml_tool(
+        engine,
+        root_window,
+        qml_dir / "ImageInspector.qml",
+        QQmlComponent=QQmlComponent,
+        QQuickItem=QQuickItem,
+        QQuickWindow=QQuickWindow,
+        QUrl=QUrl,
+    )
+    quality_component, quality_inspector = _attach_context_qml_tool(
+        engine,
+        root_window,
+        qml_dir / "QualityInspector.qml",
+        QQmlComponent=QQmlComponent,
+        QQuickItem=QQuickItem,
+        QQuickWindow=QQuickWindow,
+        QUrl=QUrl,
+    )
+    _context_tools = (image_component, image_inspector, quality_component, quality_inspector)
 
     app.processEvents()
     resolved_value = _resolved_api_from_window(root_window, QQuickWindow)
