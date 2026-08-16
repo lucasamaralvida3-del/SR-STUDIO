@@ -13,6 +13,11 @@ from .fidelity import (
     run_suite,
 )
 from .import_audit import ImportAuditIssue, ImportAuditReport, audit_import
+from .legacy_sync import (
+    LegacySyncReport,
+    fingerprint_studio_project,
+    sync_graphics_to_studio,
+)
 from .model import (
     AssetRef,
     BindingRole,
@@ -48,13 +53,15 @@ from .semantic_recovery import recover_canva_semantic_cards
 from .studio_bridge import (
     StudioBridgeLaunchResult,
     StudioBridgePreparation,
+    StudioBridgeSyncResult,
     bridge_flags,
     launch_studio_project_if_enabled,
     prepare_studio_project,
+    sync_saved_session_to_project,
 )
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.19"
+ENGINE_VERSION = "2.0.0-alpha.20"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -77,6 +84,7 @@ __all__ = [
     "GraphicsSession",
     "ImportAuditIssue",
     "ImportAuditReport",
+    "LegacySyncReport",
     "NodeKind",
     "PageFingerprint",
     "PdfBaselinePage",
@@ -98,6 +106,7 @@ __all__ = [
     "SmartSlot",
     "StudioBridgeLaunchResult",
     "StudioBridgePreparation",
+    "StudioBridgeSyncResult",
     "Transform",
     "audit_import",
     "bridge_flags",
@@ -106,6 +115,7 @@ __all__ = [
     "enhance_pptx_document",
     "find_drop_target",
     "fingerprint_document",
+    "fingerprint_studio_project",
     "inspect_pptx_structure",
     "inspect_production_gate",
     "launch_studio_project_if_enabled",
@@ -124,4 +134,6 @@ __all__ = [
     "smart_slot_bounds",
     "store_scene_fingerprint",
     "store_visual_fidelity",
+    "sync_graphics_to_studio",
+    "sync_saved_session_to_project",
 ]
