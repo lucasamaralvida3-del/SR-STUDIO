@@ -19,6 +19,7 @@ from .legacy_merge import (
     LegacyMergeReport,
     analyze_legacy_merge,
     merge_graphics_to_studio_non_conflicting,
+    resolve_legacy_merge_conflicts,
 )
 from .legacy_sync import (
     LegacySyncReport,
@@ -61,14 +62,16 @@ from .studio_bridge import (
     StudioBridgeLaunchResult,
     StudioBridgePreparation,
     StudioBridgeSyncResult,
+    analyze_saved_session_merge,
     bridge_flags,
     launch_studio_project_if_enabled,
     prepare_studio_project,
+    resolve_saved_session_merge,
     sync_saved_session_to_project,
 )
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.22"
+ENGINE_VERSION = "2.0.0-alpha.23"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -119,6 +122,7 @@ __all__ = [
     "StudioBridgeSyncResult",
     "Transform",
     "analyze_legacy_merge",
+    "analyze_saved_session_merge",
     "audit_import",
     "bridge_flags",
     "build_semantic_blocks",
@@ -138,6 +142,8 @@ __all__ = [
     "render_pdf",
     "render_pdf_baselines",
     "render_png",
+    "resolve_legacy_merge_conflicts",
+    "resolve_saved_session_merge",
     "run_preflight",
     "run_suite",
     "semantic_block",
