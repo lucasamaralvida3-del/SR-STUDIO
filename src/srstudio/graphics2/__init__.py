@@ -12,6 +12,7 @@ from .fidelity import (
     compare_images,
     run_suite,
 )
+from .image_crop import CropInsets, crop_pixel_box, normalize_crop, update_crop
 from .import_audit import ImportAuditIssue, ImportAuditReport, audit_import
 from .legacy_merge import (
     LEGACY_SOURCE_SNAPSHOT_KEY,
@@ -70,13 +71,14 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.23"
+ENGINE_VERSION = "2.0.0-alpha.24"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
     "AssetRef",
     "BindingRole",
     "CoordinateUnit",
+    "CropInsets",
     "DropTarget",
     "ENGINE_NAME",
     "ENGINE_VERSION",
@@ -126,6 +128,7 @@ __all__ = [
     "bridge_flags",
     "build_semantic_blocks",
     "compare_images",
+    "crop_pixel_box",
     "enhance_pptx_document",
     "find_drop_target",
     "fingerprint_document",
@@ -134,6 +137,7 @@ __all__ = [
     "inspect_production_gate",
     "launch_studio_project_if_enabled",
     "merge_graphics_to_studio_non_conflicting",
+    "normalize_crop",
     "prepare_studio_project",
     "rebuild_pptx_groups",
     "recover_canva_image_placeholders",
@@ -153,4 +157,5 @@ __all__ = [
     "store_visual_fidelity",
     "sync_graphics_to_studio",
     "sync_saved_session_to_project",
+    "update_crop",
 ]
