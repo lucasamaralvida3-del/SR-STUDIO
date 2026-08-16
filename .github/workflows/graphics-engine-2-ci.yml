@@ -35,9 +35,9 @@ jobs:
       - name: Compile Python
         run: python -m compileall -q src/srstudio
       - name: Runtime lint gate
-        run: python -m ruff check src/srstudio/graphics2 tests/test_graphics2_core.py tests/test_graphics2_compat.py
+        run: python -m ruff check src/srstudio/graphics2 tests/test_graphics2_*.py
       - name: Graphics Engine 2 tests
-        run: python -m pytest -q tests/test_graphics2_core.py tests/test_graphics2_compat.py
+        run: python -m pytest -q tests/test_graphics2_*.py
       - name: Full SR Studio regression suite
         run: python -m pytest -q
 
@@ -61,4 +61,4 @@ jobs:
           python -c "from pathlib import Path; from srstudio.graphics2.qt_host import qt_quick_available; import srstudio.graphics2.qt_host as h; assert qt_quick_available(); assert (Path(h.__file__).with_name('qml')/'GraphicsEditor.qml').is_file(); print('Qt Quick host OK')"
       - name: Graphics Engine 2 tests on Windows
         shell: pwsh
-        run: python -m pytest -q tests/test_graphics2_core.py tests/test_graphics2_compat.py
+        run: python -m pytest -q tests/test_graphics2_*.py
