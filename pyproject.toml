@@ -17,6 +17,7 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
 graphics2 = ["PySide6>=6.8,<7"]
+graphics2-build = ["PySide6>=6.8,<7", "PyInstaller>=6.21,<7"]
 
 [project.scripts]
 sr-studio-5 = "srstudio.app.turbo_posters:run"
