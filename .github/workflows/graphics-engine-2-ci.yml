@@ -54,6 +54,8 @@ jobs:
           tests/test_graphics2_semantic_blocks.py
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_semantic_spatial_card.py
+          tests/test_graphics2_semantic_placeholders.py
+          tests/test_graphics2_quinta_file_geometry_regression.py
           tests/test_graphics2_drop_target.py
           tests/test_graphics2_text_fit_policy.py
           tests/test_graphics2_qml_price_preview.py
@@ -63,6 +65,8 @@ jobs:
         run: python -m srstudio.graphics2.golden_master --help
       - name: Reference Suite CLI smoke
         run: python -m srstudio.graphics2.reference_suite --help
+      - name: PPTX Structure CLI smoke
+        run: python -m srstudio.graphics2.pptx_structure --help
       - name: Graphics Host CLI smoke
         run: python -m srstudio.graphics2.qt_host --help
       - name: Graphics Engine 2 tests
@@ -91,6 +95,7 @@ jobs:
           python -m srstudio.graphics2.qt_host --help
           python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api
           python -m srstudio.graphics2.reference_suite --help
+          python -m srstudio.graphics2.pptx_structure --help
       - name: Visual Fidelity and Production Gate on Windows
         shell: pwsh
         run: >-
@@ -108,6 +113,8 @@ jobs:
           tests/test_graphics2_semantic_blocks.py
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_semantic_spatial_card.py
+          tests/test_graphics2_semantic_placeholders.py
+          tests/test_graphics2_quinta_file_geometry_regression.py
           tests/test_graphics2_drop_target.py
           tests/test_graphics2_text_fit_policy.py
           tests/test_graphics2_qml_price_preview.py
