@@ -13,6 +13,7 @@ from typing import Iterable
 import math
 
 from .fonts import register_qt_document_fonts
+from .image_crop import crop_pixel_box
 from .model import CoordinateUnit, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Rect
 from .preflight import run_preflight
 
@@ -348,18 +349,10 @@ def _draw_image(painter, document: GraphicsDocument, page: GraphicsPage, node: G
 
 
 def _crop_image(image, crop: dict, QtCore):
-    try:
-        left = min(0.98, max(0.0, float(crop.get("l", crop.get("left", 0.0)) or 0.0)))
-        top = min(0.98, max(0.0, float(crop.get("t", crop.get("top", 0.0)) or 0.0)))
-        right = min(0.98, max(0.0, float(crop.get("r", crop.get("right", 0.0)) or 0.0)))
-        bottom = min(0.98, max(0.0, float(crop.get("b", crop.get("bottom", 0.0)) or 0.0)))
-    except (TypeError, ValueError):
+    x, y, width, height = crop_pixel_box(image.width(), image.height(), crop)
+    if x == 0 and y == 0 and width == image.width() and height == image.height():
         return image
-    x = round(image.width() * left)
-    y = round(image.height() * top)
-    width = round(image.width() * max(0.001, 1.0 - left - right))
-    height = round(image.height() * max(0.001, 1.0 - top - bottom))
-    return image.copy(QtCore.QRect(x, y, max(1, width), max(1, height)))
+    return image.copy(QtCore.QRect(x, y, width, height))
 
 
 def _draw_rect(painter, node: GraphicsNode, QtCore, QtGui) -> None:
@@ -440,7 +433,6 @@ def _custom_path(spec: object, target, QtGui):
 
 
 def QtCorePoint(x: float, y: float, QtGui):
-    # QPainterPath aceita QPointF; importar QtCore aqui criaria dependência global.
     from PySide6.QtCore import QPointF
     return QPointF(x, y)
 
