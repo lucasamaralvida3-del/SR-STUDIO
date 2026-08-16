@@ -25,8 +25,10 @@ def test_image_inspector_exposes_crop_focus_zoom_and_flip_controls():
     assert '"fit": "contain"' in source
     assert '? "cover"' in source
     assert '? "fill"' in source
-    assert "property real baseScale" in source
-    assert "property bool cropMode" in source
+    assert "SceneImage {" in source
+    assert "imageZoom: zoomSlider.value" in source
+    assert "focusX: focusXSlider.value" in source
+    assert "focusY: focusYSlider.value" in source
 
 
 def test_host_loads_image_inspector_as_contextual_qquickitem():
