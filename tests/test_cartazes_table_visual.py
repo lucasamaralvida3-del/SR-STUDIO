@@ -4,8 +4,11 @@ from srstudio.app.cartazes_table_visual import (
     ROW_EVEN,
     ROW_ODD,
     ROW_WARNING,
+    SELECTION_BACKGROUND,
+    SELECTION_FOREGROUND,
     cartazes_row_tag,
     cartazes_status_label,
+    should_clear_initial_promotion_selection,
 )
 from srstudio.posters.commercial import PosterCommercialValidator
 
@@ -37,3 +40,26 @@ def test_rendering_state_keeps_clear_status() -> None:
     assert cartazes_status_label("", "AGUARDANDO") == "◌ RENDER"
     assert cartazes_status_label("", "RENDERIZANDO") == "◌ RENDER"
     assert cartazes_status_label("", "PRONTO") == "✓ OK"
+
+
+def test_initial_promotion_mass_selection_is_cleared() -> None:
+    assert should_clear_initial_promotion_selection(
+        is_wholesale=False,
+        item_count=37,
+        selected_count=37,
+    )
+    assert not should_clear_initial_promotion_selection(
+        is_wholesale=False,
+        item_count=37,
+        selected_count=1,
+    )
+    assert not should_clear_initial_promotion_selection(
+        is_wholesale=True,
+        item_count=37,
+        selected_count=37,
+    )
+
+
+def test_selection_palette_keeps_text_readable() -> None:
+    assert SELECTION_BACKGROUND != SELECTION_FOREGROUND
+    assert SELECTION_FOREGROUND == "#102A43"

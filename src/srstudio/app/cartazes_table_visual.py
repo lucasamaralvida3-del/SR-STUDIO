@@ -11,6 +11,8 @@ TABLE_STYLE = "CartazesPro.Treeview"
 TABLE_FONT_SIZE = 10
 TABLE_HEADING_FONT_SIZE = 10
 TABLE_ROW_HEIGHT = 32
+SELECTION_BACKGROUND = "#B9D9FF"
+SELECTION_FOREGROUND = "#102A43"
 ROW_ERROR = "cartazes_error"
 ROW_WARNING = "cartazes_warning"
 ROW_EDITED = "cartazes_edited"
@@ -50,13 +52,30 @@ def cartazes_status_label(status_overall: str, render_state: str = "", edited: b
     return "✓ OK"
 
 
+def should_clear_initial_promotion_selection(
+    *,
+    is_wholesale: bool,
+    item_count: int,
+    selected_count: int,
+) -> bool:
+    """Detect the legacy 'select every promotion row on load' state.
+
+    Promotion generation already treats an empty selection as 'all products', so
+    removing this automatic mass-selection improves readability without changing
+    which posters are generated.
+    """
+
+    return bool(not is_wholesale and item_count > 0 and selected_count == item_count)
+
+
 class _CartazesTableVisualMixin:
     """High-legibility table treatment for Promoções and Atacado only."""
 
     def _build(self) -> None:
+        self._cartazes_initial_selection_normalized = False
         super()._build()
         self._configure_cartazes_table_style()
-        self.after_idle(self._apply_cartazes_row_visuals)
+        self.after_idle(self._finish_cartazes_first_paint)
 
     def _configure_cartazes_table_style(self) -> None:
         style = ttk.Style(self)
@@ -79,11 +98,13 @@ class _CartazesTableVisualMixin:
             borderwidth=1,
             relief="solid",
         )
-        # Keep selection visible, but do not force a generic selected foreground;
-        # error/attention rows retain their red text while selected.
+        # Windows themes can otherwise use white selection text over the light-blue
+        # selection background. Force a dark foreground so every field remains
+        # readable when a product is selected.
         style.map(
             TABLE_STYLE,
-            background=[("selected", "#CFE4FF")],
+            background=[("selected", SELECTION_BACKGROUND)],
+            foreground=[("selected", SELECTION_FOREGROUND)],
         )
         style.map(
             f"{TABLE_STYLE}.Heading",
@@ -128,6 +149,42 @@ class _CartazesTableVisualMixin:
 
     def refresh_products(self) -> None:
         super().refresh_products()
+        self._normalize_initial_promotion_selection()
+        self._apply_cartazes_row_visuals()
+        self.after_idle(self._finish_cartazes_first_paint)
+
+    def _normalize_initial_promotion_selection(self) -> None:
+        if getattr(self, "_cartazes_initial_selection_normalized", False):
+            return
+        self._cartazes_initial_selection_normalized = True
+        if not getattr(self, "tree", None) or not self.tree.winfo_exists():
+            return
+        items = tuple(self.tree.get_children(""))
+        selected = tuple(self.tree.selection())
+        if not should_clear_initial_promotion_selection(
+            is_wholesale=bool(self.is_wholesale),
+            item_count=len(items),
+            selected_count=len(selected),
+        ):
+            return
+
+        # Legacy code selected every promotion row after import. That selection is
+        # unnecessary because an empty selection already means "generate all".
+        # Keep keyboard focus on the first product without visually selecting it.
+        self.tree.selection_remove(*selected)
+        if items:
+            self.tree.focus(items[0])
+            self.tree.see(items[0])
+
+    def _finish_cartazes_first_paint(self) -> None:
+        """Finish pending geometry/paint work so rows are visible without a click."""
+
+        if not getattr(self, "tree", None) or not self.tree.winfo_exists():
+            return
+        items = tuple(self.tree.get_children(""))
+        if items:
+            self.tree.see(items[0])
+        self.tree.update_idletasks()
         self._apply_cartazes_row_visuals()
 
     def _status_text(self, product, status) -> str:
