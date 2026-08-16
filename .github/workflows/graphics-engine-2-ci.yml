@@ -45,14 +45,19 @@ jobs:
           tests/test_graphics2_import_audit.py
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_golden_master.py
+          tests/test_graphics2_reference_suite.py
           tests/test_graphics2_package_fonts.py
           tests/test_graphics2_scene_fingerprint.py
           tests/test_graphics2_pptx_groups.py
           tests/test_graphics2_pptx_fidelity.py
+          tests/test_graphics2_semantic_blocks.py
+          tests/test_graphics2_text_fit_policy.py
       - name: Fidelity Lab CLI smoke
         run: python -m srstudio.graphics2.fidelity_lab --help
       - name: Golden Master CLI smoke
         run: python -m srstudio.graphics2.golden_master --help
+      - name: Reference Suite CLI smoke
+        run: python -m srstudio.graphics2.reference_suite --help
       - name: Graphics Host CLI smoke
         run: python -m srstudio.graphics2.qt_host --help
       - name: Graphics Engine 2 tests
@@ -80,6 +85,7 @@ jobs:
           python -c "from pathlib import Path; from srstudio.graphics2.qt_host import qt_quick_available; import srstudio.graphics2.qt_host as h; assert qt_quick_available(); assert (Path(h.__file__).with_name('qml')/'GraphicsEditor.qml').is_file(); print('Qt Quick host OK')"
           python -m srstudio.graphics2.qt_host --help
           python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api
+          python -m srstudio.graphics2.reference_suite --help
       - name: Visual Fidelity and Production Gate on Windows
         shell: pwsh
         run: >-
@@ -88,10 +94,13 @@ jobs:
           tests/test_graphics2_import_audit.py
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_golden_master.py
+          tests/test_graphics2_reference_suite.py
           tests/test_graphics2_package_fonts.py
           tests/test_graphics2_scene_fingerprint.py
           tests/test_graphics2_pptx_groups.py
           tests/test_graphics2_pptx_fidelity.py
+          tests/test_graphics2_semantic_blocks.py
+          tests/test_graphics2_text_fit_policy.py
       - name: Graphics Engine 2 tests on Windows
         shell: pwsh
         run: python -m pytest -q tests -k graphics2
