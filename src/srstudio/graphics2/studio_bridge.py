@@ -22,6 +22,8 @@ from .compat import from_studio_project
 from .package import save_package
 from .quality import ProductionGateReport, inspect_production_gate
 
+HOST_EXE_NAME = "SRGraphicsEngine2Host.exe"
+
 
 @dataclass(slots=True, frozen=True)
 class StudioBridgePreparation:
@@ -87,7 +89,9 @@ def launch_studio_project_if_enabled(
             graphics_api=graphics_api,
         )
 
-    if not os.environ.get("SR_GRAPHICS_ENGINE_2_HOST"):
+    # Quando o host é um EXE separado ele leva o próprio runtime/Qt. Só o modo
+    # de desenvolvimento `python -m ...` depende do PySide6 do processo atual.
+    if _uses_current_python(command):
         from .qt_host import qt_quick_available
 
         if not qt_quick_available():
@@ -147,13 +151,64 @@ def launch_studio_project_if_enabled(
     )
 
 
-def _host_command() -> list[str]:
+def discover_packaged_host() -> Path | None:
+    """Localiza o bundle onedir do host sem depender do launcher PowerShell.
+
+    O instalador futuro só precisa colocar a pasta `Graphics2Host` em um dos
+    locais canônicos. Isso mantém a ponte testável também em builds portáteis.
+    """
+
+    candidates: list[Path] = []
     explicit = str(os.environ.get("SR_GRAPHICS_ENGINE_2_HOST") or "").strip()
     if explicit:
-        return [explicit]
+        candidates.append(Path(explicit).expanduser())
+
+    executable_dir = Path(sys.executable).resolve().parent
+    candidates.extend(
+        [
+            executable_dir / "Graphics2Host" / HOST_EXE_NAME,
+            executable_dir / HOST_EXE_NAME,
+            Path(__file__).resolve().parents[3] / "Graphics2Host" / HOST_EXE_NAME,
+        ]
+    )
+
+    local_app_data = str(os.environ.get("LOCALAPPDATA") or "").strip()
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "SRStudio" / "App" / "Graphics2Host" / HOST_EXE_NAME)
+
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate.absolute()
+        key = os.path.normcase(str(resolved))
+        if key in seen:
+            continue
+        seen.add(key)
+        if resolved.is_file():
+            return resolved
+    return None
+
+
+def _host_command() -> list[str]:
+    packaged = discover_packaged_host()
+    if packaged is not None:
+        return [str(packaged)]
     if bool(getattr(sys, "frozen", False)):
         return []
     return [sys.executable, "-m", "srstudio.graphics2.qt_host"]
+
+
+def _uses_current_python(command: list[str]) -> bool:
+    if len(command) < 3:
+        return False
+    try:
+        current = Path(sys.executable).resolve()
+        candidate = Path(command[0]).resolve()
+    except OSError:
+        return False
+    return candidate == current and command[1:3] == ["-m", "srstudio.graphics2.qt_host"]
 
 
 def _safe_name(value: str) -> str:
