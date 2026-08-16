@@ -8,6 +8,7 @@ on:
       - 'src/srstudio/graphics2/**'
       - 'src/srstudio/settings/features.py'
       - 'tests/test_graphics2_*.py'
+      - 'visual-fidelity/**'
       - 'pyproject.toml'
       - '.github/workflows/graphics-engine-2-ci.yml'
   pull_request:
@@ -15,6 +16,7 @@ on:
       - 'src/srstudio/graphics2/**'
       - 'src/srstudio/settings/features.py'
       - 'tests/test_graphics2_*.py'
+      - 'visual-fidelity/**'
       - 'pyproject.toml'
 
 permissions:
@@ -36,6 +38,10 @@ jobs:
         run: python -m compileall -q src/srstudio
       - name: Runtime lint gate
         run: python -m ruff check src/srstudio/graphics2 tests/test_graphics2_*.py
+      - name: Visual Fidelity Lab gates
+        run: python -m pytest -q tests/test_graphics2_fidelity.py tests/test_graphics2_import_audit.py
+      - name: Fidelity Lab CLI smoke
+        run: python -m srstudio.graphics2.fidelity_lab --help
       - name: Graphics Engine 2 tests
         run: python -m pytest -q tests -k graphics2
       - name: Full SR Studio regression suite
@@ -59,6 +65,9 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           python -c "from pathlib import Path; from srstudio.graphics2.qt_host import qt_quick_available; import srstudio.graphics2.qt_host as h; assert qt_quick_available(); assert (Path(h.__file__).with_name('qml')/'GraphicsEditor.qml').is_file(); print('Qt Quick host OK')"
+      - name: Visual Fidelity Lab gates on Windows
+        shell: pwsh
+        run: python -m pytest -q tests/test_graphics2_fidelity.py tests/test_graphics2_import_audit.py
       - name: Graphics Engine 2 tests on Windows
         shell: pwsh
         run: python -m pytest -q tests -k graphics2
