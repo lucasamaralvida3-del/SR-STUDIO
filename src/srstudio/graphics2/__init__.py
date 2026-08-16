@@ -44,9 +44,10 @@ from .semantic_blocks import (
     semantic_owner,
 )
 from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_image_placeholders
+from .semantic_recovery import recover_canva_semantic_cards
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.13"
+ENGINE_VERSION = "2.0.0-alpha.14"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -99,6 +100,7 @@ __all__ = [
     "inspect_production_gate",
     "rebuild_pptx_groups",
     "recover_canva_image_placeholders",
+    "recover_canva_semantic_cards",
     "render_pdf",
     "render_pdf_baselines",
     "render_png",
