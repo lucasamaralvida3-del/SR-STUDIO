@@ -3,7 +3,7 @@ from __future__ import annotations
 import threading
 
 import srstudio.app.advanced_posters as advanced
-import srstudio.app.cartazes_pro as cartazes
+import srstudio.app.cartazes_table_visual as cartazes_visual
 import srstudio.app.responsive_posters as responsive
 from srstudio.app.cloud_image_bank_view import CloudImageBankView
 from srstudio.app.layout_corpus_view import LayoutCorpusView
@@ -144,10 +144,10 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
 
 
 def run() -> None:
-    # Cartazes Pro is layered only on the dedicated poster modules. Encartes Studio
-    # remains on its own graphics/import/render pipeline and is not monkey-patched.
-    advanced.base.PromotionPosterModule = cartazes.CartazesProPromotionPosterModule
-    advanced.base.WholesalePosterModule = cartazes.CartazesProWholesalePosterModule
+    # Cartazes Pro receives the high-legibility table layer only in the dedicated
+    # Promoções/Atacado modules. Encartes Studio remains on its own graphics pipeline.
+    advanced.base.PromotionPosterModule = cartazes_visual.CartazesVisualPromotionPosterModule
+    advanced.base.WholesalePosterModule = cartazes_visual.CartazesVisualWholesalePosterModule
     app = SRStudioTurboPosters()
     _show_splash(app)
     app.mainloop()
