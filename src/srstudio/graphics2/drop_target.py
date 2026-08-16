@@ -113,10 +113,10 @@ def find_drop_target(
 
 
 def _contains(rect: Rect, x: float, y: float) -> bool:
-    return rect.left <= x <= rect.right and rect.top <= y <= rect.bottom
+    return rect.x <= x <= rect.right and rect.y <= y <= rect.bottom
 
 
 def _distance_to_rect(rect: Rect, x: float, y: float) -> float:
-    dx = max(rect.left - x, 0.0, x - rect.right)
-    dy = max(rect.top - y, 0.0, y - rect.bottom)
+    dx = max(rect.x - x, 0.0, x - rect.right)
+    dy = max(rect.y - y, 0.0, y - rect.bottom)
     return hypot(dx, dy)
