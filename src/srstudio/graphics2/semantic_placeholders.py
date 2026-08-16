@@ -1,27 +1,36 @@
 from __future__ import annotations
 
-"""Recuperação segura de área de imagem para ProductCards Canva.
+"""Recuperação segura de ProductCards/área de imagem em placeholders Canva.
 
 Alguns PPTX exportados pelo Canva possuem o card branco e o preço, mas nenhuma
-foto dentro do arquivo. Nesses casos não existe node IMAGE para o Smart Slot.
-Esta camada detecta o placeholder branco perto do PriceBlock e cria somente uma
-área de imagem sintética, mantendo o artwork original intacto.
+foto dentro do arquivo. Em outros, nome, preço e backplate não pertencem ao
+mesmo grupo DrawingML. Esta camada usa o placeholder branco como uma segunda
+âncora espacial forte: promove PriceBlocks órfãos a ProductCards e cria somente
+uma área de imagem sintética, mantendo o artwork original intacto.
 """
 
 from dataclasses import asdict, dataclass, field
 from typing import Any
 import re
 
-from .model import BindingRole, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Rect, Transform
+from .model import BindingRole, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Rect, SmartSlot, Transform
 from .semantic_blocks import semantic_block
 
 _PLACEHOLDER_FILLS = {"#FFFFFF", "#FFF", "WHITE", "THEME:LT1", "THEME:BG1"}
+_ALPHA_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]")
+_DATE_RE = re.compile(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b")
+_GLOBAL_COPY_RE = re.compile(
+    r"\b(?:OFERTAS?\s+V[ÁA]LIDAS?|V[ÁA]LIDAS?\s+SOMENTE|SOMENTE\s+DIA|SANTA\s+JULIANA)\b",
+    re.IGNORECASE,
+)
 
 
 @dataclass(slots=True)
 class PlaceholderRecoveryReport:
     pages_scanned: int = 0
     slots_scanned: int = 0
+    orphan_price_blocks: int = 0
+    orphan_cards_promoted: int = 0
     placeholders_matched: int = 0
     synthetic_image_slots: int = 0
     warnings: list[str] = field(default_factory=list)
@@ -31,17 +40,36 @@ class PlaceholderRecoveryReport:
 
 
 def recover_canva_image_placeholders(document: GraphicsDocument) -> PlaceholderRecoveryReport:
-    """Preenche bindings IMAGE ausentes sem apagar ou converter o backplate.
+    """Promove PriceBlocks órfãos e preenche bindings IMAGE ausentes.
+
+    Ordem de recuperação:
+    1. PriceBlock sem Smart Slot + placeholder branco + nome local => ProductCard;
+    2. qualquer Smart Slot sem IMAGE => área de imagem sintética no placeholder.
 
     O node sintético é determinístico e invisível até um produto com imagem ser
-    aplicado. Reexecutar a função não duplica nodes.
+    aplicado. Reexecutar a função não duplica nodes nem desloca o template.
     """
 
     report = PlaceholderRecoveryReport()
     for page in document.pages:
         report.pages_scanned += 1
         used_placeholders: set[str] = set()
+        used_names: set[str] = set()
+
+        # Primeiro reserve backplates/nome dos slots já reconhecidos para que o
+        # fallback não roube contexto de um card que já possui identidade.
         for slot in page.slots.values():
+            name_id = str(slot.node_by_role.get(BindingRole.NAME.value) or "")
+            if name_id:
+                used_names.add(name_id)
+            placeholder_id = str(slot.metadata.get("recovered_image_placeholder_id") or "")
+            if placeholder_id:
+                used_placeholders.add(placeholder_id)
+
+        _promote_orphan_price_blocks(page, used_placeholders, used_names, report)
+
+        # list(...) é intencional: a fase anterior pode ter criado Smart Slots.
+        for slot in list(page.slots.values()):
             report.slots_scanned += 1
             if slot.node_by_role.get(BindingRole.IMAGE.value):
                 continue
@@ -65,6 +93,202 @@ def recover_canva_image_placeholders(document: GraphicsDocument) -> PlaceholderR
             report.synthetic_image_slots += 1
     document.metadata["semantic_image_placeholders"] = report.to_dict()
     return report
+
+
+def _promote_orphan_price_blocks(
+    page: GraphicsPage,
+    used_placeholders: set[str],
+    used_names: set[str],
+    report: PlaceholderRecoveryReport,
+) -> None:
+    blocks = page.metadata.get("semantic_blocks")
+    if not isinstance(blocks, dict):
+        return
+    orphan_blocks = [
+        block
+        for block in blocks.values()
+        if isinstance(block, dict)
+        and str(block.get("kind") or "") == "price_block"
+        and not str(block.get("slot_id") or "")
+        and bool(dict(block.get("metadata") or {}).get("recovered"))
+    ]
+    report.orphan_price_blocks += len(orphan_blocks)
+    for block in orphan_blocks:
+        raw_bounds = block.get("bounds")
+        if not isinstance(raw_bounds, dict):
+            continue
+        price_rect = _rect(raw_bounds)
+        if price_rect.width <= 0 or price_rect.height <= 0:
+            continue
+        placeholder = _find_placeholder(page, price_rect, used_placeholders)
+        if placeholder is None:
+            continue
+        name_node = _find_name_for_placeholder(page, placeholder, price_rect, used_names)
+        if name_node is None:
+            continue
+        slot = _make_placeholder_product_slot(page, block, name_node, placeholder)
+        if slot is None:
+            continue
+        used_placeholders.add(placeholder.id)
+        used_names.add(name_node.id)
+        report.orphan_cards_promoted += 1
+
+
+def _make_placeholder_product_slot(
+    page: GraphicsPage,
+    price_block: dict[str, Any],
+    name_node: GraphicsNode,
+    placeholder: GraphicsNode,
+) -> SmartSlot | None:
+    price_id = str(price_block.get("id") or "")
+    if not price_id:
+        return None
+    roles = price_block.get("roles")
+    if not isinstance(roles, dict):
+        return None
+    node_by_role: dict[str, str] = {}
+    role_map = {
+        "currency": BindingRole.CURRENCY.value,
+        "reais": BindingRole.PRICE_REAIS.value,
+        "cents": BindingRole.PRICE_CENTS.value,
+        "unit": BindingRole.UNIT.value,
+        "complete": BindingRole.RETAIL_PRICE.value,
+    }
+    for canonical, binding in role_map.items():
+        raw_ids = roles.get(canonical)
+        if isinstance(raw_ids, list) and raw_ids:
+            node_id = str(raw_ids[0])
+            if node_id in page.nodes:
+                node_by_role[binding] = node_id
+    if not node_by_role:
+        return None
+    node_by_role[BindingRole.NAME.value] = name_node.id
+
+    stable = str(price_id).removeprefix("priceblock:recovered:") or _safe_key(price_id)
+    card_id = f"productcard:recovered:placeholder:{stable}"
+    slot_id = f"slot:recovered:placeholder-{stable}"
+    if slot_id in page.slots:
+        return page.slots[slot_id]
+
+    _mark_editable(name_node)
+    price_members = [
+        node_id
+        for raw_ids in roles.values()
+        if isinstance(raw_ids, list)
+        for node_id in (str(item) for item in raw_ids)
+        if node_id in page.nodes
+    ]
+    content = list(dict.fromkeys([*price_members, name_node.id]))
+    for node_id in content:
+        page.nodes[node_id].metadata["semantic_product_card_id"] = card_id
+    placeholder.metadata["semantic_product_card_visual_id"] = card_id
+
+    combined = _bounds_for_nodes(page, content)
+    visual_bounds = combined.union(placeholder.rect.normalized()) if combined is not None else placeholder.rect.normalized()
+    card = {
+        "id": card_id,
+        "kind": "product_card",
+        "slot_id": slot_id,
+        "members": content,
+        "roles": {BindingRole.NAME.value: [name_node.id]},
+        "bounds": _rect_dict(visual_bounds),
+        "template_geometry": {
+            node_id: _geometry(page.nodes[node_id], visual_bounds)
+            for node_id in content
+        },
+        "metadata": {
+            "price_blocks": [price_id],
+            "content_members": content,
+            "source_group_id": "",
+            "stable_key": f"placeholder-{stable}",
+            "confidence": 0.95,
+            "atomic": True,
+            "editable": True,
+            "recovered": True,
+            "placeholder_anchored": True,
+            "image_placeholder_node_id": placeholder.id,
+            "preserve_source_geometry": True,
+            "source": "placeholder-card-recovery",
+        },
+    }
+    blocks = page.metadata.get("semantic_blocks")
+    if isinstance(blocks, dict):
+        blocks[card_id] = card
+        # O PriceBlock passa a apontar para o Smart Slot recém-criado.
+        price_block["slot_id"] = slot_id
+        price_meta = price_block.setdefault("metadata", {})
+        if isinstance(price_meta, dict):
+            price_meta["smart_slot_id"] = slot_id
+
+    slot = SmartSlot(
+        id=slot_id,
+        name=_clean_text(name_node.text),
+        page_id=page.id,
+        node_by_role=node_by_role,
+        confidence=0.95,
+        metadata={
+            "source": "canva-smart-slot",
+            "semantic_recovered": True,
+            "recovered_from_pptx_group": False,
+            "recovered_spatial": True,
+            "recovered_from_placeholder": True,
+            "semantic_product_card_id": card_id,
+            "semantic_price_block_ids": [price_id],
+            "recovered_image_placeholder_id": placeholder.id,
+            "product_snapshot": {},
+        },
+    )
+    page.slots[slot.id] = slot
+    return slot
+
+
+def _find_name_for_placeholder(
+    page: GraphicsPage,
+    placeholder: GraphicsNode,
+    price: Rect,
+    used_names: set[str],
+) -> GraphicsNode | None:
+    pr = placeholder.rect.normalized()
+    candidates: list[tuple[float, GraphicsNode]] = []
+    max_above = max(page.height * 0.095, pr.height * 0.75)
+    max_below = max(page.height * 0.020, pr.height * 0.20)
+    for node in page.nodes.values():
+        if node.id in used_names or node.kind is not NodeKind.TEXT or not node.visible:
+            continue
+        if node.metadata.get("semantic_price_block_id"):
+            continue
+        text = _clean_text(node.text)
+        if not _is_name_text(text):
+            continue
+        nr = node.rect.normalized()
+        # Nome costuma terminar imediatamente antes do quadro branco; aceita-se
+        # pequena sobreposição porque fontes Canva podem ultrapassar a bbox.
+        vertical_gap = pr.y - nr.bottom
+        if vertical_gap > max_above or vertical_gap < -max_below:
+            continue
+        overlap = _axis_overlap(nr.x, nr.right, pr.x, pr.right)
+        center_dx = abs(nr.center_x - pr.center_x) / max(page.width, 1.0)
+        if overlap <= 0 and center_dx > 0.13:
+            continue
+        overlap_ratio = overlap / max(min(nr.width, pr.width), 1.0) if overlap > 0 else 0.0
+        price_dx = abs(nr.center_x - price.center_x) / max(page.width, 1.0)
+        score = abs(vertical_gap) / max(page.height, 1.0) + center_dx * 1.6 + price_dx * 0.35 - overlap_ratio * 0.35
+        candidates.append((score, node))
+    if not candidates:
+        return None
+    candidates.sort(key=lambda item: (item[0], -float(item[1].style.get("font_size") or 0.0), item[1].id))
+    return candidates[0][1]
+
+
+def _is_name_text(text: str) -> bool:
+    if len(text) < 3 or len(text) > 120 or not _ALPHA_RE.search(text):
+        return False
+    if _DATE_RE.search(text) or _GLOBAL_COPY_RE.search(text):
+        return False
+    normalized = text.upper().strip()
+    if normalized in {"R$", "KG", "/KG", "UN", "/UN", "G", "L", "ML", "LT"}:
+        return False
+    return True
 
 
 def _price_rect(page: GraphicsPage, slot) -> Rect | None:
@@ -227,14 +451,42 @@ def _attach_to_semantic_card(page: GraphicsPage, slot, placeholder: GraphicsNode
     metadata["drop_bounds_from_placeholder"] = True
     old_bounds = _rect(block.get("bounds") or {})
     combined = old_bounds.union(placeholder.rect.normalized()) if old_bounds.width > 0 and old_bounds.height > 0 else placeholder.rect.normalized()
-    block["bounds"] = {
-        "x": combined.x,
-        "y": combined.y,
-        "width": combined.width,
-        "height": combined.height,
-    }
+    block["bounds"] = _rect_dict(combined)
     synthetic.metadata["semantic_product_card_id"] = card_id
     placeholder.metadata.setdefault("semantic_product_card_visual_id", card_id)
+
+
+def _mark_editable(node: GraphicsNode) -> None:
+    if "semantic_source_locked" not in node.metadata:
+        node.metadata["semantic_source_locked"] = bool(node.locked)
+    node.metadata["semantic_recovered_editable"] = True
+    node.locked = False
+
+
+def _bounds_for_nodes(page: GraphicsPage, node_ids: list[str]) -> Rect | None:
+    rect: Rect | None = None
+    for node_id in node_ids:
+        node = page.node(node_id)
+        if node is None:
+            continue
+        rect = node.rect.normalized() if rect is None else rect.union(node.rect.normalized())
+    return rect
+
+
+def _geometry(node: GraphicsNode, bounds: Rect) -> dict[str, float]:
+    width = max(bounds.width, 1e-9)
+    height = max(bounds.height, 1e-9)
+    return {
+        "x": node.transform.x,
+        "y": node.transform.y,
+        "width": node.transform.width,
+        "height": node.transform.height,
+        "rotation": node.transform.rotation,
+        "relative_x": (node.transform.x - bounds.x) / width,
+        "relative_y": (node.transform.y - bounds.y) / height,
+        "relative_width": node.transform.width / width,
+        "relative_height": node.transform.height / height,
+    }
 
 
 def _rect(raw: dict[str, Any]) -> Rect:
@@ -244,6 +496,14 @@ def _rect(raw: dict[str, Any]) -> Rect:
         max(0.0, float(raw.get("width") or 0.0)),
         max(0.0, float(raw.get("height") or 0.0)),
     )
+
+
+def _rect_dict(rect: Rect) -> dict[str, float]:
+    return {"x": rect.x, "y": rect.y, "width": rect.width, "height": rect.height}
+
+
+def _clean_text(value: str) -> str:
+    return " ".join(str(value or "").replace("\n", " ").split()).strip()
 
 
 def _axis_overlap(a1: float, a2: float, b1: float, b2: float) -> float:
