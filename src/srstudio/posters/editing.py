@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from decimal import Decimal
+from time import time
 
 from srstudio.core.models import Product, to_decimal
 from srstudio.posters.core import PosterKind
@@ -59,6 +61,7 @@ class PosterProductEditor:
         if field not in self.editable(kind):
             return PosterEditResult(False, field, "Campo somente leitura.")
         before = self._signature(product)
+        before_value = self.raw_value(product, kind, field)
         text = str(raw_value or "").strip()
 
         if field == "name":
@@ -94,7 +97,59 @@ class PosterProductEditor:
             fields = product.metadata.setdefault("edited_fields", [])
             if field not in fields:
                 fields.append(field)
+            self.record_history(
+                product,
+                field,
+                before_value,
+                self.raw_value(product, kind, field),
+                source="manual",
+            )
         return PosterEditResult(changed, field, "Alteração aplicada." if changed else "Sem alteração.")
+
+    @staticmethod
+    def record_history(
+        product: Product,
+        field: str,
+        before: object,
+        after: object,
+        *,
+        source: str = "manual",
+    ) -> None:
+        """Keep a compact audit trail and coalesce rapid typing in the same field."""
+
+        now_epoch = time()
+        now_iso = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        history = product.metadata.setdefault("edit_history", [])
+        if not isinstance(history, list):
+            history = []
+            product.metadata["edit_history"] = history
+        before_text = str(before or "")
+        after_text = str(after or "")
+        if history:
+            last = history[-1]
+            if (
+                isinstance(last, dict)
+                and str(last.get("field") or "") == field
+                and str(last.get("source") or "manual") == source
+                and before_text == str(last.get("after") or "")
+                and now_epoch - float(last.get("_ts") or 0) <= 5.0
+            ):
+                last["after"] = after_text
+                last["at"] = now_iso
+                last["_ts"] = now_epoch
+                return
+        history.append(
+            {
+                "field": field,
+                "before": before_text,
+                "after": after_text,
+                "source": source,
+                "at": now_iso,
+                "_ts": now_epoch,
+            }
+        )
+        if len(history) > 100:
+            del history[:-100]
 
     @staticmethod
     def _apply_promotion_price(product: Product, field: str, value: Decimal | None) -> None:
