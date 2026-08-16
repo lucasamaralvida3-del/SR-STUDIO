@@ -116,7 +116,7 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
         if result.launched:
             self.toast.show(result.message, "success", 5200)
             return
-        tone = "warning" if result.ok else "error"
+        tone = "warning" if result.ok else "danger"
         self.toast.show(result.message, tone, 6200)
 
     def _start_background_staging(self, products, kind: PosterKind, campaign: str) -> None:
