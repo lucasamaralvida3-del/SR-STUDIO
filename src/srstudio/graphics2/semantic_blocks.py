@@ -136,10 +136,10 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
             report.protected_price_nodes += len(block.members)
 
         page.metadata["semantic_blocks"] = page_blocks
-        page.metadata["semantic_blocks_version"] = 2
+        page.metadata["semantic_blocks_version"] = 3
 
     document.metadata["semantic_blocks"] = report.to_dict()
-    document.metadata["semantic_blocks_version"] = 2
+    document.metadata["semantic_blocks_version"] = 3
     return report
 
 
@@ -171,6 +171,10 @@ def semantic_member_ids(page: GraphicsPage, block_id: str) -> list[str]:
 
 def _clear_semantic_marks(page: GraphicsPage) -> None:
     for node in page.nodes.values():
+        if bool(node.metadata.pop("semantic_recovered_editable", False)):
+            original_locked = node.metadata.pop("semantic_source_locked", None)
+            if original_locked is not None:
+                node.locked = bool(original_locked)
         node.metadata.pop("semantic_price_block_id", None)
         node.metadata.pop("semantic_price_role", None)
         node.metadata.pop("semantic_product_card_id", None)
@@ -238,6 +242,15 @@ def _make_price_block(
             node = page.nodes[node_id]
             node.metadata["semantic_price_block_id"] = block_id
             node.metadata["semantic_price_role"] = canonical
+            if recovered:
+                # Elementos PPTX sem Smart Slot chegam bloqueados por segurança.
+                # Se os quatro tokens formam inequivocamente um preço, somente
+                # esses tokens são liberados para edição; o restante do layout
+                # continua protegido. O estado original é restaurável/idempotente.
+                if "semantic_source_locked" not in node.metadata:
+                    node.metadata["semantic_source_locked"] = bool(node.locked)
+                node.metadata["semantic_recovered_editable"] = True
+                node.locked = False
             if node.kind is NodeKind.TEXT:
                 node.style["nowrap"] = True
                 node.style["semantic_fit_policy"] = "overflow_only"
@@ -255,6 +268,7 @@ def _make_price_block(
             "complete": complete,
             "split_complete": split_complete,
             "atomic": True,
+            "editable": recovered or bool(slot_id),
             "recovered": recovered,
             "preserve_source_geometry": True,
             "source": source,
