@@ -45,6 +45,9 @@ def test_component_contract_is_optional_atomic_and_does_not_enable_feature_flags
     assert "Feature flag permaneceu inalterada" in source
     assert "feature-flags.json" not in source
     assert ".set(\"graphics_engine_2\"" not in source
+    # O updater é invocado com `&` dentro do Bootstrap. `exit` encerraria toda
+    # a sessão PowerShell e impediria o Desktop Core de abrir após um no-op.
+    assert "exit 0" not in source
 
 
 def test_current_stable_manifest_does_not_activate_graphics2_host_yet():
