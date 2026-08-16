@@ -16,10 +16,11 @@ Engine 2 continuam preservados no `.srscene`.
 """
 
 from dataclasses import asdict, dataclass, field
+from decimal import Decimal
 from typing import Any
 import copy
 
-from srstudio.core.models import Page, Product, ProductCard, StudioProject
+from srstudio.core.models import Page, Product, ProductCard, StudioProject, to_decimal
 
 from .legacy_sync import fingerprint_studio_project, sync_graphics_to_studio
 from .model import GraphicsDocument
@@ -45,6 +46,7 @@ _PRODUCT_FIELDS = (
     "campaign",
     "validity",
 )
+_PRICE_FIELDS = {"price", "app_price", "wholesale_price", "retail_price"}
 _PAGE_FIELDS = ("name", "width", "height", "background")
 _CARD_FIELDS = ("product_id", "x", "y", "width", "height", "rotation", "locked", "highlighted", "style_id", "z_index")
 
@@ -288,9 +290,13 @@ def _set_path(project: StudioProject, path: str, value: Any) -> bool:
         return True
     if len(parts) == 3 and parts[0] == "product":
         product = next((item for item in project.products if item.id == parts[1]), None)
-        if product is None or parts[2] not in _PRODUCT_FIELDS or value is _MISSING:
+        field_name = parts[2]
+        if product is None or field_name not in _PRODUCT_FIELDS or value is _MISSING:
             return False
-        setattr(product, parts[2], value)
+        if field_name in _PRICE_FIELDS:
+            setattr(product, field_name, to_decimal(value))
+        else:
+            setattr(product, field_name, value)
         return True
     if len(parts) == 3 and parts[0] == "page":
         page = next((item for item in project.pages if item.id == parts[1]), None)
@@ -311,7 +317,7 @@ def _set_path(project: StudioProject, path: str, value: Any) -> bool:
 
 
 def _normalize(value: Any) -> Any:
-    if hasattr(value, "as_tuple") and value.__class__.__name__ == "Decimal":
+    if isinstance(value, Decimal):
         return str(value)
     if isinstance(value, float):
         return round(value, 8)
