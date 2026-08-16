@@ -94,6 +94,7 @@ def create_live_scene_image_provider():
                         "width": float(node.transform.width or 1.0),
                         "height": float(node.transform.height or 1.0),
                         "style": deepcopy(node.style),
+                        "clip_path": deepcopy(node.metadata.get("clip_path")),
                     }
             with self._lock:
                 self._nodes = snapshot
@@ -115,7 +116,15 @@ def create_live_scene_image_provider():
             style = dict(spec.get("style") or {})
             image = _apply_crop(image, dict(style.get("crop") or {}), QtCore)
             width, height = _target_size(spec, requested_size)
-            composed = _compose(image, width, height, style, QtCore, QtGui)
+            composed = _compose(
+                image,
+                width,
+                height,
+                style,
+                QtCore,
+                QtGui,
+                clip_path=spec.get("clip_path"),
+            )
             try:
                 size.setWidth(composed.width())
                 size.setHeight(composed.height())
@@ -144,6 +153,7 @@ def _serialized_source(node: dict[str, Any], metadata: dict[str, Any], assets: d
 def _preview_signature(node: dict[str, Any], source: str) -> str:
     style = dict(node.get("style") or {})
     transform = dict(node.get("transform") or {})
+    metadata = dict(node.get("metadata") or {})
     payload = {
         "source": source,
         "source_revision": _source_revision(source),
@@ -157,6 +167,7 @@ def _preview_signature(node: dict[str, Any], source: str) -> str:
         "flip_x": style.get("flip_x"),
         "flip_y": style.get("flip_y"),
         "crop": style.get("crop"),
+        "clip_path": metadata.get("clip_path"),
     }
     return sha256(json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str).encode("utf-8")).hexdigest()[:16]
 
@@ -241,19 +252,105 @@ def _apply_crop(image, crop: dict[str, Any], QtCore):
     return image.copy(QtCore.QRect(x, y, width, height))
 
 
-def _compose(image, width: int, height: int, style: dict[str, Any], QtCore, QtGui):
+def _custom_clip_path(
+    spec: object,
+    width: int,
+    height: int,
+    QtCore,
+    QtGui,
+    *,
+    mirror_x: bool = False,
+    mirror_y: bool = False,
+):
+    """Converte ``custom_path`` DrawingML para máscara local do preview.
+
+    O QML ainda aplica ``mirror``/``mirrorVertically`` depois que a imagem sai
+    do provider. Por isso a máscara é pré-espelhada aqui: após o espelhamento do
+    Item, o contorno visual volta à orientação original, igual ao QPainter de
+    produção que espelha somente a fotografia e mantém a forma do template.
+    """
+
+    if not isinstance(spec, dict):
+        return None
+    paths = list(spec.get("paths") or [])
+    if not paths:
+        return None
+    result = QtGui.QPainterPath()
+    target_w = float(max(1, width))
+    target_h = float(max(1, height))
+
+    for item in paths:
+        if not isinstance(item, dict):
+            continue
+        source_w = max(1e-9, float(item.get("width") or spec.get("width") or 0.0))
+        source_h = max(1e-9, float(item.get("height") or spec.get("height") or 0.0))
+        sx = target_w / source_w
+        sy = target_h / source_h
+
+        def point(raw):
+            x = float(raw[0]) * sx
+            y = float(raw[1]) * sy
+            if mirror_x:
+                x = target_w - x
+            if mirror_y:
+                y = target_h - y
+            return QtCore.QPointF(x, y)
+
+        for command in item.get("commands") or []:
+            if not isinstance(command, dict):
+                continue
+            op = str(command.get("op") or "")
+            points = list(command.get("points") or [])
+            if op == "M" and points:
+                result.moveTo(point(points[0]))
+            elif op == "L" and points:
+                result.lineTo(point(points[0]))
+            elif op == "C" and len(points) >= 3:
+                result.cubicTo(point(points[0]), point(points[1]), point(points[2]))
+            elif op == "Q" and len(points) >= 2:
+                result.quadTo(point(points[0]), point(points[1]))
+            elif op == "Z":
+                result.closeSubpath()
+    return result if not result.isEmpty() else None
+
+
+def _compose(
+    image,
+    width: int,
+    height: int,
+    style: dict[str, Any],
+    QtCore,
+    QtGui,
+    *,
+    clip_path: object = None,
+):
     target = _transparent_image(QtGui, width, height)
     painter = QtGui.QPainter(target)
     if not painter.isActive():
         return target
+    painter.setRenderHint(QtGui.QPainter.Antialiasing, True)
     painter.setRenderHint(QtGui.QPainter.SmoothPixmapTransform, True)
     try:
+        flip_x = bool(style.get("flip_x"))
+        flip_y = bool(style.get("flip_y"))
+        clip = _custom_clip_path(
+            clip_path,
+            width,
+            height,
+            QtCore,
+            QtGui,
+            mirror_x=flip_x,
+            mirror_y=flip_y,
+        )
+        if clip is not None:
+            painter.setClipPath(clip)
+
         fit = str(style.get("fit") or "contain").lower()
         focus_x = min(1.0, max(0.0, float(style.get("focus_x", 0.5) or 0.5)))
         focus_y = min(1.0, max(0.0, float(style.get("focus_y", 0.5) or 0.5)))
-        if bool(style.get("flip_x")):
+        if flip_x:
             focus_x = 1.0 - focus_x
-        if bool(style.get("flip_y")):
+        if flip_y:
             focus_y = 1.0 - focus_y
         zoom = max(0.05, float(style.get("zoom", 1.0) or 1.0))
         full_target = QtCore.QRectF(0.0, 0.0, float(width), float(height))
