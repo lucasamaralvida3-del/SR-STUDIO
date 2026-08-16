@@ -26,12 +26,14 @@ from .model import (
     Transform,
 )
 from .operations import GraphicsSession
+from .pdf_baseline import PdfBaselinePage, render_pdf_baselines
 from .pptx_fidelity import EmbeddedPptxFont, PptxFidelityReport, enhance_pptx_document
 from .preflight import PreflightIssue, run_preflight
+from .quality import ProductionGateIssue, ProductionGateReport, inspect_production_gate, store_visual_fidelity
 from .qt_renderer import RenderReport, render_pdf, render_png
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.4"
+ENGINE_VERSION = "2.0.0-alpha.5"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -54,8 +56,11 @@ __all__ = [
     "ImportAuditIssue",
     "ImportAuditReport",
     "NodeKind",
+    "PdfBaselinePage",
     "PptxFidelityReport",
     "PreflightIssue",
+    "ProductionGateIssue",
+    "ProductionGateReport",
     "Rect",
     "RenderReport",
     "SCHEMA_VERSION",
@@ -64,8 +69,11 @@ __all__ = [
     "audit_import",
     "compare_images",
     "enhance_pptx_document",
+    "inspect_production_gate",
     "render_pdf",
+    "render_pdf_baselines",
     "render_png",
     "run_preflight",
     "run_suite",
+    "store_visual_fidelity",
 ]
