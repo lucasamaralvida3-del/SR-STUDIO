@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Literal
 
+from .image_fill import has_drawingml_fill_rect, normalize_fill_rect
 from .model import BindingRole, GraphicsDocument, GraphicsNode, NodeKind
 
 Severity = Literal["error", "warning", "info"]
@@ -27,6 +28,9 @@ class ImportAuditReport:
     slots: int = 0
     images: int = 0
     texts: int = 0
+    image_clips: int = 0
+    drawingml_fill_rects: int = 0
+    drawingml_fill_outsets: int = 0
     issues: list[ImportAuditIssue] = field(default_factory=list)
 
     @property
@@ -62,6 +66,9 @@ class ImportAuditReport:
             "slots": self.slots,
             "images": self.images,
             "texts": self.texts,
+            "image_clips": self.image_clips,
+            "drawingml_fill_rects": self.drawingml_fill_rects,
+            "drawingml_fill_outsets": self.drawingml_fill_outsets,
             "errors": self.errors,
             "warnings": self.warnings,
             "infos": self.infos,
@@ -176,6 +183,14 @@ def _audit_node(document, page, node: GraphicsNode, report: ImportAuditReport, *
         report.texts += 1
     elif node.kind in {NodeKind.IMAGE, NodeKind.BACKGROUND}:
         report.images += 1
+        if isinstance(node.metadata.get("clip_path"), dict):
+            report.image_clips += 1
+        fill_rect = node.style.get("fill_rect")
+        if has_drawingml_fill_rect(fill_rect):
+            report.drawingml_fill_rects += 1
+            normalized = normalize_fill_rect(fill_rect)
+            if any(value < 0.0 for value in normalized.values()):
+                report.drawingml_fill_outsets += 1
 
     t = node.transform
     if t.width < 0 or t.height < 0:
