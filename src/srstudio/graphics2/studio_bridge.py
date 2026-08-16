@@ -11,6 +11,7 @@ desligada por padrão; este módulo apenas prepara a infraestrutura de migraçã
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable
+import copy
 import os
 import shutil
 import subprocess
@@ -21,6 +22,7 @@ from srstudio.settings.features import FeatureFlagStore
 
 from .compat import from_studio_project
 from .host_runtime import RUNTIME_MANIFEST_NAME, validate_runtime_host
+from .legacy_merge import LEGACY_SOURCE_SNAPSHOT_KEY, LegacyMergeReport, merge_graphics_to_studio_non_conflicting
 from .legacy_sync import LegacySyncReport, fingerprint_studio_project, sync_graphics_to_studio
 from .package import load_package, save_package
 from .quality import ProductionGateReport, inspect_production_gate
@@ -54,7 +56,7 @@ class StudioBridgeSyncResult:
     ok: bool
     message: str
     package_path: str = ""
-    report: LegacySyncReport | None = None
+    report: LegacySyncReport | LegacyMergeReport | None = None
 
 
 def bridge_flags(data_dir: str | Path) -> tuple[bool, bool]:
@@ -109,6 +111,11 @@ def prepare_studio_project(
             previous_path = None
 
     document = from_studio_project(project)
+    # A BASE e o fingerprint precisam existir dentro da primeira sessão. Sem
+    # isso toda reabertura pareceria um projeto novo e o merge three-way não
+    # teria um estado comum para separar mudanças Studio de mudanças G2.
+    document.metadata["legacy_source_fingerprint"] = source_fingerprint
+    document.metadata[LEGACY_SOURCE_SNAPSHOT_KEY] = copy.deepcopy(project.to_dict())
     gate = inspect_production_gate(document, require_visual_fidelity=False)
     # O snapshot é local e persistente por projeto. Assets que pertencem ao SR
     # Scene são empacotados; image_path legado continua apontando ao Banco SR.
@@ -127,8 +134,15 @@ def sync_saved_session_to_project(
     data_dir: str | Path,
     *,
     allow_conflict: bool = False,
+    merge_non_conflicting: bool = False,
 ) -> StudioBridgeSyncResult:
-    """Aplica ao Studio somente mudanças do G2 representáveis pelo modelo 5.x."""
+    """Aplica ao Studio somente mudanças G2 representáveis pelo modelo 5.x.
+
+    Por padrão o comportamento continua conservador: qualquer divergência entre
+    Studio e a BASE bloqueia a escrita. Com ``merge_non_conflicting=True`` o
+    bridge executa um three-way merge e aplica somente mudanças G2 que não
+    colidem com alterações novas feitas no Studio.
+    """
 
     package_path = _bridge_package_path(project, data_dir)
     if not package_path.is_file():
@@ -151,7 +165,14 @@ def sync_saved_session_to_project(
             package_path=str(package_path),
         )
 
-    report = sync_graphics_to_studio(document, project, allow_conflict=allow_conflict)
+    report: LegacySyncReport | LegacyMergeReport = sync_graphics_to_studio(
+        document,
+        project,
+        allow_conflict=allow_conflict,
+    )
+    if not report.ok and report.conflict and merge_non_conflicting:
+        report = merge_graphics_to_studio_non_conflicting(document, project)
+
     if not report.ok:
         detail = report.warnings[0] if report.warnings else "conflito desconhecido"
         return StudioBridgeSyncResult(
@@ -161,14 +182,35 @@ def sync_saved_session_to_project(
             report=report,
         )
 
+    if isinstance(report, LegacySyncReport):
+        # O sync completo passa a considerar o resultado atual como nova BASE.
+        document.metadata[LEGACY_SOURCE_SNAPSHOT_KEY] = copy.deepcopy(project.to_dict())
     try:
-        # O sync atualiza o fingerprint de origem dentro do próprio documento.
-        # Persisti-lo evita que uma segunda sincronização gere falso conflito.
+        # O sync/merge atualiza metadados de origem quando é seguro avançar a
+        # BASE. Persistir o documento evita falso conflito na próxima abertura.
         save_package(document, package_path, embed_local_assets=True)
     except Exception as exc:
         return StudioBridgeSyncResult(
             ok=False,
             message=f"Alterações foram projetadas em memória, mas a sessão G2 não pôde ser atualizada: {exc}",
+            package_path=str(package_path),
+            report=report,
+        )
+
+    if isinstance(report, LegacyMergeReport):
+        if report.conflicts:
+            return StudioBridgeSyncResult(
+                ok=True,
+                message=(
+                    f"Merge assistido aplicou {report.applied} alteração(ões) sem conflito · "
+                    f"{report.unresolved_conflicts} conflito(s) permaneceram preservados no Engine 2."
+                ),
+                package_path=str(package_path),
+                report=report,
+            )
+        return StudioBridgeSyncResult(
+            ok=True,
+            message=f"Merge assistido concluído · {report.applied} alteração(ões) aplicadas sem conflito.",
             package_path=str(package_path),
             report=report,
         )
