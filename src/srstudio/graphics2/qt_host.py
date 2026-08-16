@@ -220,6 +220,7 @@ def launch_qt_quick_editor(
     session = GraphicsSession(context.document)
     router = GraphicsCommandRouter(session)
     gate = context.gate or inspect_production_gate(session.document, require_visual_fidelity=False)
+    preview_provider = create_live_scene_image_provider()
 
     class SceneBridge(QObject):
         sceneChanged = Signal()
@@ -231,6 +232,7 @@ def launch_qt_quick_editor(
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
+            preview_provider.sync_document(session.document)
             payload = inject_preview_image_urls(router.payload(), session.document)
             editor = payload.setdefault("editor", {})
             editor["diagnostics"] = build_editor_diagnostics(
@@ -305,7 +307,6 @@ def launch_qt_quick_editor(
 
     font_report = register_qt_document_fonts(session.document)
     engine = QQmlApplicationEngine()
-    preview_provider = create_live_scene_image_provider(session)
     engine.addImageProvider(PREVIEW_PROVIDER_NAME, preview_provider)
     bridge = SceneBridge()
     engine.rootContext().setContextProperty("sceneBridge", bridge)
