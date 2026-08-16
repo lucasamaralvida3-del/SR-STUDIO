@@ -42,6 +42,7 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_graphics2_fidelity.py
+          tests/test_graphics2_fidelity_triage.py
           tests/test_graphics2_import_audit.py
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_golden_master.py
@@ -61,6 +62,8 @@ jobs:
           tests/test_graphics2_qml_price_preview.py
       - name: Fidelity Lab CLI smoke
         run: python -m srstudio.graphics2.fidelity_lab --help
+      - name: Fidelity Triage CLI smoke
+        run: python -m srstudio.graphics2.fidelity_triage --help
       - name: Golden Master CLI smoke
         run: python -m srstudio.graphics2.golden_master --help
       - name: Reference Suite CLI smoke
@@ -94,6 +97,7 @@ jobs:
           python -c "from pathlib import Path; from srstudio.graphics2.qt_host import qt_quick_available; import srstudio.graphics2.qt_host as h; assert qt_quick_available(); assert (Path(h.__file__).with_name('qml')/'GraphicsEditor.qml').is_file(); print('Qt Quick host OK')"
           python -m srstudio.graphics2.qt_host --help
           python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api
+          python -m srstudio.graphics2.fidelity_triage --help
           python -m srstudio.graphics2.reference_suite --help
           python -m srstudio.graphics2.pptx_structure --help
       - name: Visual Fidelity and Production Gate on Windows
@@ -101,6 +105,7 @@ jobs:
         run: >-
           python -m pytest -q
           tests/test_graphics2_fidelity.py
+          tests/test_graphics2_fidelity_triage.py
           tests/test_graphics2_import_audit.py
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_golden_master.py
