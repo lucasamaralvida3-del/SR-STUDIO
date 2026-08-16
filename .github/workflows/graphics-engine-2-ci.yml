@@ -51,7 +51,9 @@ jobs:
           tests/test_graphics2_pptx_groups.py
           tests/test_graphics2_pptx_fidelity.py
           tests/test_graphics2_semantic_blocks.py
+          tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_text_fit_policy.py
+          tests/test_graphics2_qml_price_preview.py
       - name: Fidelity Lab CLI smoke
         run: python -m srstudio.graphics2.fidelity_lab --help
       - name: Golden Master CLI smoke
@@ -100,7 +102,9 @@ jobs:
           tests/test_graphics2_pptx_groups.py
           tests/test_graphics2_pptx_fidelity.py
           tests/test_graphics2_semantic_blocks.py
+          tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_text_fit_policy.py
+          tests/test_graphics2_qml_price_preview.py
       - name: Graphics Engine 2 tests on Windows
         shell: pwsh
         run: python -m pytest -q tests -k graphics2
