@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Iterable
 import math
 
+from .fonts import register_qt_document_fonts
 from .model import CoordinateUnit, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Rect
 from .preflight import run_preflight
 
@@ -58,6 +59,7 @@ def render_png(
     QtCore, QtGui = _qt()
     if not 0 <= page_index < len(document.pages):
         raise IndexError("Página inexistente.")
+    font_report = register_qt_document_fonts(document)
     page = document.pages[page_index]
     scale = _raster_scale(page, dpi=dpi, target_width=target_width)
     width = max(1, round(page.width * scale))
@@ -67,7 +69,7 @@ def render_png(
     painter = QtGui.QPainter(image)
     if not painter.isActive():
         raise RuntimeError("Qt não conseguiu iniciar o renderizador raster.")
-    warnings: list[RenderWarning] = []
+    warnings: list[RenderWarning] = [RenderWarning("FONT_REGISTRATION", item) for item in font_report.warnings]
     try:
         _configure_painter(painter, QtGui)
         painter.scale(scale, scale)
@@ -96,6 +98,7 @@ def render_pdf(
         raise ValueError("Nenhuma página selecionada para PDF.")
     if any(index < 0 or index >= len(document.pages) for index in indices):
         raise IndexError("Página inexistente na seleção de PDF.")
+    font_report = register_qt_document_fonts(document)
     target = Path(output)
     target.parent.mkdir(parents=True, exist_ok=True)
     if target.suffix.lower() != ".pdf":
@@ -109,7 +112,7 @@ def render_pdf(
     painter = QtGui.QPainter(writer)
     if not painter.isActive():
         raise RuntimeError("Qt não conseguiu iniciar o renderizador PDF.")
-    warnings: list[RenderWarning] = []
+    warnings: list[RenderWarning] = [RenderWarning("FONT_REGISTRATION", item) for item in font_report.warnings]
     try:
         _configure_painter(painter, QtGui)
         for position, index in enumerate(indices):
@@ -136,8 +139,8 @@ def validate_renderability(document: GraphicsDocument) -> list[RenderWarning]:
     warnings = [RenderWarning(issue.code, issue.message, issue.page_id, issue.node_id) for issue in run_preflight(document)]
     for page in document.pages:
         for node in page.nodes.values():
-            if node.kind is NodeKind.PATH and not node.metadata.get("svg_path"):
-                warnings.append(RenderWarning("PATH_UNSUPPORTED", "Path sem svg_path vetorial; será ignorado até a conversão de geometria.", page.id, node.id))
+            if node.kind is NodeKind.PATH and not node.metadata.get("svg_path") and not node.metadata.get("custom_path"):
+                warnings.append(RenderWarning("PATH_UNSUPPORTED", "Path sem geometria vetorial; será ignorado até a conversão de geometria.", page.id, node.id))
             if node.kind in {NodeKind.IMAGE, NodeKind.BACKGROUND} and _image_source(document, node):
                 source = _image_source(document, node)
                 if not _source_is_local(source):
@@ -209,8 +212,18 @@ def _render_node(painter, document: GraphicsDocument, page: GraphicsPage, node: 
 
 def _draw_text(painter, node: GraphicsNode, QtCore, QtGui) -> None:
     t = node.transform
-    rect = QtCore.QRectF(t.x, t.y, max(0.1, t.width), max(0.1, t.height))
     style = node.style
+    insets = dict(style.get("text_insets") or {})
+    left = max(0.0, float(insets.get("left", 0.0) or 0.0))
+    top = max(0.0, float(insets.get("top", 0.0) or 0.0))
+    right = max(0.0, float(insets.get("right", 0.0) or 0.0))
+    bottom = max(0.0, float(insets.get("bottom", 0.0) or 0.0))
+    rect = QtCore.QRectF(
+        t.x + left,
+        t.y + top,
+        max(0.1, t.width - left - right),
+        max(0.1, t.height - top - bottom),
+    )
     family = str(style.get("font_family") or style.get("source_font_family") or "Segoe UI")
     base_size = max(1.0, float(style.get("font_size") or 20.0))
     unit = str(style.get("font_size_unit") or "pt").lower()
@@ -279,28 +292,36 @@ def _draw_image(painter, document: GraphicsDocument, page: GraphicsPage, node: G
     if bool(node.style.get("flip_x")) or bool(node.style.get("flip_y")):
         image = image.mirrored(bool(node.style.get("flip_x")), bool(node.style.get("flip_y")))
     target = QtCore.QRectF(node.transform.x, node.transform.y, node.transform.width, node.transform.height)
-    fit = str(node.style.get("fit") or "contain").lower()
-    focus_x = min(1.0, max(0.0, float(node.style.get("focus_x", 0.5) or 0.5)))
-    focus_y = min(1.0, max(0.0, float(node.style.get("focus_y", 0.5) or 0.5)))
-    zoom = max(0.05, float(node.style.get("zoom", 1.0) or 1.0))
-    if fit == "fill":
-        painter.drawImage(target, image)
-        return
-    iw, ih = float(image.width()), float(image.height())
-    tw, th = max(0.1, target.width()), max(0.1, target.height())
-    if fit == "cover" or zoom > 1.0001:
-        scale = max(tw / iw, th / ih) * zoom
-        source_w = min(iw, tw / scale)
-        source_h = min(ih, th / scale)
-        source_x = (iw - source_w) * focus_x
-        source_y = (ih - source_h) * focus_y
-        source_rect = QtCore.QRectF(source_x, source_y, source_w, source_h)
-        painter.drawImage(target, image, source_rect)
-        return
-    scale = min(tw / iw, th / ih)
-    dw, dh = iw * scale, ih * scale
-    dest = QtCore.QRectF(target.x() + (tw - dw) * focus_x, target.y() + (th - dh) * focus_y, dw, dh)
-    painter.drawImage(dest, image)
+    clip_path = _custom_path(node.metadata.get("clip_path"), target, QtGui)
+    if clip_path is not None:
+        painter.save()
+        painter.setClipPath(clip_path)
+    try:
+        fit = str(node.style.get("fit") or "contain").lower()
+        focus_x = min(1.0, max(0.0, float(node.style.get("focus_x", 0.5) or 0.5)))
+        focus_y = min(1.0, max(0.0, float(node.style.get("focus_y", 0.5) or 0.5)))
+        zoom = max(0.05, float(node.style.get("zoom", 1.0) or 1.0))
+        if fit == "fill":
+            painter.drawImage(target, image)
+            return
+        iw, ih = float(image.width()), float(image.height())
+        tw, th = max(0.1, target.width()), max(0.1, target.height())
+        if fit == "cover" or zoom > 1.0001:
+            scale = max(tw / iw, th / ih) * zoom
+            source_w = min(iw, tw / scale)
+            source_h = min(ih, th / scale)
+            source_x = (iw - source_w) * focus_x
+            source_y = (ih - source_h) * focus_y
+            source_rect = QtCore.QRectF(source_x, source_y, source_w, source_h)
+            painter.drawImage(target, image, source_rect)
+            return
+        scale = min(tw / iw, th / ih)
+        dw, dh = iw * scale, ih * scale
+        dest = QtCore.QRectF(target.x() + (tw - dw) * focus_x, target.y() + (th - dh) * focus_y, dw, dh)
+        painter.drawImage(dest, image)
+    finally:
+        if clip_path is not None:
+            painter.restore()
 
 
 def _crop_image(image, crop: dict, QtCore):
@@ -323,6 +344,10 @@ def _draw_rect(painter, node: GraphicsNode, QtCore, QtGui) -> None:
     painter.setPen(_pen(style, QtCore, QtGui))
     painter.setBrush(_brush(style, QtCore, QtGui))
     rect = QtCore.QRectF(node.transform.x, node.transform.y, node.transform.width, node.transform.height)
+    custom = _custom_path(node.metadata.get("custom_path"), rect, QtGui)
+    if custom is not None:
+        painter.drawPath(custom)
+        return
     radius = float(style.get("radius") or 0.0)
     if not radius and style.get("radius_ratio") not in (None, ""):
         radius = min(rect.width(), rect.height()) * max(0.0, float(style.get("radius_ratio") or 0.0))
@@ -341,11 +366,60 @@ def _draw_line(painter, node: GraphicsNode, QtCore, QtGui) -> None:
 
 
 def _draw_path(painter, page: GraphicsPage, node: GraphicsNode, warnings: list[RenderWarning], QtCore, QtGui) -> None:
+    rect = QtCore.QRectF(node.transform.x, node.transform.y, node.transform.width, node.transform.height)
+    custom = _custom_path(node.metadata.get("custom_path"), rect, QtGui)
+    if custom is not None:
+        painter.setPen(_pen(node.style, QtCore, QtGui))
+        painter.setBrush(_brush(node.style, QtCore, QtGui))
+        painter.drawPath(custom)
+        return
     path_text = str(node.metadata.get("svg_path") or "").strip()
     if not path_text:
-        warnings.append(RenderWarning("PATH_UNSUPPORTED", "Path sem svg_path vetorial; elemento ignorado.", page.id, node.id))
+        warnings.append(RenderWarning("PATH_UNSUPPORTED", "Path sem geometria vetorial; elemento ignorado.", page.id, node.id))
         return
-    warnings.append(RenderWarning("PATH_DEFERRED", "Path vetorial preservado no SR Scene; parser SVG dedicado ainda não aplicado neste render.", page.id, node.id))
+    warnings.append(RenderWarning("PATH_DEFERRED", "Path SVG preservado no SR Scene; parser SVG dedicado ainda não aplicado neste render.", page.id, node.id))
+
+
+def _custom_path(spec: object, target, QtGui):
+    if not isinstance(spec, dict):
+        return None
+    paths = list(spec.get("paths") or [])
+    if not paths:
+        return None
+    result = QtGui.QPainterPath()
+    for item in paths:
+        if not isinstance(item, dict):
+            continue
+        width = max(1e-9, float(item.get("width") or spec.get("width") or 0.0))
+        height = max(1e-9, float(item.get("height") or spec.get("height") or 0.0))
+        sx = target.width() / width
+        sy = target.height() / height
+
+        def point(raw):
+            return QtCorePoint(target.x() + float(raw[0]) * sx, target.y() + float(raw[1]) * sy, QtGui)
+
+        for command in item.get("commands") or []:
+            if not isinstance(command, dict):
+                continue
+            op = str(command.get("op") or "")
+            points = list(command.get("points") or [])
+            if op == "M" and points:
+                p = point(points[0]); result.moveTo(p)
+            elif op == "L" and points:
+                p = point(points[0]); result.lineTo(p)
+            elif op == "C" and len(points) >= 3:
+                a, b, c = point(points[0]), point(points[1]), point(points[2]); result.cubicTo(a, b, c)
+            elif op == "Q" and len(points) >= 2:
+                a, b = point(points[0]), point(points[1]); result.quadTo(a, b)
+            elif op == "Z":
+                result.closeSubpath()
+    return result if not result.isEmpty() else None
+
+
+def QtCorePoint(x: float, y: float, QtGui):
+    # QPainterPath aceita QPointF; importar QtCore aqui criaria dependência global.
+    from PySide6.QtCore import QPointF
+    return QPointF(x, y)
 
 
 def _pen(style: dict, QtCore, QtGui, *, default: str = "transparent"):
