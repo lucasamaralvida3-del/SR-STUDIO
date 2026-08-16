@@ -9,12 +9,15 @@ Este módulo mede a estrutura fonte antes da conversão e compara o que chegou a
 SR Scene sem modificar geometria ou conteúdo.
 """
 
+from argparse import ArgumentParser
 from dataclasses import asdict, dataclass, field
 from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
+import json
 import re
+import sys
 import zipfile
 
 from .model import GraphicsDocument, NodeKind
@@ -135,9 +138,6 @@ class PptxStructureReport:
             audit.warnings.append(
                 f"PPTX possui {self.slide_count} slide(s), mas o SR Scene importou {len(document.pages)} página(s)."
             )
-        # Texto e imagem são componentes visuais essenciais. Toleramos pequenas
-        # diferenças porque o pipeline pode fundir elementos auxiliares, mas uma
-        # perda relevante deve bloquear a promoção silenciosa do novo motor.
         if self.text_shapes >= 4 and audit.text_coverage < 0.90:
             audit.warnings.append(
                 f"Cobertura de texto PPTX baixa: {audit.text_coverage * 100:.2f}% "
@@ -193,6 +193,46 @@ def inspect_pptx_structure(source: str | Path) -> PptxStructureReport:
     except (OSError, zipfile.BadZipFile) as exc:
         report.warnings.append(f"Não foi possível abrir o PPTX: {exc}")
     return report
+
+
+def build_parser() -> ArgumentParser:
+    parser = ArgumentParser(
+        prog="sr-pptx-structure",
+        description="Audita a estrutura OOXML de um PPTX/Canva antes da conversão para SR Scene 2.",
+    )
+    parser.add_argument("pptx", type=Path)
+    parser.add_argument("--json", dest="json_path", type=Path, default=None, help="Salva o relatório JSON neste caminho.")
+    parser.add_argument("--slides", action="store_true", help="Exibe também a contagem por slide.")
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+    report = inspect_pptx_structure(args.pptx)
+    payload = report.to_dict()
+    if args.json_path:
+        target = Path(args.json_path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    print(
+        "SR PPTX Structure: "
+        f"slides={report.slide_count} · textos={report.text_shapes} · "
+        f"imagens={report.pictures + report.image_fill_shapes} "
+        f"(pic={report.pictures}, blipFill={report.image_fill_shapes}) · "
+        f"grupos={report.groups} · custGeom={report.custom_geometry} · "
+        f"preços~={report.estimated_split_prices}"
+    )
+    print(f"SHA-256: {report.source_sha256 or '-'}")
+    if args.slides:
+        for slide in report.slides:
+            print(
+                f"  slide {slide.slide}: shapes={slide.shapes} textos={slide.text_shapes} "
+                f"imagens={slide.pictures + slide.image_fill_shapes} grupos={slide.groups} "
+                f"custGeom={slide.custom_geometry} preços~={slide.estimated_split_prices}"
+            )
+    for warning in report.warnings:
+        print(f"AVISO: {warning}", file=sys.stderr)
+    return 0 if report.ready else 1
 
 
 def _inspect_slide(root: ET.Element, slide_no: int) -> PptxSlideStructure:
@@ -265,3 +305,7 @@ def _coverage(imported: int, source: int) -> float:
     if source <= 0:
         return 1.0
     return min(1.0, max(0.0, float(imported) / float(source)))
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
