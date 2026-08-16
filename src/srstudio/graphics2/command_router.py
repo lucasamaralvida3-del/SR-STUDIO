@@ -4,6 +4,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 import json
 
+from .drop_target import find_drop_target
 from .geometry import SnapEngine, SnapSettings
 from .import_bridge import CanvaBindingService
 from .model import GraphicsNode, NodeKind, Transform
@@ -194,6 +195,29 @@ class GraphicsCommandRouter:
                 if "tolerance_screen_px" in command:
                     self.snap.tolerance_screen_px = max(0.1, float(command["tolerance_screen_px"]))
                 return CommandResult(True, False, "Snap atualizado.", {"snap": asdict(self.snap)})
+            if name == "drop_product":
+                if "x" not in command or "y" not in command:
+                    return CommandResult(False, False, "Drop requer coordenadas x/y do documento.")
+                target = find_drop_target(
+                    self.session.page,
+                    float(command.get("x") or 0.0),
+                    float(command.get("y") or 0.0),
+                    magnet_distance=max(0.0, float(command.get("magnet_distance") or 0.0)),
+                )
+                if target is None:
+                    return CommandResult(False, False, "Nenhum Smart Slot encontrado nesta posição.")
+                bind_command: dict[str, Any] = {"name": "bind_product", "slot_id": target.slot_id}
+                if isinstance(command.get("product"), dict):
+                    bind_command["product"] = command["product"]
+                else:
+                    bind_command["product_id"] = str(command.get("product_id") or "")
+                result = self.dispatch(bind_command)
+                if result.ok:
+                    payload = dict(result.payload or {})
+                    payload["drop_target"] = target.to_dict()
+                    result.payload = payload
+                    result.message = "Produto aplicado ao card pelo drag-and-drop." if result.changed else result.message
+                return result
             if name == "bind_product":
                 slot_id = str(command.get("slot_id") or ""); product = command.get("product")
                 if not isinstance(product, dict):
