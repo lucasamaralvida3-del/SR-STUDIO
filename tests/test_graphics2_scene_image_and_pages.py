@@ -38,13 +38,18 @@ def test_image_inspector_uses_shared_scene_image_component():
     assert "focusY: focusYSlider.value" in source
 
 
-def test_page_inspector_exposes_visual_reorder_controls_and_quality_panel_hosts_it():
+def test_page_inspector_exposes_visual_reorder_controls_drag_and_quality_host():
     source = _qml("PageInspector.qml")
     quality = _qml("QualityInspector.qml")
     assert '"name": "reorder_page"' in source
     assert '"previous"' in source
     assert '"next"' in source
+    assert '"target_index": dragTargetIndex' in source
     assert '"name": "select_page"' in source
+    assert "property bool pageDragActive" in source
+    assert "pageStrip.indexAt" in source
+    assert "beginPageDrag" in source
+    assert "finishPageDrag" in source
     assert "PageInspector {" in quality
     assert "parent: panel.parent" in quality
 
