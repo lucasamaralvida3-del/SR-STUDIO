@@ -93,8 +93,82 @@ def audit_import(document: GraphicsDocument, *, check_local_assets: bool = True)
         for slot in page.slots.values():
             _audit_slot(page, slot, report)
 
+    _audit_pptx_mapping(document, report)
     document.metadata["graphics2_import_audit"] = report.to_dict()
     return report
+
+
+def _audit_pptx_mapping(document: GraphicsDocument, report: ImportAuditReport) -> None:
+    """Transforma perda entre OOXML fonte e SR Scene em risco de importação.
+
+    Esta camada é deliberadamente conservadora: diferenças moderadas viram
+    warning; perda severa de páginas/imagens vira error e impede o Production
+    Gate de aprovar silenciosamente um PPTX visualmente incompleto.
+    """
+
+    mapping = document.metadata.get("pptx_mapping_audit")
+    if not isinstance(mapping, dict) or not mapping:
+        return
+
+    if not bool(mapping.get("page_count_match", True)):
+        report.issues.append(
+            ImportAuditIssue(
+                "error",
+                "PPTX_PAGE_MAPPING_LOSS",
+                "Quantidade de páginas do SR Scene diverge da estrutura OOXML do PPTX.",
+            )
+        )
+
+    text_coverage = _coverage_value(mapping.get("text_coverage", 1.0))
+    image_coverage = _coverage_value(mapping.get("image_coverage", 1.0))
+    group_coverage = _coverage_value(mapping.get("group_coverage", 1.0))
+    source_text = _int(mapping.get("source_text_shapes", 0))
+    source_images = _int(mapping.get("source_image_shapes", 0))
+    source_groups = _int(mapping.get("source_groups", 0))
+
+    if source_text >= 4 and text_coverage < 0.70:
+        report.issues.append(
+            ImportAuditIssue(
+                "error",
+                "PPTX_TEXT_MAPPING_LOSS",
+                f"Apenas {text_coverage * 100:.2f}% dos textos OOXML chegaram ao SR Scene.",
+            )
+        )
+    elif source_text >= 4 and text_coverage < 0.90:
+        report.issues.append(
+            ImportAuditIssue(
+                "warning",
+                "PPTX_TEXT_MAPPING_RISK",
+                f"Cobertura de textos OOXML abaixo do alvo: {text_coverage * 100:.2f}%.",
+            )
+        )
+
+    if source_images >= 2 and image_coverage < 0.60:
+        report.issues.append(
+            ImportAuditIssue(
+                "error",
+                "PPTX_IMAGE_MAPPING_LOSS",
+                f"Apenas {image_coverage * 100:.2f}% das imagens OOXML chegaram ao SR Scene. "
+                "A importação pode ter ignorado formas Canva com a:blipFill.",
+            )
+        )
+    elif source_images >= 2 and image_coverage < 0.85:
+        report.issues.append(
+            ImportAuditIssue(
+                "warning",
+                "PPTX_IMAGE_MAPPING_RISK",
+                f"Cobertura de imagens OOXML abaixo do alvo: {image_coverage * 100:.2f}%.",
+            )
+        )
+
+    if source_groups >= 2 and group_coverage < 0.50:
+        report.issues.append(
+            ImportAuditIssue(
+                "warning",
+                "PPTX_GROUP_MAPPING_RISK",
+                f"Cobertura de grupos DrawingML baixa: {group_coverage * 100:.2f}%.",
+            )
+        )
 
 
 def _audit_node(document, page, node: GraphicsNode, report: ImportAuditReport, *, check_local_assets: bool) -> None:
@@ -224,3 +298,17 @@ def _outside_page(node: GraphicsNode, page_width: float, page_height: float) -> 
 def _is_nonlocal(source: str) -> bool:
     lowered = source.lower()
     return lowered.startswith(("http://", "https://", "data:", "qrc:/", "file://"))
+
+
+def _coverage_value(value: object) -> float:
+    try:
+        return max(0.0, min(1.0, float(value)))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
