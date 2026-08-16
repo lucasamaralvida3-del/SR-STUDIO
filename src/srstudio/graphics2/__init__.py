@@ -47,7 +47,7 @@ from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_imag
 from .semantic_recovery import recover_canva_semantic_cards
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.14"
+ENGINE_VERSION = "2.0.0-alpha.15"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
