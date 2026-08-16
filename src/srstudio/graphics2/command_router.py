@@ -8,6 +8,7 @@ from .geometry import SnapEngine, SnapSettings
 from .import_bridge import CanvaBindingService
 from .model import GraphicsNode, NodeKind, Transform
 from .operations import GraphicsSession
+from .semantic_blocks import semantic_block, semantic_member_ids, semantic_owner
 
 
 @dataclass(slots=True)
@@ -67,8 +68,26 @@ class GraphicsCommandRouter:
                 node_id = str(command.get("node_id") or "")
                 if not node_id:
                     return CommandResult(False, False, "node_id ausente.")
-                self.session.select(node_id, additive=bool(command.get("additive", False)), toggle=bool(command.get("toggle", False)))
-                return CommandResult(True, False, "Seleção atualizada.")
+                if self.session.page.node(node_id) is None:
+                    return CommandResult(False, False, "Elemento inexistente.")
+                semantic = bool(command.get("semantic", False))
+                scope = str(command.get("semantic_scope") or ("auto" if semantic else "node")).lower()
+                node_ids, block_id = self._selection_target(node_id, scope)
+                self._apply_selection(
+                    node_ids,
+                    anchor_id=node_id,
+                    additive=bool(command.get("additive", False)),
+                    toggle=bool(command.get("toggle", False)),
+                )
+                block = semantic_block(self.session.page, block_id) if block_id else None
+                kind = str(block.get("kind") or "") if block else ""
+                message = "PriceBlock selecionado." if kind == "price_block" else "ProductCard selecionado." if kind == "product_card" else "Seleção atualizada."
+                return CommandResult(
+                    True,
+                    False,
+                    message,
+                    {"selection": sorted(self.session.selection), "semantic_block_id": block_id, "semantic_kind": kind},
+                )
             if name == "clear_selection":
                 self.session.clear_selection()
                 return CommandResult(True, False, "Seleção limpa.")
@@ -199,6 +218,43 @@ class GraphicsCommandRouter:
             return CommandResult(False, False, f"Comando desconhecido: {name}")
         except Exception as exc:
             return CommandResult(False, False, f"{type(exc).__name__}: {exc}")
+
+    def _selection_target(self, node_id: str, scope: str) -> tuple[list[str], str]:
+        page = self.session.page
+        if scope in {"node", "exact", "none"}:
+            return [node_id], ""
+        if scope == "card":
+            node = page.node(node_id)
+            block_id = str(node.metadata.get("semantic_product_card_id") or "") if node is not None else ""
+            members = semantic_member_ids(page, block_id) if block_id else []
+            return (members or [node_id]), block_id if members else ""
+        # Auto prioriza PriceBlock. Isso impede que R$, reais, centavos e KG/UN
+        # se separem no canvas sem tornar todo ProductCard indivisível por padrão.
+        block_id = semantic_owner(page, node_id, prefer_card=False)
+        members = semantic_member_ids(page, block_id) if block_id else []
+        return (members or [node_id]), block_id if members else ""
+
+    def _apply_selection(
+        self,
+        node_ids: list[str],
+        *,
+        anchor_id: str,
+        additive: bool,
+        toggle: bool,
+    ) -> None:
+        valid = {node_id for node_id in node_ids if node_id in self.session.page.nodes}
+        if not valid:
+            return
+        if toggle:
+            if valid.issubset(self.session.selection):
+                self.session.selection.difference_update(valid)
+            else:
+                self.session.selection.update(valid)
+        elif additive:
+            self.session.selection.update(valid)
+        else:
+            self.session.selection = set(valid)
+        self.session.anchor_id = anchor_id if anchor_id in self.session.selection else next(iter(self.session.selection), None)
 
     def _resize_handle(self, command: dict[str, Any]) -> CommandResult:
         node_id = str(command.get("node_id") or self.session.anchor_id or ""); node = self.session.page.node(node_id)
