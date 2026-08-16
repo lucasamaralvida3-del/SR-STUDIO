@@ -12,14 +12,33 @@ from srstudio.posters.editing import PosterProductEditor
 
 
 ISSUE_LABELS = {
-    "PRECO_INVALIDO": "⛔ PREÇO INVÁLIDO",
-    "ABAIXO_CUSTO": "⛔ ABAIXO CUSTO",
-    "PRECO_FORA_PADRAO": "⚠ PREÇO SUSPEITO",
-    "PROMO_ACIMA_VENDA": "⚠ ACIMA VENDA",
-    "CLUBE_MAIOR_PROMO": "⚠ CLUBE MAIOR",
-    "UNIDADE_SUSPEITA": "⚠ REVISAR UN.",
+    "PRECO_INVALIDO": "⛔ PREÇO",
+    "ABAIXO_CUSTO": "⛔ < CUSTO",
+    "PRECO_FORA_PADRAO": "⚠ PREÇO",
+    "PROMO_ACIMA_VENDA": "⚠ > VENDA",
+    "CLUBE_MAIOR_PROMO": "⚠ CLUBE >",
+    "UNIDADE_SUSPEITA": "⚠ UNIDADE",
     "DUPLICADO": "⚠ DUPLICADO",
 }
+
+
+def cartazes_problem_priority(
+    status: CommercialStatus | None,
+    render_state: str = "",
+    edited: bool = False,
+) -> int:
+    """Lower numbers are more urgent for table ordering."""
+
+    render = str(render_state or "").upper().strip()
+    if render == "ERRO" or (status is not None and status.overall == PosterCommercialValidator.ERROR):
+        return 0
+    if status is not None and status.overall == PosterCommercialValidator.WARNING:
+        return 1
+    if edited or render == "ALTERADO":
+        return 2
+    if render in {"AGUARDANDO", "RENDERIZANDO"}:
+        return 3
+    return 4
 
 
 def cartazes_diagnostic_label(
@@ -40,17 +59,44 @@ def cartazes_diagnostic_label(
         issue = ranked[0]
         return ISSUE_LABELS.get(
             issue.code,
-            "⛔ ERRO" if issue.severity == PosterCommercialValidator.ERROR else "⚠ ALERTA",
+            "⛔ ERRO" if issue.severity == PosterCommercialValidator.ERROR else "⚠ ATENÇÃO",
         )
     if status is not None and status.overall == PosterCommercialValidator.ERROR:
         return "⛔ ERRO"
     if status is not None and status.overall == PosterCommercialValidator.WARNING:
-        return "⚠ ALERTA"
+        return "⚠ ATENÇÃO"
     if edited or render == "ALTERADO":
         return "● ALTERADO"
     if render in {"AGUARDANDO", "RENDERIZANDO"}:
         return "◌ RENDER"
     return "✓ OK"
+
+
+def cartazes_matches_filter(
+    selected_filter: str,
+    status: CommercialStatus | None,
+    render_state: str,
+    *,
+    edited: bool = False,
+    has_limit: bool = False,
+    has_secondary: bool = False,
+) -> bool:
+    """Pure filter rule used by the existing combo without adding UI."""
+
+    selected = str(selected_filter or "TODOS").upper().strip()
+    render = str(render_state or "").upper().strip()
+    overall = status.overall if status is not None else PosterCommercialValidator.OK
+    critical = overall == PosterCommercialValidator.ERROR or render == "ERRO"
+    attention = overall == PosterCommercialValidator.WARNING
+    return {
+        "TODOS": True,
+        "PROBLEMAS": critical or attention,
+        "ERROS": critical,
+        "ALERTAS": attention,
+        "ALTERADOS": bool(edited),
+        "COM LIMITE": bool(has_limit),
+        "COM CLUBE": bool(has_secondary),
+    }.get(selected, True)
 
 
 def safe_unit_correction(product: Product) -> str | None:
@@ -82,14 +128,27 @@ def _decimal_key(value: Decimal | None) -> tuple[int, Decimal]:
 class _CartazesProductivityMixin:
     """Adds speed features to the existing grid without adding permanent UI panels."""
 
+    FILTERS = (
+        "TODOS",
+        "PROBLEMAS",
+        "ERROS",
+        "ALERTAS",
+        "ALTERADOS",
+        "COM LIMITE",
+        "COM CLUBE",
+    )
+
     def _build(self) -> None:
         self._cartazes_sort_column = ""
         self._cartazes_sort_reverse = False
         super()._build()
         self._install_column_sorting()
         self._extend_context_menu()
-        self.tree.bind("<F8>", lambda _e: self._jump_problem(1), add="+")
-        self.tree.bind("<Shift-F8>", lambda _e: self._jump_problem(-1), add="+")
+        self.tree.bind("<F8>", lambda _e: self._jump_problem(1, "error"), add="+")
+        self.tree.bind("<Shift-F8>", lambda _e: self._jump_problem(-1, "error"), add="+")
+        self.tree.bind("<F9>", lambda _e: self._jump_problem(1, "attention"), add="+")
+        self.tree.bind("<Shift-F9>", lambda _e: self._jump_problem(-1, "attention"), add="+")
+        self.tree.bind("<Control-Shift-p>", lambda _e: self._prioritize_problems(), add="+")
 
     def _install_column_sorting(self) -> None:
         headers = cartazes_table_headers(bool(self.is_wholesale))
@@ -122,6 +181,14 @@ class _CartazesProductivityMixin:
         self._apply_current_sort()
         self._refresh_sort_headings()
 
+    def _prioritize_problems(self) -> str:
+        self._cartazes_sort_column = "check"
+        self._cartazes_sort_reverse = False
+        self._apply_current_sort()
+        self._refresh_sort_headings()
+        self._notify("Problemas priorizados no topo da tabela.", "info")
+        return "break"
+
     def _sort_key(self, product: Product, column: str):
         status = self._commercial_statuses.get(product.id, CommercialStatus())
         if column == "code":
@@ -144,13 +211,8 @@ class _CartazesProductivityMixin:
             return _natural_text(product.cpf_limit)
         if column == "check":
             render = str(product.metadata.get("render_state") or "").upper()
-            priority = 0 if status.overall == PosterCommercialValidator.ERROR or render == "ERRO" else (
-                1 if status.overall == PosterCommercialValidator.WARNING else (
-                    2 if product.metadata.get("edited") else 3
-                )
-            )
             return (
-                priority,
+                cartazes_problem_priority(status, render, bool(product.metadata.get("edited"))),
                 _natural_text(
                     cartazes_diagnostic_label(
                         status,
@@ -180,6 +242,57 @@ class _CartazesProductivityMixin:
         self._apply_current_sort()
         self._refresh_sort_headings()
         self._refresh_selection_summary()
+
+    def _apply_filters_in_place(self, products: list[Product]) -> None:
+        query = self.search_var.get().strip().casefold() if hasattr(self, "search_var") else ""
+        selected_filter = self.filter_var.get() if hasattr(self, "filter_var") else "TODOS"
+        visible = 0
+        errors = attentions = edited = problems = 0
+
+        for product in products:
+            status = self._commercial_statuses.get(product.id, CommercialStatus())
+            render = str(product.metadata.get("render_state") or "").upper()
+            critical = status.overall == PosterCommercialValidator.ERROR or render == "ERRO"
+            attention = status.overall == PosterCommercialValidator.WARNING
+            is_edited = bool(product.metadata.get("edited"))
+            errors += int(critical)
+            attentions += int(attention)
+            edited += int(is_edited)
+            problems += int(critical or attention)
+
+            matches_search = (
+                not query
+                or query in product.name.casefold()
+                or query in str(product.code).casefold()
+                or query in str(product.ean).casefold()
+            )
+            has_secondary = (
+                product.wholesale_price is not None
+                if self.is_wholesale
+                else product.app_price is not None
+                or int(product.metadata.get("promotion_type", 0) or 0) == 3
+            )
+            matches_filter = cartazes_matches_filter(
+                selected_filter,
+                status,
+                render,
+                edited=is_edited,
+                has_limit=bool(str(product.cpf_limit or "").strip()),
+                has_secondary=has_secondary,
+            )
+            if matches_search and matches_filter:
+                visible += 1
+            elif self.tree.exists(product.id):
+                self.tree.delete(product.id)
+
+        if hasattr(self, "filter_summary"):
+            self.filter_summary.configure(
+                text=(
+                    f"{visible}/{len(products)} visíveis · "
+                    f"{errors} erro(s) · {attentions} atenção · "
+                    f"{problems} problema(s) · {edited} alterado(s)"
+                )
+            )
 
     def _selection_changed(self, event=None) -> None:
         super()._selection_changed(event)
@@ -233,10 +346,13 @@ class _CartazesProductivityMixin:
         menu.add_command(label="Corrigir automaticamente (seguro)", command=self._safe_fix_selected)
         menu.add_command(label="Ver histórico de alterações", command=self._show_edit_history)
         menu.add_separator()
-        menu.add_command(label="Próximo erro   F8", command=lambda: self._jump_problem(1))
-        menu.add_command(label="Erro anterior   Shift+F8", command=lambda: self._jump_problem(-1))
+        menu.add_command(label="Priorizar problemas no topo", command=self._prioritize_problems)
+        menu.add_command(label="Próximo erro   F8", command=lambda: self._jump_problem(1, "error"))
+        menu.add_command(label="Erro anterior   Shift+F8", command=lambda: self._jump_problem(-1, "error"))
+        menu.add_command(label="Próxima atenção   F9", command=lambda: self._jump_problem(1, "attention"))
+        menu.add_command(label="Atenção anterior   Shift+F9", command=lambda: self._jump_problem(-1, "attention"))
 
-    def _problem_rows(self) -> list[str]:
+    def _problem_rows(self, mode: str = "error") -> list[str]:
         products = {product.id: product for product in self._queue_products()}
         rows: list[str] = []
         for iid in self.tree.get_children(""):
@@ -245,14 +361,21 @@ class _CartazesProductivityMixin:
                 continue
             status = self._commercial_statuses.get(iid, CommercialStatus())
             render = str(product.metadata.get("render_state") or "").upper()
-            if status.overall == PosterCommercialValidator.ERROR or render == "ERRO":
+            critical = status.overall == PosterCommercialValidator.ERROR or render == "ERRO"
+            attention = status.overall == PosterCommercialValidator.WARNING
+            if mode == "attention" and attention:
+                rows.append(iid)
+            elif mode == "problem" and (critical or attention):
+                rows.append(iid)
+            elif mode == "error" and critical:
                 rows.append(iid)
         return rows
 
-    def _jump_problem(self, direction: int) -> str:
-        rows = self._problem_rows()
+    def _jump_problem(self, direction: int, mode: str = "error") -> str:
+        rows = self._problem_rows(mode)
         if not rows:
-            self._notify("Nenhum erro crítico visível na tabela.", "success")
+            label = "atenção" if mode == "attention" else "problema" if mode == "problem" else "erro crítico"
+            self._notify(f"Nenhum {label} visível na tabela.", "success")
             return "break"
         current = self.tree.selection()[0] if self.tree.selection() else ""
         if current in rows:
