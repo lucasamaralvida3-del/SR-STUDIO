@@ -152,6 +152,29 @@ def test_recovered_slot_accepts_product_without_moving_template_geometry():
         assert node.transform == before[node.id]
 
 
+def test_auto_semantic_selection_promotes_recovered_name_and_image_to_whole_card():
+    document, group, name, image, currency, whole, cents, unit = _recovered_card_fixture()
+    build_semantic_blocks(document)
+    router = GraphicsCommandRouter(GraphicsSession(document))
+
+    selected_name = router.dispatch({"name": "select", "node_id": name.id, "semantic": True})
+    assert selected_name.ok
+    assert selected_name.payload["semantic_kind"] == "product_card"
+    assert router.session.selection == {group.id}
+
+    selected_image = router.dispatch({"name": "select", "node_id": image.id, "semantic": True})
+    assert selected_image.ok
+    assert selected_image.payload["semantic_kind"] == "product_card"
+    assert router.session.selection == {group.id}
+
+    # O preço continua priorizando o PriceBlock, permitindo editar/mover preço
+    # sem obrigatoriamente mover o card completo.
+    selected_price = router.dispatch({"name": "select", "node_id": whole.id, "semantic": True})
+    assert selected_price.ok
+    assert selected_price.payload["semantic_kind"] == "price_block"
+    assert router.session.selection == {currency.id, whole.id, cents.id, unit.id}
+
+
 def test_explicit_card_selection_moves_the_whole_recovered_pptx_group():
     document = GraphicsDocument(name="Quinta Filé group move")
     page = document.active_page
