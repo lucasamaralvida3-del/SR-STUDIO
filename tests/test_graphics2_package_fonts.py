@@ -5,7 +5,7 @@ import zipfile
 from hashlib import sha256
 from pathlib import Path
 
-from srstudio.graphics2.model import GraphicsDocument
+from srstudio.graphics2.model import AssetRef, GraphicsDocument, GraphicsNode, NodeKind, Transform
 from srstudio.graphics2.package import load_package, save_package
 
 
@@ -65,3 +65,34 @@ def test_srscene_keeps_font_metadata_when_embedding_is_disabled(tmp_path):
         scene = json.loads(archive.read("scene.json").decode("utf-8"))
         assert manifest["fonts"][0]["stored"] == ""
         assert scene["metadata"]["embedded_fonts"][0]["extracted_path"] == str(font)
+
+
+def test_srscene_rebinds_image_nodes_to_extracted_asset_path(tmp_path):
+    image = tmp_path / "produto.png"
+    image.write_bytes(b"PNG-PAYLOAD-FOR-PACKAGE-TEST")
+    document = GraphicsDocument(name="Portable Image")
+    asset = AssetRef(
+        kind="image",
+        source=str(image),
+        sha256=sha256(image.read_bytes()).hexdigest(),
+    )
+    document.add_asset(asset)
+    node = GraphicsNode(
+        kind=NodeKind.IMAGE,
+        name="Produto",
+        asset_id=asset.id,
+        transform=Transform(x=10, y=10, width=100, height=100),
+        metadata={"bound_image_source": str(image)},
+    )
+    document.active_page.add_node(node)
+
+    package = save_package(document, tmp_path / "portable-image.srscene")
+    image.unlink()
+    restored = load_package(package, extract_assets_to=tmp_path / "runtime-assets")
+    restored_node = restored.active_page.node(node.id)
+    restored_asset = restored.assets[asset.id]
+
+    assert restored_node is not None
+    assert Path(restored_asset.source).is_file()
+    assert restored_node.metadata["bound_image_source"] == restored_asset.source
+    assert restored_node.metadata["package_asset_extracted"] is True
