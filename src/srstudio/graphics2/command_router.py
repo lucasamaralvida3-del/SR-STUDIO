@@ -160,8 +160,26 @@ class GraphicsCommandRouter:
                 return CommandResult(True, True, "Forma adicionada.", {"node_id": node.id})
             if name == "crop":
                 node_id = str(command.get("node_id") or self.session.anchor_id or "")
-                self.session.set_image_crop(node_id, fit=str(command["fit"]) if "fit" in command else None, focus_x=_optional_float(command, "focus_x"), focus_y=_optional_float(command, "focus_y"), zoom=_optional_float(command, "zoom"), flip_x=_optional_bool(command, "flip_x"), flip_y=_optional_bool(command, "flip_y"))
-                return CommandResult(True, bool(node_id), "Imagem ajustada.")
+                node = self.session.page.node(node_id)
+                if node is None or node.kind not in {NodeKind.IMAGE, NodeKind.BACKGROUND}:
+                    return CommandResult(False, False, "Selecione uma imagem editável.")
+                if self.session.effective_locked(node_id):
+                    return CommandResult(False, False, "A imagem está bloqueada.")
+                self.session.set_image_crop(
+                    node_id,
+                    fit=str(command["fit"]) if "fit" in command else None,
+                    focus_x=_optional_float(command, "focus_x"),
+                    focus_y=_optional_float(command, "focus_y"),
+                    zoom=_optional_float(command, "zoom"),
+                    flip_x=_optional_bool(command, "flip_x"),
+                    flip_y=_optional_bool(command, "flip_y"),
+                    crop_left=_optional_float(command, "crop_left"),
+                    crop_top=_optional_float(command, "crop_top"),
+                    crop_right=_optional_float(command, "crop_right"),
+                    crop_bottom=_optional_float(command, "crop_bottom"),
+                    crop_reset=bool(command.get("crop_reset", False)),
+                )
+                return CommandResult(True, True, "Enquadramento e crop atualizados.", {"node_id": node_id})
             if name in {"add_page", "duplicate_page"}:
                 page_id = self.session.add_page(name=str(command.get("name_value") or "") or None, duplicate_active=name == "duplicate_page")
                 return CommandResult(True, True, "Página criada.", {"page_id": page_id})
@@ -289,18 +307,11 @@ class GraphicsCommandRouter:
             members = semantic_member_ids(page, block_id) if block_id else []
             return (members or [node_id]), block_id if members else ""
 
-        # Auto sempre prioriza PriceBlock. Assim um clique no preço mantém
-        # R$ + reais + centavos + KG/UN atômicos, sem transformar todos os
-        # ProductCards normais em objetos indivisíveis.
         price_id = semantic_owner(page, node_id, prefer_card=False)
         price_members = semantic_member_ids(page, price_id) if price_id else []
         if price_members:
             return price_members, price_id
 
-        # ProductCards recuperados de grupos PPTX são diferentes: o próprio
-        # arquivo fonte já declarou que nome/imagem/backplate/preço pertencem ao
-        # mesmo grupo. Neles, clicar no nome ou imagem seleciona automaticamente
-        # o grupo real, evitando que a edição volte a desmontar o layout Canva.
         card_id = semantic_owner(page, node_id, prefer_card=True)
         card = semantic_block(page, card_id) if card_id else None
         if card and bool((card.get("metadata") or {}).get("recovered")):
