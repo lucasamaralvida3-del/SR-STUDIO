@@ -228,11 +228,27 @@ class GraphicsCommandRouter:
             block_id = str(node.metadata.get("semantic_product_card_id") or "") if node is not None else ""
             members = semantic_member_ids(page, block_id) if block_id else []
             return (members or [node_id]), block_id if members else ""
-        # Auto prioriza PriceBlock. Isso impede que R$, reais, centavos e KG/UN
-        # se separem no canvas sem tornar todo ProductCard indivisível por padrão.
-        block_id = semantic_owner(page, node_id, prefer_card=False)
-        members = semantic_member_ids(page, block_id) if block_id else []
-        return (members or [node_id]), block_id if members else ""
+
+        # Auto sempre prioriza PriceBlock. Assim um clique no preço mantém
+        # R$ + reais + centavos + KG/UN atômicos, sem transformar todos os
+        # ProductCards normais em objetos indivisíveis.
+        price_id = semantic_owner(page, node_id, prefer_card=False)
+        price_members = semantic_member_ids(page, price_id) if price_id else []
+        if price_members:
+            return price_members, price_id
+
+        # ProductCards recuperados de grupos PPTX são diferentes: o próprio
+        # arquivo fonte já declarou que nome/imagem/backplate/preço pertencem ao
+        # mesmo grupo. Neles, clicar no nome ou imagem seleciona automaticamente
+        # o grupo real, evitando que a edição volte a desmontar o layout Canva.
+        card_id = semantic_owner(page, node_id, prefer_card=True)
+        card = semantic_block(page, card_id) if card_id else None
+        if card and bool((card.get("metadata") or {}).get("recovered")):
+            card_members = semantic_member_ids(page, card_id)
+            if card_members:
+                return card_members, card_id
+
+        return [node_id], ""
 
     def _apply_selection(
         self,
