@@ -43,9 +43,10 @@ from .semantic_blocks import (
     semantic_member_ids,
     semantic_owner,
 )
+from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_image_placeholders
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.12"
+ENGINE_VERSION = "2.0.0-alpha.13"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -71,6 +72,7 @@ __all__ = [
     "NodeKind",
     "PageFingerprint",
     "PdfBaselinePage",
+    "PlaceholderRecoveryReport",
     "PptxFidelityReport",
     "PptxGroupReport",
     "PptxMappingAudit",
@@ -96,6 +98,7 @@ __all__ = [
     "inspect_pptx_structure",
     "inspect_production_gate",
     "rebuild_pptx_groups",
+    "recover_canva_image_placeholders",
     "render_pdf",
     "render_pdf_baselines",
     "render_png",
