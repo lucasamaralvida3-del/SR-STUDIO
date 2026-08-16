@@ -2,9 +2,9 @@
 
 # PEP 440 technical package version used by pip/setuptools.
 # The hyphen keeps the existing publisher's product-version extraction compatible.
-__version__ = "5.0.0-beta7.post26"
+__version__ = "5.0.0-beta7.post27"
 
 # User-facing release metadata and launcher distribution version.
 __channel__ = "beta"
-__release_label__ = "Beta 7.26 Professional"
-__distribution_version__ = "5.0.0-hybrid.beta7.26"
+__release_label__ = "Beta 7.27 Professional"
+__distribution_version__ = "5.0.0-hybrid.beta7.27"
