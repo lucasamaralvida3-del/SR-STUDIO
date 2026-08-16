@@ -12,6 +12,7 @@ from hashlib import sha256
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
+import math
 import posixpath
 import re
 import struct
@@ -25,6 +26,7 @@ R_NS = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
 PKG_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
 EMU_PER_INCH = 914400.0
 PX_PER_INCH = 96.0
+DRAWINGML_ANGLE_UNIT = 60000.0
 
 
 @dataclass(slots=True)
@@ -52,6 +54,9 @@ class PptxFidelityReport:
     text_nodes_enriched: int = 0
     custom_paths_enriched: int = 0
     image_clips_enriched: int = 0
+    drawingml_arcs_seen: int = 0
+    drawingml_arcs_converted: int = 0
+    drawingml_arcs_deferred: int = 0
     warnings: list[str] = field(default_factory=list)
 
     @property
@@ -234,7 +239,7 @@ def _enrich_page(page, root: ET.Element, slide_width: int, slide_height: int, re
         if text_body is not None and node.kind is NodeKind.TEXT:
             _enrich_text(node, text_body, scale_x, scale_y)
 
-        path_spec = _custom_path_spec(shape)
+        path_spec = _custom_path_spec(shape, report=report)
         if path_spec is None:
             continue
         if node.kind is NodeKind.IMAGE:
@@ -300,7 +305,11 @@ def _enrich_text(node: GraphicsNode, text_body: ET.Element, scale_x: float, scal
                 node.style["line_spacing_percent"] = numeric / 1000.0
 
 
-def _custom_path_spec(shape: ET.Element) -> dict[str, Any] | None:
+def _custom_path_spec(
+    shape: ET.Element,
+    *,
+    report: PptxFidelityReport | None = None,
+) -> dict[str, Any] | None:
     sppr = shape.find(f"{{{P_NS}}}spPr")
     if sppr is None:
         return None
@@ -318,7 +327,7 @@ def _custom_path_spec(shape: ET.Element) -> dict[str, Any] | None:
         height = _number(path.get("h"))
         max_width = max(max_width, width)
         max_height = max(max_height, height)
-        commands = _path_commands(path)
+        commands = _path_commands(path, report=report)
         if commands:
             paths.append(
                 {
@@ -334,8 +343,24 @@ def _custom_path_spec(shape: ET.Element) -> dict[str, Any] | None:
     return {"width": max_width, "height": max_height, "paths": paths}
 
 
-def _path_commands(path: ET.Element) -> list[dict[str, Any]]:
+def _path_commands(
+    path: ET.Element,
+    *,
+    report: PptxFidelityReport | None = None,
+) -> list[dict[str, Any]]:
+    """Converte comandos DrawingML para o contrato vetorial do SR Scene.
+
+    ``arcTo`` é normalizado para uma sequência de Béziers cúbicas de no máximo
+    90 graus. Assim Qt Quick Canvas e QPainter recebem exatamente a mesma
+    geometria, eliminando a divergência de convenção angular entre os backends.
+    Quando o arco não pode ser resolvido (por exemplo, raio baseado em fórmula
+    não materializada), o comando ``A`` original é preservado e contabilizado
+    para diagnóstico em vez de ser descartado silenciosamente.
+    """
+
     commands: list[dict[str, Any]] = []
+    current: tuple[float, float] | None = None
+    subpath_start: tuple[float, float] | None = None
     for child in list(path):
         tag = child.tag.rsplit("}", 1)[-1]
         points = [
@@ -344,25 +369,118 @@ def _path_commands(path: ET.Element) -> list[dict[str, Any]]:
         ]
         if tag == "moveTo" and points:
             commands.append({"op": "M", "points": points[:1]})
+            current = (float(points[0][0]), float(points[0][1]))
+            subpath_start = current
         elif tag == "lnTo" and points:
             commands.append({"op": "L", "points": points[:1]})
+            current = (float(points[0][0]), float(points[0][1]))
         elif tag == "cubicBezTo" and len(points) >= 3:
             commands.append({"op": "C", "points": points[:3]})
+            current = (float(points[2][0]), float(points[2][1]))
         elif tag == "quadBezTo" and len(points) >= 2:
             commands.append({"op": "Q", "points": points[:2]})
+            current = (float(points[1][0]), float(points[1][1]))
         elif tag == "arcTo":
-            commands.append(
-                {
-                    "op": "A",
-                    "wR": _number(child.get("wR")),
-                    "hR": _number(child.get("hR")),
-                    "stAng": _number(child.get("stAng")),
-                    "swAng": _number(child.get("swAng")),
-                }
-            )
+            raw = {
+                "op": "A",
+                "wR": _number(child.get("wR")),
+                "hR": _number(child.get("hR")),
+                "stAng": _number(child.get("stAng")),
+                "swAng": _number(child.get("swAng")),
+            }
+            if report is not None:
+                report.drawingml_arcs_seen += 1
+            converted = _arc_to_cubic_commands(current, raw)
+            if converted:
+                commands.extend(converted)
+                endpoint = converted[-1]["points"][-1]
+                current = (float(endpoint[0]), float(endpoint[1]))
+                if report is not None:
+                    report.drawingml_arcs_converted += 1
+            elif abs(float(raw["swAng"])) <= 1e-12 and current is not None:
+                # Sweep zero é geometricamente um no-op e já está resolvido.
+                if report is not None:
+                    report.drawingml_arcs_converted += 1
+            else:
+                commands.append(raw)
+                if report is not None:
+                    report.drawingml_arcs_deferred += 1
         elif tag == "close":
             commands.append({"op": "Z"})
+            current = subpath_start
     return commands
+
+
+def _arc_to_cubic_commands(
+    current: tuple[float, float] | None,
+    command: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Expande um ``a:arcTo`` em Béziers cúbicas no sistema DrawingML.
+
+    DrawingML usa ângulos em 1/60000 de grau. Com Y crescendo para baixo, a
+    parametrização ``(cx + rx*cos(t), cy + ry*sin(t))`` reproduz o sentido
+    visual positivo do Office. O centro da elipse é inferido a partir do ponto
+    atual e do ângulo inicial, como definido para ``arcTo`` em ``custGeom``.
+    """
+
+    if current is None:
+        return []
+    try:
+        rx = abs(float(command.get("wR") or 0.0))
+        ry = abs(float(command.get("hR") or 0.0))
+        start_units = float(command.get("stAng") or 0.0)
+        sweep_units = float(command.get("swAng") or 0.0)
+    except (TypeError, ValueError):
+        return []
+    if not all(math.isfinite(value) for value in (rx, ry, start_units, sweep_units)):
+        return []
+    if rx <= 1e-12 or ry <= 1e-12 or abs(sweep_units) <= 1e-12:
+        return []
+
+    start = math.radians(start_units / DRAWINGML_ANGLE_UNIT)
+    sweep = math.radians(sweep_units / DRAWINGML_ANGLE_UNIT)
+    cx = float(current[0]) - rx * math.cos(start)
+    cy = float(current[1]) - ry * math.sin(start)
+    segment_count = max(1, min(128, int(math.ceil(abs(sweep) / (math.pi / 2.0)))))
+    delta = sweep / segment_count
+    result: list[dict[str, Any]] = []
+
+    for index in range(segment_count):
+        theta1 = start + index * delta
+        theta2 = theta1 + delta
+        alpha = (4.0 / 3.0) * math.tan(delta / 4.0)
+        p0 = (cx + rx * math.cos(theta1), cy + ry * math.sin(theta1))
+        p3 = (cx + rx * math.cos(theta2), cy + ry * math.sin(theta2))
+        c1 = (
+            p0[0] + alpha * (-rx * math.sin(theta1)),
+            p0[1] + alpha * (ry * math.cos(theta1)),
+        )
+        c2 = (
+            p3[0] - alpha * (-rx * math.sin(theta2)),
+            p3[1] - alpha * (ry * math.cos(theta2)),
+        )
+        # O primeiro P0 é matematicamente o ponto atual. Pequenas diferenças de
+        # ponto flutuante não geram um lineTo adicional, preservando continuidade.
+        result.append(
+            {
+                "op": "C",
+                "points": [
+                    [float(c1[0]), float(c1[1])],
+                    [float(c2[0]), float(c2[1])],
+                    [float(p3[0]), float(p3[1])],
+                ],
+                "source_op": "A",
+                "source_arc": {
+                    "wR": rx,
+                    "hR": ry,
+                    "stAng": start_units,
+                    "swAng": sweep_units,
+                    "segment": index + 1,
+                    "segments": segment_count,
+                },
+            }
+        )
+    return result
 
 
 def _path_is_axis_aligned_rect(spec: dict[str, Any]) -> bool:
