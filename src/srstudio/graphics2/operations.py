@@ -7,6 +7,7 @@ from typing import Any, Iterator
 import copy
 
 from .history import TransactionHistory
+from .image_crop import update_crop
 from .model import BindingRole, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Rect, SmartSlot, Transform, _id
 from .preflight import assert_document_integrity
 
@@ -408,13 +409,27 @@ class GraphicsSession:
         zoom: float | None = None,
         flip_x: bool | None = None,
         flip_y: bool | None = None,
+        crop_left: float | None = None,
+        crop_top: float | None = None,
+        crop_right: float | None = None,
+        crop_bottom: float | None = None,
+        crop_reset: bool = False,
     ) -> None:
         node = self.page.node(node_id)
-        if node is None or node.kind is not NodeKind.IMAGE or self.effective_locked(node_id):
+        if node is None or node.kind not in {NodeKind.IMAGE, NodeKind.BACKGROUND} or self.effective_locked(node_id):
+            return
+        has_change = any(
+            value is not None
+            for value in (fit, focus_x, focus_y, zoom, flip_x, flip_y, crop_left, crop_top, crop_right, crop_bottom)
+        ) or bool(crop_reset)
+        if not has_change:
             return
         with self.transaction("Ajustar imagem"):
             if fit is not None:
-                node.style["fit"] = str(fit)
+                fit_value = str(fit).strip().lower()
+                if fit_value not in {"contain", "cover", "fill"}:
+                    raise ValueError(f"Encaixe de imagem inválido: {fit}")
+                node.style["fit"] = fit_value
             if focus_x is not None:
                 node.style["focus_x"] = min(1.0, max(0.0, float(focus_x)))
             if focus_y is not None:
@@ -425,6 +440,19 @@ class GraphicsSession:
                 node.style["flip_x"] = bool(flip_x)
             if flip_y is not None:
                 node.style["flip_y"] = bool(flip_y)
+            if crop_reset or any(value is not None for value in (crop_left, crop_top, crop_right, crop_bottom)):
+                crop = update_crop(
+                    node.style.get("crop"),
+                    left=crop_left,
+                    top=crop_top,
+                    right=crop_right,
+                    bottom=crop_bottom,
+                    reset=bool(crop_reset),
+                )
+                if crop.empty:
+                    node.style.pop("crop", None)
+                else:
+                    node.style["crop"] = crop.to_dict()
 
     def add_page(self, *, name: str | None = None, duplicate_active: bool = False) -> str:
         with self.transaction("Duplicar página" if duplicate_active else "Adicionar página"):
