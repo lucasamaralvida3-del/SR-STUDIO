@@ -19,6 +19,7 @@ from srstudio.core.models import StudioProject
 from srstudio.settings.features import FeatureFlagStore
 
 from .compat import from_studio_project
+from .host_runtime import RUNTIME_MANIFEST_NAME, validate_runtime_host
 from .package import save_package
 from .quality import ProductionGateReport, inspect_production_gate
 
@@ -85,7 +86,7 @@ def launch_studio_project_if_enabled(
         return StudioBridgeLaunchResult(
             ok=False,
             launched=False,
-            message="Host separado do Graphics Engine 2 ainda não foi empacotado neste instalador.",
+            message="Host separado do Graphics Engine 2 não está instalado, está corrompido ou é de outra versão.",
             graphics_api=graphics_api,
         )
 
@@ -152,32 +153,36 @@ def launch_studio_project_if_enabled(
 
 
 def discover_packaged_host() -> Path | None:
-    """Localiza o bundle onedir do host sem depender do launcher PowerShell.
+    """Localiza um host válido sem misturar runtime Qt ao processo Tk.
 
-    O instalador futuro só precisa colocar a pasta `Graphics2Host` em um dos
-    locais canônicos. Isso mantém a ponte testável também em builds portáteis.
+    Um caminho explícito por variável de ambiente é uma opção de desenvolvimento
+    e pode apontar para um EXE sem manifesto. Candidatos instalados em locais
+    canônicos só são aceitos quando possuem manifesto de runtime válido, SHA do
+    executável correto e a mesma versão interna do Engine 2.
     """
 
-    candidates: list[Path] = []
     explicit = str(os.environ.get("SR_GRAPHICS_ENGINE_2_HOST") or "").strip()
+    candidates: list[tuple[Path, bool]] = []
     if explicit:
-        candidates.append(Path(explicit).expanduser())
+        candidates.append((Path(explicit).expanduser(), False))
 
     executable_dir = Path(sys.executable).resolve().parent
     candidates.extend(
         [
-            executable_dir / "Graphics2Host" / HOST_EXE_NAME,
-            executable_dir / HOST_EXE_NAME,
-            Path(__file__).resolve().parents[3] / "Graphics2Host" / HOST_EXE_NAME,
+            (executable_dir / "Graphics2Host" / HOST_EXE_NAME, True),
+            (executable_dir / HOST_EXE_NAME, True),
+            (Path(__file__).resolve().parents[3] / "Graphics2Host" / HOST_EXE_NAME, True),
         ]
     )
 
     local_app_data = str(os.environ.get("LOCALAPPDATA") or "").strip()
     if local_app_data:
-        candidates.append(Path(local_app_data) / "SRStudio" / "App" / "Graphics2Host" / HOST_EXE_NAME)
+        candidates.append(
+            (Path(local_app_data) / "SRStudio" / "App" / "Graphics2Host" / HOST_EXE_NAME, True)
+        )
 
     seen: set[str] = set()
-    for candidate in candidates:
+    for candidate, require_manifest in candidates:
         try:
             resolved = candidate.resolve()
         except OSError:
@@ -186,9 +191,29 @@ def discover_packaged_host() -> Path | None:
         if key in seen:
             continue
         seen.add(key)
-        if resolved.is_file():
+        if not resolved.is_file():
+            continue
+        if _runtime_candidate_valid(resolved, require_manifest=require_manifest):
             return resolved
     return None
+
+
+def _runtime_candidate_valid(executable: Path, *, require_manifest: bool) -> bool:
+    manifest_path = executable.parent / RUNTIME_MANIFEST_NAME
+    if not manifest_path.is_file():
+        return not require_manifest
+    try:
+        # Import tardio evita ciclo durante a montagem de srstudio.graphics2.
+        from . import ENGINE_VERSION
+
+        report = validate_runtime_host(
+            executable.parent,
+            full=False,
+            expected_engine_version=ENGINE_VERSION,
+        )
+    except Exception:
+        return False
+    return report.ok and report.executable == executable.resolve()
 
 
 def _host_command() -> list[str]:
