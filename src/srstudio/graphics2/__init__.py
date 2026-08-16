@@ -26,11 +26,12 @@ from .model import (
     Transform,
 )
 from .operations import GraphicsSession
+from .pptx_fidelity import EmbeddedPptxFont, PptxFidelityReport, enhance_pptx_document
 from .preflight import PreflightIssue, run_preflight
 from .qt_renderer import RenderReport, render_pdf, render_png
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.3"
+ENGINE_VERSION = "2.0.0-alpha.4"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -39,6 +40,7 @@ __all__ = [
     "CoordinateUnit",
     "ENGINE_NAME",
     "ENGINE_VERSION",
+    "EmbeddedPptxFont",
     "FidelityCase",
     "FidelityMetrics",
     "FidelityPolicy",
@@ -52,6 +54,7 @@ __all__ = [
     "ImportAuditIssue",
     "ImportAuditReport",
     "NodeKind",
+    "PptxFidelityReport",
     "PreflightIssue",
     "Rect",
     "RenderReport",
@@ -60,6 +63,7 @@ __all__ = [
     "Transform",
     "audit_import",
     "compare_images",
+    "enhance_pptx_document",
     "render_pdf",
     "render_png",
     "run_preflight",
