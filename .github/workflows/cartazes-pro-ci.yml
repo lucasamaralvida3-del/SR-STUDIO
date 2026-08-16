@@ -1,0 +1,89 @@
+name: Cartazes Pro CI
+
+on:
+  push:
+    branches:
+      - feature/cartazes-pro-v6
+    paths:
+      - 'src/sr_studio/services/cartaz_pipeline.py'
+      - 'src/sr_studio/modules/cartaz_pro_integration.py'
+      - 'src/sr_studio/modules/__init__.py'
+      - '.github/workflows/cartazes-pro-ci.yml'
+  pull_request:
+    branches:
+      - next/5.0
+    paths:
+      - 'src/sr_studio/services/cartaz_pipeline.py'
+      - 'src/sr_studio/modules/cartaz_pro_integration.py'
+      - 'src/sr_studio/modules/__init__.py'
+      - '.github/workflows/cartazes-pro-ci.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Compile new Python modules
+        shell: pwsh
+        run: |
+          python -m py_compile src/sr_studio/services/cartaz_pipeline.py
+          python -m py_compile src/sr_studio/modules/cartaz_pro_integration.py
+          python -m py_compile src/sr_studio/modules/__init__.py
+
+      - name: Validate integration contracts
+        shell: python
+        run: |
+          from pathlib import Path
+          import ast
+
+          root = Path('src/sr_studio')
+          pipeline = root / 'services' / 'cartaz_pipeline.py'
+          integration = root / 'modules' / 'cartaz_pro_integration.py'
+          engine = root / 'PowerPointEngine.ps1'
+
+          assert pipeline.is_file(), 'cartaz_pipeline.py ausente'
+          assert integration.is_file(), 'cartaz_pro_integration.py ausente'
+          assert engine.is_file(), 'PowerPointEngine.ps1 ausente'
+
+          ast.parse(pipeline.read_text(encoding='utf-8'))
+          ast.parse(integration.read_text(encoding='utf-8'))
+
+          ptxt = pipeline.read_text(encoding='utf-8')
+          for token in ('MODE_AUTO', 'MODE_ONE', 'MODE_TWO', 'MODE_CLUB', 'MODE_SALE',
+                        'def build_jobs(', 'def preflight(', 'def run_generation(', 'def merge_pdfs('):
+              assert token in ptxt, f'Contrato ausente no pipeline: {token}'
+
+          itxt = integration.read_text(encoding='utf-8')
+          for token in ('Gerador de Cartazes Pro', 'Analisar planilha', 'Gerar cartazes',
+                        'CENTRO DE PRÉ-VALIDAÇÃO', 'def install_cartaz_pro('):
+              assert token in itxt, f'Contrato ausente na interface: {token}'
+
+          etxt = engine.read_text(encoding='utf-8-sig')
+          for token in ('$JobsJson', '$OutputDir', '$Model1', '$Model2', '$ClubModel', '$SaleModel',
+                        'STAGE|', 'OK|', 'BATCH_DONE|'):
+              assert token in etxt, f'Contrato ausente no motor PowerPoint: {token}'
+
+          models = [
+              'SEGUNDA_DA_LIMPEZA_1_PRECO.pptx',
+              'SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx',
+              'SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx',
+              'SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx',
+              'CLUBE_EXCLUSIVO.pptx',
+              'CLUBE_EXCLUSIVO_COM_LIMITE.pptx',
+              'CARTAZ_VENDA.pptx',
+          ]
+          for name in models:
+              assert (root / 'modelos' / name).is_file(), f'Modelo ausente: {name}'
+
+          print('Cartazes Pro: contratos e sintaxe validados.')
