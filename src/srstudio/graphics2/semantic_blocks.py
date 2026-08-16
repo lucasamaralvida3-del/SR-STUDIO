@@ -14,7 +14,9 @@ fidelidade e round-trip.
 """
 
 from dataclasses import asdict, dataclass, field
+from math import hypot
 from typing import Any
+import re
 
 from .model import BindingRole, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Rect, SmartSlot
 
@@ -57,6 +59,11 @@ _PRODUCT_ROLE_NAMES = {
     "app_unit",
 }
 
+_CURRENCY_RE = re.compile(r"^R\s*\$$", re.IGNORECASE)
+_REAIS_RE = re.compile(r"^\d{1,3}$")
+_CENTS_RE = re.compile(r"^[,.]\d{1,2}$")
+_UNIT_RE = re.compile(r"^/?(?:KG|UN|UND|G|L|ML|LT|CX|PCT|PC|BDJ)$", re.IGNORECASE)
+
 
 @dataclass(slots=True)
 class SemanticBlock:
@@ -77,6 +84,7 @@ class SemanticBlock:
 class SemanticBlockReport:
     price_blocks: int = 0
     app_price_blocks: int = 0
+    recovered_price_blocks: int = 0
     product_cards: int = 0
     protected_price_nodes: int = 0
     incomplete_price_blocks: int = 0
@@ -87,7 +95,7 @@ class SemanticBlockReport:
 
 
 def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
-    """Constrói PriceBlock/ProductCard para todos os Smart Slots do documento.
+    """Constrói PriceBlock/ProductCard e recupera preços estáticos do PPTX.
 
     A função é idempotente e nunca muda x/y/w/h nem parent/children dos nodes.
     Isso é essencial porque ``pptx_groups`` já reconstrói a hierarquia real do
@@ -96,6 +104,7 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
 
     report = SemanticBlockReport()
     for page in document.pages:
+        _clear_semantic_marks(page)
         page_blocks: dict[str, dict[str, Any]] = {}
         for slot in page.slots.values():
             bindings = _slot_bindings(slot)
@@ -118,11 +127,19 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
             if card is not None:
                 page_blocks[card.id] = card.to_dict()
                 report.product_cards += 1
+
+        recovered = _recover_unbound_price_blocks(page)
+        for block in recovered:
+            page_blocks[block.id] = block.to_dict()
+            report.price_blocks += 1
+            report.recovered_price_blocks += 1
+            report.protected_price_nodes += len(block.members)
+
         page.metadata["semantic_blocks"] = page_blocks
-        page.metadata["semantic_blocks_version"] = 1
+        page.metadata["semantic_blocks_version"] = 2
 
     document.metadata["semantic_blocks"] = report.to_dict()
-    document.metadata["semantic_blocks_version"] = 1
+    document.metadata["semantic_blocks_version"] = 2
     return report
 
 
@@ -150,6 +167,17 @@ def semantic_member_ids(page: GraphicsPage, block_id: str) -> list[str]:
     if not block:
         return []
     return [str(node_id) for node_id in block.get("members") or [] if str(node_id) in page.nodes]
+
+
+def _clear_semantic_marks(page: GraphicsPage) -> None:
+    for node in page.nodes.values():
+        node.metadata.pop("semantic_price_block_id", None)
+        node.metadata.pop("semantic_price_role", None)
+        node.metadata.pop("semantic_product_card_id", None)
+        node.style.pop("semantic_price_role", None)
+        node.style.pop("semantic_price_block_id", None)
+        if node.style.get("semantic_fit_policy") == "overflow_only":
+            node.style.pop("semantic_fit_policy", None)
 
 
 def _slot_bindings(slot: SmartSlot) -> dict[str, list[str]]:
@@ -187,6 +215,20 @@ def _build_price_block(
     if not members:
         return None
     block_id = f"priceblock:{slot.id}:{suffix}"
+    block = _make_price_block(page, block_id, slot.id, roles, source=str(slot.metadata.get("source") or "smart-slot"))
+    return block
+
+
+def _make_price_block(
+    page: GraphicsPage,
+    block_id: str,
+    slot_id: str,
+    roles: dict[str, list[str]],
+    *,
+    source: str,
+    recovered: bool = False,
+) -> SemanticBlock:
+    members = _unique(node_id for ids in roles.values() for node_id in ids)
     bounds = _bounds_dict(page, members)
     geometry = {node_id: _geometry(page.nodes[node_id], bounds) for node_id in members}
     split_complete = all(roles.get(key) for key in ("currency", "reais", "cents", "unit"))
@@ -197,8 +239,6 @@ def _build_price_block(
             node.metadata["semantic_price_block_id"] = block_id
             node.metadata["semantic_price_role"] = canonical
             if node.kind is NodeKind.TEXT:
-                # NoWrap não é auto-fit. O renderer só deve reduzir um token de
-                # preço quando ele realmente exceder a caixa de origem.
                 node.style["nowrap"] = True
                 node.style["semantic_fit_policy"] = "overflow_only"
                 node.style["semantic_price_role"] = canonical
@@ -206,7 +246,7 @@ def _build_price_block(
     return SemanticBlock(
         id=block_id,
         kind="price_block",
-        slot_id=slot.id,
+        slot_id=slot_id,
         members=members,
         roles=roles,
         bounds=bounds,
@@ -215,8 +255,9 @@ def _build_price_block(
             "complete": complete,
             "split_complete": split_complete,
             "atomic": True,
+            "recovered": recovered,
             "preserve_source_geometry": True,
-            "source": str(slot.metadata.get("source") or "smart-slot"),
+            "source": source,
         },
     )
 
@@ -261,6 +302,108 @@ def _build_product_card(
             "source": str(slot.metadata.get("source") or "smart-slot"),
         },
     )
+
+
+def _recover_unbound_price_blocks(page: GraphicsPage) -> list[SemanticBlock]:
+    """Recupera R$ + inteiro + centavos + unidade que não viraram Smart Slot.
+
+    O algoritmo foi desenhado para layouts de varejo importados do Canva: usa
+    conteúdo + relações espaciais e exige os quatro tokens. Portanto uma data,
+    quantidade ou outro número isolado nunca é promovido a preço sozinho.
+    """
+
+    text_nodes = [node for node in page.nodes.values() if node.kind is NodeKind.TEXT and node.visible]
+    reserved = {node.id for node in text_nodes if node.metadata.get("semantic_price_block_id")}
+    currencies = [node for node in text_nodes if node.id not in reserved and _CURRENCY_RE.fullmatch(_clean_text(node.text))]
+    integers = [node for node in text_nodes if node.id not in reserved and _REAIS_RE.fullmatch(_clean_text(node.text))]
+    cents = [node for node in text_nodes if node.id not in reserved and _CENTS_RE.fullmatch(_clean_text(node.text))]
+    units = [node for node in text_nodes if node.id not in reserved and _UNIT_RE.fullmatch(_clean_text(node.text))]
+    recovered: list[SemanticBlock] = []
+
+    # Começar pelos números maiores reduz risco de casar um valor pequeno de
+    # outro card quando cards estão próximos na grade.
+    integers.sort(key=lambda node: (-(node.transform.height * node.transform.width), node.transform.y, node.transform.x))
+    for integer in integers:
+        if integer.id in reserved:
+            continue
+        currency = _nearest_price_token(integer, currencies, reserved, "currency")
+        cent = _nearest_price_token(integer, cents, reserved, "cents")
+        unit = _nearest_price_token(integer, units, reserved, "unit")
+        if currency is None or cent is None or unit is None:
+            continue
+        members = [currency.id, integer.id, cent.id, unit.id]
+        if len(set(members)) != 4:
+            continue
+        roles = {
+            "currency": [currency.id],
+            "reais": [integer.id],
+            "cents": [cent.id],
+            "unit": [unit.id],
+        }
+        stable = _stable_node_key(integer)
+        block_id = f"priceblock:recovered:{stable}"
+        block = _make_price_block(
+            page,
+            block_id,
+            "",
+            roles,
+            source="spatial-recovery",
+            recovered=True,
+        )
+        recovered.append(block)
+        reserved.update(members)
+    return recovered
+
+
+def _nearest_price_token(
+    integer: GraphicsNode,
+    candidates: list[GraphicsNode],
+    reserved: set[str],
+    role: str,
+) -> GraphicsNode | None:
+    it = integer.transform
+    ix = it.x + it.width / 2.0
+    iy = it.y + it.height / 2.0
+    scale = max(it.height, 1.0)
+    best: tuple[float, GraphicsNode] | None = None
+    for node in candidates:
+        if node.id in reserved:
+            continue
+        t = node.transform
+        nx = t.x + t.width / 2.0
+        ny = t.y + t.height / 2.0
+        dx = (nx - ix) / scale
+        dy = (ny - iy) / scale
+
+        if role == "currency":
+            if nx > ix + it.width * 0.15 or abs(dy) > 0.85:
+                continue
+            if dx < -1.65:
+                continue
+        elif role == "cents":
+            if nx < ix or dx > 1.35 or dy > 0.55 or dy < -1.05:
+                continue
+        elif role == "unit":
+            if nx < ix or dx > 1.45 or dy < -0.45 or dy > 1.15:
+                continue
+        score = hypot(dx, dy)
+        if best is None or score < best[0]:
+            best = (score, node)
+    return best[1] if best is not None else None
+
+
+def _clean_text(value: str) -> str:
+    return " ".join(str(value or "").replace("\n", " ").split()).strip()
+
+
+def _stable_node_key(node: GraphicsNode) -> str:
+    source_name = str(node.metadata.get("source_name") or node.name or "").strip()
+    if source_name:
+        cleaned = re.sub(r"[^A-Za-z0-9_-]+", "-", source_name).strip("-").lower()
+        if cleaned:
+            return cleaned
+    t = node.transform
+    return f"x{round(t.x, 3)}-y{round(t.y, 3)}-w{round(t.width, 3)}-h{round(t.height, 3)}"
 
 
 def _bounds_dict(page: GraphicsPage, members: list[str]) -> dict[str, float]:
