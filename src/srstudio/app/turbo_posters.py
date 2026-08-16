@@ -8,7 +8,11 @@ import srstudio.app.responsive_posters as responsive
 from srstudio.app.cloud_image_bank_view import CloudImageBankView
 from srstudio.app.layout_corpus_view import LayoutCorpusView
 from srstudio.app.professional import _show_splash
-from srstudio.graphics2.studio_bridge import bridge_flags, launch_studio_project_if_enabled
+from srstudio.graphics2.studio_bridge import (
+    bridge_flags,
+    launch_studio_project_if_enabled,
+    sync_saved_session_to_project,
+)
 from srstudio.images.cloud_sync import ImageBankCloudSync
 from srstudio.posters import PosterKind
 
@@ -82,7 +86,7 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
         )
 
     def _attach_graphics2_launcher(self) -> None:
-        """Mostra o Engine 2 somente quando a feature flag foi ligada manualmente."""
+        """Mostra controles G2 somente quando a feature flag foi ligada manualmente."""
 
         engine_enabled, gpu_enabled = bridge_flags(self.data_dir)
         if not engine_enabled:
@@ -107,9 +111,25 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             font=("Segoe UI", 8, "bold"),
             cursor="hand2",
         )
-        # Overlay intencional e isolado: não altera o layout Tk antigo e só
-        # existe no modo experimental. Quando a flag está off, nem é criado.
+        sync_button = tk.Button(
+            editor,
+            text="APLICAR G2",
+            command=self._sync_graphics2_optional,
+            bg="#E2E8F0",
+            fg="#0F172A",
+            activebackground="#CBD5E1",
+            activeforeground="#0F172A",
+            relief="flat",
+            bd=0,
+            padx=10,
+            pady=6,
+            font=("Segoe UI", 8, "bold"),
+            cursor="hand2",
+        )
+        # Overlays intencionais e isolados: não alteram o layout Tk antigo e só
+        # existem no modo experimental. Quando a flag está off, nem são criados.
         button.place(relx=1.0, x=-150, y=13, anchor="ne")
+        sync_button.place(relx=1.0, x=-276, y=13, anchor="ne")
 
     def _launch_graphics2_optional(self) -> None:
         result = launch_studio_project_if_enabled(self.project, self.data_dir)
@@ -118,6 +138,20 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             return
         tone = "warning" if result.ok else "danger"
         self.toast.show(result.message, tone, 6200)
+
+    def _sync_graphics2_optional(self) -> None:
+        """Importa somente alterações G2 que possuem equivalente no Studio 5."""
+
+        result = sync_saved_session_to_project(self.project, self.data_dir)
+        if not result.ok:
+            tone = "warning" if result.report is not None and result.report.conflict else "danger"
+            self.toast.show(result.message, tone, 7200)
+            return
+        self._mark_changed()
+        self.toast.show(result.message, "success", 6200)
+        # Reconstrói a view do Encartes Studio usando o StudioProject já
+        # sincronizado. Recursos exclusivos do G2 permanecem no `.srscene`.
+        self.after(80, lambda: self.navigate("Encartes Studio"))
 
     def _start_background_staging(self, products, kind: PosterKind, campaign: str) -> None:
         self._staging_generation += 1
