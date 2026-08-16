@@ -45,9 +45,16 @@ from .semantic_blocks import (
 )
 from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_image_placeholders
 from .semantic_recovery import recover_canva_semantic_cards
+from .studio_bridge import (
+    StudioBridgeLaunchResult,
+    StudioBridgePreparation,
+    bridge_flags,
+    launch_studio_project_if_enabled,
+    prepare_studio_project,
+)
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.18"
+ENGINE_VERSION = "2.0.0-alpha.19"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -89,8 +96,11 @@ __all__ = [
     "SemanticBlock",
     "SemanticBlockReport",
     "SmartSlot",
+    "StudioBridgeLaunchResult",
+    "StudioBridgePreparation",
     "Transform",
     "audit_import",
+    "bridge_flags",
     "build_semantic_blocks",
     "compare_images",
     "enhance_pptx_document",
@@ -98,6 +108,8 @@ __all__ = [
     "fingerprint_document",
     "inspect_pptx_structure",
     "inspect_production_gate",
+    "launch_studio_project_if_enabled",
+    "prepare_studio_project",
     "rebuild_pptx_groups",
     "recover_canva_image_placeholders",
     "recover_canva_semantic_cards",
