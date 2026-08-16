@@ -14,7 +14,7 @@ A migração é **paralela e reversível**: o editor atual continua disponível 
 4. **SR Scene Package** — `.srscene` ZIP com `scene.json`, manifesto, hashes, assets e fontes do projeto. Salvamento é atômico e as fontes PPTX permanecem portáteis dentro do projeto, sem instalação global no Windows.
 5. **Preflight** — valida árvore, vínculos, ciclos, dimensões, assets, fontes e elementos fora da página.
 6. **Compatibility Layer** — converte `StudioProject` 5.x e o contrato legado do Encartes para SR Scene 2, permitindo adoção gradual.
-7. **Qt Quick GPU Host** — front-end opcional via PySide6. O documento continua independente do renderer.
+7. **Qt Quick GPU Host** — front-end opcional via PySide6. O documento continua independente do renderer e o host pode abrir diretamente PPTX/XLSX ou `.srscene`.
 8. **Visual Fidelity Lab** — compara Golden Master e renderer por cor, luminância, bordas, pixels, área alterada, MAE e RMS.
 9. **Production Gate** — combina preflight, Import Audit, fidelidade OOXML, fontes embutidas e resultado visual antes de permitir promoção do Engine 2.
 
@@ -29,6 +29,30 @@ O renderer de produção usa `QPainterPath` para formas DrawingML customizadas e
 ### Caso de referência Quinta Filé
 
 O arquivo real `OFERTAS QUINTA FILÉ NOVO.pptx` foi analisado localmente e não é versionado no repositório. Ele usa as fontes embutidas Anton e High Cruiser, caixas com auto-fit/espaçamento e muitas geometrias customizadas. Esses recursos foram usados para definir o primeiro conjunto de correções da Fase 2.
+
+### Abrir o arquivo real diretamente no Engine 2
+
+O host Qt Quick aceita um arquivo como argumento. Isso permite testar o projeto real sem copiar o PPTX para o repositório:
+
+```bash
+sr-graphics-engine-2 "OFERTAS QUINTA FILÉ NOVO.pptx"
+```
+
+No Windows é possível forçar o backend do Qt Quick antes da criação da primeira janela:
+
+```bash
+sr-graphics-engine-2 "OFERTAS QUINTA FILÉ NOVO.pptx" --graphics-api d3d11
+```
+
+Backends expostos pelo host: `auto`, `d3d11`, `d3d12`, `vulkan`, `opengl` e `software`. O padrão é `auto`, preservando a seleção nativa do Qt/plataforma. A barra de status informa o backend resolvido, score do Production Gate e fontes do projeto carregadas.
+
+Pacotes portáteis também podem ser abertos diretamente:
+
+```bash
+sr-graphics-engine-2 "quinta-file.srscene" --graphics-api auto
+```
+
+Nesse caso, assets e fontes incorporadas são extraídos para cache de runtime e permanecem isolados do sistema operacional.
 
 ### Golden Master multipágina
 
