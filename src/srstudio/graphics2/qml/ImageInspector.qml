@@ -4,8 +4,8 @@ import QtQuick.Layouts
 
 Rectangle {
     id: panel
-    width: 326
-    height: 430
+    width: 336
+    height: 610
     anchors.right: parent ? parent.right : undefined
     anchors.bottom: parent ? parent.bottom : undefined
     anchors.rightMargin: 8
@@ -66,6 +66,14 @@ Rectangle {
         return imageNode.style[key]
     }
 
+    function cropValue(shortKey, longKey) {
+        var crop = styleValue("crop", ({})) || ({})
+        var raw = crop[shortKey]
+        if (raw === undefined || raw === null)
+            raw = crop[longKey]
+        return Math.max(0, Math.min(0.98, Number(raw || 0)))
+    }
+
     function refresh() {
         syncing = true
         try {
@@ -78,6 +86,10 @@ Rectangle {
             zoomSlider.value = Math.max(0.05, Number(styleValue("zoom", 1.0)))
             focusXSlider.value = Math.max(0, Math.min(1, Number(styleValue("focus_x", 0.5))))
             focusYSlider.value = Math.max(0, Math.min(1, Number(styleValue("focus_y", 0.5))))
+            cropLeftSlider.value = cropValue("l", "left")
+            cropTopSlider.value = cropValue("t", "top")
+            cropRightSlider.value = cropValue("r", "right")
+            cropBottomSlider.value = cropValue("b", "bottom")
         } finally {
             syncing = false
         }
@@ -92,7 +104,7 @@ Rectangle {
         sceneBridge.dispatch(JSON.stringify(command))
     }
 
-    function applySliders() {
+    function applyFraming() {
         if (syncing || !imageNode)
             return
         cropCommand({
@@ -100,6 +112,14 @@ Rectangle {
             "focus_x": focusXSlider.value,
             "focus_y": focusYSlider.value
         })
+    }
+
+    function applyCrop(edge, value) {
+        if (syncing || !imageNode)
+            return
+        var command = ({})
+        command["crop_" + edge] = value
+        cropCommand(command)
     }
 
     Connections {
@@ -118,7 +138,7 @@ Rectangle {
         ColumnLayout {
             anchors.fill: parent
             anchors.margins: 10
-            spacing: 7
+            spacing: 6
 
             RowLayout {
                 Layout.fillWidth: true
@@ -130,7 +150,7 @@ Rectangle {
             Rectangle {
                 id: previewFrame
                 Layout.fillWidth: true
-                Layout.preferredHeight: 178
+                Layout.preferredHeight: 160
                 radius: 6
                 color: "#F1F5F9"
                 border.color: "#CBD5E1"
@@ -144,6 +164,10 @@ Rectangle {
                     imageZoom: zoomSlider.value
                     focusX: focusXSlider.value
                     focusY: focusYSlider.value
+                    cropLeft: cropLeftSlider.value
+                    cropTop: cropTopSlider.value
+                    cropRight: cropRightSlider.value
+                    cropBottom: cropBottomSlider.value
                     flipX: imageNode ? !!styleValue("flip_x", false) : false
                     flipY: imageNode ? !!styleValue("flip_y", false) : false
                 }
@@ -162,7 +186,7 @@ Rectangle {
 
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Encaixe"; color: "#475569"; font.bold: true; Layout.preferredWidth: 54 }
+                Label { text: "Encaixe"; color: "#475569"; font.bold: true; Layout.preferredWidth: 56 }
                 ComboBox {
                     id: fitCombo
                     Layout.fillWidth: true
@@ -176,7 +200,7 @@ Rectangle {
 
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Zoom"; color: "#475569"; font.bold: true; Layout.preferredWidth: 54 }
+                Label { text: "Zoom"; color: "#475569"; font.bold: true; Layout.preferredWidth: 56 }
                 Slider {
                     id: zoomSlider
                     Layout.fillWidth: true
@@ -184,15 +208,14 @@ Rectangle {
                     to: 5.0
                     value: 1.0
                     stepSize: 0.01
-                    onMoved: if (!syncing && imageNode) imageNode.style.zoom = value
-                    onPressedChanged: if (!pressed) applySliders()
+                    onPressedChanged: if (!pressed) applyFraming()
                 }
-                Label { text: zoomSlider.value.toFixed(2) + "×"; color: "#64748B"; Layout.preferredWidth: 40 }
+                Label { text: zoomSlider.value.toFixed(2) + "×"; color: "#64748B"; Layout.preferredWidth: 42 }
             }
 
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Foco X"; color: "#475569"; font.bold: true; Layout.preferredWidth: 54 }
+                Label { text: "Foco X"; color: "#475569"; font.bold: true; Layout.preferredWidth: 56 }
                 Slider {
                     id: focusXSlider
                     Layout.fillWidth: true
@@ -200,14 +223,14 @@ Rectangle {
                     to: 1
                     value: 0.5
                     stepSize: 0.01
-                    onMoved: if (!syncing && imageNode) imageNode.style.focus_x = value
-                    onPressedChanged: if (!pressed) applySliders()
+                    onPressedChanged: if (!pressed) applyFraming()
                 }
+                Label { text: Math.round(focusXSlider.value * 100) + "%"; color: "#64748B"; Layout.preferredWidth: 42 }
             }
 
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "Foco Y"; color: "#475569"; font.bold: true; Layout.preferredWidth: 54 }
+                Label { text: "Foco Y"; color: "#475569"; font.bold: true; Layout.preferredWidth: 56 }
                 Slider {
                     id: focusYSlider
                     Layout.fillWidth: true
@@ -215,9 +238,72 @@ Rectangle {
                     to: 1
                     value: 0.5
                     stepSize: 0.01
-                    onMoved: if (!syncing && imageNode) imageNode.style.focus_y = value
-                    onPressedChanged: if (!pressed) applySliders()
+                    onPressedChanged: if (!pressed) applyFraming()
                 }
+                Label { text: Math.round(focusYSlider.value * 100) + "%"; color: "#64748B"; Layout.preferredWidth: 42 }
+            }
+
+            Rectangle { Layout.fillWidth: true; Layout.preferredHeight: 1; color: "#E2E8F0" }
+            Label { text: "Corte da imagem-fonte"; color: "#334155"; font.bold: true; font.pixelSize: 10 }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Esq."; color: "#475569"; Layout.preferredWidth: 56 }
+                Slider {
+                    id: cropLeftSlider
+                    Layout.fillWidth: true
+                    from: 0
+                    to: Math.min(0.98, Math.max(0, 0.995 - cropRightSlider.value))
+                    value: 0
+                    stepSize: 0.005
+                    onPressedChanged: if (!pressed) applyCrop("left", value)
+                }
+                Label { text: (cropLeftSlider.value * 100).toFixed(1) + "%"; color: "#64748B"; Layout.preferredWidth: 46 }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Topo"; color: "#475569"; Layout.preferredWidth: 56 }
+                Slider {
+                    id: cropTopSlider
+                    Layout.fillWidth: true
+                    from: 0
+                    to: Math.min(0.98, Math.max(0, 0.995 - cropBottomSlider.value))
+                    value: 0
+                    stepSize: 0.005
+                    onPressedChanged: if (!pressed) applyCrop("top", value)
+                }
+                Label { text: (cropTopSlider.value * 100).toFixed(1) + "%"; color: "#64748B"; Layout.preferredWidth: 46 }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Dir."; color: "#475569"; Layout.preferredWidth: 56 }
+                Slider {
+                    id: cropRightSlider
+                    Layout.fillWidth: true
+                    from: 0
+                    to: Math.min(0.98, Math.max(0, 0.995 - cropLeftSlider.value))
+                    value: 0
+                    stepSize: 0.005
+                    onPressedChanged: if (!pressed) applyCrop("right", value)
+                }
+                Label { text: (cropRightSlider.value * 100).toFixed(1) + "%"; color: "#64748B"; Layout.preferredWidth: 46 }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                Label { text: "Base"; color: "#475569"; Layout.preferredWidth: 56 }
+                Slider {
+                    id: cropBottomSlider
+                    Layout.fillWidth: true
+                    from: 0
+                    to: Math.min(0.98, Math.max(0, 0.995 - cropTopSlider.value))
+                    value: 0
+                    stepSize: 0.005
+                    onPressedChanged: if (!pressed) applyCrop("bottom", value)
+                }
+                Label { text: (cropBottomSlider.value * 100).toFixed(1) + "%"; color: "#64748B"; Layout.preferredWidth: 46 }
             }
 
             RowLayout {
@@ -234,13 +320,21 @@ Rectangle {
                 }
                 Button {
                     text: "Reset"
-                    onClicked: if (imageNode) cropCommand({"fit": "contain", "zoom": 1.0, "focus_x": 0.5, "focus_y": 0.5, "flip_x": false, "flip_y": false})
+                    onClicked: if (imageNode) cropCommand({
+                        "fit": "contain",
+                        "zoom": 1.0,
+                        "focus_x": 0.5,
+                        "focus_y": 0.5,
+                        "flip_x": false,
+                        "flip_y": false,
+                        "crop_reset": true
+                    })
                 }
             }
 
             Label {
                 Layout.fillWidth: true
-                text: "Preview e canvas usam o mesmo contrato de enquadramento; este painel sempre edita a imagem-fonte original."
+                text: "Crop, foco, zoom e espelhamento são persistidos no SR Scene e usados pelo canvas e pela exportação."
                 wrapMode: Text.WordWrap
                 color: "#64748B"
                 font.pixelSize: 9
