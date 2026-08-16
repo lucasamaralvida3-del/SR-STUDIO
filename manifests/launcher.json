@@ -1,14 +1,28 @@
 {
-    "format":  "SRSTUDIO_LAUNCHER_MANIFEST_1",
-    "product":  "SR Studio Launcher",
-    "version":  "4.0.1-hybrid.base3.4",
-    "published_at":  "2026-08-14T18:30:47-03:00",
-    "files":  [
-                  {
-                      "path":  "SRStudioLauncher.ps1",
-                      "source":  "launcher/files/SRStudioLauncher.ps1",
-                      "sha256":  "22eace4713ed91cb2977497bfc01e5e25de294b984464c994013ae0df7c1ecad",
-                      "size":  48058
-                  }
-              ]
+  "format": "SRSTUDIO_LAUNCHER_MANIFEST_1",
+  "product": "SR Studio Launcher",
+  "version": "4.0.1-hybrid.base3.4+4.0.1-hybrid.setup3",
+  "launcher_version": "4.0.1-hybrid.base3.4",
+  "bootstrap_version": "4.0.1-hybrid.setup3",
+  "published_at": "2026-08-16T19:26:18.506975+00:00",
+  "files": [
+    {
+      "path": "SRStudioLauncher.ps1",
+      "source": "launcher/files/SRStudioLauncher.ps1",
+      "sha256": "945d8aa9b1bddf67e9721b220dd5cd498d282a15e9193051ed2e69ba0e3818cb",
+      "size": 49059
+    },
+    {
+      "path": "SRStudioBootstrap.ps1",
+      "source": "launcher/files/SRStudioBootstrap.ps1",
+      "sha256": "c7cdcc97cab5a13b7e1725212acf7af6dea8fc55e1d03f0dffab4144b18e9f8f",
+      "size": 6626
+    },
+    {
+      "path": "SRGraphics2Component.ps1",
+      "source": "launcher/files/SRGraphics2Component.ps1",
+      "sha256": "31ac9a77ed7760ef0dd5008989a2383e11c4ff8a9735c0fab37c764a99039109",
+      "size": 15628
+    }
+  ]
 }
