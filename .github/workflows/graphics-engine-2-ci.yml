@@ -39,7 +39,16 @@ jobs:
       - name: Runtime lint gate
         run: python -m ruff check src/srstudio/graphics2 tests/test_graphics2_*.py
       - name: Visual Fidelity and Production Gate
-        run: python -m pytest -q tests/test_graphics2_fidelity.py tests/test_graphics2_import_audit.py tests/test_graphics2_quality_gate.py tests/test_graphics2_golden_master.py tests/test_graphics2_package_fonts.py
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_fidelity.py
+          tests/test_graphics2_import_audit.py
+          tests/test_graphics2_quality_gate.py
+          tests/test_graphics2_golden_master.py
+          tests/test_graphics2_package_fonts.py
+          tests/test_graphics2_scene_fingerprint.py
+          tests/test_graphics2_pptx_groups.py
+          tests/test_graphics2_pptx_fidelity.py
       - name: Fidelity Lab CLI smoke
         run: python -m srstudio.graphics2.fidelity_lab --help
       - name: Golden Master CLI smoke
@@ -73,7 +82,16 @@ jobs:
           python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api
       - name: Visual Fidelity and Production Gate on Windows
         shell: pwsh
-        run: python -m pytest -q tests/test_graphics2_fidelity.py tests/test_graphics2_import_audit.py tests/test_graphics2_quality_gate.py tests/test_graphics2_golden_master.py tests/test_graphics2_package_fonts.py
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_fidelity.py
+          tests/test_graphics2_import_audit.py
+          tests/test_graphics2_quality_gate.py
+          tests/test_graphics2_golden_master.py
+          tests/test_graphics2_package_fonts.py
+          tests/test_graphics2_scene_fingerprint.py
+          tests/test_graphics2_pptx_groups.py
+          tests/test_graphics2_pptx_fidelity.py
       - name: Graphics Engine 2 tests on Windows
         shell: pwsh
         run: python -m pytest -q tests -k graphics2
