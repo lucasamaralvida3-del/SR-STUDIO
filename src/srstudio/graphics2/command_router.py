@@ -171,6 +171,42 @@ class GraphicsCommandRouter:
                     return CommandResult(False, False, "Página inexistente.")
                 self.session.document.active_page_id = page_id; self.session.clear_selection()
                 return CommandResult(True, False, "Página selecionada.")
+            if name == "reorder_page":
+                document = self.session.document
+                pages = document.pages
+                if len(pages) < 2:
+                    return CommandResult(True, False, "Há somente uma página.")
+                page_id = str(command.get("page_id") or document.active_page_id or "")
+                current_index = next((index for index, item in enumerate(pages) if item.id == page_id), -1)
+                if current_index < 0:
+                    return CommandResult(False, False, "Página inexistente.")
+                mode = str(command.get("mode") or "").strip().lower()
+                if "target_index" in command or "index" in command:
+                    raw_index = command.get("target_index", command.get("index"))
+                    target_index = int(raw_index)
+                elif mode in {"previous", "prev", "left", "up"}:
+                    target_index = current_index - 1
+                elif mode in {"next", "right", "down"}:
+                    target_index = current_index + 1
+                elif mode == "first":
+                    target_index = 0
+                elif mode == "last":
+                    target_index = len(pages) - 1
+                else:
+                    return CommandResult(False, False, "Informe mode ou target_index para reordenar a página.")
+                target_index = max(0, min(len(pages) - 1, target_index))
+                if target_index == current_index:
+                    return CommandResult(True, False, "Página já está nessa posição.", {"page_id": page_id, "index": current_index})
+                with self.session.transaction("Reordenar página"):
+                    page = pages.pop(current_index)
+                    pages.insert(target_index, page)
+                    document.active_page_id = page_id
+                return CommandResult(
+                    True,
+                    True,
+                    "Página reordenada.",
+                    {"page_id": page_id, "index": target_index, "page_ids": [item.id for item in pages]},
+                )
             if name == "add_guide":
                 axis = str(command.get("axis") or "x").lower(); value = float(command.get("value") or 0)
                 with self.session.transaction("Adicionar guia"):
