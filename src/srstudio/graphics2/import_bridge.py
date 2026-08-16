@@ -8,6 +8,7 @@ from srstudio.core.models import StudioProject
 from srstudio.importers.pipeline import ImportSummary, UnifiedImportPipeline
 
 from .compat import from_studio_project
+from .import_audit import ImportAuditReport, audit_import
 from .model import AssetRef, BindingRole, CoordinateUnit, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, SmartSlot, Transform
 from .operations import GraphicsSession, _price_parts
 
@@ -28,6 +29,7 @@ class GraphicsImportResult:
     document: GraphicsDocument
     summary: ImportSummary
     legacy_project: StudioProject
+    audit: ImportAuditReport
 
 
 class GraphicsImportService:
@@ -49,13 +51,14 @@ class GraphicsImportService:
             "layouts_learned": summary.layouts_learned,
             "warnings": list(summary.warnings),
         }
-        return GraphicsImportResult(document=document, summary=summary, legacy_project=project)
+        audit = audit_import(document)
+        return GraphicsImportResult(document=document, summary=summary, legacy_project=project, audit=audit)
 
 
 def from_imported_project(project: StudioProject) -> GraphicsDocument:
     document = from_studio_project(project)
     document.metadata["products"] = [product.to_dict() for product in project.products]
-    document.metadata["graphics2_import_bridge"] = 1
+    document.metadata["graphics2_import_bridge"] = 2
     for index, old_page in enumerate(project.pages):
         if not old_page.elements:
             continue
@@ -64,6 +67,7 @@ def from_imported_project(project: StudioProject) -> GraphicsDocument:
             document.pages[index] = converted
     if document.pages and document.page(document.active_page_id) is None:
         document.active_page_id = document.pages[0].id
+    audit_import(document, check_local_assets=False)
     return document
 
 
@@ -125,7 +129,14 @@ def _convert_visual_page(document: GraphicsDocument, old_page, project: StudioPr
 
 
 def _element_to_node(document: GraphicsDocument, element: dict[str, Any], index: int) -> GraphicsNode | None:
-    kind_map = {"text": NodeKind.TEXT, "image": NodeKind.IMAGE, "rect": NodeKind.RECT, "line": NodeKind.LINE, "ellipse": NodeKind.ELLIPSE, "path": NodeKind.PATH}
+    kind_map = {
+        "text": NodeKind.TEXT,
+        "image": NodeKind.IMAGE,
+        "rect": NodeKind.RECT,
+        "line": NodeKind.LINE,
+        "ellipse": NodeKind.ELLIPSE,
+        "path": NodeKind.PATH,
+    }
     kind = kind_map.get(str(element.get("type") or ""))
     if kind is None:
         return None
@@ -155,7 +166,13 @@ def _element_to_node(document: GraphicsDocument, element: dict[str, Any], index:
     return GraphicsNode(
         kind=kind,
         name=str(element.get("name") or f"Elemento {index + 1}"),
-        transform=Transform(x=float(element.get("x", 0) or 0), y=float(element.get("y", 0) or 0), width=max(0.0, float(element.get("width", 0) or 0)), height=max(0.0, float(element.get("height", 0) or 0)), rotation=float(element.get("rotation", 0) or 0)),
+        transform=Transform(
+            x=float(element.get("x", 0) or 0),
+            y=float(element.get("y", 0) or 0),
+            width=max(0.0, float(element.get("width", 0) or 0)),
+            height=max(0.0, float(element.get("height", 0) or 0)),
+            rotation=float(element.get("rotation", 0) or 0),
+        ),
         z_index=int(element.get("z_index", index) or index),
         locked=not bool(slot_id),
         visible=not bool(element.get("hidden", False)),
@@ -183,11 +200,28 @@ def _style_from_element(element: dict[str, Any], kind: NodeKind) -> dict[str, An
             "fit_inside_box": bool(element.get("canva_fit_inside_box")),
         }
     if kind is NodeKind.IMAGE:
-        return {"fit": str(element.get("image_fit") or "contain"), "crop": dict(element.get("crop") or {}), "fill_rect": dict(element.get("fill_rect") or {}), "flip_x": bool(element.get("flip_h")), "flip_y": bool(element.get("flip_v")), "zoom": 1.0, "focus_x": 0.5, "focus_y": 0.5}
+        return {
+            "fit": str(element.get("image_fit") or "contain"),
+            "crop": dict(element.get("crop") or {}),
+            "fill_rect": dict(element.get("fill_rect") or {}),
+            "flip_x": bool(element.get("flip_h")),
+            "flip_y": bool(element.get("flip_v")),
+            "zoom": 1.0,
+            "focus_x": 0.5,
+            "focus_y": 0.5,
+        }
     if kind in {NodeKind.RECT, NodeKind.ELLIPSE, NodeKind.PATH}:
-        return {"fill": str(element.get("fill") or "transparent"), "stroke": str(element.get("outline") or "transparent"), "stroke_width": float(element.get("line_width", 0) or 0), "radius_ratio": float(element.get("corner_radius_ratio", 0) or 0)}
+        return {
+            "fill": str(element.get("fill") or "transparent"),
+            "stroke": str(element.get("outline") or "transparent"),
+            "stroke_width": float(element.get("line_width", 0) or 0),
+            "radius_ratio": float(element.get("corner_radius_ratio", 0) or 0),
+        }
     if kind is NodeKind.LINE:
-        return {"stroke": str(element.get("outline") or element.get("fill") or "#000000"), "stroke_width": float(element.get("line_width", 1) or 1)}
+        return {
+            "stroke": str(element.get("outline") or element.get("fill") or "#000000"),
+            "stroke_width": float(element.get("line_width", 1) or 1),
+        }
     return {}
 
 
@@ -232,7 +266,13 @@ class CanvaBindingService:
                         continue
                     value = _binding_text(role, product)
                     node.text = value
-                    if role in {"limit", "app_price_complete", "app_price_currency", "app_price_integer", "app_price_cents"}:
+                    if role in {
+                        "limit",
+                        "app_price_complete",
+                        "app_price_currency",
+                        "app_price_integer",
+                        "app_price_cents",
+                    }:
                         node.visible = bool(value)
                     elif value:
                         node.visible = True
@@ -250,11 +290,14 @@ def _binding_text(role: str, product: dict[str, Any]) -> str:
     if role in {"price_cents", BindingRole.PRICE_CENTS.value}:
         return _price_parts(product.get("price"))[1]
     if role == "price_complete":
-        whole, cents = _price_parts(product.get("price")); return f"R$ {whole}{cents}" if whole else ""
+        whole, cents = _price_parts(product.get("price"))
+        return f"R$ {whole}{cents}" if whole else ""
     if role in {"unit", BindingRole.UNIT.value}:
-        unit = str(product.get("unit") or "UN").upper().strip().lstrip("/"); return f"/{unit}" if unit else ""
+        unit = str(product.get("unit") or "UN").upper().strip().lstrip("/")
+        return f"/{unit}" if unit else ""
     if role in {"limit", BindingRole.LIMIT.value}:
-        limit = str(product.get("cpf_limit") or product.get("limit") or "").strip(); return f"LIMITE DE {limit} POR CPF" if limit else ""
+        limit = str(product.get("cpf_limit") or product.get("limit") or "").strip()
+        return f"LIMITE DE {limit} POR CPF" if limit else ""
     if role == "app_price_currency":
         return "R$" if product.get("app_price") not in (None, "") else ""
     if role == "app_price_integer":
@@ -262,7 +305,9 @@ def _binding_text(role: str, product: dict[str, Any]) -> str:
     if role == "app_price_cents":
         return _price_parts(product.get("app_price"))[1]
     if role in {"app_price_complete", BindingRole.APP_PRICE.value}:
-        whole, cents = _price_parts(product.get("app_price")); return f"R$ {whole}{cents}" if whole else ""
+        whole, cents = _price_parts(product.get("app_price"))
+        return f"R$ {whole}{cents}" if whole else ""
     if role == "app_unit":
-        unit = str(product.get("unit") or "UN").upper().strip().lstrip("/"); return f"/{unit}" if unit and product.get("app_price") not in (None, "") else ""
+        unit = str(product.get("unit") or "UN").upper().strip().lstrip("/")
+        return f"/{unit}" if unit and product.get("app_price") not in (None, "") else ""
     return ""
