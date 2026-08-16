@@ -21,6 +21,14 @@ def test_host_cli_accepts_real_pptx_and_gpu_backend():
     assert args.source.name == "OFERTAS QUINTA FILÉ NOVO.pptx"
     assert args.graphics_api == "d3d11"
     assert args.project_name == "Quinta Filé"
+    assert args.probe_graphics_api is False
+
+
+def test_host_cli_accepts_gpu_probe_without_source():
+    args = build_parser().parse_args(["--graphics-api", "software", "--probe-graphics-api"])
+    assert args.source is None
+    assert args.graphics_api == "software"
+    assert args.probe_graphics_api is True
 
 
 def test_graphics_api_aliases_are_normalized_and_invalid_values_are_blocked():
