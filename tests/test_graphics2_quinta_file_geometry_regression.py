@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, Transform
 from srstudio.graphics2.semantic_blocks import build_semantic_blocks
-from srstudio.graphics2.semantic_placeholders import recover_canva_image_placeholders
+from srstudio.graphics2.semantic_recovery import recover_canva_semantic_cards
 
 
 # Coordenadas normalizadas da página real do Canva/PPTX que originou o defeito
@@ -90,14 +90,14 @@ def test_quinta_file_real_geometry_recovers_six_distinct_cards_and_image_slots()
 
     semantic = build_semantic_blocks(document)
     slots_after_semantic = semantic.recovered_smart_slots
-    placeholders = recover_canva_image_placeholders(document)
+    recovery = recover_canva_semantic_cards(document)
 
     assert semantic.recovered_price_blocks == 6
     # A primeira passagem usa somente texto/geometria e pode deliberadamente
     # deixar casos ambíguos órfãos. O backplate branco é a segunda âncora forte.
     assert slots_after_semantic >= 3
-    assert placeholders.orphan_cards_promoted == 6 - slots_after_semantic
-    assert placeholders.synthetic_image_slots == 6
+    assert recovery.orphan_cards_promoted == 6 - slots_after_semantic
+    assert recovery.synthetic_image_slots == 6
     assert len(page.slots) == 6
     slots_by_name = {slot.name: slot for slot in page.slots.values()}
     assert set(slots_by_name) == {card["name"][0] for card in CARDS}
@@ -119,7 +119,7 @@ def test_quinta_file_real_geometry_does_not_cross_bind_neighbor_names_or_placeho
     document = _build_real_geometry_page()
     page = document.active_page
     build_semantic_blocks(document)
-    recover_canva_image_placeholders(document)
+    recover_canva_semantic_cards(document)
     slots_by_name = {slot.name: slot for slot in page.slots.values()}
 
     for card in CARDS:
