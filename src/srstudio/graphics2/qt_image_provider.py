@@ -83,8 +83,6 @@ def create_live_scene_image_provider(session: GraphicsSession):
             if image.isNull():
                 return _transparent_image(QtGui, 1, 1)
             image = _apply_crop(image, dict(node.style.get("crop") or {}), QtCore)
-            if bool(node.style.get("flip_x")) or bool(node.style.get("flip_y")):
-                image = image.mirrored(bool(node.style.get("flip_x")), bool(node.style.get("flip_y")))
 
             width, height = _target_size(node, requested_size)
             composed = _compose(image, width, height, node.style, QtCore, QtGui)
@@ -217,6 +215,14 @@ def _compose(image, width: int, height: int, style: dict[str, Any], QtCore, QtGu
         fit = str(style.get("fit") or "contain").lower()
         focus_x = min(1.0, max(0.0, float(style.get("focus_x", 0.5) or 0.5)))
         focus_y = min(1.0, max(0.0, float(style.get("focus_y", 0.5) or 0.5)))
+        # GraphicsEditor.qml ainda aplica mirror/mirrorVertically no item Image.
+        # O renderer, porém, espelha a fonte antes de escolher o recorte. Inverter
+        # o foco aqui torna "compor sem flip + mirror QML" equivalente ao renderer
+        # e evita aplicar o espelhamento duas vezes no canvas principal.
+        if bool(style.get("flip_x")):
+            focus_x = 1.0 - focus_x
+        if bool(style.get("flip_y")):
+            focus_y = 1.0 - focus_y
         zoom = max(0.05, float(style.get("zoom", 1.0) or 1.0))
         full_target = QtCore.QRectF(0.0, 0.0, float(width), float(height))
         if fit == "fill":
