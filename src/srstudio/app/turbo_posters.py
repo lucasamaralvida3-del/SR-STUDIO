@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import threading
 import tkinter as tk
-from tkinter import messagebox
 
 import srstudio.app.advanced_posters as advanced
 import srstudio.app.cartazes_pro as cartazes
 import srstudio.app.responsive_posters as responsive
 from srstudio.app.cloud_image_bank_view import CloudImageBankView
+from srstudio.app.graphics2_merge_dialog import ask_graphics2_merge_resolutions
 from srstudio.app.layout_corpus_view import LayoutCorpusView
 from srstudio.app.professional import _show_splash
+from srstudio.graphics2.saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 from srstudio.graphics2.studio_bridge import (
     bridge_flags,
     launch_studio_project_if_enabled,
@@ -142,39 +143,62 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
         self.toast.show(result.message, tone, 6200)
 
     def _sync_graphics2_optional(self) -> None:
-        """Importa somente alterações G2 que possuem equivalente no Studio 5."""
+        """Importa alterações representáveis e resolve conflitos por campo."""
 
         result = sync_saved_session_to_project(self.project, self.data_dir)
-        if not result.ok:
-            has_conflict = result.report is not None and bool(getattr(result.report, "conflict", False))
-            if has_conflict:
-                apply_safe = messagebox.askyesno(
-                    "SR Graphics Engine 2 · conflito detectado",
-                    "O Studio e o Engine 2 foram alterados depois da mesma base.\n\n"
-                    "Deseja aplicar somente as mudanças do Engine 2 que NÃO entram em conflito?\n\n"
-                    "Os campos conflitantes continuarão preservados no arquivo .srscene para revisão posterior.",
-                    parent=self,
-                )
-                if apply_safe:
-                    result = sync_saved_session_to_project(
-                        self.project,
-                        self.data_dir,
-                        merge_non_conflicting=True,
-                    )
-                    if result.ok:
-                        self._mark_changed()
-                        remaining = int(getattr(result.report, "unresolved_conflicts", 0) or 0)
-                        tone = "warning" if remaining else "success"
-                        self.toast.show(result.message, tone, 7600)
-                        self.after(80, lambda: self.navigate("Encartes Studio"))
-                        return
-            tone = "warning" if has_conflict else "danger"
-            self.toast.show(result.message, tone, 7200)
+        if result.ok:
+            self._mark_changed()
+            self.toast.show(result.message, "success", 6200)
+            self.after(80, lambda: self.navigate("Encartes Studio"))
             return
-        self._mark_changed()
-        self.toast.show(result.message, "success", 6200)
-        # Reconstrói a view do Encartes Studio usando o StudioProject já
-        # sincronizado. Recursos exclusivos do G2 permanecem no `.srscene`.
+
+        has_conflict = result.report is not None and bool(getattr(result.report, "conflict", False))
+        if not has_conflict:
+            self.toast.show(result.message, "danger", 7200)
+            return
+
+        analysis = analyze_saved_session_merge(self.project, self.data_dir)
+        if not analysis.ok or analysis.report is None:
+            self.toast.show(analysis.message, "danger", 7600)
+            return
+        if not analysis.report.conflict:
+            # A análise detalhada pode concluir que só existem mudanças
+            # independentes. Nesse caso o merge seguro resolve sem diálogo.
+            merged = sync_saved_session_to_project(
+                self.project,
+                self.data_dir,
+                merge_non_conflicting=True,
+            )
+            tone = "success" if merged.ok else "danger"
+            if merged.ok:
+                self._mark_changed()
+                self.after(80, lambda: self.navigate("Encartes Studio"))
+            self.toast.show(merged.message, tone, 7200)
+            return
+
+        decisions = ask_graphics2_merge_resolutions(self, analysis.report)
+        if decisions is None:
+            self.toast.show("Resolução de conflitos cancelada; nenhum campo foi sobrescrito.", "info", 5200)
+            return
+
+        resolved = resolve_saved_session_merge(
+            self.project,
+            self.data_dir,
+            decisions,
+            apply_non_conflicting=True,
+        )
+        if not resolved.ok:
+            self.toast.show(resolved.message, "danger", 8200)
+            return
+
+        report = resolved.report
+        applied = int(getattr(report, "applied", 0) or 0)
+        explicitly_resolved = int(getattr(report, "resolved", 0) or 0)
+        remaining = int(getattr(report, "unresolved_conflicts", 0) or 0)
+        if applied or explicitly_resolved:
+            self._mark_changed()
+        tone = "warning" if remaining else "success"
+        self.toast.show(resolved.message, tone, 8200)
         self.after(80, lambda: self.navigate("Encartes Studio"))
 
     def _start_background_staging(self, products, kind: PosterKind, campaign: str) -> None:
