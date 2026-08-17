@@ -5,7 +5,7 @@ from zipfile import ZipFile
 import pytest
 
 from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, Transform
-from srstudio.graphics2.pptx_structure import inspect_pptx_structure
+from srstudio.graphics2.pptx_structure import PptxMappingAudit, inspect_pptx_structure
 from srstudio.graphics2.quality import inspect_production_gate
 
 
@@ -157,27 +157,29 @@ def test_production_gate_blocks_severe_exact_spacing_loss(tmp_path):
     assert "PPTX_LINE_SPACING_COVERAGE_FAILED" in codes
 
 
-def test_production_gate_warns_between_80_and_95_percent(tmp_path):
-    source = tmp_path / "spacing.pptx"
-    _write_pptx(source)
-    report = inspect_pptx_structure(source)
-
-    # Use ten contracts so one damaged shape produces 90% coverage.
-    report.letter_spacing_contracts *= 2
-    report.line_spacing_contracts *= 2
-    document = _document_from_report(report, corrupt_indices={1})
-    # Duplicate source contracts map to the same source shape; one damaged shape
-    # therefore removes both copies and yields 8/10 = 80%. Use one additional
-    # exact synthetic contract to land inside the warning band at 90%.
-    report.letter_spacing_contracts = report.letter_spacing_contracts[:9]
-    report.line_spacing_contracts = report.line_spacing_contracts[:9]
-    mapping = report.audit_document(document)
-    document.metadata["pptx_mapping_audit"] = mapping.to_dict()
+def test_production_gate_warns_between_80_and_95_percent():
+    document = GraphicsDocument(name="PPTX spacing warning")
+    document.metadata["pptx_mapping_audit"] = PptxMappingAudit(
+        source_slides=1,
+        imported_pages=1,
+        source_text_shapes=10,
+        imported_text_nodes=10,
+        source_letter_spacing_contracts=10,
+        imported_letter_spacing_contracts=9,
+        source_line_spacing_contracts=10,
+        imported_line_spacing_contracts=9,
+        page_count_match=True,
+        text_coverage=1.0,
+        letter_spacing_coverage=0.90,
+        line_spacing_coverage=0.90,
+    ).to_dict()
 
     gate = inspect_production_gate(document, require_visual_fidelity=False)
 
-    assert 0.80 <= gate.mapping_letter_spacing_coverage < 0.95
-    assert 0.80 <= gate.mapping_line_spacing_coverage < 0.95
+    assert gate.mapping_letter_spacing_coverage == pytest.approx(0.90)
+    assert gate.mapping_line_spacing_coverage == pytest.approx(0.90)
     codes = {issue.code for issue in gate.issues}
     assert "PPTX_LETTER_SPACING_COVERAGE_LOW" in codes
     assert "PPTX_LINE_SPACING_COVERAGE_LOW" in codes
+    assert "PPTX_LETTER_SPACING_COVERAGE_FAILED" not in codes
+    assert "PPTX_LINE_SPACING_COVERAGE_FAILED" not in codes
