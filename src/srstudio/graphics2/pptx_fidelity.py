@@ -266,12 +266,17 @@ def _enrich_text(node: GraphicsNode, text_body: ET.Element, scale_x: float, scal
         if any(abs(value) > 1e-9 for value in insets.values()):
             node.style["text_insets"] = insets
         if body.find(f"{{{A_NS}}}spAutoFit") is not None:
-            node.style["fit_inside_box"] = True
+            # ISO/IEC 29500: spAutoFit redimensiona a FORMA para conter o texto;
+            # não é o mesmo contrato de normAutofit, que reduz o texto dentro da
+            # caixa. A geometria da forma já vem materializada do PPTX, portanto
+            # o renderer deve preservar o tamanho da fonte importado.
+            node.style["fit_inside_box"] = False
             node.style["pptx_auto_fit"] = "shape"
         elif body.find(f"{{{A_NS}}}normAutofit") is not None:
             node.style["fit_inside_box"] = True
             node.style["pptx_auto_fit"] = "normal"
         elif body.find(f"{{{A_NS}}}noAutofit") is not None:
+            node.style["fit_inside_box"] = False
             node.style["pptx_auto_fit"] = "none"
 
     run_properties = text_body.find(f".//{{{A_NS}}}rPr")

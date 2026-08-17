@@ -714,6 +714,7 @@ ApplicationWindow {
                                         border.color: modelData.style.stroke || "transparent"
                                     }
                                     Text {
+                                        property bool fitTextInside: !!modelData.style.fit_inside_box || String(modelData.style.semantic_fit_policy || "").toLowerCase() === "overflow_only"
                                         anchors.fill: parent
                                         anchors.leftMargin: textInset(modelData.style, "left")
                                         anchors.topMargin: textInset(modelData.style, "top")
@@ -732,9 +733,9 @@ ApplicationWindow {
                                         verticalAlignment: modelData.style.v_align === "top" ? Text.AlignTop : modelData.style.v_align === "bottom" ? Text.AlignBottom : Text.AlignVCenter
                                         wrapMode: modelData.style.nowrap ? Text.NoWrap : Text.WordWrap
                                         maximumLineCount: modelData.style.nowrap ? 1 : 2147483647
-                                        fontSizeMode: (modelData.style.fit_inside_box || modelData.style.nowrap) ? Text.Fit : Text.FixedSize
+                                        fontSizeMode: fitTextInside ? Text.Fit : Text.FixedSize
                                         minimumPixelSize: Math.max(1, 4 * zoom)
-                                        elide: (modelData.style.fit_inside_box || modelData.style.nowrap) ? Text.ElideNone : Text.ElideRight
+                                        elide: fitTextInside ? Text.ElideNone : (modelData.style.nowrap ? Text.ElideNone : Text.ElideRight)
                                         lineHeightMode: textLineHeightMode(modelData.style)
                                         lineHeight: textLineHeight(modelData.style)
                                     }

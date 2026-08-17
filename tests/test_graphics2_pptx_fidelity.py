@@ -79,11 +79,11 @@ def _fake_eot() -> bytes:
     return struct.pack("<II", total, len(payload)) + b"\x00" * 8 + payload
 
 
-def _pptx(path: Path) -> Path:
+def _pptx(path: Path, *, slide_xml: str = SLIDE) -> Path:
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("ppt/presentation.xml", PRESENTATION)
         archive.writestr("ppt/_rels/presentation.xml.rels", RELS)
-        archive.writestr("ppt/slides/slide1.xml", SLIDE)
+        archive.writestr("ppt/slides/slide1.xml", slide_xml)
         archive.writestr("ppt/fonts/font1.fntdata", _fake_eot())
     return path
 
@@ -127,7 +127,8 @@ def test_pptx_fidelity_extracts_embedded_font_and_exact_custom_path(tmp_path):
 
     text = next(node for node in document.active_page.nodes.values() if node.name == "Text Box 1")
     assert text.style["font_family"] == "Anton"
-    assert text.style["fit_inside_box"] is True
+    # spAutoFit redimensiona a forma no OOXML; não deve reduzir a fonte no renderer.
+    assert text.style["fit_inside_box"] is False
     assert text.style["pptx_auto_fit"] == "shape"
     assert text.style["letter_spacing_pt"] == pytest.approx(-0.55)
     assert text.style["line_spacing_pt"] == pytest.approx(12.0)
@@ -140,3 +141,15 @@ def test_pptx_fidelity_extracts_embedded_font_and_exact_custom_path(tmp_path):
     assert spec["height"] == 500
     assert any(command["op"] == "C" for command in spec["paths"][0]["commands"])
     assert document.metadata["pptx_fidelity"]["custom_paths_enriched"] == 1
+
+
+def test_pptx_fidelity_normal_autofit_still_scales_text_inside_box(tmp_path):
+    normal_slide = SLIDE.replace("<a:spAutoFit/>", '<a:normAutofit fontScale="92000" lnSpcReduction="20000"/>')
+    source = _pptx(tmp_path / "normal-autofit.pptx", slide_xml=normal_slide)
+    document = _document()
+
+    enhance_pptx_document(source, document, cache_dir=tmp_path / "cache-normal")
+
+    text = next(node for node in document.active_page.nodes.values() if node.name == "Text Box 1")
+    assert text.style["fit_inside_box"] is True
+    assert text.style["pptx_auto_fit"] == "normal"

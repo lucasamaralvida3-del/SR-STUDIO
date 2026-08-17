@@ -128,23 +128,13 @@ def build_editor_diagnostics(
 
 
 def prepare_qml_payload(scene: dict[str, Any]) -> dict[str, Any]:
-    for page in scene.get("pages") or []:
-        nodes = page.get("nodes") if isinstance(page, dict) else None
-        if not isinstance(nodes, dict):
-            continue
-        for node in nodes.values():
-            if not isinstance(node, dict):
-                continue
-            metadata = node.get("metadata")
-            if not isinstance(metadata, dict) or not metadata.get("semantic_price_block_id"):
-                continue
-            style = node.get("style")
-            if not isinstance(style, dict):
-                style = {}
-                node["style"] = style
-            style["fit_inside_box"] = False
-            style["nowrap"] = False
-            style["semantic_preview_fixed_size"] = True
+    """Entrega o SR Scene ao QML sem reescrever contratos de texto.
+
+    O delegate de texto do GraphicsEditor separa diretamente ``nowrap`` de
+    auto-fit. Manter esta função como ponto explícito de preparação evita
+    mutações silenciosas no payload e preserva compatibilidade com os callers.
+    """
+
     return scene
 
 
