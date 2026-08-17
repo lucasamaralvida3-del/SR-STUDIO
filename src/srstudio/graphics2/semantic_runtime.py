@@ -24,6 +24,7 @@ from hashlib import sha1
 from typing import Any, Callable
 
 from .model import GraphicsDocument, GraphicsPage, SmartSlot
+from .semantic_named_slot_runtime import recover_explicit_named_slots
 from .semantic_price_runtime import install_complete_price_recovery_guard
 
 
@@ -49,6 +50,10 @@ def install_semantic_recovery_guard(semantic_module: Any) -> None:
     original: Callable[..., Any] = semantic_module.build_semantic_blocks
 
     def guarded_build(document: GraphicsDocument, *args: Any, **kwargs: Any):
+        # Marcadores explícitos do próprio PPTX têm precedência sobre inferência
+        # espacial. Assim SR_PRODUTO + SR_PRECO_PROMO + SR_PRECO_CLUBE formam um
+        # único slot com preço principal e preço secundário antes do fallback.
+        recover_explicit_named_slots(document)
         recovered_state = _capture_recovered_slot_state(document)
         report = original(document, *args, **kwargs)
         _normalize_document_recovered_identities(document)
