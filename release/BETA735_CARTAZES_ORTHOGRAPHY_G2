@@ -10,5 +10,8 @@ Requisitos de ativacao:
 - canal publico ainda em Beta 7.33 durante a ativacao;
 - nenhuma mudanca posterior na integration durante o build.
 
-Disparo autorizado em 2026-08-17 para teste do estado atual do Studio de Encartes.
+Retry autorizado apos validacao oficial da poda path-safe do Graphics2Host.
+Quality Gate: aprovado.
+Graphics2 CI: aprovado.
+Graphics2 Host Build congelado: aprovado, incluindo SHA, catalogo integral e probe Qt.
 Graphics Engine 2 esperado: 2.0.0-alpha.42.
