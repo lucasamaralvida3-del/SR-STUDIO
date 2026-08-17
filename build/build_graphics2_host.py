@@ -23,6 +23,12 @@ SRC = ROOT / "src"
 ENTRY = ROOT / "build" / "graphics2_host_entry.py"
 DEFAULT_DIST = ROOT / "dist" / "graphics2-host"
 HOST_NAME = "SRGraphicsEngine2Host"
+QT_BUILD_ARTIFACT_PREFIXES = (
+    "objects-Debug",
+    "objects-RelWithDebInfo",
+    "objects-Release",
+    "objects-MinSizeRel",
+)
 
 
 @dataclass(slots=True, frozen=True)
@@ -83,6 +89,38 @@ def pyinstaller_args(
     return args
 
 
+def prune_qt_build_artifacts(bundle_dir: str | Path) -> tuple[Path, ...]:
+    """Remove artefatos de build do Qt que não pertencem ao runtime distribuível.
+
+    Algumas versões do PySide6 incluem diretórios ``objects-*`` usados para
+    compilação de componentes Qt. Eles não são carregados pelo host em runtime
+    e podem ultrapassar os limites de caminho do Launcher/Windows. A poda é
+    executada antes da criação do catálogo SHA-256, portanto o manifesto final
+    continua descrevendo exatamente o payload distribuído.
+    """
+
+    root = Path(bundle_dir).resolve()
+    if not root.is_dir():
+        raise NotADirectoryError(root)
+
+    candidates = sorted(
+        (
+            path
+            for path in root.rglob("*")
+            if path.is_dir() and path.name.startswith(QT_BUILD_ARTIFACT_PREFIXES)
+        ),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    )
+    removed: list[Path] = []
+    for path in candidates:
+        if not path.exists():
+            continue
+        shutil.rmtree(path)
+        removed.append(path)
+    return tuple(removed)
+
+
 def build(
     output: str | Path = DEFAULT_DIST,
     *,
@@ -131,6 +169,12 @@ def build(
     executable = bundle / f"{HOST_NAME}.exe"
     if not executable.is_file():
         raise RuntimeError(f"PyInstaller não gerou o executável esperado: {executable}")
+
+    removed = prune_qt_build_artifacts(bundle)
+    if removed:
+        print(f"Qt build artifacts removidos: {len(removed)}")
+        for path in removed:
+            print(f"  - {path.relative_to(bundle)}")
 
     # O manifesto de runtime vive dentro do próprio bundle e cataloga todas as
     # DLLs/plugins/QML. O manifesto de build externo referencia esse catálogo.
