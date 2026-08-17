@@ -4,6 +4,7 @@ import json
 
 from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsNode, NodeKind, SmartSlot, Transform
 from srstudio.graphics2.operations import GraphicsSession
+from srstudio.graphics2.professional_autosave import ProfessionalAutosaveController
 from srstudio.graphics2.professional_command_router import ProfessionalGraphicsCommandRouter
 
 
@@ -104,3 +105,37 @@ def test_professional_router_plans_and_applies_reviewed_slot_fill():
     assert {slot.product_id for slot in page.slots.values()} == {"p1", "p2"}
     stale = router.dispatch({"name": "apply_slot_fill", "plan_token": planned.payload["plan_token"]})
     assert not stale.ok
+
+
+def test_professional_router_exposes_guarded_autosave_recovery_commands(tmp_path):
+    router, text_id, _ = _router()
+    router.autosave = ProfessionalAutosaveController(
+        router.session,
+        root=tmp_path / "autosave",
+        interval_seconds=1,
+        generations=3,
+    )
+
+    saved = router.dispatch({"name": "autosave_tick", "min_interval_seconds": 0})
+    assert saved.ok and not saved.changed
+    assert saved.payload["saved"] is True
+    assert saved.payload["blocked_by_recovery"] is False
+
+    router.session.page.node(text_id).text = "ALTERADO DEPOIS DO AUTOSAVE"
+    status = router.dispatch({"name": "recovery_status"})
+    assert status.ok
+    assert status.payload["recoverable"] is True
+
+    blocked = router.dispatch({"name": "autosave_tick", "min_interval_seconds": 0})
+    assert blocked.ok
+    assert blocked.payload["blocked_by_recovery"] is True
+
+    recovered = router.dispatch({"name": "recover_latest_autosave"})
+    assert recovered.ok and recovered.changed
+    assert router.session.page.node(text_id).text == "OFERTA"
+    assert router.session.undo()
+    assert router.session.page.node(text_id).text == "ALTERADO DEPOIS DO AUTOSAVE"
+
+    cleared = router.dispatch({"name": "discard_autosaves"})
+    assert cleared.ok
+    assert cleared.payload["removed"] == 1
