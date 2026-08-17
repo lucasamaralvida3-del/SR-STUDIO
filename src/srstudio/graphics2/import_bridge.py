@@ -452,6 +452,7 @@ class CanvaBindingService:
                         "app_price_currency",
                         "app_price_integer",
                         "app_price_cents",
+                        "app_unit",
                     }:
                         node.visible = bool(value)
                     elif value:
