@@ -61,6 +61,8 @@ jobs:
           tests/test_graphics2_pptx_fidelity.py
           tests/test_graphics2_pptx_structure.py
           tests/test_graphics2_pptx_spacing_coverage.py
+          tests/test_graphics2_pptx_spacing_recovery.py
+          tests/test_graphics2_pptx_spacing_pipeline.py
           tests/test_graphics2_semantic_blocks.py
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_semantic_spatial_card.py
@@ -136,6 +138,8 @@ jobs:
           tests/test_graphics2_pptx_fidelity.py
           tests/test_graphics2_pptx_structure.py
           tests/test_graphics2_pptx_spacing_coverage.py
+          tests/test_graphics2_pptx_spacing_recovery.py
+          tests/test_graphics2_pptx_spacing_pipeline.py
           tests/test_graphics2_semantic_blocks.py
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_semantic_spatial_card.py
