@@ -23,6 +23,7 @@ import zipfile
 
 from .image_fill import has_drawingml_fill_rect, normalize_fill_rect
 from .model import GraphicsDocument, GraphicsNode, NodeKind
+from .pptx_image_transform import recover_pptx_image_transforms
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -148,7 +149,29 @@ def recover_pptx_fill_rects(source: str | Path, document: GraphicsDocument) -> P
             report.issues.append(_issue("PPTX_FILL_RECT_VALUE_MISMATCH", contract, "Offsets exatos não permaneceram na SR Scene após a recuperação."))
 
     document.metadata["pptx_fill_rect_recovery"] = report.to_dict()
+    _recover_image_transform_contracts(path, document)
     return report
+
+
+def _recover_image_transform_contracts(path: Path, document: GraphicsDocument) -> None:
+    """Executa o segundo contrato de imagem sem tornar fillRect dependente dele."""
+
+    try:
+        recover_pptx_image_transforms(path, document)
+    except Exception as exc:
+        document.metadata["pptx_image_transform_recovery"] = {
+            "source_contracts": 0,
+            "non_identity_contracts": 0,
+            "mapped_contracts": 0,
+            "exact_contracts": 0,
+            "exact_non_identity_contracts": 0,
+            "corrected_contracts": 0,
+            "deferred_group_contracts": 0,
+            "coverage": 0.0,
+            "non_identity_coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
 
 
 def _read_contracts(path: Path) -> list[PptxFillRectContract]:
