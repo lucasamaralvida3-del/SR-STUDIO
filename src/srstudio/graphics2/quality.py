@@ -55,6 +55,9 @@ class ProductionGateReport:
     pptx_gradient_fills: int = 0
     pptx_shadows: int = 0
     pptx_alpha_modifiers: int = 0
+    pptx_applied_gradients: int = 0
+    pptx_applied_outer_shadows: int = 0
+    pptx_unresolved_advanced_effects: int = 0
     issues: list[ProductionGateIssue] = field(default_factory=list)
 
     @property
@@ -98,9 +101,9 @@ def inspect_production_gate(
 
     Para PPTX, cobertura de páginas/textos/imagens, contratos de auto-fit,
     spacing, enquadramento e transformação de imagem DrawingML é parte do score.
-    O inventário de efeitos avançados acompanha o gate como diagnóstico:
-    gradientes, sombras e afins não reduzem score por estimativa; eles obrigam a
-    equipe a olhar o Golden Master real antes de afirmar fidelidade.
+    O inventário de efeitos avançados acompanha o gate como diagnóstico. Efeitos
+    já promovidos para estilos renderizáveis da SR Scene são reportados como
+    cobertos; somente o restante gera aviso de efeito ainda não resolvido.
     """
 
     structural = inspect_quality(document, available_fonts=available_fonts)
@@ -237,17 +240,30 @@ def inspect_production_gate(
     outer_shadows = _as_int(effect_totals.get("outer_shadows", 0))
     inner_shadows = _as_int(effect_totals.get("inner_shadows", 0))
     alpha_modifiers = _as_int(effect_totals.get("alpha_modifiers", 0))
+    effect_mapping = dict(metadata.get("pptx_effect_mapping") or {})
+    applied_gradients = min(gradient_fills, _as_int(effect_mapping.get("applied_gradients", 0)))
+    applied_outer_shadows = min(outer_shadows, _as_int(effect_mapping.get("applied_outer_shadows", 0)))
+    resolved_effects = applied_gradients + applied_outer_shadows
+    unresolved_advanced_effects = max(0, advanced_effects - resolved_effects)
     if effects.get("error"):
         issues.append(ProductionGateIssue("warning", "PPTX_EFFECT_AUDIT_FAILED", f"Auditoria de efeitos DrawingML indisponível: {effects.get('error')}."))
-    elif advanced_effects:
+    elif unresolved_advanced_effects:
         issues.append(
             ProductionGateIssue(
                 "warning",
-                "PPTX_ADVANCED_EFFECTS_PRESENT",
+                "PPTX_ADVANCED_EFFECTS_UNRESOLVED",
                 "PPTX contém "
-                f"{advanced_effects} efeito(s) avançado(s) DrawingML "
-                f"({gradient_fills} gradiente(s), {outer_shadows + inner_shadows} sombra(s)); "
-                "confirme a reprodução pelo Golden Master antes de liberar.",
+                f"{advanced_effects} efeito(s) avançado(s) DrawingML; "
+                f"{resolved_effects} já foram promovidos para estilos renderizáveis e "
+                f"{unresolved_advanced_effects} ainda dependem de implementação/Golden Master.",
+            )
+        )
+    elif advanced_effects:
+        issues.append(
+            ProductionGateIssue(
+                "info",
+                "PPTX_ADVANCED_EFFECTS_RENDERED",
+                f"Os {advanced_effects} efeito(s) avançado(s) auditados foram mapeados para estilos renderizáveis; Golden Master continua sendo a validação final.",
             )
         )
 
@@ -327,6 +343,9 @@ def inspect_production_gate(
         pptx_gradient_fills=gradient_fills,
         pptx_shadows=outer_shadows + inner_shadows,
         pptx_alpha_modifiers=alpha_modifiers,
+        pptx_applied_gradients=applied_gradients,
+        pptx_applied_outer_shadows=applied_outer_shadows,
+        pptx_unresolved_advanced_effects=unresolved_advanced_effects,
         issues=issues,
     )
 
