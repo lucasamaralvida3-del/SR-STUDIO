@@ -1,4 +1,4 @@
-# Alpha 43 validation rerun after integration fix ad5fc6d2.
+# Alpha 43 validation rerun after QML startup visibility fix 2e18fb9f.
 name: G2 Alpha 43 Validation
 
 on:
