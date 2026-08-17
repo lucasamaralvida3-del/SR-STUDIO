@@ -14,6 +14,7 @@ import json
 from .command_router import CommandResult, GraphicsCommandRouter
 from .inspector_context import inspector_context
 from .professional_actions import G2ProfessionalActions
+from .professional_autosave import ProfessionalAutosaveController
 from .professional_state import build_professional_editor_state
 from .slot_fill_plan import apply_slot_fill_plan, plan_smart_slot_fill
 
@@ -24,6 +25,7 @@ class ProfessionalGraphicsCommandRouter(GraphicsCommandRouter):
     def __init__(self, session) -> None:
         super().__init__(session)
         self.professional = G2ProfessionalActions(session)
+        self.autosave = ProfessionalAutosaveController(session)
         self._slot_fill_plans: dict[str, tuple[object, list[dict[str, Any]]]] = {}
 
     def payload(self) -> dict[str, Any]:
@@ -128,6 +130,30 @@ class ProfessionalGraphicsCommandRouter(GraphicsCommandRouter):
                     selection = list(self.session.selection)
                 context = inspector_context(self.session.page, selection)
                 return CommandResult(True, False, "Contexto de propriedades atualizado.", context.to_dict())
+            if name == "autosave_tick":
+                minimum = command.get("min_interval_seconds")
+                report = self.autosave.tick(
+                    min_interval_seconds=float(minimum) if minimum is not None else None
+                )
+                if report.blocked_by_recovery:
+                    message = "Autosave pausado: há uma recuperação pendente."
+                elif report.saved:
+                    message = "Autosave atualizado."
+                else:
+                    message = "Autosave sem alterações novas."
+                return CommandResult(True, False, message, report.to_dict())
+            if name == "recovery_status":
+                status = self.autosave.status()
+                message = "Recuperação disponível." if status.recoverable else "Nenhuma recuperação pendente."
+                return CommandResult(True, False, message, status.to_dict())
+            if name == "recover_latest_autosave":
+                report = self.autosave.recover_latest()
+                if report.changed:
+                    self._slot_fill_plans.clear()
+                return CommandResult(True, report.changed, report.message, report.to_dict())
+            if name == "discard_autosaves":
+                removed = self.autosave.clear()
+                return CommandResult(True, False, f"{removed} autosave(s) descartado(s).", {"removed": removed})
             return super().dispatch(command)
         except Exception as exc:
             return CommandResult(False, False, f"{type(exc).__name__}: {exc}")
