@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 
 Rectangle {
     id: panel
-    width: 338
+    width: 512
     height: 42
     anchors.left: parent ? parent.left : undefined
     anchors.top: parent ? parent.top : undefined
@@ -17,11 +17,35 @@ Rectangle {
     border.width: 1
     border.color: "#CBD5E1"
 
+    Shortcut {
+        sequence: StandardKey.Copy
+        onActivated: sceneBridge.dispatch('{"name":"copy"}')
+    }
+    Shortcut {
+        sequence: StandardKey.Paste
+        onActivated: sceneBridge.dispatch('{"name":"paste"}')
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: 5
         spacing: 5
 
+        ToolButton {
+            text: "Copiar"
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Copiar seleção · Ctrl+C"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.dispatch('{"name":"copy"}')
+        }
+        ToolButton {
+            text: "Colar"
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Colar preservando ProductCard/PriceBlock/SmartSlot · Ctrl+V"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.dispatch('{"name":"paste"}')
+        }
+        ToolSeparator {}
         ToolButton {
             text: "💾 Salvar"
             enabled: !sceneBridge.busy
