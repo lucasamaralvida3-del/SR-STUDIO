@@ -127,51 +127,14 @@ def build_editor_diagnostics(
     }
 
 
-def _qml_text_should_fit(style: dict[str, Any]) -> bool:
-    """Replica o contrato de fit do QPainter antes de entregar texto ao QML.
+def prepare_qml_payload(scene: dict[str, Any]) -> dict[str, Any]:
+    """Entrega o SR Scene ao QML sem reescrever contratos de texto.
 
-    ``nowrap`` controla somente quebra de linha. Redução de fonte fica restrita
-    ao auto-fit explícito e à política semântica ``overflow_only`` usada pelos
-    PriceBlocks. O GraphicsEditor.qml legado ainda associa ``nowrap`` a
-    ``Text.Fit``; por isso o payload neutraliza apenas esse acoplamento visual.
+    O delegate de texto do GraphicsEditor separa diretamente ``nowrap`` de
+    auto-fit. Manter esta função como ponto explícito de preparação evita
+    mutações silenciosas no payload e preserva compatibilidade com os callers.
     """
 
-    if bool(style.get("fit_inside_box")):
-        return True
-    return str(style.get("semantic_fit_policy") or "").lower() == "overflow_only"
-
-
-def _qml_fixed_nowrap_text(value: Any) -> str:
-    """Mantém uma única linha visual sem permitir que WordWrap altere o layout."""
-
-    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n")
-    text = text.replace("\n", " ").replace("\t", "    ")
-    return text.replace(" ", "\u00a0")
-
-
-def prepare_qml_payload(scene: dict[str, Any]) -> dict[str, Any]:
-    for page in scene.get("pages") or []:
-        nodes = page.get("nodes") if isinstance(page, dict) else None
-        if not isinstance(nodes, dict):
-            continue
-        for node in nodes.values():
-            if not isinstance(node, dict) or str(node.get("kind") or "") != "text":
-                continue
-            style = node.get("style")
-            if not isinstance(style, dict):
-                style = {}
-                node["style"] = style
-            if not bool(style.get("nowrap")) or _qml_text_should_fit(style):
-                continue
-
-            # O delegate QML atual usa ``nowrap`` também para ligar Text.Fit.
-            # Para preservar tamanho fixo sem permitir quebra, desligamos apenas
-            # o sinal de wrap no payload e trocamos espaços por NBSP. O SR Scene
-            # persistido continua intacto e o QPainter recebe o texto original.
-            style["nowrap"] = False
-            style["semantic_preview_fixed_size"] = True
-            style["semantic_preview_nowrap"] = True
-            node["text"] = _qml_fixed_nowrap_text(node.get("text"))
     return scene
 
 
