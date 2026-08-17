@@ -6,6 +6,12 @@ from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, T
 from srstudio.graphics2.pptx_image_transform import recover_pptx_image_transforms
 
 
+PRESENTATION = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldSz cx="1000" cy="1000"/>
+</p:presentation>
+"""
+
 SLIDE = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -44,19 +50,50 @@ GROUPED = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </p:sld>
 """
 
+DUPLICATE_NAMES = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+       xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:cSld><p:spTree>
+    <p:pic>
+      <p:nvPicPr><p:cNvPr id="4" name="Imagem 3"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+      <p:blipFill><a:blip r:embed="rId4"/></p:blipFill>
+      <p:spPr><a:xfrm><a:off x="100" y="200"/><a:ext cx="120" cy="160"/></a:xfrm></p:spPr>
+    </p:pic>
+    <p:pic>
+      <p:nvPicPr><p:cNvPr id="22" name="Imagem 3"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+      <p:blipFill><a:blip r:embed="rId22"/></p:blipFill>
+      <p:spPr><a:xfrm flipH="1"><a:off x="700" y="220"/><a:ext cx="140" cy="150"/></a:xfrm></p:spPr>
+    </p:pic>
+  </p:spTree></p:cSld>
+</p:sld>
+"""
+
 
 def _pptx(path, xml=SLIDE):
     with ZipFile(path, "w") as archive:
+        archive.writestr("ppt/presentation.xml", PRESENTATION)
         archive.writestr("ppt/slides/slide1.xml", xml)
     return path
 
 
-def _image(node_id: str, name: str, *, rotation=0.0, flip_x=False, flip_y=False):
+def _image(
+    node_id: str,
+    name: str,
+    *,
+    x=0.0,
+    y=0.0,
+    width=100.0,
+    height=100.0,
+    rotation=0.0,
+    flip_x=False,
+    flip_y=False,
+):
     return GraphicsNode(
         id=node_id,
         kind=NodeKind.IMAGE,
         name=name,
-        transform=Transform(width=100, height=100, rotation=rotation),
+        transform=Transform(x=x, y=y, width=width, height=height, rotation=rotation),
         style={"flip_x": flip_x, "flip_y": flip_y},
         metadata={"source": "pptx", "source_name": name},
     )
@@ -116,3 +153,32 @@ def test_transformed_group_is_deferred_instead_of_falsely_marked_exact(tmp_path)
     assert report.coverage == 0.0
     assert any(issue.code == "PPTX_IMAGE_TRANSFORM_GROUP_COMPOSITION_DEFERRED" for issue in report.issues)
     assert document.active_page.node("grouped").transform.rotation == 0.0
+
+
+def test_duplicate_image_names_are_resolved_by_slide_geometry_without_guessing(tmp_path):
+    document = GraphicsDocument(name="duplicate image names")
+    page = document.active_page
+    page.width = 1000
+    page.height = 1000
+    left = _image("left", "Imagem 3", x=100, y=200, width=120, height=160)
+    right = _image("right", "Imagem 3", x=700, y=220, width=140, height=150)
+    page.add_node(left)
+    page.add_node(right)
+
+    report = recover_pptx_image_transforms(
+        _pptx(tmp_path / "duplicate-names.pptx", DUPLICATE_NAMES),
+        document,
+    )
+
+    assert report.source_contracts == 2
+    assert report.mapped_contracts == 2
+    assert report.exact_contracts == 2
+    assert report.geometry_matches == 2
+    assert report.coverage == 1.0
+    assert not report.issues
+    assert left.metadata["pptx_shape_id"] == "4"
+    assert right.metadata["pptx_shape_id"] == "22"
+    assert left.metadata["pptx_image_transform_match"] == "geometry"
+    assert right.metadata["pptx_image_transform_match"] == "geometry"
+    assert left.style["flip_x"] is False
+    assert right.style["flip_x"] is True
