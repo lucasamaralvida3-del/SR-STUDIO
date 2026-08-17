@@ -37,10 +37,11 @@ def test_real_pptx_launches_complete_qt_quick_editor_offscreen():
     assert context.document.active_page.slots
 
     app = QGuiApplication.instance() or QGuiApplication(["sr-g2-preview-smoke"])
-    # launch_qt_quick_editor reaches a real Qt event loop. This timer is not a
-    # mock: it only closes the offscreen smoke after QML/bridge/providers/tools
-    # have been created and processEvents() has run.
-    QTimer.singleShot(250, app.quit)
+    # launch_qt_quick_editor reaches a real Qt event loop. Give the real QML
+    # host enough time to create its window, bridge, image provider and context
+    # tools before the smoke closes. A very short timer can fire during
+    # processEvents() and leave exec() waiting for a second quit request.
+    QTimer.singleShot(3000, app.quit)
 
     exit_code = launch_qt_quick_editor(
         context.document,
