@@ -56,6 +56,12 @@ from .model import (
 )
 from .operations import GraphicsSession
 from .pdf_baseline import PdfBaselinePage, render_pdf_baselines
+from .pptx_effect_mapping import (
+    PptxEffectMappingIssue,
+    PptxEffectMappingReport,
+    PptxEffectNodeMapping,
+    map_pptx_effects_to_document,
+)
 from .pptx_effects import PptxEffectAudit, ShapeEffectStats, SlideEffectStats, audit_pptx_effects
 from .pptx_fidelity import EmbeddedPptxFont, PptxFidelityReport, enhance_pptx_document
 from .pptx_groups import PptxGroupReport, rebuild_pptx_groups
@@ -86,7 +92,7 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.34"
+ENGINE_VERSION = "2.0.0-alpha.35"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -125,6 +131,9 @@ __all__ = [
     "PdfBaselinePage",
     "PlaceholderRecoveryReport",
     "PptxEffectAudit",
+    "PptxEffectMappingIssue",
+    "PptxEffectMappingReport",
+    "PptxEffectNodeMapping",
     "PptxFidelityReport",
     "PptxGroupReport",
     "PptxMappingAudit",
@@ -167,6 +176,7 @@ __all__ = [
     "inspect_pptx_structure",
     "inspect_production_gate",
     "launch_studio_project_if_enabled",
+    "map_pptx_effects_to_document",
     "merge_graphics_to_studio_non_conflicting",
     "normalize_crop",
     "normalize_fill_rect",
