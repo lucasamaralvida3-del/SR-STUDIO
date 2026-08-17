@@ -48,6 +48,9 @@ class ProductionGateReport:
     mapping_fill_rect_coverage: float = 1.0
     mapping_fill_outset_coverage: float = 1.0
     mapping_image_clip_coverage: float = 1.0
+    image_transform_coverage: float = 1.0
+    image_transform_non_identity_coverage: float = 1.0
+    image_transform_non_identity_contracts: int = 0
     pptx_advanced_effects: int = 0
     pptx_gradient_fills: int = 0
     pptx_shadows: int = 0
@@ -94,7 +97,7 @@ def inspect_production_gate(
       comparação visual tenha passado antes do Engine 2 ser considerado pronto.
 
     Para PPTX, cobertura de páginas/textos/imagens, contratos de auto-fit,
-    letter spacing, line spacing e enquadramento DrawingML é parte do score.
+    spacing, enquadramento e transformação de imagem DrawingML é parte do score.
     O inventário de efeitos avançados acompanha o gate como diagnóstico:
     gradientes, sombras e afins não reduzem score por estimativa; eles obrigam a
     equipe a olhar o Golden Master real antes de afirmar fidelidade.
@@ -175,6 +178,58 @@ def inspect_production_gate(
         elif source_image_clips and mapping_image_clip < 0.95:
             issues.append(ProductionGateIssue("warning", "PPTX_IMAGE_CLIP_COVERAGE_LOW", f"Cobertura de máscaras custGeom irregulares abaixo do alvo: {mapping_image_clip * 100:.2f}%."))
 
+    image_transform = dict(metadata.get("pptx_image_transform_recovery") or {})
+    source_image_transforms = _as_int(image_transform.get("source_contracts", 0))
+    source_non_identity_transforms = _as_int(image_transform.get("non_identity_contracts", 0))
+    image_transform_coverage = _clamp01(image_transform.get("coverage", 1.0))
+    image_transform_non_identity_coverage = _clamp01(image_transform.get("non_identity_coverage", 1.0))
+    if image_transform.get("error"):
+        issues.append(
+            ProductionGateIssue(
+                "warning",
+                "PPTX_IMAGE_TRANSFORM_AUDIT_FAILED",
+                f"Auditoria exata de rotação/flip de imagem indisponível: {image_transform.get('error')}.",
+            )
+        )
+    else:
+        if source_image_transforms >= 2 and image_transform_coverage < 0.80:
+            issues.append(
+                ProductionGateIssue(
+                    "blocker",
+                    "PPTX_IMAGE_TRANSFORM_COVERAGE_FAILED",
+                    f"Cobertura exata de transformação de imagem crítica: {image_transform_coverage * 100:.2f}%.",
+                )
+            )
+        elif source_image_transforms >= 2 and image_transform_coverage < 0.95:
+            issues.append(
+                ProductionGateIssue(
+                    "warning",
+                    "PPTX_IMAGE_TRANSFORM_COVERAGE_LOW",
+                    f"Cobertura exata de transformação de imagem abaixo do alvo: {image_transform_coverage * 100:.2f}%.",
+                )
+            )
+        # Uma única imagem especial pode ser visualmente decisiva (como o
+        # Freeform 3 a -180° no corpus Quinta Filé), portanto contratos não
+        # identitários recebem gate próprio em vez de se diluírem na média.
+        if source_non_identity_transforms and image_transform_non_identity_coverage < 0.80:
+            issues.append(
+                ProductionGateIssue(
+                    "blocker",
+                    "PPTX_IMAGE_TRANSFORM_NON_IDENTITY_FAILED",
+                    "Transformação não identitária de imagem (rotação/flip) não foi preservada com fidelidade exata: "
+                    f"{image_transform_non_identity_coverage * 100:.2f}%.",
+                )
+            )
+        elif source_non_identity_transforms and image_transform_non_identity_coverage < 0.95:
+            issues.append(
+                ProductionGateIssue(
+                    "warning",
+                    "PPTX_IMAGE_TRANSFORM_NON_IDENTITY_LOW",
+                    "Cobertura de rotação/flip não identitário abaixo do alvo: "
+                    f"{image_transform_non_identity_coverage * 100:.2f}%.",
+                )
+            )
+
     effects = dict(metadata.get("pptx_effects") or {})
     effect_totals = dict(effects.get("totals") or {})
     advanced_effects = _as_int(effect_totals.get("advanced_effects", 0))
@@ -231,6 +286,10 @@ def inspect_production_gate(
             mapping_image_clip if source_image_clips else 1.0,
         )
         score_candidates.append(mapping_score * 100.0)
+    if source_image_transforms:
+        score_candidates.append(image_transform_coverage * 100.0)
+    if source_non_identity_transforms:
+        score_candidates.append(image_transform_non_identity_coverage * 100.0)
     if visual_score is not None:
         score_candidates.append(visual_score * 100.0)
     score = int(round(min(score_candidates))) if score_candidates else 0
@@ -261,6 +320,9 @@ def inspect_production_gate(
         mapping_fill_rect_coverage=mapping_fill_rect,
         mapping_fill_outset_coverage=mapping_fill_outset,
         mapping_image_clip_coverage=mapping_image_clip,
+        image_transform_coverage=image_transform_coverage,
+        image_transform_non_identity_coverage=image_transform_non_identity_coverage,
+        image_transform_non_identity_contracts=source_non_identity_transforms,
         pptx_advanced_effects=advanced_effects,
         pptx_gradient_fills=gradient_fills,
         pptx_shadows=outer_shadows + inner_shadows,
