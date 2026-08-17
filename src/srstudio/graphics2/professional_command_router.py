@@ -9,6 +9,7 @@ deepcopy path.
 """
 
 from typing import Any
+import json
 
 from .command_router import CommandResult, GraphicsCommandRouter
 from .inspector_context import inspector_context
@@ -31,6 +32,21 @@ class ProfessionalGraphicsCommandRouter(GraphicsCommandRouter):
         editor["professional"] = build_professional_editor_state(self.session).to_dict()
         return scene
 
+    def dispatch_json(self, raw: str) -> str:
+        """Keep legacy scene payload and expose command-specific data separately."""
+        try:
+            command = json.loads(raw)
+            if not isinstance(command, dict):
+                raise ValueError("Comando JSON deve ser um objeto.")
+            result = self.dispatch(command)
+        except Exception as exc:
+            result = CommandResult(False, False, f"Erro: {exc}")
+        command_payload = dict(result.payload or {})
+        result.payload = self.payload()
+        response = result.to_dict()
+        response["command_payload"] = command_payload
+        return json.dumps(response, ensure_ascii=False, separators=(",", ":"))
+
     def dispatch(self, command: dict[str, Any]) -> CommandResult:
         name = str(command.get("name") or "").strip().lower()
         try:
@@ -38,11 +54,7 @@ class ProfessionalGraphicsCommandRouter(GraphicsCommandRouter):
                 page_id = str(command.get("page_id") or self.session.document.active_page_id or "") or None
                 new_name = str(command.get("name_value") or command.get("page_name") or "").strip() or None
                 copied_id = self.professional.duplicate_page(page_id, name=new_name)
-                return CommandResult(
-                    bool(copied_id), bool(copied_id),
-                    "Página duplicada com identidade independente." if copied_id else "Página não encontrada.",
-                    {"page_id": copied_id} if copied_id else {},
-                )
+                return CommandResult(bool(copied_id), bool(copied_id), "Página duplicada com identidade independente." if copied_id else "Página não encontrada.", {"page_id": copied_id} if copied_id else {})
             if name == "rename_page":
                 page_id = str(command.get("page_id") or self.session.document.active_page_id or "")
                 value = str(command.get("name_value") or command.get("page_name") or "").strip()
@@ -99,7 +111,8 @@ class ProfessionalGraphicsCommandRouter(GraphicsCommandRouter):
                 plan = plan_smart_slot_fill(self.session, products, overwrite=bool(command.get("overwrite", False)), min_confidence=float(command.get("min_confidence", 0.72)))
                 token = f"{plan.page_id}:{len(self._slot_fill_plans) + 1}"
                 self._slot_fill_plans[token] = (plan, products)
-                payload = plan.to_dict(); payload["plan_token"] = token
+                payload = plan.to_dict()
+                payload["plan_token"] = token
                 return CommandResult(True, False, "Plano de preenchimento preparado para revisão.", payload)
             if name == "apply_slot_fill":
                 token = str(command.get("plan_token") or "")
