@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - feature/sr-graphics-engine-2
+      - integration/sr-studio-next
     paths:
       - 'src/srstudio/graphics2/**'
       - 'src/srstudio/settings/features.py'
@@ -43,6 +44,7 @@ jobs:
           python -m pytest -q
           tests/test_graphics2_fidelity.py
           tests/test_graphics2_fidelity_triage.py
+          tests/test_graphics2_fidelity_attribution.py
           tests/test_graphics2_import_audit.py
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_golden_master.py
@@ -106,6 +108,7 @@ jobs:
           python -m pytest -q
           tests/test_graphics2_fidelity.py
           tests/test_graphics2_fidelity_triage.py
+          tests/test_graphics2_fidelity_attribution.py
           tests/test_graphics2_import_audit.py
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_golden_master.py
