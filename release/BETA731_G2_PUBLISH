@@ -1,0 +1,10 @@
+SR Studio 5.0 Beta 7.31 Professional - Graphics Engine 2 Test
+
+Studio de Encartes / SR Graphics Engine 2 liberado no canal Beta para teste real no Windows.
+- Preserva integralmente a Beta 7.30 e a exibicao CADA dos Cartazes Pro.
+- Inclui host Qt/PySide6 isolado em Graphics2Host.
+- Ativa Graphics Engine 2 e GPU somente no processo iniciado pelo canal Beta.
+- Mantem Stable intocada.
+- Beta 7.30 permanece disponivel para rollback.
+
+Triggered: 2026-08-17 Beta 7.31 Graphics2 Test
