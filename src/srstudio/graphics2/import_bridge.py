@@ -14,9 +14,10 @@ from .operations import GraphicsSession, _price_parts
 from .pptx_effect_mapping import map_pptx_effects_to_document
 from .pptx_effects import audit_pptx_effects
 from .pptx_fidelity import enhance_pptx_document
+from .pptx_fill_rect import recover_pptx_fill_rects
 from .pptx_groups import rebuild_pptx_groups
 from .pptx_spacing import recover_pptx_spacing
-from .pptx_structure import PptxStructureReport, inspect_pptx_structure
+from .pptx_structure import PptxMappingAudit, PptxStructureReport, inspect_pptx_structure
 from .scene_fingerprint import store_scene_fingerprint
 from .semantic_blocks import build_semantic_blocks
 from .semantic_recovery import recover_canva_semantic_cards
@@ -72,11 +73,11 @@ class GraphicsImportService:
             media_root = str(project.settings.get("pptx_media_dir") or "").strip()
             cache_dir = Path(media_root) / "graphics2" if media_root else None
             enhance_pptx_document(source, document, cache_dir=cache_dir)
-            # Segunda passagem exclusiva do Graphics2. Ela valida todos os runs
-            # e parágrafos antes do gate; valores uniformes são materializados
-            # nas unidades usadas pelo Qt e pelo scanner, enquanto spacing misto
-            # remove a simplificação do primeiro run em vez de inventar fidelidade.
+            # Passagens exatas exclusivas do Graphics2. Elas validam o que a
+            # importação ampla trouxe antes do gate, corrigindo somente contratos
+            # OOXML inequívocos e recusando ambiguidades em vez de adivinhá-las.
             _recover_pptx_spacing(source, document)
+            _recover_pptx_fill_rects(source, document)
             rebuild_pptx_groups(source, document)
             # Efeitos são associados somente depois da reconstrução de grupos,
             # para que um efeito cujo dono é p:grpSp também possa encontrar seu
@@ -89,6 +90,7 @@ class GraphicsImportService:
         recover_canva_semantic_cards(document)
         if structure is not None:
             mapping = structure.audit_document(document)
+            _apply_exact_fill_rect_mapping(mapping, document)
             document.metadata["pptx_mapping_audit"] = mapping.to_dict()
         fingerprint = store_scene_fingerprint(document)
         document.metadata["import_fingerprint_sha256"] = fingerprint.sha256
@@ -118,6 +120,71 @@ def _recover_pptx_spacing(source: Path, document: GraphicsDocument) -> None:
             "issues": [],
             "error": str(exc),
         }
+
+
+def _recover_pptx_fill_rects(source: Path, document: GraphicsDocument) -> None:
+    """Restaura offsets exatos de imagem sem permitir que o import inteiro falhe."""
+
+    try:
+        recover_pptx_fill_rects(source, document)
+    except Exception as exc:
+        document.metadata["pptx_fill_rect_recovery"] = {
+            "source_contracts": 0,
+            "mapped_contracts": 0,
+            "exact_contracts": 0,
+            "corrected_contracts": 0,
+            "source_outsets": 0,
+            "exact_outsets": 0,
+            "coverage": 0.0,
+            "outset_coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
+
+
+def _apply_exact_fill_rect_mapping(mapping: PptxMappingAudit, document: GraphicsDocument) -> None:
+    """Substitui a cobertura por contagem pela prova de valores por shape.
+
+    ``PptxStructureReport.audit_document`` continua útil para documentos antigos
+    que não possuem a passagem exata. Quando ``pptx_fill_rect_recovery`` existe,
+    o Production Gate recebe os contratos realmente preservados, não apenas o
+    número de dicionários ``fill_rect`` presentes.
+    """
+
+    raw = dict(document.metadata.get("pptx_fill_rect_recovery") or {})
+    source = _safe_int(raw.get("source_contracts"))
+    if source <= 0:
+        return
+    exact = min(source, max(0, _safe_int(raw.get("exact_contracts"))))
+    source_outsets = max(0, _safe_int(raw.get("source_outsets")))
+    exact_outsets = min(source_outsets, max(0, _safe_int(raw.get("exact_outsets"))))
+    mapping.source_fill_rects = source
+    mapping.imported_fill_rects = exact
+    mapping.fill_rect_coverage = exact / source
+    mapping.source_fill_outsets = source_outsets
+    mapping.imported_fill_outsets = exact_outsets
+    mapping.fill_outset_coverage = 1.0 if source_outsets == 0 else exact_outsets / source_outsets
+
+    # O scanner estrutural pode ter concluído 100% por contagem antes desta
+    # substituição. Acrescente avisos exatos para o relatório portátil quando a
+    # segunda passagem provar uma perda real.
+    if mapping.fill_rect_coverage < 0.95:
+        mapping.warnings.append(
+            f"Cobertura exata de stretch/fillRect DrawingML baixa: {mapping.fill_rect_coverage * 100:.2f}% "
+            f"({exact}/{source}) com offsets preservados por shape."
+        )
+    if source_outsets and mapping.fill_outset_coverage < 0.95:
+        mapping.warnings.append(
+            f"Cobertura exata de fillRect com outset negativo baixa: {mapping.fill_outset_coverage * 100:.2f}% "
+            f"({exact_outsets}/{source_outsets}) com offsets preservados por shape."
+        )
+
+
+def _safe_int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _store_pptx_effect_audit(source: Path, document: GraphicsDocument) -> None:
