@@ -11,6 +11,7 @@ from .compat import from_studio_project
 from .import_audit import ImportAuditReport, audit_import
 from .model import AssetRef, BindingRole, CoordinateUnit, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, SmartSlot, Transform
 from .operations import GraphicsSession, _price_parts
+from .pptx_effects import audit_pptx_effects
 from .pptx_fidelity import enhance_pptx_document
 from .pptx_groups import rebuild_pptx_groups
 from .pptx_structure import PptxStructureReport, inspect_pptx_structure
@@ -65,6 +66,7 @@ class GraphicsImportService:
             # imagens. Contar apenas Picture perderia boa parte do documento.
             structure = inspect_pptx_structure(source)
             document.metadata["pptx_structure"] = structure.to_dict()
+            _store_pptx_effect_audit(source, document)
             media_root = str(project.settings.get("pptx_media_dir") or "").strip()
             cache_dir = Path(media_root) / "graphics2" if media_root else None
             enhance_pptx_document(source, document, cache_dir=cache_dir)
@@ -81,6 +83,20 @@ class GraphicsImportService:
         document.metadata["import_fingerprint_sha256"] = fingerprint.sha256
         audit = audit_import(document)
         return GraphicsImportResult(document=document, summary=summary, legacy_project=project, audit=audit)
+
+
+def _store_pptx_effect_audit(source: Path, document: GraphicsDocument) -> None:
+    """Anexa o inventário de efeitos sem tornar diagnóstico uma falha de importação."""
+
+    try:
+        document.metadata["pptx_effects"] = audit_pptx_effects(source).to_dict()
+    except Exception as exc:
+        document.metadata["pptx_effects"] = {
+            "source": str(source),
+            "totals": {},
+            "slides": [],
+            "error": str(exc),
+        }
 
 
 def from_imported_project(project: StudioProject) -> GraphicsDocument:
