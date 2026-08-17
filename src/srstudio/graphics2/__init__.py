@@ -95,6 +95,11 @@ from .semantic_runtime import install_semantic_recovery_guard
 install_semantic_recovery_guard(_semantic_blocks)
 build_semantic_blocks = _semantic_blocks.build_semantic_blocks
 
+from . import command_router as _command_router
+from .image_replace_runtime import install_image_replace_command
+
+install_image_replace_command(_command_router)
+
 from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_image_placeholders
 from .semantic_recovery import recover_canva_semantic_cards
 from .studio_bridge import (
@@ -122,6 +127,7 @@ install_headless_renderer_guard(_qt_renderer)
 RenderReport = _qt_renderer.RenderReport
 render_png = _qt_renderer.render_png
 render_pdf = _qt_renderer.render_pdf
+GraphicsCommandRouter = _command_router.GraphicsCommandRouter
 
 __all__ = [
     "AssetRef",
@@ -144,6 +150,7 @@ __all__ = [
     "FidelityTriageReport",
     "FillDestination",
     "FitMode",
+    "GraphicsCommandRouter",
     "GraphicsDocument",
     "GraphicsNode",
     "GraphicsPage",
