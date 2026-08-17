@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 
 Rectangle {
     id: panel
-    width: 512
+    width: 640
     height: 42
     anchors.left: parent ? parent.left : undefined
     anchors.top: parent ? parent.top : undefined
@@ -52,6 +52,13 @@ Rectangle {
             ToolTip.text: "Salvar projeto portátil .srscene"
             ToolTip.visible: hovered
             onClicked: saveDialog.open()
+        }
+        ToolButton {
+            text: "↺ Recuperar"
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Restaurar o ponto de autosave mais recente, se existir"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.recoverLatest()
         }
         ToolButton {
             text: "PDF"
