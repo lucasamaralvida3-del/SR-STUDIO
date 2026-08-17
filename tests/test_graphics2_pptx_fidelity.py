@@ -136,6 +136,10 @@ def test_pptx_fidelity_extracts_embedded_font_and_exact_custom_path(tmp_path):
     assert text.style["letter_spacing_pt"] == pytest.approx(-0.55)
     assert text.style["line_spacing_pt"] == pytest.approx(12.0)
     assert text.style["text_insets"]["left"] == pytest.approx(9.6, rel=0.01)
+    assert text.style["v_align"] == "top"
+    assert text.style["align"] == "center"
+    assert text.metadata["pptx_vertical_anchor"] == "t"
+    assert text.metadata["pptx_paragraph_alignment"] == "ctr"
     assert Path(text.metadata["embedded_font_path"]).is_file()
 
     shape = next(node for node in document.active_page.nodes.values() if node.name == "Freeform 1")
@@ -145,6 +149,36 @@ def test_pptx_fidelity_extracts_embedded_font_and_exact_custom_path(tmp_path):
     assert any(command["op"] == "C" for command in spec["paths"][0]["commands"])
     assert document.metadata["pptx_fidelity"]["custom_paths_enriched"] == 1
     assert document.metadata["pptx_fidelity"]["shape_autofit_nodes"] == 1
+
+
+def test_pptx_fidelity_maps_explicit_bottom_right_text_contract(tmp_path):
+    slide = SLIDE.replace('anchor="t"', 'anchor="b"').replace('algn="ctr"', 'algn="r"')
+    source = _pptx(tmp_path / "bottom-right.pptx", slide_xml=slide)
+    document = _document()
+
+    enhance_pptx_document(source, document, cache_dir=tmp_path / "cache-bottom-right")
+
+    text = next(node for node in document.active_page.nodes.values() if node.name == "Text Box 1")
+    assert text.style["v_align"] == "bottom"
+    assert text.style["align"] == "right"
+    assert text.metadata["pptx_vertical_anchor"] == "b"
+    assert text.metadata["pptx_paragraph_alignment"] == "r"
+
+
+def test_pptx_fidelity_does_not_guess_unsupported_text_distribution(tmp_path):
+    slide = SLIDE.replace('anchor="t"', 'anchor="dist"').replace('algn="ctr"', 'algn="just"')
+    source = _pptx(tmp_path / "distributed.pptx", slide_xml=slide)
+    document = _document()
+    text = next(node for node in document.active_page.nodes.values() if node.name == "Text Box 1")
+    text.style["v_align"] = "bottom"
+    text.style["align"] = "left"
+
+    enhance_pptx_document(source, document, cache_dir=tmp_path / "cache-distributed")
+
+    assert text.style["v_align"] == "bottom"
+    assert text.style["align"] == "left"
+    assert "pptx_vertical_anchor" not in text.metadata
+    assert "pptx_paragraph_alignment" not in text.metadata
 
 
 def test_pptx_fidelity_normal_autofit_still_scales_text_inside_box(tmp_path):
