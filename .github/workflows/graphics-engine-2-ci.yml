@@ -55,6 +55,7 @@ jobs:
           tests/test_graphics2_package_fonts.py
           tests/test_graphics2_scene_fingerprint.py
           tests/test_graphics2_pptx_effects.py
+          tests/test_graphics2_pptx_effect_mapping.py
           tests/test_graphics2_pptx_groups.py
           tests/test_graphics2_pptx_fidelity.py
           tests/test_graphics2_pptx_structure.py
@@ -127,6 +128,7 @@ jobs:
           tests/test_graphics2_package_fonts.py
           tests/test_graphics2_scene_fingerprint.py
           tests/test_graphics2_pptx_effects.py
+          tests/test_graphics2_pptx_effect_mapping.py
           tests/test_graphics2_pptx_groups.py
           tests/test_graphics2_pptx_fidelity.py
           tests/test_graphics2_pptx_structure.py
