@@ -7,7 +7,7 @@ import json
 from PIL import Image
 import pytest
 
-from srstudio.graphics2.reference_suite import load_reference_manifest, verify_reference_case
+from srstudio.graphics2.reference_suite import _top_suspect_note, load_reference_manifest, verify_reference_case
 
 
 def _write_image(path: Path, size=(120, 160)) -> str:
@@ -85,6 +85,37 @@ def test_reference_case_rejects_changed_export(tmp_path):
     case = load_reference_manifest(manifest).cases[0]
     with pytest.raises(ValueError, match="SHA-256"):
         verify_reference_case(case, tmp_path)
+
+
+def test_reference_suite_formats_top_scene_suspect_for_console() -> None:
+    attribution = {
+        "regions": [
+            {
+                "region_index": 1,
+                "suspects": [
+                    {
+                        "node_id": "price_reais",
+                        "name": "Preço principal",
+                        "kind": "text",
+                        "binding_role": "price_reais",
+                    }
+                ],
+            }
+        ]
+    }
+
+    assert _top_suspect_note(attribution) == " · provável price_reais: Preço principal"
+    assert _top_suspect_note({"regions": [{"suspects": []}]}) == " · sem node SR Scene associado"
+    assert _top_suspect_note({}) == ""
+
+
+def test_reference_suite_source_persists_scene_aware_worst_case() -> None:
+    source = (Path(__file__).parents[1] / "src" / "srstudio" / "graphics2" / "reference_suite.py").read_text(encoding="utf-8")
+    assert "attribute_fidelity_regions" in source
+    assert '"attribution_report"' in source
+    assert "store_fidelity_triage" in source
+    assert '"visual_fidelity_worst_case"' in source
+    assert '"pptx_effect_mapping"' in source
 
 
 def test_real_quinta_manifest_keeps_confirmed_slide_mapping():
