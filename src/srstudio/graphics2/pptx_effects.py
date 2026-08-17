@@ -12,6 +12,11 @@ implementação a partir do corpus real.
 Além dos totais por slide, a auditoria atribui cada efeito ao shape OOXML mais
 próximo. Isso permite que o Fidelity Lab avance de "há sombras nesta página" para
 "o shape 42 / Preço tem sombra", sem duplicar efeitos de filhos dentro de grupos.
+
+A partir da Alpha 40, o inventário também preserva uma descrição renderizável dos
+dois efeitos de maior impacto no corpus: gradientes lineares e sombras externas.
+Quando uma cor depende de tema/scheme e não pode ser resolvida com segurança, o
+efeito continua contado no audit, mas não é transformado em estilo visual.
 """
 
 from argparse import ArgumentParser
@@ -29,6 +34,7 @@ _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _NS = {"a": _A, "p": _P}
 _SLIDE_RE = re.compile(r"^ppt/slides/slide(\d+)\.xml$")
+_EMU_PER_PX_96 = 9525.0
 
 _EFFECT_PATHS: dict[str, str] = {
     "gradient_fills": ".//a:gradFill",
@@ -58,6 +64,18 @@ _CNVPR_PATHS = {
     "group": "./p:nvGrpSpPr/p:cNvPr",
     "connector": "./p:nvCxnSpPr/p:cNvPr",
     "graphic_frame": "./p:nvGraphicFramePr/p:cNvPr",
+}
+_PRESET_COLORS = {
+    "black": "#000000",
+    "white": "#FFFFFF",
+    "red": "#FF0000",
+    "green": "#008000",
+    "blue": "#0000FF",
+    "yellow": "#FFFF00",
+    "orange": "#FFA500",
+    "purple": "#800080",
+    "gray": "#808080",
+    "grey": "#808080",
 }
 
 
@@ -109,6 +127,8 @@ class ShapeEffectStats:
     effect_dags: int = 0
     scene_3d: int = 0
     shape_3d: int = 0
+    linear_gradient: dict[str, object] | None = None
+    outer_shadow: dict[str, object] | None = None
 
     @property
     def advanced_effects(self) -> int:
@@ -135,6 +155,8 @@ class PptxEffectAudit:
         totals["slides_with_alpha"] = sum(1 for slide in self.slides if slide.alpha_modifiers)
         totals["shapes_with_advanced_effects"] = sum(1 for shape in self.shapes if shape.advanced_effects)
         totals["shapes_with_alpha"] = sum(1 for shape in self.shapes if shape.alpha_modifiers)
+        totals["renderable_linear_gradients"] = sum(1 for shape in self.shapes if shape.linear_gradient)
+        totals["renderable_outer_shadows"] = sum(1 for shape in self.shapes if shape.outer_shadow)
         totals["slides"] = len(self.slides)
         return totals
 
@@ -191,20 +213,33 @@ def _count_alpha(root: ET.Element) -> int:
 def _shape_effect_stats(root: ET.Element, slide_number: int) -> list[ShapeEffectStats]:
     parent_by_child = {child: parent for parent in root.iter() for child in parent}
     counts_by_shape: dict[ET.Element, dict[str, int]] = {}
+    gradient_by_shape: dict[ET.Element, dict[str, object]] = {}
+    shadow_by_shape: dict[ET.Element, dict[str, object]] = {}
 
-    def assign(element: ET.Element, key: str) -> None:
+    def assign(element: ET.Element, key: str) -> ET.Element | None:
         owner = _nearest_shape(element, parent_by_child)
         if owner is None:
-            return
+            return None
         payload = counts_by_shape.setdefault(
             owner,
             {name: 0 for name in list(_EFFECT_PATHS) + ["alpha_modifiers"]},
         )
         payload[key] += 1
+        return owner
 
     for key, xpath in _EFFECT_PATHS.items():
         for element in root.findall(xpath, _NS):
-            assign(element, key)
+            owner = assign(element, key)
+            if owner is None:
+                continue
+            if key == "gradient_fills" and owner not in gradient_by_shape and _is_shape_fill(element, owner, parent_by_child):
+                descriptor = _linear_gradient_descriptor(element)
+                if descriptor:
+                    gradient_by_shape[owner] = descriptor
+            elif key == "outer_shadows" and owner not in shadow_by_shape:
+                descriptor = _outer_shadow_descriptor(element)
+                if descriptor:
+                    shadow_by_shape[owner] = descriptor
     for tag in _ALPHA_TAGS:
         for element in root.findall(f".//a:{tag}", _NS):
             assign(element, "alpha_modifiers")
@@ -218,11 +253,104 @@ def _shape_effect_stats(root: ET.Element, slide_number: int) -> list[ShapeEffect
                 shape_id=shape_id,
                 shape_name=shape_name,
                 shape_kind=shape_kind,
+                linear_gradient=gradient_by_shape.get(shape),
+                outer_shadow=shadow_by_shape.get(shape),
                 **counts,
             )
         )
     result.sort(key=lambda item: (_shape_sort_id(item.shape_id), item.shape_kind, item.shape_name))
     return result
+
+
+def _is_shape_fill(element: ET.Element, owner: ET.Element, parent_by_child: dict[ET.Element, ET.Element]) -> bool:
+    current = parent_by_child.get(element)
+    while current is not None and current is not owner:
+        if current.tag == f"{{{_A}}}ln":
+            return False
+        current = parent_by_child.get(current)
+    return True
+
+
+def _linear_gradient_descriptor(element: ET.Element) -> dict[str, object] | None:
+    linear = element.find("./a:lin", _NS)
+    if linear is None:
+        return None
+    stops: list[dict[str, object]] = []
+    for raw_stop in element.findall("./a:gsLst/a:gs", _NS):
+        color = _drawingml_color(raw_stop)
+        if color is None:
+            continue
+        position = _percent(raw_stop.get("pos"), 0.0)
+        stops.append(
+            {
+                "position": position,
+                "color": color["color"],
+                "alpha": color["alpha"],
+            }
+        )
+    if len(stops) < 2:
+        return None
+    stops.sort(key=lambda item: float(item["position"]))
+    return {
+        "type": "linear",
+        "angle": _angle_degrees(linear.get("ang")),
+        "scaled": _bool_attr(linear.get("scaled"), True),
+        "stops": stops,
+    }
+
+
+def _outer_shadow_descriptor(element: ET.Element) -> dict[str, object] | None:
+    color = _drawingml_color(element)
+    if color is None:
+        return None
+    return {
+        "type": "outer",
+        "color": color["color"],
+        "alpha": color["alpha"],
+        "blur": _emu_to_px(element.get("blurRad")),
+        "distance": _emu_to_px(element.get("dist")),
+        "direction": _angle_degrees(element.get("dir")),
+        "rot_with_shape": _bool_attr(element.get("rotWithShape"), False),
+        "align": str(element.get("algn") or ""),
+    }
+
+
+def _drawingml_color(container: ET.Element) -> dict[str, object] | None:
+    color_element = None
+    for child in list(container):
+        local = _local_name(child.tag)
+        if local in {"srgbClr", "sysClr", "prstClr", "schemeClr"}:
+            color_element = child
+            break
+    if color_element is None:
+        return None
+
+    local = _local_name(color_element.tag)
+    color = ""
+    if local == "srgbClr":
+        color = _hex_color(color_element.get("val"))
+    elif local == "sysClr":
+        color = _hex_color(color_element.get("lastClr"))
+    elif local == "prstClr":
+        color = _PRESET_COLORS.get(str(color_element.get("val") or "").casefold(), "")
+    else:
+        # schemeClr depende do theme/master do PPTX. Aplicar uma cor inventada
+        # seria pior que preservar o efeito apenas para diagnóstico.
+        return None
+    if not color:
+        return None
+
+    alpha = 1.0
+    for transform in list(color_element):
+        name = _local_name(transform.tag)
+        value = _percent(transform.get("val"), 1.0)
+        if name == "alpha":
+            alpha = value
+        elif name in {"alphaMod", "alphaModFix"}:
+            alpha *= value
+        elif name == "alphaOff":
+            alpha += value
+    return {"color": color, "alpha": max(0.0, min(1.0, alpha))}
 
 
 def _nearest_shape(element: ET.Element, parent_by_child: dict[ET.Element, ET.Element]) -> ET.Element | None:
@@ -248,6 +376,44 @@ def _shape_sort_id(value: str) -> tuple[int, str]:
         return int(value), value
     except (TypeError, ValueError):
         return 2**31 - 1, str(value or "")
+
+
+def _percent(value: object, default: float) -> float:
+    try:
+        return max(0.0, min(1.0, float(value) / 100000.0))
+    except (TypeError, ValueError):
+        return default
+
+
+def _angle_degrees(value: object) -> float:
+    try:
+        return (float(value) / 60000.0) % 360.0
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _emu_to_px(value: object) -> float:
+    try:
+        return max(0.0, float(value) / _EMU_PER_PX_96)
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def _bool_attr(value: object, default: bool) -> bool:
+    if value is None:
+        return default
+    return str(value).strip().casefold() not in {"0", "false", "off", "no"}
+
+
+def _hex_color(value: object) -> str:
+    text = str(value or "").strip().lstrip("#")
+    if len(text) != 6 or any(char not in "0123456789abcdefABCDEF" for char in text):
+        return ""
+    return "#" + text.upper()
+
+
+def _local_name(tag: str) -> str:
+    return tag.rsplit("}", 1)[-1]
 
 
 def build_parser() -> ArgumentParser:
