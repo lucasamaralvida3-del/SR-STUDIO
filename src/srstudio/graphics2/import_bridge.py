@@ -11,6 +11,7 @@ from .compat import from_studio_project
 from .import_audit import ImportAuditReport, audit_import
 from .model import AssetRef, BindingRole, CoordinateUnit, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, SmartSlot, Transform
 from .operations import GraphicsSession, _price_parts
+from .pptx_effect_mapping import map_pptx_effects_to_document
 from .pptx_effects import audit_pptx_effects
 from .pptx_fidelity import enhance_pptx_document
 from .pptx_groups import rebuild_pptx_groups
@@ -71,6 +72,10 @@ class GraphicsImportService:
             cache_dir = Path(media_root) / "graphics2" if media_root else None
             enhance_pptx_document(source, document, cache_dir=cache_dir)
             rebuild_pptx_groups(source, document)
+            # Efeitos são associados somente depois da reconstrução de grupos,
+            # para que um efeito cujo dono é p:grpSp também possa encontrar seu
+            # node canônico no Graphics2. Ambiguidades nunca são adivinhadas.
+            map_pptx_effects_to_document(document)
         build_semantic_blocks(document)
         # Recuperação em duas passagens: PriceBlock/ProductCard primeiro;
         # placeholder/backplate + IMAGE sintética depois. O orquestrador garante
@@ -95,6 +100,7 @@ def _store_pptx_effect_audit(source: Path, document: GraphicsDocument) -> None:
             "source": str(source),
             "totals": {},
             "slides": [],
+            "shapes": [],
             "error": str(exc),
         }
 
