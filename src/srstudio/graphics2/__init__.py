@@ -95,6 +95,14 @@ from .semantic_runtime import install_semantic_recovery_guard
 install_semantic_recovery_guard(_semantic_blocks)
 build_semantic_blocks = _semantic_blocks.build_semantic_blocks
 
+# O bridge histórico protege todos os nodes fora de SmartSlots. Para o Studio de
+# Encartes profissional, textos e imagens importados precisam permanecer
+# editáveis sem liberar as formas estruturais do template.
+from . import import_bridge as _import_bridge
+from .import_edit_runtime import apply_import_editability, install_import_editability_guard
+
+install_import_editability_guard(_import_bridge)
+
 from . import command_router as _command_router
 from .image_replace_runtime import install_image_replace_command
 
@@ -201,6 +209,7 @@ __all__ = [
     "analyze_fidelity_regions",
     "analyze_legacy_merge",
     "analyze_saved_session_merge",
+    "apply_import_editability",
     "attribute_fidelity_regions",
     "audit_import",
     "audit_pptx_effects",
