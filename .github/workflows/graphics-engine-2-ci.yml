@@ -73,6 +73,7 @@ jobs:
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_semantic_spatial_card.py
           tests/test_graphics2_semantic_placeholders.py
+          tests/test_graphics2_quinta_file_image_transform_parity.py
           tests/test_graphics2_quinta_file_geometry_regression.py
           tests/test_graphics2_drop_target.py
           tests/test_graphics2_text_fit_policy.py
@@ -156,6 +157,7 @@ jobs:
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_semantic_spatial_card.py
           tests/test_graphics2_semantic_placeholders.py
+          tests/test_graphics2_quinta_file_image_transform_parity.py
           tests/test_graphics2_quinta_file_geometry_regression.py
           tests/test_graphics2_drop_target.py
           tests/test_graphics2_text_fit_policy.py
