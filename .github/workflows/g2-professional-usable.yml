@@ -61,6 +61,7 @@ jobs:
           tests/test_graphics2_recovered_slot_identity.py
           tests/test_graphics2_image_replace.py
           tests/test_graphics2_project_actions_qml.py
+          tests/test_graphics2_real_pptx_professional.py
 
       - name: Professional usability contracts
         id: professional_tests
@@ -80,6 +81,7 @@ jobs:
             "tests/test_graphics2_recovered_slot_identity.py",
             "tests/test_graphics2_image_replace.py",
             "tests/test_graphics2_project_actions_qml.py",
+            "tests/test_graphics2_real_pptx_professional.py",
             "tests/test_graphics2_semantic_product_card.py",
             "tests/test_graphics2_semantic_spatial_card.py",
             "tests/test_graphics2_core.py",
