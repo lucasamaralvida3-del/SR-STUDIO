@@ -7,4 +7,5 @@ Studio de Encartes / SR Graphics Engine 2 liberado no canal Beta para teste real
 - Mantem Stable intocada.
 - Beta 7.30 permanece disponivel para rollback.
 
-Triggered: 2026-08-17 Beta 7.31 Graphics2 Test
+Retry: correcao do nome de variavel PowerShell na validacao final do ZIP.
+Triggered: 2026-08-17 Beta 7.31 Graphics2 Test - retry 2
