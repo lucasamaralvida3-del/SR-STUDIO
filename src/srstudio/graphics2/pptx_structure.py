@@ -2,11 +2,9 @@ from __future__ import annotations
 
 """Auditoria estrutural OOXML para importações PPTX/Canva.
 
-O Graphics Engine 2 não pode considerar um PPTX fiel apenas porque o número de
-slides bate. O Canva frequentemente grava imagens como ``p:sp`` + ``a:blipFill``
-(em vez de ``p:pic``), além de usar grupos, ``custGeom`` e ``stretch/fillRect``
-em grande escala. Este módulo mede a estrutura fonte antes da conversão e
-compara o que chegou ao SR Scene sem modificar geometria ou conteúdo.
+Mede a estrutura fonte antes da conversão e compara o que chegou ao SR Scene.
+Além de páginas, imagens, grupos e auto-fit, os contratos tipográficos de
+espaçamento são comparados pelo valor original da shape para evitar falsos 100%.
 """
 
 from argparse import ArgumentParser
@@ -16,6 +14,7 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 import json
+import math
 import re
 import sys
 import zipfile
@@ -40,14 +39,14 @@ class PptxSlideStructure:
     shape_autofit: int = 0
     normal_autofit: int = 0
     no_autofit: int = 0
+    letter_spacing_contracts: list[dict[str, Any]] = field(default_factory=list)
+    line_spacing_contracts: list[dict[str, Any]] = field(default_factory=list)
     pictures: int = 0
     image_fill_shapes: int = 0
     image_fill_rects: int = 0
     image_fill_outsets: int = 0
     groups: int = 0
     custom_geometry: int = 0
-    # Conta somente custGeom de imagem que realmente exige máscara. Um
-    # custGeom retangular equivalente à caixa não precisa gerar clip_path.
     image_custom_geometry: int = 0
     currency_tokens: int = 0
     integer_tokens: int = 0
@@ -60,9 +59,19 @@ class PptxSlideStructure:
     def autofit_contracts(self) -> int:
         return self.shape_autofit + self.normal_autofit + self.no_autofit
 
+    @property
+    def letter_spacing_count(self) -> int:
+        return len(self.letter_spacing_contracts)
+
+    @property
+    def line_spacing_count(self) -> int:
+        return len(self.line_spacing_contracts)
+
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["autofit_contracts"] = self.autofit_contracts
+        payload["letter_spacing_count"] = self.letter_spacing_count
+        payload["line_spacing_count"] = self.line_spacing_count
         return payload
 
 
@@ -80,6 +89,10 @@ class PptxMappingAudit:
     imported_normal_autofit: int = 0
     source_no_autofit: int = 0
     imported_no_autofit: int = 0
+    source_letter_spacing_contracts: int = 0
+    imported_letter_spacing_contracts: int = 0
+    source_line_spacing_contracts: int = 0
+    imported_line_spacing_contracts: int = 0
     source_image_shapes: int = 0
     imported_image_nodes: int = 0
     source_groups: int = 0
@@ -96,6 +109,8 @@ class PptxMappingAudit:
     shape_autofit_coverage: float = 1.0
     normal_autofit_coverage: float = 1.0
     no_autofit_coverage: float = 1.0
+    letter_spacing_coverage: float = 1.0
+    line_spacing_coverage: float = 1.0
     image_coverage: float = 1.0
     group_coverage: float = 1.0
     fill_rect_coverage: float = 1.0
@@ -124,13 +139,14 @@ class PptxStructureReport:
     shape_autofit: int = 0
     normal_autofit: int = 0
     no_autofit: int = 0
+    letter_spacing_contracts: list[dict[str, Any]] = field(default_factory=list)
+    line_spacing_contracts: list[dict[str, Any]] = field(default_factory=list)
     pictures: int = 0
     image_fill_shapes: int = 0
     image_fill_rects: int = 0
     image_fill_outsets: int = 0
     groups: int = 0
     custom_geometry: int = 0
-    # Máscaras irregulares de imagem, excluindo custGeom retangular trivial.
     image_custom_geometry: int = 0
     estimated_split_prices: int = 0
     slides: list[PptxSlideStructure] = field(default_factory=list)
@@ -141,12 +157,22 @@ class PptxStructureReport:
         return self.shape_autofit + self.normal_autofit + self.no_autofit
 
     @property
+    def letter_spacing_count(self) -> int:
+        return len(self.letter_spacing_contracts)
+
+    @property
+    def line_spacing_count(self) -> int:
+        return len(self.line_spacing_contracts)
+
+    @property
     def ready(self) -> bool:
         return not self.warnings
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
         payload["autofit_contracts"] = self.autofit_contracts
+        payload["letter_spacing_count"] = self.letter_spacing_count
+        payload["line_spacing_count"] = self.line_spacing_count
         return payload
 
     def audit_document(self, document: GraphicsDocument) -> PptxMappingAudit:
@@ -175,6 +201,16 @@ class PptxStructureReport:
             if node.kind is NodeKind.TEXT and str(node.style.get("pptx_auto_fit") or "").lower() == "none"
         )
         imported_autofit = imported_shape_autofit + imported_normal_autofit + imported_no_autofit
+        imported_letter_spacing = _matching_spacing_contracts(
+            document,
+            self.letter_spacing_contracts,
+            letter_spacing=True,
+        )
+        imported_line_spacing = _matching_spacing_contracts(
+            document,
+            self.line_spacing_contracts,
+            letter_spacing=False,
+        )
         imported_images = sum(
             1
             for page in document.pages
@@ -221,6 +257,10 @@ class PptxStructureReport:
             imported_normal_autofit=imported_normal_autofit,
             source_no_autofit=self.no_autofit,
             imported_no_autofit=imported_no_autofit,
+            source_letter_spacing_contracts=self.letter_spacing_count,
+            imported_letter_spacing_contracts=imported_letter_spacing,
+            source_line_spacing_contracts=self.line_spacing_count,
+            imported_line_spacing_contracts=imported_line_spacing,
             source_image_shapes=source_images,
             imported_image_nodes=imported_images,
             source_groups=self.groups,
@@ -237,6 +277,8 @@ class PptxStructureReport:
             shape_autofit_coverage=_coverage(imported_shape_autofit, self.shape_autofit),
             normal_autofit_coverage=_coverage(imported_normal_autofit, self.normal_autofit),
             no_autofit_coverage=_coverage(imported_no_autofit, self.no_autofit),
+            letter_spacing_coverage=_coverage(imported_letter_spacing, self.letter_spacing_count),
+            line_spacing_coverage=_coverage(imported_line_spacing, self.line_spacing_count),
             image_coverage=_coverage(imported_images, source_images),
             group_coverage=_coverage(imported_groups, self.groups),
             fill_rect_coverage=_coverage(imported_fill_rects, self.image_fill_rects),
@@ -256,6 +298,16 @@ class PptxStructureReport:
             audit.warnings.append(
                 f"Cobertura de contratos auto-fit PPTX baixa: {audit.autofit_coverage * 100:.2f}% "
                 f"({imported_autofit}/{self.autofit_contracts}); verifique spAutoFit/normAutofit/noAutofit."
+            )
+        if self.letter_spacing_count >= 4 and audit.letter_spacing_coverage < 0.95:
+            audit.warnings.append(
+                f"Cobertura de letter spacing PPTX baixa: {audit.letter_spacing_coverage * 100:.2f}% "
+                f"({imported_letter_spacing}/{self.letter_spacing_count}) com valor preservado."
+            )
+        if self.line_spacing_count >= 4 and audit.line_spacing_coverage < 0.95:
+            audit.warnings.append(
+                f"Cobertura de line spacing PPTX baixa: {audit.line_spacing_coverage * 100:.2f}% "
+                f"({imported_line_spacing}/{self.line_spacing_count}) com valor preservado."
             )
         if source_images >= 2 and audit.image_coverage < 0.85:
             audit.warnings.append(
@@ -317,6 +369,8 @@ def inspect_pptx_structure(source: str | Path) -> PptxStructureReport:
                 report.shape_autofit += item.shape_autofit
                 report.normal_autofit += item.normal_autofit
                 report.no_autofit += item.no_autofit
+                report.letter_spacing_contracts.extend(item.letter_spacing_contracts)
+                report.line_spacing_contracts.extend(item.line_spacing_contracts)
                 report.pictures += item.pictures
                 report.image_fill_shapes += item.image_fill_shapes
                 report.image_fill_rects += item.image_fill_rects
@@ -354,6 +408,7 @@ def main(argv: list[str] | None = None) -> int:
         f"slides={report.slide_count} · textos={report.text_shapes} · "
         f"autofit={report.autofit_contracts} "
         f"(forma={report.shape_autofit}, texto={report.normal_autofit}, sem={report.no_autofit}) · "
+        f"letterSpacing={report.letter_spacing_count} · lineSpacing={report.line_spacing_count} · "
         f"imagens={report.pictures + report.image_fill_shapes} "
         f"(pic={report.pictures}, blipFill={report.image_fill_shapes}) · "
         f"fillRect={report.image_fill_rects} (outset={report.image_fill_outsets}) · "
@@ -367,6 +422,7 @@ def main(argv: list[str] | None = None) -> int:
                 f"  slide {slide.slide}: shapes={slide.shapes} textos={slide.text_shapes} "
                 f"autofit={slide.autofit_contracts} "
                 f"(forma={slide.shape_autofit}, texto={slide.normal_autofit}, sem={slide.no_autofit}) "
+                f"letterSpacing={slide.letter_spacing_count} lineSpacing={slide.line_spacing_count} "
                 f"imagens={slide.pictures + slide.image_fill_shapes} grupos={slide.groups} "
                 f"custGeom={slide.custom_geometry} fillRect={slide.image_fill_rects} "
                 f"outset={slide.image_fill_outsets} máscaras irregulares={slide.image_custom_geometry} "
@@ -394,6 +450,17 @@ def _inspect_slide(root: ET.Element, slide_no: int) -> PptxSlideStructure:
                     item.normal_autofit += 1
                 elif body.find(f"{{{A_NS}}}noAutofit") is not None:
                     item.no_autofit += 1
+            letter = _source_letter_spacing(shape)
+            if letter is not None:
+                item.letter_spacing_contracts.append(
+                    {"slide": slide_no, "shape_name": name, "unit": "pt", "value": letter}
+                )
+            line = _source_line_spacing(shape)
+            if line is not None:
+                unit, value = line
+                item.line_spacing_contracts.append(
+                    {"slide": slide_no, "shape_name": name, "unit": unit, "value": value}
+                )
             cleaned = _clean_text(text)
             currencies += int(bool(_CURRENCY_RE.fullmatch(cleaned)))
             integers += int(bool(_INTEGER_RE.fullmatch(cleaned)))
@@ -419,8 +486,6 @@ def _inspect_slide(root: ET.Element, slide_no: int) -> PptxSlideStructure:
 
     pictures = root.findall(f".//{{{P_NS}}}pic")
     item.pictures = len(pictures)
-    # p:pic também pode possuir stretch/fillRect e custGeom. Contar aqui evita
-    # tratar somente o formato p:sp usado pelo Canva como relevante.
     for picture in pictures:
         fill_rect = picture.find(f".//{{{A_NS}}}stretch/{{{A_NS}}}fillRect")
         if fill_rect is not None:
@@ -440,15 +505,83 @@ def _inspect_slide(root: ET.Element, slide_no: int) -> PptxSlideStructure:
     return item
 
 
+def _source_letter_spacing(shape: ET.Element) -> float | None:
+    for path in (f".//{{{A_NS}}}rPr", f".//{{{A_NS}}}defRPr"):
+        node = shape.find(path)
+        if node is None or node.get("spc") in (None, ""):
+            continue
+        try:
+            return float(node.get("spc") or 0) / 100.0
+        except (TypeError, ValueError):
+            return None
+    return None
+
+
+def _source_line_spacing(shape: ET.Element) -> tuple[str, float] | None:
+    paragraph = shape.find(f".//{{{A_NS}}}pPr")
+    if paragraph is None:
+        return None
+    line_spacing = paragraph.find(f"{{{A_NS}}}lnSpc")
+    if line_spacing is None or not len(line_spacing):
+        return None
+    child = list(line_spacing)[0]
+    kind = child.tag.rsplit("}", 1)[-1]
+    try:
+        numeric = float(child.get("val") or 0)
+    except (TypeError, ValueError):
+        return None
+    if kind == "spcPts":
+        return "pt", numeric / 100.0
+    if kind == "spcPct":
+        return "percent", numeric / 1000.0
+    return None
+
+
+def _matching_spacing_contracts(
+    document: GraphicsDocument,
+    contracts: list[dict[str, Any]],
+    *,
+    letter_spacing: bool,
+) -> int:
+    matches = 0
+    for contract in contracts:
+        slide = _int(contract.get("slide"))
+        name = str(contract.get("shape_name") or "")
+        if slide <= 0 or slide > len(document.pages) or not name:
+            continue
+        page = document.pages[slide - 1]
+        candidates = [
+            node
+            for node in page.nodes.values()
+            if node.kind is NodeKind.TEXT and str(node.metadata.get("source_name") or node.name or "") == name
+        ]
+        if any(_node_spacing_matches(node.style, contract, letter_spacing=letter_spacing) for node in candidates):
+            matches += 1
+    return matches
+
+
+def _node_spacing_matches(style: dict[str, Any], contract: dict[str, Any], *, letter_spacing: bool) -> bool:
+    try:
+        expected = float(contract.get("value"))
+    except (TypeError, ValueError):
+        return False
+    unit = str(contract.get("unit") or "")
+    if letter_spacing:
+        raw = style.get("letter_spacing_pt")
+    elif unit == "pt":
+        raw = style.get("line_spacing_pt")
+    elif unit == "percent":
+        raw = style.get("line_spacing_percent")
+    else:
+        return False
+    try:
+        actual = float(raw)
+    except (TypeError, ValueError):
+        return False
+    return math.isclose(actual, expected, rel_tol=1e-9, abs_tol=1e-6)
+
+
 def _custom_geometry_requires_clip(custom: ET.Element | None) -> bool:
-    """Distingue máscara visual real de custGeom retangular trivial.
-
-    O Canva grava muitas fotos retangulares como ``custGeom`` mesmo quando o
-    caminho coincide exatamente com a caixa da forma. Exigir ``clip_path`` para
-    todas elas produziria um falso déficit de cobertura. Somente caminhos não
-    retangulares, múltiplos ou curvos entram no contrato de máscara.
-    """
-
     if custom is None:
         return False
     path_list = custom.find(f"{{{A_NS}}}pathLst")
@@ -462,7 +595,6 @@ def _custom_geometry_requires_clip(custom: ET.Element | None) -> bool:
     height = _number(path.get("h"))
     if width <= 0 or height <= 0:
         return True
-
     points: list[tuple[float, float]] = []
     for command in list(path):
         tag = command.tag.rsplit("}", 1)[-1]
@@ -474,9 +606,7 @@ def _custom_geometry_requires_clip(custom: ET.Element | None) -> bool:
         elif tag == "close":
             continue
         else:
-            # Bézier, arco, quadrática ou qualquer comando não linear exige clip.
             return True
-
     if len(points) not in {4, 5}:
         return True
     expected = {
