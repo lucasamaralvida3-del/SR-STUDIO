@@ -54,7 +54,28 @@ class Product:
         self.retail_price = to_decimal(self.retail_price)
         self.unit = (self.unit or "UN").upper().strip()
         if not self.display_name:
-            self.display_name = self.original_name.strip()
+            self.display_name = self._initial_display_name()
+
+    def _initial_display_name(self) -> str:
+        raw_name = self.original_name.strip()
+        poster_import_sources = {
+            "promotion_workbook",
+            "atacado_excel",
+            "atacado_report_782",
+        }
+        if self.source not in poster_import_sources or not raw_name:
+            return raw_name
+
+        from srstudio.posters.orthography import PosterOrthographyCorrector
+
+        corrector = PosterOrthographyCorrector()
+        corrected = corrector.correct(raw_name)
+        self.metadata = dict(self.metadata or {})
+        self.metadata["orthography_original"] = raw_name
+        self.metadata["orthography_corrected"] = corrected
+        self.metadata["orthography_changed"] = corrected != raw_name
+        self.metadata["orthography_mode"] = corrector.MODE
+        return corrected or raw_name
 
     @property
     def name(self) -> str:
