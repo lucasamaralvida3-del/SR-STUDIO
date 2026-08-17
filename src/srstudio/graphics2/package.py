@@ -12,6 +12,9 @@ from .model import AssetRef, GraphicsDocument
 from .preflight import assert_document_integrity
 
 PACKAGE_FORMAT = "SR_GRAPHICS_PACKAGE_2"
+_REQUIRED_MEMBERS = {"manifest.json", "scene.json"}
+_MAX_MANIFEST_BYTES = 8 * 1024 * 1024
+_MAX_SCENE_BYTES = 256 * 1024 * 1024
 
 
 def save_package(document: GraphicsDocument, path: str | Path, *, embed_local_assets: bool = True) -> Path:
@@ -55,20 +58,39 @@ def save_package(document: GraphicsDocument, path: str | Path, *, embed_local_as
 
 
 def load_package(path: str | Path, *, extract_assets_to: str | Path | None = None) -> GraphicsDocument:
+    """Abre um `.srscene` validando estrutura, identidade e integridade.
+
+    A validação acontece antes de extrair qualquer asset. Isso impede que um
+    pacote truncado, ambíguo ou pertencente a outro documento seja aceito como
+    um recovery point válido do Studio de Encartes.
+    """
+
     source = Path(path)
-    with zipfile.ZipFile(source, "r") as archive:
-        manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
-        if manifest.get("format") != PACKAGE_FORMAT:
-            raise ValueError("Pacote não é SR Graphics Engine 2")
-        scene_raw = archive.read("scene.json")
-        if sha256(scene_raw).hexdigest() != manifest.get("scene_sha256"):
-            raise ValueError("Hash do scene.json inválido")
-        document = GraphicsDocument.from_dict(json.loads(scene_raw.decode("utf-8")))
-        if extract_assets_to:
-            destination = Path(extract_assets_to)
-            destination.mkdir(parents=True, exist_ok=True)
-            _extract_assets(document, manifest, archive, destination)
-            _extract_fonts(document, manifest, archive, destination / "fonts")
+    try:
+        with zipfile.ZipFile(source, "r") as archive:
+            _validate_archive_layout(archive)
+            manifest_raw = _read_bounded_member(archive, "manifest.json", _MAX_MANIFEST_BYTES, "manifesto")
+            scene_raw = _read_bounded_member(archive, "scene.json", _MAX_SCENE_BYTES, "cena")
+            manifest = json.loads(manifest_raw.decode("utf-8"))
+            if not isinstance(manifest, dict):
+                raise ValueError("Manifesto do pacote é inválido")
+            if manifest.get("format") != PACKAGE_FORMAT:
+                raise ValueError("Pacote não é SR Graphics Engine 2")
+            if sha256(scene_raw).hexdigest() != manifest.get("scene_sha256"):
+                raise ValueError("Hash do scene.json inválido")
+            scene_data = json.loads(scene_raw.decode("utf-8"))
+            if not isinstance(scene_data, dict):
+                raise ValueError("scene.json precisa conter um objeto")
+            document = GraphicsDocument.from_dict(scene_data)
+            _validate_manifest_identity(manifest, document)
+            assert_document_integrity(document)
+            if extract_assets_to:
+                destination = Path(extract_assets_to)
+                destination.mkdir(parents=True, exist_ok=True)
+                _extract_assets(document, manifest, archive, destination)
+                _extract_fonts(document, manifest, archive, destination / "fonts")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Pacote SR Scene está corrompido ou truncado") from exc
     assert_document_integrity(document)
     return document
 
@@ -85,6 +107,39 @@ def register_local_asset(
     asset = AssetRef(kind=kind, source=str(source), mime=mime, sha256=sha256(raw).hexdigest())
     document.add_asset(asset)
     return asset
+
+
+def _validate_archive_layout(archive: zipfile.ZipFile) -> None:
+    names = [info.filename for info in archive.infolist()]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(f"Pacote contém membros duplicados: {', '.join(duplicates[:3])}")
+    missing = sorted(_REQUIRED_MEMBERS.difference(names))
+    if missing:
+        raise ValueError(f"Pacote incompleto: ausente {', '.join(missing)}")
+    for info in archive.infolist():
+        normalized = Path(info.filename)
+        if normalized.is_absolute() or ".." in normalized.parts:
+            raise ValueError(f"Caminho inválido no pacote: {info.filename}")
+
+
+def _read_bounded_member(archive: zipfile.ZipFile, name: str, limit: int, label: str) -> bytes:
+    try:
+        info = archive.getinfo(name)
+    except KeyError as exc:
+        raise ValueError(f"Pacote incompleto: ausente {name}") from exc
+    if info.file_size < 0 or info.file_size > limit:
+        raise ValueError(f"{label.capitalize()} excede o limite seguro do SR Scene")
+    return archive.read(info)
+
+
+def _validate_manifest_identity(manifest: dict[str, Any], document: GraphicsDocument) -> None:
+    schema = str(manifest.get("schema") or "")
+    if schema and schema not in {document.schema, "srscene/2"}:
+        raise ValueError("Schema do manifesto não corresponde ao scene.json")
+    document_id = str(manifest.get("document_id") or "")
+    if document_id and document_id != document.id:
+        raise ValueError("ID do documento no manifesto não corresponde ao scene.json")
 
 
 def _write_assets(
