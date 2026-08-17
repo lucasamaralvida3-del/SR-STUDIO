@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 from srstudio.graphics2.qt_host import load_launch_context
 from srstudio.graphics2.usability_gate import inspect_encarte_usability
@@ -20,6 +21,17 @@ _REAL_MODELS = (
     "SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx",
     "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx",
 )
+
+
+def _audit_payload(value: Any) -> Any:
+    if value is None:
+        return None
+    to_dict = getattr(value, "to_dict", None)
+    if callable(to_dict):
+        return to_dict()
+    if isinstance(value, dict):
+        return dict(value)
+    return str(value)
 
 
 def test_real_sr_pptx_corpus_imports_with_structural_and_editability_safety():
@@ -70,7 +82,7 @@ def test_real_sr_pptx_corpus_imports_with_structural_and_editability_safety():
                 "semantic_report": semantic_report,
                 "explicit_named_slots": len(named_slots),
                 "recovered_slots": len(recovered_slots),
-                "import_audit": context.import_audit.to_dict() if context.import_audit is not None else None,
+                "import_audit": _audit_payload(context.import_audit),
                 "text_names": text_names,
             }
         )
