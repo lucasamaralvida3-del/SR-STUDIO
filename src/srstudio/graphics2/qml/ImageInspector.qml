@@ -1,11 +1,12 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 Rectangle {
     id: panel
     width: 336
-    height: 610
+    height: 660
     anchors.right: parent ? parent.right : undefined
     anchors.bottom: parent ? parent.bottom : undefined
     anchors.rightMargin: 8
@@ -127,6 +128,22 @@ Rectangle {
         function onSceneChanged() { panel.refresh() }
     }
 
+    FileDialog {
+        id: replaceImageDialog
+        title: "Substituir imagem do card"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Imagens (*.png *.jpg *.jpeg *.webp *.bmp *.gif)", "Todos os arquivos (*)"]
+        onAccepted: {
+            if (!imageNode)
+                return
+            sceneBridge.dispatch(JSON.stringify({
+                "name": "replace_image",
+                "node_id": imageNode.id,
+                "source": selectedFile.toString()
+            }))
+        }
+    }
+
     Component.onCompleted: refresh()
 
     Rectangle {
@@ -182,6 +199,13 @@ Rectangle {
                     border.color: "#FFFFFFCC"
                     visible: previewImage.status === Image.Ready
                 }
+            }
+
+            Button {
+                text: "Substituir imagem…"
+                Layout.fillWidth: true
+                enabled: !!imageNode
+                onClicked: replaceImageDialog.open()
             }
 
             RowLayout {
@@ -334,7 +358,7 @@ Rectangle {
 
             Label {
                 Layout.fillWidth: true
-                text: "Crop, foco, zoom e espelhamento são persistidos no SR Scene e usados pelo canvas e pela exportação."
+                text: "Troca da imagem, crop, foco, zoom e espelhamento são persistidos no SR Scene e usados pelo canvas e pela exportação."
                 wrapMode: Text.WordWrap
                 color: "#64748B"
                 font.pixelSize: 9
