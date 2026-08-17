@@ -57,16 +57,40 @@ jobs:
           tests/test_graphics2_professional_probe.py
 
       - name: Professional usability contracts
+        id: professional_tests
+        continue-on-error: true
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
           QSG_RHI_BACKEND: software
-        run: >-
-          python -m pytest -q
-          tests/test_graphics2_page_duplicate.py
-          tests/test_graphics2_usability_gate.py
-          tests/test_graphics2_professional_workflow.py
-          tests/test_graphics2_professional_export.py
-          tests/test_graphics2_professional_probe.py
-          tests/test_graphics2_core.py
-          tests/test_graphics2_autosave.py
+        run: |
+          $args = @(
+            "-m", "pytest", "-q", "-ra", "--junitxml=g2-test-results.xml",
+            "tests/test_graphics2_page_duplicate.py",
+            "tests/test_graphics2_usability_gate.py",
+            "tests/test_graphics2_professional_workflow.py",
+            "tests/test_graphics2_professional_export.py",
+            "tests/test_graphics2_professional_probe.py",
+            "tests/test_graphics2_core.py",
+            "tests/test_graphics2_autosave.py"
+          )
+          & python @args 2>&1 | Tee-Object -FilePath g2-pytest.log
+          exit $LASTEXITCODE
+
+      - name: Preserve G2 test diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g2-professional-test-diagnostics
+          path: |
+            g2-pytest.log
+            g2-test-results.xml
+          if-no-files-found: warn
+          retention-days: 7
+
+      - name: Enforce G2 test gate
+        if: steps.professional_tests.outcome == 'failure'
+        shell: pwsh
+        run: |
+          Write-Error "G2 Professional Usable contracts failed. See g2-professional-test-diagnostics."
+          exit 1
