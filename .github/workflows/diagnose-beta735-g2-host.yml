@@ -51,20 +51,34 @@ jobs:
           "G2_HOST_SOURCE=$hostRoot/SRGraphicsEngine2Host" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
           Get-Content -Raw "$hostRoot/graphics2-host-manifest.json"
 
-      - name: Inspect Graphics2 host path-safety
+      - name: Prune Qt build artifacts and rebuild runtime catalog
         shell: pwsh
         run: |
           $source = $env:G2_HOST_SOURCE
-          if (!(Test-Path $source)) { throw 'G2_HOST_SOURCE ausente.' }
-          $allFiles = @(Get-ChildItem $source -Recurse -File)
-          $allDirs = @(Get-ChildItem $source -Recurse -Directory)
-          Write-Host "Arquivos: $($allFiles.Count)"
-          Write-Host "Diretorios: $($allDirs.Count)"
-          Write-Host "Bytes: $((($allFiles | Measure-Object Length -Sum).Sum))"
-          $objects = @($allDirs | Where-Object { $_.Name -like 'objects-Debug*' -or $_.Name -like 'objects-RelWithDebInfo*' -or $_.Name -like 'objects-Release*' -or $_.Name -like 'objects-MinSizeRel*' })
-          Write-Host "Diretorios objects-* presentes no runtime Qt: $($objects.Count)"
-          $objects | ForEach-Object { Write-Host "QT_OBJECTS_DIR=$($_.FullName)" }
+          $patterns = @('objects-Debug*','objects-RelWithDebInfo*','objects-Release*','objects-MinSizeRel*')
+          $objects = @(Get-ChildItem $source -Recurse -Directory | Where-Object {
+            $name = $_.Name
+            $patterns | Where-Object { $name -like $_ }
+          } | Sort-Object { $_.FullName.Length } -Descending)
+          Write-Host "Artefatos Qt objects-* a remover: $($objects.Count)"
+          foreach ($dir in $objects) {
+            Write-Host "PRUNE_QT_BUILD_ARTIFACT=$($dir.FullName)"
+            if (Test-Path -LiteralPath $dir.FullName) {
+              Remove-Item -LiteralPath $dir.FullName -Recurse -Force
+            }
+          }
+          $remaining = @(Get-ChildItem $source -Recurse -Directory | Where-Object { $_.Name -like 'objects-Debug*' -or $_.Name -like 'objects-RelWithDebInfo*' -or $_.Name -like 'objects-Release*' -or $_.Name -like 'objects-MinSizeRel*' })
+          if ($remaining.Count -gt 0) { throw "Ainda restam $($remaining.Count) artefatos objects-* apos poda." }
+          python -c "import os; from srstudio.graphics2 import ENGINE_VERSION; from srstudio.graphics2.host_runtime import write_runtime_manifest; p=os.environ['G2_HOST_SOURCE']; print(write_runtime_manifest(p, engine_version=ENGINE_VERSION))"
+          if ($LASTEXITCODE -ne 0) { throw 'Falha ao regenerar catalogo SHA do host podado.' }
 
+      - name: Validate pruned Graphics2 host path-safety
+        shell: pwsh
+        run: |
+          $source = $env:G2_HOST_SOURCE
+          $allFiles = @(Get-ChildItem $source -Recurse -File)
+          Write-Host "Arquivos apos poda: $($allFiles.Count)"
+          Write-Host "Bytes apos poda: $((($allFiles | Measure-Object Length -Sum).Sum))"
           $prefix = 'files/SRStudio5/Graphics2Host/'
           $violations = @()
           $maxLength = 0
@@ -78,10 +92,10 @@ jobs:
             }
             if ($finalPath.Length -gt 160) { $violations += $finalPath }
           }
-          Write-Host "Maior caminho previsto no ZIP: $maxLength chars | $maxPath"
+          Write-Host "Maior caminho previsto no ZIP apos poda: $maxLength chars | $maxPath"
           if ($violations.Count -gt 0) {
             $violations | Select-Object -First 20 | ForEach-Object { Write-Host "PATH_TOO_LONG=$_" }
-            throw "Runtime Qt possui $($violations.Count) caminho(s) acima de 160 caracteres no bundle final."
+            throw "Host podado ainda possui $($violations.Count) caminho(s) acima de 160 caracteres."
           }
 
       - name: Validate Graphics2 runtime catalog at source
