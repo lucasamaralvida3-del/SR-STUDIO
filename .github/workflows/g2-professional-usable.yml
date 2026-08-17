@@ -52,6 +52,7 @@ jobs:
           tests/test_graphics2_page_duplicate.py
           tests/test_graphics2_usability_gate.py
           tests/test_graphics2_professional_workflow.py
+          tests/test_graphics2_professional_export.py
 
       - name: Professional usability contracts
         shell: pwsh
@@ -63,5 +64,6 @@ jobs:
           tests/test_graphics2_page_duplicate.py
           tests/test_graphics2_usability_gate.py
           tests/test_graphics2_professional_workflow.py
+          tests/test_graphics2_professional_export.py
           tests/test_graphics2_core.py
           tests/test_graphics2_autosave.py
