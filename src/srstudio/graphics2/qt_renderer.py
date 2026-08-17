@@ -255,11 +255,12 @@ def _draw_text(painter, node: GraphicsNode, QtCore, QtGui) -> None:
 def _should_fit_text(style: dict) -> bool:
     """Decide se o renderer pode reduzir o tamanho da fonte.
 
-    ``nowrap`` significa somente linha única e nunca deve, sozinho, mudar a
-    tipografia. Esse acoplamento fazia tokens como R$, 25, ,77 e KG receberem
-    tamanhos diferentes no render de produção. ``overflow_only`` é reservado
-    aos PriceBlocks: mantém o tamanho original e só permite redução caso o
-    conteúdo realmente não caiba na caixa de origem.
+    ``nowrap`` desativa somente a quebra automática e nunca deve, sozinho,
+    mudar a tipografia nem apagar quebras explícitas de parágrafo. Esse
+    acoplamento fazia tokens como R$, 25, ,77 e KG receberem tamanhos diferentes
+    no render de produção. ``overflow_only`` é reservado aos PriceBlocks: mantém
+    o tamanho original e só permite redução caso o conteúdo realmente não caiba
+    na caixa de origem.
     """
 
     if bool(style.get("fit_inside_box")):
@@ -290,11 +291,21 @@ def _fit_font(font, text: str, rect, flags, QtCore, QtGui, *, min_px: int) -> ob
 
 
 def _text_flags(style: dict, QtCore) -> object:
+    """Espelha o contrato QML Text.NoWrap/WordWrap no QPainter.
+
+    DrawingML ``wrap=\"none\"`` significa *sem quebra automática*, não
+    *forçar uma única linha*. Portanto não usamos ``Qt.TextSingleLine``: esse
+    flag ignora caracteres de nova linha, enquanto o QML ``Text.NoWrap`` mantém
+    quebras explícitas. Sem ``TextWordWrap`` o QPainter também preserva ``\n`` e
+    deixa linhas longas excederem a largura, sendo recortadas pela caixa.
+    """
+
     horizontal = str(style.get("align") or "center").lower()
     vertical = str(style.get("v_align") or style.get("vertical_align") or "center").lower()
     flags = QtCore.Qt.AlignLeft if horizontal in {"left", "l"} else QtCore.Qt.AlignRight if horizontal in {"right", "r"} else QtCore.Qt.AlignHCenter
     flags |= QtCore.Qt.AlignTop if vertical in {"top", "t"} else QtCore.Qt.AlignBottom if vertical in {"bottom", "b"} else QtCore.Qt.AlignVCenter
-    flags |= QtCore.Qt.TextSingleLine if bool(style.get("nowrap")) else QtCore.Qt.TextWordWrap
+    if not bool(style.get("nowrap")):
+        flags |= QtCore.Qt.TextWordWrap
     return flags
 
 
