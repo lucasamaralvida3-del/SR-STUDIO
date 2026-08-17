@@ -38,12 +38,32 @@ def test_promotion_bridge_builds_legacy_three_type_payloads():
     assert [job["tipo"] for job in jobs] == [1, 2, 3]
     assert jobs[0]["promocao"] == "24,90"
     assert jobs[0]["clube"] == ""
+    assert jobs[0]["unidade_exibicao"] == "CADA"
     assert jobs[1]["promocao"] == "3,39"
     assert jobs[1]["clube"] == "3,18"
     assert jobs[1]["unidade_exibicao"] == "À LATA"
     assert jobs[1]["limite"] == "6CX"
     assert jobs[2]["promocao"] == ""
     assert jobs[2]["clube"] == "17,90"
+    assert jobs[2]["unidade_exibicao"] == "CADA"
+
+
+def test_promotion_unit_display_keeps_business_unit_internal():
+    product = Product(original_name="SABONETE 90G", price="2,99", unit="UN", metadata={"promotion_type": 1})
+    job = LegacyPosterBridge()._promotion_jobs([product], "")[0]
+    assert product.unit == "UN"
+    assert job["unidade_exibicao"] == "CADA"
+
+
+def test_promotion_unit_display_preserves_special_units():
+    bridge = LegacyPosterBridge()
+    assert bridge._legacy_unit("KG") == "KG"
+    assert bridge._legacy_unit("À LATA") == "À LATA"
+    assert bridge._legacy_unit("A LATA") == "À LATA"
+    assert bridge._legacy_unit("À GARRAFA") == "À GARRAFA"
+    assert bridge._legacy_unit("A GARRAFA") == "À GARRAFA"
+    assert bridge._legacy_unit("UN") == "CADA"
+    assert bridge._legacy_unit("") == "CADA"
 
 
 def test_wholesale_bridge_payload_matches_old_engine_contract():
