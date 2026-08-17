@@ -16,6 +16,8 @@ def _text(text: str, *, x: float, y: float, width: float, height: float, name: s
 
 
 def test_complete_brazilian_price_with_cada_recovers_price_card_and_slot():
+    """Fallback espacial continua funcionando quando o PPTX não nomeia os campos."""
+
     document = GraphicsDocument(name="Encarte real")
     page = document.active_page
     page.width = 1080
@@ -27,11 +29,11 @@ def test_complete_brazilian_price_with_cada_recovers_price_card_and_slot():
         y=304,
         width=885,
         height=275,
-        name="SR_PRODUTO",
+        name="Text Box 1",
     )
     currency = _text("R$", x=43, y=617, width=113, height=50, name="WordArt 6")
-    unit = _text("CADA", x=15, y=694, width=154, height=74, name="SR_UNIDADE_PROMO")
-    price = _text("92,77", x=195, y=588, width=740, height=183, name="SR_PRECO_PROMO")
+    unit = _text("CADA", x=15, y=694, width=154, height=74, name="Text Box 3")
+    price = _text("92,77", x=195, y=588, width=740, height=183, name="Text Box 2")
     for node in (name, currency, unit, price):
         page.add_node(node)
 
