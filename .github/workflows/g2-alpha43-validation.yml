@@ -1,0 +1,147 @@
+name: G2 Alpha 43 Validation
+
+on:
+  push:
+    branches:
+      - integration/sr-studio-next
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'src/srstudio/settings/features.py'
+      - 'tests/test_graphics2_*.py'
+      - 'pyproject.toml'
+      - '.github/workflows/g2-alpha43-validation.yml'
+
+permissions:
+  contents: write
+
+concurrency:
+  group: g2-alpha43-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ubuntu-g2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install G2 test dependencies
+        run: python -m pip install -U pip && python -m pip install -e '.[dev]'
+      - name: Compile Graphics2
+        run: python -m compileall -q src/srstudio/graphics2
+      - name: Ruff Graphics2
+        run: python -m ruff check src/srstudio/graphics2 tests/test_graphics2_*.py
+      - name: Alpha 43 focused regression
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_real_flyer_e2e.py
+          tests/test_graphics2_global_id_preflight.py
+          tests/test_graphics2_page_clone_ids.py
+          tests/test_graphics2_id_repair.py
+          tests/test_graphics2_id_repair_router.py
+          tests/test_graphics2_recovered_optional_bindings.py
+          tests/test_graphics2_recovered_spatial_atomic.py
+          tests/test_graphics2_qt_renderer.py
+          tests/test_graphics2_package_stress.py
+          tests/test_graphics2_image_replace.py
+          tests/test_graphics2_image_replace_portable.py
+          tests/test_graphics2_image_replace_router.py
+          tests/test_graphics2_image_replace_qml.py
+      - name: Complete G2 suite
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests -k graphics2
+
+  windows-qt-quick:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install Qt Quick and G2 test dependencies
+        shell: pwsh
+        run: python -m pip install -U pip; python -m pip install -e '.[dev,graphics2]'
+      - name: Prove real Qt Quick runtime
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "from srstudio.graphics2.qt_host import qt_quick_available; assert qt_quick_available(); print('Qt Quick runtime OK')"
+          python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api
+      - name: Alpha 43 focused regression on Windows Qt
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_real_flyer_e2e.py
+          tests/test_graphics2_global_id_preflight.py
+          tests/test_graphics2_page_clone_ids.py
+          tests/test_graphics2_id_repair.py
+          tests/test_graphics2_id_repair_router.py
+          tests/test_graphics2_recovered_optional_bindings.py
+          tests/test_graphics2_recovered_spatial_atomic.py
+          tests/test_graphics2_qt_renderer.py
+          tests/test_graphics2_package_stress.py
+          tests/test_graphics2_image_replace.py
+          tests/test_graphics2_image_replace_portable.py
+          tests/test_graphics2_image_replace_router.py
+          tests/test_graphics2_image_replace_qml.py
+      - name: Complete G2 suite on Windows Qt
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests -k graphics2
+
+  record-validation:
+    if: always()
+    needs:
+      - ubuntu-g2
+      - windows-qt-quick
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/sr-studio-next
+          fetch-depth: 0
+      - name: Record externally observable validation result
+        env:
+          VALIDATED_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          UBUNTU_RESULT: ${{ needs.ubuntu-g2.result }}
+          WINDOWS_RESULT: ${{ needs.windows-qt-quick.result }}
+        run: |
+          mkdir -p diagnostic
+          OVERALL=failure
+          if [ "$UBUNTU_RESULT" = "success" ] && [ "$WINDOWS_RESULT" = "success" ]; then OVERALL=success; fi
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          payload = {
+              "alpha": "0.43.0-alpha",
+              "validated_sha": os.environ["VALIDATED_SHA"],
+              "workflow_run_id": int(os.environ["RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              "ubuntu_g2": os.environ["UBUNTU_RESULT"],
+              "windows_qt_quick": os.environ["WINDOWS_RESULT"],
+              "overall": "success" if os.environ["UBUNTU_RESULT"] == "success" and os.environ["WINDOWS_RESULT"] == "success" else "failure",
+              "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+          }
+          with open("diagnostic/g2_alpha43_validation.json", "w", encoding="utf-8") as f:
+              json.dump(payload, f, ensure_ascii=False, indent=2)
+              f.write("\n")
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add diagnostic/g2_alpha43_validation.json
+          git commit -m "ci: record G2 Alpha 43 validation $OVERALL" || exit 0
+          git push origin HEAD:integration/sr-studio-next
