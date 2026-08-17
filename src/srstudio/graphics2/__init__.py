@@ -65,6 +65,7 @@ from .pptx_effect_mapping import (
 from .pptx_effects import PptxEffectAudit, ShapeEffectStats, SlideEffectStats, audit_pptx_effects
 from .pptx_fidelity import EmbeddedPptxFont, PptxFidelityReport, enhance_pptx_document
 from .pptx_groups import PptxGroupReport, rebuild_pptx_groups
+from .pptx_spacing import PptxSpacingIssue, PptxSpacingRecoveryReport, recover_pptx_spacing
 from .pptx_structure import PptxMappingAudit, PptxSlideStructure, PptxStructureReport, inspect_pptx_structure
 from .preflight import PreflightIssue, run_preflight
 from .quality import ProductionGateIssue, ProductionGateReport, inspect_production_gate, store_visual_fidelity
@@ -92,7 +93,7 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.37"
+ENGINE_VERSION = "2.0.0-alpha.38"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -138,6 +139,8 @@ __all__ = [
     "PptxGroupReport",
     "PptxMappingAudit",
     "PptxSlideStructure",
+    "PptxSpacingIssue",
+    "PptxSpacingRecoveryReport",
     "PptxStructureReport",
     "PreflightIssue",
     "ProductionGateIssue",
@@ -184,6 +187,7 @@ __all__ = [
     "rebuild_pptx_groups",
     "recover_canva_image_placeholders",
     "recover_canva_semantic_cards",
+    "recover_pptx_spacing",
     "render_pdf",
     "render_pdf_baselines",
     "render_png",
