@@ -114,6 +114,24 @@ def test_recovered_group_promotes_limit_and_secondary_price_only_with_local_club
     assert page.node(nodes["reais"].id).text == "18"
     assert page.node(nodes["cents"].id).text == ",66"
 
+    no_optional = router.dispatch({
+        "name": "bind_product",
+        "slot_id": slot.id,
+        "product": {
+            "id": "p2",
+            "display_name": "FEIJÃO VASCONCELOS 1KG",
+            "price": "8,99",
+            "unit": "UN",
+            "limit": "",
+            "app_price": "",
+        },
+    })
+    assert no_optional.ok and no_optional.changed
+    page = router.session.page
+    for key in ("limit", "app_currency", "app_reais", "app_cents", "app_unit"):
+        assert page.node(nodes[key].id).text == ""
+        assert page.node(nodes[key].id).visible is False
+
 
 def test_recovered_secondary_price_is_not_invented_without_explicit_club_or_app_label():
     document, nodes = _document(club_label="PREÇO ESPECIAL")
