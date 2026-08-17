@@ -274,6 +274,17 @@ def _enrich_text(
         }
         if any(abs(value) > 1e-9 for value in insets.values()):
             node.style["text_insets"] = insets
+
+        # DrawingML ancora o bloco de texto dentro da própria caixa. Isso é
+        # visualmente decisivo nos PriceBlocks do Canva: no corpus Quinta Filé,
+        # R$, reais, centavos e KG usam anchor="t". Se esse contrato se perde,
+        # o QPainter cai no default centralizado e desloca cada token de preço.
+        source_anchor = str(body.get("anchor") or "").strip()
+        vertical = _drawingml_vertical_anchor(source_anchor)
+        if vertical:
+            node.style["v_align"] = vertical
+            node.metadata["pptx_vertical_anchor"] = source_anchor
+
         if body.find(f"{{{A_NS}}}spAutoFit") is not None:
             # ISO/IEC 29500: spAutoFit redimensiona a FORMA para conter o texto;
             # não é o mesmo contrato de normAutofit, que reduz o texto dentro da
@@ -305,6 +316,15 @@ def _enrich_text(
 
     paragraph = text_body.find(f".//{{{A_NS}}}pPr")
     if paragraph is not None:
+        # Só sobrescreve o importador legado quando o OOXML declara alinhamento
+        # de forma explícita. Valores como just/dist continuam preservados em
+        # metadata, mas não são aproximados como left/center/right.
+        source_alignment = str(paragraph.get("algn") or "").strip()
+        horizontal = _drawingml_paragraph_alignment(source_alignment)
+        if horizontal:
+            node.style["align"] = horizontal
+            node.metadata["pptx_paragraph_alignment"] = source_alignment
+
         line_spacing = paragraph.find(f"{{{A_NS}}}lnSpc")
         if line_spacing is not None and len(line_spacing):
             child = list(line_spacing)[0]
@@ -320,6 +340,16 @@ def _enrich_text(
                 node.style["line_spacing_pt"] = points
             elif kind == "spcPct":
                 node.style["line_spacing_percent"] = numeric / 1000.0
+
+
+def _drawingml_vertical_anchor(value: object) -> str:
+    source = str(value or "").strip().casefold()
+    return {"t": "top", "ctr": "center", "b": "bottom"}.get(source, "")
+
+
+def _drawingml_paragraph_alignment(value: object) -> str:
+    source = str(value or "").strip().casefold()
+    return {"l": "left", "ctr": "center", "r": "right"}.get(source, "")
 
 
 def _custom_path_spec(
