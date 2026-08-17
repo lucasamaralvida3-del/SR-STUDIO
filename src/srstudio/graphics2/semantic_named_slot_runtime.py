@@ -3,9 +3,9 @@ from __future__ import annotations
 """Recuperação de SmartSlots a partir de nomes semânticos explícitos do PPTX.
 
 Templates profissionais do SR podem nomear caixas como ``SR_PRODUTO``,
-``SR_PRECO_PROMO`` e ``SR_PRECO_CLUBE``. Esses nomes são evidência mais forte
-do que heurística espacial e permitem representar dois preços do mesmo produto
-como um único ProductCard/SmartSlot.
+``SR_PRECO_PROMO``, ``SR_PRECO_CLUBE`` e ``SR_LIMITE``. Esses nomes são
+evidência mais forte do que heurística espacial e permitem representar preço
+principal, preço clube/app e limite do mesmo produto em um único SmartSlot.
 
 A recuperação não depende do nome do arquivo, campanha ou offsets fixos. Quando
 os marcadores explícitos não existem, o pipeline espacial histórico continua
@@ -29,7 +29,7 @@ def recover_explicit_named_slots(document: GraphicsDocument) -> int:
         created += _recover_page(page)
     if created:
         document.metadata["explicit_named_slots"] = {
-            "version": 1,
+            "version": 2,
             "created": created,
             "source": "pptx-node-names",
         }
@@ -41,31 +41,44 @@ def _recover_page(page: GraphicsPage) -> int:
     product_nodes = [node for node in text_nodes if _is_product_name_marker(node)]
     primary_prices = [node for node in text_nodes if _is_primary_price_marker(node)]
     secondary_prices = [node for node in text_nodes if _is_secondary_price_marker(node)]
-    if not product_nodes or not primary_prices:
+    if not product_nodes or not (primary_prices or secondary_prices):
         return 0
 
     primary_units = [node for node in text_nodes if _is_primary_unit_marker(node)]
     secondary_units = [node for node in text_nodes if _is_secondary_unit_marker(node)]
+    limit_nodes = [node for node in text_nodes if _is_limit_marker(node)]
     currencies = [node for node in text_nodes if _CURRENCY_RE.fullmatch(_clean_text(node.text))]
     images = [node for node in page.nodes.values() if node.kind is NodeKind.IMAGE and node.visible]
 
     used_primary: set[str] = set()
     used_secondary: set[str] = set()
+    used_limits: set[str] = set()
     created = 0
     for product in sorted(product_nodes, key=lambda item: (item.transform.y, item.transform.x, item.id)):
         if _already_bound_as_name(page, product.id):
             continue
-        primary = _nearest_node(page, product, primary_prices, used_primary, max_dx=0.48, max_dy=0.48)
-        if primary is None:
+
+        primary = (
+            _nearest_node(page, product, primary_prices, used_primary, max_dx=0.48, max_dy=0.48)
+            if primary_prices
+            else None
+        )
+        if primary is not None:
+            secondary = _nearest_node(page, primary, secondary_prices, used_secondary, max_dx=0.28, max_dy=0.42)
+        else:
+            # Club Exclusive pode possuir somente SR_CLUBE_PRECO. Nesse caso o
+            # preço continua sendo semântica app/clube, apenas sem preço base.
+            secondary = _nearest_node(page, product, secondary_prices, used_secondary, max_dx=0.52, max_dy=0.58)
+        if primary is None and secondary is None:
             continue
-        secondary = _nearest_node(page, primary, secondary_prices, used_secondary, max_dx=0.28, max_dy=0.42)
-        primary_unit = _nearest_price_companion(page, primary, primary_units)
+
+        primary_unit = _nearest_price_companion(page, primary, primary_units) if primary is not None else None
         secondary_unit = (
             _nearest_price_companion(page, secondary, secondary_units)
             if secondary is not None
             else None
         )
-        primary_currency = _nearest_price_companion(page, primary, currencies)
+        primary_currency = _nearest_price_companion(page, primary, currencies) if primary is not None else None
         secondary_currency = (
             _nearest_price_companion(
                 page,
@@ -76,16 +89,25 @@ def _recover_page(page: GraphicsPage) -> int:
             if secondary is not None
             else None
         )
+        limit_node = _nearest_or_unique(
+            page,
+            product,
+            limit_nodes,
+            used_limits,
+            max_dx=0.60,
+            max_dy=0.65,
+        )
         image = _explicit_product_image(page, product, images)
 
-        node_by_role: dict[str, str] = {
-            "name": product.id,
-            "price_complete": primary.id,
-        }
-        if primary_currency is not None:
-            node_by_role["price_currency"] = primary_currency.id
-        if primary_unit is not None:
-            node_by_role["unit"] = primary_unit.id
+        node_by_role: dict[str, str] = {"name": product.id}
+        if primary is not None:
+            node_by_role["price_complete"] = primary.id
+            if primary_currency is not None:
+                node_by_role["price_currency"] = primary_currency.id
+            if primary_unit is not None:
+                node_by_role["unit"] = primary_unit.id
+        if limit_node is not None:
+            node_by_role["limit"] = limit_node.id
         if image is not None:
             node_by_role["image"] = image.id
 
@@ -107,16 +129,20 @@ def _recover_page(page: GraphicsPage) -> int:
             metadata={
                 "source": "canva-smart-slot",
                 "explicit_named_semantics": True,
-                "explicit_named_semantics_version": 1,
-                "primary_price_node_id": primary.id,
+                "explicit_named_semantics_version": 2,
+                "primary_price_node_id": primary.id if primary is not None else "",
                 "secondary_price_node_id": secondary.id if secondary is not None else "",
+                "limit_node_id": limit_node.id if limit_node is not None else "",
                 "extra_bindings": extra,
             },
         )
         page.slots[slot.id] = slot
-        used_primary.add(primary.id)
+        if primary is not None:
+            used_primary.add(primary.id)
         if secondary is not None:
             used_secondary.add(secondary.id)
+        if limit_node is not None:
+            used_limits.add(limit_node.id)
         created += 1
     return created
 
@@ -139,7 +165,7 @@ def _is_primary_price_marker(node: GraphicsNode) -> bool:
         return False
     if any(token in marker for token in ("CLUBE", "APP", "APLICATIVO", "ATACADO", "WHOLESALE")):
         return False
-    return any(token in marker for token in ("PROMO", "PROMOCAO", "VAREJO", "NORMAL", "SISTEMA")) or marker.endswith("PRECO")
+    return any(token in marker for token in ("PROMO", "PROMOCAO", "VAREJO", "NORMAL", "SISTEMA", "VENDA")) or marker.endswith("PRECO")
 
 
 def _is_secondary_price_marker(node: GraphicsNode) -> bool:
@@ -153,7 +179,7 @@ def _is_primary_unit_marker(node: GraphicsNode) -> bool:
         return False
     if any(token in marker for token in ("CLUBE", "APP", "APLICATIVO")):
         return False
-    return any(token in marker for token in ("PROMO", "PROMOCAO", "VAREJO", "NORMAL", "SISTEMA")) or marker.endswith("UNIDADE")
+    return any(token in marker for token in ("PROMO", "PROMOCAO", "VAREJO", "NORMAL", "SISTEMA", "VENDA")) or marker.endswith("UNIDADE")
 
 
 def _is_secondary_unit_marker(node: GraphicsNode) -> bool:
@@ -161,8 +187,27 @@ def _is_secondary_unit_marker(node: GraphicsNode) -> bool:
     return "UNIDADE" in marker and any(token in marker for token in ("CLUBE", "APP", "APLICATIVO"))
 
 
+def _is_limit_marker(node: GraphicsNode) -> bool:
+    return "LIMITE" in _marker(node)
+
+
 def _already_bound_as_name(page: GraphicsPage, node_id: str) -> bool:
     return any(slot.node_by_role.get("name") == node_id for slot in page.slots.values())
+
+
+def _nearest_or_unique(
+    page: GraphicsPage,
+    origin: GraphicsNode,
+    candidates: list[GraphicsNode],
+    used: set[str],
+    *,
+    max_dx: float,
+    max_dy: float,
+) -> GraphicsNode | None:
+    available = [node for node in candidates if node.id not in used and node.id != origin.id]
+    if len(available) == 1:
+        return available[0]
+    return _nearest_node(page, origin, available, set(), max_dx=max_dx, max_dy=max_dy)
 
 
 def _nearest_node(
@@ -251,7 +296,7 @@ def _explicit_product_image(
 
 
 def _slot_id(page: GraphicsPage, product: GraphicsNode) -> str:
-    digest = sha1(f"{page.id}|{product.id}|named-slot-v1".encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+    digest = sha1(f"{page.id}|{product.id}|named-slot-v2".encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
     return f"slot:named:{digest}"
 
 
