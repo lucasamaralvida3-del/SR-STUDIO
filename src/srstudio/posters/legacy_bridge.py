@@ -157,7 +157,7 @@ class LegacyPosterBridge:
                 {
                     "tipo": poster_type,
                     "campanha": campaign,
-                    "produto": product.name,
+                    "produto": self.engine.display_name(product.name),
                     "promocao": promo,
                     "clube": club,
                     "validade_rotulo": self._validity_label(product.validity),

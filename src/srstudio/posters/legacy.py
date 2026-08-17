@@ -14,6 +14,7 @@ from srstudio.posters.core import (
     PosterTemplate,
     PrintPosterService,
 )
+from srstudio.posters.orthography import PosterOrthographyCorrector
 
 
 class SRPosterData(PosterData):
@@ -87,6 +88,13 @@ class SRPosterData(PosterData):
 class SRPosterEngine(PosterEngine):
     """v5 commercial engine that preserves the Stable promotion/wholesale payload."""
 
+    orthography = PosterOrthographyCorrector()
+
+    @classmethod
+    def display_name(cls, value: str) -> str:
+        """Return print-safe product text without mutating the imported product."""
+        return cls.orthography.correct(value)
+
     @staticmethod
     def unit_label(product: Product) -> str:
         unit = (product.unit or "UN").upper().strip()
@@ -111,7 +119,7 @@ class SRPosterEngine(PosterEngine):
         return SRPosterData(
             kind=PosterKind.PROMOTION,
             product_id=base.product_id,
-            name=base.name,
+            name=self.display_name(base.name),
             campaign=campaign_value,
             unit=base.unit,
             unit_label=base.unit_label,
@@ -130,7 +138,7 @@ class SRPosterEngine(PosterEngine):
         return SRPosterData(
             kind=PosterKind.WHOLESALE,
             product_id=base.product_id,
-            name=base.name,
+            name=self.display_name(base.name),
             campaign=base.campaign,
             unit=product.unit,
             unit_label=base.unit_label,
