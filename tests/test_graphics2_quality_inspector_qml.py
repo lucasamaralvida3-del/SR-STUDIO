@@ -39,6 +39,17 @@ def test_quality_inspector_surfaces_scene_aware_probable_cause_without_changing_
     assert "triage.available" in source
 
 
+def test_quality_inspector_surfaces_pptx_effect_inventory_for_golden_master_review():
+    source = _source()
+    assert "effectsSummary" in source
+    assert "Efeitos PPTX" in source
+    assert "Alpha DrawingML" in source
+    assert "gate.pptx_advanced_effects" in source
+    assert "gate.pptx_gradient_fills" in source
+    assert "gate.pptx_shadows" in source
+    assert "gate.pptx_alpha_modifiers" in source
+
+
 def test_quality_inspector_surfaces_blockers_warnings_and_gpu():
     source = _source()
     assert "Production Gate aprovado" in source
@@ -100,8 +111,12 @@ def test_quality_inspector_qml_loads_offscreen_when_pyside_is_available():
                 "mapping_fill_outset_coverage": 1.0,
                 "mapping_image_clip_coverage": 1.0,
                 "mapping_group_coverage": 0.90,
+                "pptx_advanced_effects": 4,
+                "pptx_gradient_fills": 2,
+                "pptx_shadows": 2,
+                "pptx_alpha_modifiers": 7,
                 "blockers": 0,
-                "warnings": 2,
+                "warnings": 3,
             },
             "graphics_api_requested": "auto",
         }
