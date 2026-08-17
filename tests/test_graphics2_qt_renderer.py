@@ -7,10 +7,11 @@ import pytest
 pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtGui import QGuiApplication
+from PySide6 import QtCore
+from PySide6.QtGui import QFont, QFontMetricsF, QGuiApplication
 
 from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, Transform
-from srstudio.graphics2.qt_renderer import render_pdf, render_png
+from srstudio.graphics2.qt_renderer import _text_flags, render_pdf, render_png
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -84,3 +85,18 @@ def test_qt_renderer_exports_pdf(tmp_path):
     assert report.ok
     assert report.pages == 1
     assert report.output.read_bytes().startswith(b"%PDF")
+
+
+def test_qpainter_nowrap_preserves_explicit_newlines():
+    font = QFont("Arial")
+    font.setPixelSize(28)
+    metrics = QFontMetricsF(font)
+    rect = QtCore.QRectF(0, 0, 400, 300)
+    flags = _text_flags({"nowrap": True, "align": "left", "v_align": "top"}, QtCore)
+
+    single = metrics.boundingRect(rect, flags, "OFERTA")
+    multiline = metrics.boundingRect(rect, flags, "OFERTA\nESPECIAL")
+
+    assert not flags & QtCore.Qt.TextSingleLine
+    assert not flags & QtCore.Qt.TextWordWrap
+    assert multiline.height() > single.height() * 1.5
