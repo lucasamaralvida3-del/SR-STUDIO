@@ -26,6 +26,7 @@ def test_professional_autosave_tick_writes_recovery_outside_manual_project(tmp_p
     report = controller.tick(min_interval_seconds=0)
 
     assert report.saved
+    assert not report.blocked_by_recovery
     assert report.document_id == session.document.id
     assert Path(report.path).exists()
     assert Path(report.path) != manual
@@ -33,6 +34,22 @@ def test_professional_autosave_tick_writes_recovery_outside_manual_project(tmp_p
     assert status.available
     assert status.same_as_live
     assert not status.recoverable
+
+
+def test_pending_recovery_blocks_new_autosave_until_user_decides(tmp_path: Path):
+    session, controller = _controller(tmp_path)
+    first = controller.tick(min_interval_seconds=0)
+    node_id = next(iter(session.page.nodes))
+    session.page.node(node_id).text = "ESTADO MANUAL MAIS NOVO NA TELA"
+
+    blocked = controller.tick(min_interval_seconds=0)
+
+    assert not blocked.saved
+    assert blocked.blocked_by_recovery
+    assert blocked.path == first.path
+    points = controller.manager.list_recovery_points(session.document.id)
+    assert len(points) == 1
+    assert controller.status().recoverable
 
 
 def test_recovery_becomes_actionable_when_live_scene_diverges_and_is_undoable(tmp_path: Path):
