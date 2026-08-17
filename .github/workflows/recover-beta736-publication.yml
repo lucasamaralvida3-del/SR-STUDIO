@@ -1,0 +1,174 @@
+name: Recover SR Studio Beta 7.36 Publication
+
+on:
+  push:
+    branches:
+      - integration/sr-studio-next
+    paths:
+      - 'release/BETA736_RECOVER_PUBLICATION'
+
+permissions:
+  contents: write
+
+jobs:
+  recover-publication:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout integration
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify recovery scope and integration head
+        shell: pwsh
+        run: |
+          $sourceCommit = '94a5f8ec7f624e87186cd53facb7c90b3d4fd51b'
+          $allowed = @(
+            '.github/workflows/recover-beta736-publication.yml',
+            'release/BETA736_RECOVER_PUBLICATION'
+          )
+          $changed = @(git diff --name-only "$sourceCommit..HEAD")
+          foreach ($path in $changed) {
+            if ($allowed -notcontains $path.Trim()) {
+              throw "Mudanca funcional posterior ao bundle validado detectada: $path"
+            }
+          }
+          if ($changed.Count -ne 2) {
+            throw "Escopo de recuperacao inesperado: $($changed -join ', ')"
+          }
+          $remoteHead = ((git ls-remote origin refs/heads/integration/sr-studio-next) -split "`t")[0].Trim()
+          if ($remoteHead -ne $env:GITHUB_SHA) {
+            throw "Integration avancou durante a recuperacao ($remoteHead != $env:GITHUB_SHA)."
+          }
+          Write-Host 'Recovery scope OK: somente CI/marker depois do bundle validado.'
+
+      - name: Verify intact Beta 7.36 draft and asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $releaseId = 371844323
+          $expectedTag = 'v5.0.0-hybrid.beta7.36'
+          $expectedTarget = '94a5f8ec7f624e87186cd53facb7c90b3d4fd51b'
+          $expectedAsset = 'SR_STUDIO_5_0_0-hybrid_beta7_36_PROFESSIONAL.zip'
+          $expectedSize = [int64]309715580
+          $expectedDigest = 'sha256:2fbab6ee3d097284f11bbccf6215055ac01290c96d91b1940b2d026d524877b1'
+
+          $release = (gh api "repos/${{ github.repository }}/releases/$releaseId" | ConvertFrom-Json)
+          if (-not [bool]$release.draft) { throw 'Release 7.36 nao esta mais em draft; abortando recuperacao automatica.' }
+          if (-not [bool]$release.prerelease) { throw 'Release 7.36 draft nao esta marcada prerelease.' }
+          if ([string]$release.tag_name -ne $expectedTag) { throw "Tag inesperada: $($release.tag_name)" }
+          if ([string]$release.target_commitish -ne $expectedTarget) { throw "Target inesperado: $($release.target_commitish)" }
+          $asset = @($release.assets | Where-Object { $_.name -eq $expectedAsset }) | Select-Object -First 1
+          if ($null -eq $asset) { throw 'Asset Beta 7.36 ausente do draft.' }
+          if ([int64]$asset.size -ne $expectedSize) { throw "Tamanho do asset invalido: $($asset.size)" }
+          if ([string]$asset.digest -ne $expectedDigest) { throw "SHA-256 do asset invalido: $($asset.digest)" }
+          Write-Host "Draft/asset OK: $expectedSize bytes | $expectedDigest"
+
+      - name: Publish existing draft with transient-error retry
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $releaseId = 371844323
+          $published = $false
+          for ($attempt = 1; $attempt -le 5; $attempt++) {
+            Write-Host "Tentativa $attempt/5 para publicar o draft existente..."
+            gh api --method PATCH "repos/${{ github.repository }}/releases/$releaseId" -F draft=false -F prerelease=true | Out-Host
+            if ($LASTEXITCODE -eq 0) {
+              $published = $true
+              break
+            }
+            if ($attempt -lt 5) { Start-Sleep -Seconds (10 * $attempt) }
+          }
+          if (-not $published) { throw 'GitHub API continuou indisponivel apos 5 tentativas.' }
+
+          $release = (gh api "repos/${{ github.repository }}/releases/$releaseId" | ConvertFrom-Json)
+          if ([bool]$release.draft) { throw 'Release continua em draft depois do PATCH.' }
+          if (-not [bool]$release.prerelease) { throw 'Release publicada deixou de ser prerelease.' }
+          if ([string]$release.tag_name -ne 'v5.0.0-hybrid.beta7.36') { throw 'Tag publicada inesperada.' }
+          if ([string]::IsNullOrWhiteSpace([string]$release.published_at)) { throw 'published_at ausente depois da publicacao.' }
+          $asset = @($release.assets | Where-Object { $_.name -eq 'SR_STUDIO_5_0_0-hybrid_beta7_36_PROFESSIONAL.zip' }) | Select-Object -First 1
+          if ($null -eq $asset) { throw 'Asset desapareceu depois da publicacao.' }
+          if ([int64]$asset.size -ne 309715580) { throw 'Tamanho do asset mudou depois da publicacao.' }
+          if ([string]$asset.digest -ne 'sha256:2fbab6ee3d097284f11bbccf6215055ac01290c96d91b1940b2d026d524877b1') { throw 'Digest do asset mudou depois da publicacao.' }
+          "PUBLISHED_AT=$($release.published_at)" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host 'Beta 7.36 draft publicado e revalidado.'
+
+      - name: Checkout main for guarded activation
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+          fetch-depth: 0
+
+      - name: Activate verified Beta 7.36 manifest
+        shell: pwsh
+        run: |
+          $integrationHead = ((git ls-remote origin refs/heads/integration/sr-studio-next) -split "`t")[0].Trim()
+          if ($integrationHead -ne $env:GITHUB_SHA) {
+            throw "Integration avancou antes da ativacao ($integrationHead != $env:GITHUB_SHA). Release publicada, mas manifesto nao sera sobrescrito."
+          }
+
+          Push-Location mainrepo
+          git pull --rebase origin main
+          $manifestPath = 'beta/manifest.json'
+          $current = Get-Content -Raw $manifestPath | ConvertFrom-Json
+          if ([string]$current.version -ne '5.0.0-hybrid.beta7.35') {
+            throw "Canal Beta avancou para $($current.version); 7.36 nao sera ativada automaticamente."
+          }
+          if (-not [bool]$current.graphics2_primary) { throw 'Predecessora Beta 7.35 nao esta marcada Graphics2 primary.' }
+          $minLauncher = [string]$current.min_launcher_version
+          if ([string]::IsNullOrWhiteSpace($minLauncher)) { $minLauncher = [string]$current.min_launcher }
+          if ([string]::IsNullOrWhiteSpace($minLauncher)) { $minLauncher = '4.0.1-hybrid.base3.5' }
+
+          $url = 'https://github.com/${{ github.repository }}/releases/download/v5.0.0-hybrid.beta7.36/SR_STUDIO_5_0_0-hybrid_beta7_36_PROFESSIONAL.zip'
+          $manifest = [ordered]@{
+            format = 'SRSTUDIO_HYBRID_BUNDLE_1'
+            product = 'SR Studio'
+            channel = 'beta'
+            version = '5.0.0-hybrid.beta7.36'
+            product_version = '5.0.0'
+            release_label = 'Beta 7.36 Professional'
+            published_at = $env:PUBLISHED_AT
+            min_launcher = $minLauncher
+            min_launcher_version = $minLauncher
+            bundle = [ordered]@{
+              url = $url
+              sha256 = '2fbab6ee3d097284f11bbccf6215055ac01290c96d91b1940b2d026d524877b1'
+              size = [int64]309715580
+              member_prefix = 'files/'
+            }
+            url = $url
+            bundle_url = $url
+            sha256 = '2fbab6ee3d097284f11bbccf6215055ac01290c96d91b1940b2d026d524877b1'
+            size = [int64]309715580
+            member_prefix = 'files/'
+            previous_version = '5.0.0-hybrid.beta7.35'
+            entrypoint = 'SRStudio5/SR Studio 5.exe'
+            graphics2_test = $true
+            graphics2_primary = $true
+            launcher_path_safe = $true
+            cartazes_orthography = $true
+            orthography_mode = 'aggressive_offline_v2'
+            orthography_at_import = $true
+            source_commit = '94a5f8ec7f624e87186cd53facb7c90b3d4fd51b'
+            notes = 'Beta 7.36 Professional - corretor ortografico V2 aplicado na importacao dos Cartazes; Graphics2 alpha.43 preservado.'
+          }
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add beta/manifest.json
+          git commit -m 'release: activate SR Studio Beta 7.36 Orthography V2 + Graphics2'
+          git push origin HEAD:main
+          Pop-Location
+
+      - name: Recovery summary
+        shell: pwsh
+        run: |
+          Write-Host 'Beta 7.36 publicada e ativada a partir do bundle previamente validado.'
+          Write-Host 'Source: 94a5f8ec7f624e87186cd53facb7c90b3d4fd51b'
+          Write-Host 'SHA256: 2fbab6ee3d097284f11bbccf6215055ac01290c96d91b1940b2d026d524877b1'
+          Write-Host 'Size: 309715580'
