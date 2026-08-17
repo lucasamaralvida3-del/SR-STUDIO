@@ -15,6 +15,7 @@ from .pptx_effect_mapping import map_pptx_effects_to_document
 from .pptx_effects import audit_pptx_effects
 from .pptx_fidelity import enhance_pptx_document
 from .pptx_groups import rebuild_pptx_groups
+from .pptx_spacing import recover_pptx_spacing
 from .pptx_structure import PptxStructureReport, inspect_pptx_structure
 from .scene_fingerprint import store_scene_fingerprint
 from .semantic_blocks import build_semantic_blocks
@@ -71,6 +72,11 @@ class GraphicsImportService:
             media_root = str(project.settings.get("pptx_media_dir") or "").strip()
             cache_dir = Path(media_root) / "graphics2" if media_root else None
             enhance_pptx_document(source, document, cache_dir=cache_dir)
+            # Segunda passagem exclusiva do Graphics2. Ela valida todos os runs
+            # e parágrafos antes do gate; valores uniformes são materializados
+            # nas unidades usadas pelo Qt e pelo scanner, enquanto spacing misto
+            # remove a simplificação do primeiro run em vez de inventar fidelidade.
+            _recover_pptx_spacing(source, document)
             rebuild_pptx_groups(source, document)
             # Efeitos são associados somente depois da reconstrução de grupos,
             # para que um efeito cujo dono é p:grpSp também possa encontrar seu
@@ -88,6 +94,30 @@ class GraphicsImportService:
         document.metadata["import_fingerprint_sha256"] = fingerprint.sha256
         audit = audit_import(document)
         return GraphicsImportResult(document=document, summary=summary, legacy_project=project, audit=audit)
+
+
+def _recover_pptx_spacing(source: Path, document: GraphicsDocument) -> None:
+    """Aplica spacing exato sem tornar uma falha diagnóstica um crash do import."""
+
+    try:
+        recover_pptx_spacing(source, document)
+    except Exception as exc:
+        # O PPTX já passou pelo pipeline legado e pelo scanner estrutural; uma
+        # falha desta passagem deve ficar visível para diagnóstico, mas não deve
+        # destruir a sessão do usuário. O Production Gate continuará avaliando
+        # os valores efetivamente presentes na SR Scene.
+        document.metadata["pptx_spacing_recovery"] = {
+            "source_shapes": 0,
+            "mapped_shapes": 0,
+            "letter_spacing_shapes": 0,
+            "line_spacing_shapes": 0,
+            "letter_spacing_applied": 0,
+            "line_spacing_applied": 0,
+            "letter_spacing_coverage": 0.0,
+            "line_spacing_coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
 
 
 def _store_pptx_effect_audit(source: Path, document: GraphicsDocument) -> None:
