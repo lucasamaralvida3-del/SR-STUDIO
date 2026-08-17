@@ -16,7 +16,7 @@ def test_professional_router_context_is_opt_in_and_restores_base_host():
     assert base.GraphicsCommandRouter is original
 
 
-def test_professional_host_context_attaches_inspector_once_and_restores_hooks(monkeypatch):
+def test_professional_host_context_attaches_tools_once_and_restores_hooks(monkeypatch):
     base = professional_qt_host.base
     original_router = base.GraphicsCommandRouter
     original_attach = base._attach_context_qml_tool
@@ -36,6 +36,7 @@ def test_professional_host_context_attaches_inspector_once_and_restores_hooks(mo
         assert calls == [
             "ImageInspector.qml",
             "ProfessionalInspector.qml",
+            "ProfessionalRecovery.qml",
             "QualityInspector.qml",
             "ProjectActions.qml",
         ]
