@@ -44,6 +44,38 @@ def test_pyinstaller_contract_is_onedir_windowed_no_upx_and_collects_qt(tmp_path
     assert module.HOST_NAME == "SRGraphicsEngine2Host"
 
 
+def test_qt_build_artifact_pruner_keeps_runtime_files_and_shortens_bundle(tmp_path):
+    module = _build_module()
+    bundle = tmp_path / "host"
+    runtime_qml = bundle / "_internal" / "PySide6" / "qml" / "QtQuick" / "Controls"
+    runtime_qml.mkdir(parents=True)
+    (runtime_qml / "Button.qml").write_text("runtime", encoding="utf-8")
+
+    debug_objects = (
+        bundle
+        / "_internal"
+        / "PySide6"
+        / "qml"
+        / "Qt"
+        / "labs"
+        / "assetdownloader"
+        / "objects-RelWithDebInfo"
+        / "VeryLongGeneratedTarget"
+    )
+    debug_objects.mkdir(parents=True)
+    (debug_objects / ("generated_" + "x" * 120 + ".obj")).write_bytes(b"build-only")
+
+    before, _ = module.max_relative_path_length(bundle)
+    removed = module.prune_non_runtime_qt_build_artifacts(bundle)
+    after, longest = module.max_relative_path_length(bundle)
+
+    assert removed
+    assert before > after
+    assert not any("objects-RelWithDebInfo" in item.as_posix() for item in bundle.rglob("*"))
+    assert (runtime_qml / "Button.qml").read_text(encoding="utf-8") == "runtime"
+    assert longest.endswith("Button.qml")
+
+
 def test_build_entry_uses_graphics2_qt_host_directly():
     source = (ROOT / "build" / "graphics2_host_entry.py").read_text(encoding="utf-8")
     assert "from srstudio.graphics2.qt_host import main" in source
