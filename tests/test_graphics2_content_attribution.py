@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from PIL import Image, ImageDraw
 
 from srstudio.graphics2.content_attribution import build_content_attribution_report
@@ -69,7 +70,7 @@ def test_content_attribution_classifies_wordart_and_image_from_scene_nodes():
     assert report.regions[0].node_id == wordart.id
     assert report.regions[1].node_id == image.id
     assert 0.0 < report.summary.wordart_region_score < 100.0
-    assert report.summary.image_region_score == 100.0
+    assert report.summary.image_region_score == pytest.approx(100.0)
     assert report.missing_metric_regions == ()
     assert report.orphan_metric_regions == ()
     payload = report.to_dict()
