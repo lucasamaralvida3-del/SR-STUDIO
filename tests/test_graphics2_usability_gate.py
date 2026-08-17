@@ -124,5 +124,29 @@ def test_gate_detects_duplicate_page_ids_even_when_page_content_is_valid():
 
     assert report.ready is False
     assert report.metrics["duplicate_page_ids"] == 1
+    assert report.metrics["duplicate_node_ids"] == len(document.pages[0].nodes)
+    assert report.metrics["duplicate_slot_ids"] == len(document.pages[0].slots)
     failed = {item.code for item in report.checks if not item.passed}
     assert "UNIQUE_PAGE_IDS" in failed
+    assert "UNIQUE_NODE_IDS" in failed
+    assert "UNIQUE_SLOT_IDS" in failed
+
+
+def test_gate_rejects_node_and_slot_collisions_even_with_unique_page_ids():
+    document = _realistic_encarte_document()
+    duplicate = GraphicsDocument.from_dict(document.to_dict()).active_page
+    duplicate.id = "page_unique_duplicate"
+    duplicate.name = "Página com identidades internas repetidas"
+    for slot in duplicate.slots.values():
+        slot.page_id = duplicate.id
+    document.pages.append(duplicate)
+
+    report = inspect_encarte_usability(document)
+
+    assert report.ready is False
+    assert report.metrics["duplicate_page_ids"] == 0
+    assert report.metrics["duplicate_node_ids"] == len(document.pages[0].nodes)
+    assert report.metrics["duplicate_slot_ids"] == len(document.pages[0].slots)
+    failed = {item.code for item in report.checks if not item.passed}
+    assert "UNIQUE_NODE_IDS" in failed
+    assert "UNIQUE_SLOT_IDS" in failed
