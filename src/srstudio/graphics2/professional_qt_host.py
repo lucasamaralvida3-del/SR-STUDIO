@@ -3,8 +3,8 @@ from __future__ import annotations
 """Safe opt-in Qt host for the professional Studio de Encartes actions.
 
 The stable ``qt_host`` remains untouched. This wrapper temporarily injects the
-ProfessionalGraphicsCommandRouter and a contextual ProfessionalInspector into
-the already-tested host module while the professional editor flow is validated.
+ProfessionalGraphicsCommandRouter plus professional contextual/recovery QML
+controls into the already-tested host module while the flow is validated.
 """
 
 from contextlib import contextmanager
@@ -28,21 +28,27 @@ def professional_router_enabled() -> Iterator[None]:
 
 @contextmanager
 def professional_host_enabled() -> Iterator[None]:
-    """Enable professional routing plus the opt-in contextual QML inspector."""
+    """Enable professional routing plus opt-in inspector/recovery QML controls."""
     previous_router = base.GraphicsCommandRouter
     previous_attach = base._attach_context_qml_tool
     attached_professional_objects: list[object] = []
 
-    def attach_with_professional_inspector(engine, root_window, qml_path: Path, **kwargs):
+    def attach_with_professional_tools(engine, root_window, qml_path: Path, **kwargs):
         result = previous_attach(engine, root_window, qml_path, **kwargs)
         if not attached_professional_objects:
-            professional_qml = Path(qml_path).with_name("ProfessionalInspector.qml")
-            component, tool = previous_attach(engine, root_window, professional_qml, **kwargs)
-            attached_professional_objects.extend((component, tool))
+            base_dir = Path(qml_path).parent
+            for filename in ("ProfessionalInspector.qml", "ProfessionalRecovery.qml"):
+                component, tool = previous_attach(
+                    engine,
+                    root_window,
+                    base_dir / filename,
+                    **kwargs,
+                )
+                attached_professional_objects.extend((component, tool))
         return result
 
     base.GraphicsCommandRouter = ProfessionalGraphicsCommandRouter
-    base._attach_context_qml_tool = attach_with_professional_inspector
+    base._attach_context_qml_tool = attach_with_professional_tools
     try:
         yield
     finally:
