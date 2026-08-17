@@ -23,6 +23,7 @@ def _text_shape(
     image_fill: bool = False,
     custom: bool = False,
     fill_rect_attrs: str = "",
+    autofit: str = "",
 ) -> str:
     fill_rect = f"<a:fillRect {fill_rect_attrs}/>" if fill_rect_attrs else "<a:fillRect/>"
     fill = (
@@ -39,21 +40,26 @@ def _text_shape(
         if custom
         else '<a:prstGeom prst="rect"><a:avLst/></a:prstGeom>'
     )
+    autofit_xml = {
+        "shape": "<a:spAutoFit/>",
+        "normal": '<a:normAutofit fontScale="92000" lnSpcReduction="20000"/>',
+        "none": "<a:noAutofit/>",
+    }.get(autofit, "")
     return f"""
     <p:sp>
       <p:nvSpPr><p:cNvPr id="{shape_id}" name="{name}"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
       <p:spPr>{fill}{geometry}</p:spPr>
-      <p:txBody><a:bodyPr/><a:lstStyle/><a:p><a:r><a:rPr lang="pt-BR"/><a:t>{text}</a:t></a:r></a:p></p:txBody>
+      <p:txBody><a:bodyPr>{autofit_xml}</a:bodyPr><a:lstStyle/><a:p><a:r><a:rPr lang="pt-BR"/><a:t>{text}</a:t></a:r></a:p></p:txBody>
     </p:sp>
     """
 
 
 def _slide_xml() -> str:
     shapes = [
-        _text_shape(2, "Currency", "R$"),
-        _text_shape(3, "Whole", "25"),
-        _text_shape(4, "Cents", ",77"),
-        _text_shape(5, "Unit", "KG"),
+        _text_shape(2, "Currency", "R$", autofit="shape"),
+        _text_shape(3, "Whole", "25", autofit="shape"),
+        _text_shape(4, "Cents", ",77", autofit="normal"),
+        _text_shape(5, "Unit", "KG", autofit="none"),
         _text_shape(6, "Name", "LINGUIÇA MISTA CASEIRA SR"),
         _text_shape(
             7,
@@ -96,7 +102,7 @@ def _write_pptx(path) -> None:
         archive.writestr("ppt/slides/slide1.xml", _slide_xml())
 
 
-def test_structure_scanner_counts_canva_image_fills_split_prices_and_groups(tmp_path):
+def test_structure_scanner_counts_canva_image_fills_split_prices_groups_and_autofit(tmp_path):
     source = tmp_path / "canva-structure.pptx"
     _write_pptx(source)
 
@@ -107,6 +113,10 @@ def test_structure_scanner_counts_canva_image_fills_split_prices_and_groups(tmp_
     assert report.slide_width_emu == 9144000
     assert report.slide_height_emu == 11430000
     assert report.text_shapes == 6
+    assert report.shape_autofit == 2
+    assert report.normal_autofit == 1
+    assert report.no_autofit == 1
+    assert report.autofit_contracts == 4
     assert report.pictures == 1
     assert report.image_fill_shapes == 1
     assert report.image_fill_rects == 2
@@ -117,16 +127,19 @@ def test_structure_scanner_counts_canva_image_fills_split_prices_and_groups(tmp_
     assert report.estimated_split_prices == 1
     slide = report.slides[0]
     assert slide.image_fill_shape_names == ["Canva Image Fill"]
+    assert (slide.shape_autofit, slide.normal_autofit, slide.no_autofit, slide.autofit_contracts) == (2, 1, 1, 4)
     assert slide.image_fill_rects == 2
     assert slide.image_fill_outsets == 1
     assert slide.image_custom_geometry == 1
     assert (slide.currency_tokens, slide.integer_tokens, slide.cents_tokens, slide.unit_tokens) == (1, 1, 1, 1)
 
 
-def test_mapping_audit_treats_pictures_blipfills_and_fillrects_as_visual_contracts():
+def test_mapping_audit_treats_autofit_type_as_semantic_visual_contract():
     report = PptxStructureReport(
         slide_count=1,
         text_shapes=10,
+        shape_autofit=4,
+        normal_autofit=1,
         pictures=1,
         image_fill_shapes=3,
         image_fill_rects=4,
@@ -136,12 +149,21 @@ def test_mapping_audit_treats_pictures_blipfills_and_fillrects_as_visual_contrac
     document = GraphicsDocument()
     page = document.active_page
     for index in range(9):
+        style = {"font_family": "Arial"}
+        if index < 2:
+            style["pptx_auto_fit"] = "shape"
+        elif index == 2:
+            style["pptx_auto_fit"] = "normal"
+        elif index in {3, 4}:
+            # A quantidade total de contratos bate em 5, mas dois shape-auto-fit
+            # foram semanticamente trocados por normAutofit.
+            style["pptx_auto_fit"] = "normal"
         page.add_node(
             GraphicsNode(
                 kind=NodeKind.TEXT,
                 text=f"Texto {index}",
                 transform=Transform(x=10, y=10 + index * 20, width=100, height=18),
-                style={"font_family": "Arial"},
+                style=style,
             )
         )
     page.add_node(
@@ -166,13 +188,47 @@ def test_mapping_audit_treats_pictures_blipfills_and_fillrects_as_visual_contrac
 
     assert mapping.page_count_match
     assert mapping.text_coverage == 0.9
+    assert mapping.source_autofit_contracts == 5
+    assert mapping.imported_autofit_contracts == 5
+    assert mapping.shape_autofit_coverage == 0.5
+    assert mapping.normal_autofit_coverage == 1.0
+    assert mapping.autofit_coverage == 0.5
     assert mapping.image_coverage == 0.5
     assert mapping.group_coverage == 0.25
     assert mapping.fill_rect_coverage == 0.5
     assert mapping.fill_outset_coverage == 0.5
+    assert any("auto-fit PPTX" in warning for warning in mapping.warnings)
     assert any("p:sp/a:blipFill" in warning for warning in mapping.warnings)
     assert any("stretch/fillRect" in warning for warning in mapping.warnings)
     assert any("outset negativo" in warning for warning in mapping.warnings)
+
+
+def test_production_gate_blocks_severe_pptx_autofit_semantic_loss():
+    document = GraphicsDocument(name="PPTX mapping loss")
+    document.metadata["pptx_mapping_audit"] = PptxMappingAudit(
+        source_slides=1,
+        imported_pages=1,
+        source_text_shapes=10,
+        imported_text_nodes=10,
+        source_autofit_contracts=10,
+        imported_autofit_contracts=10,
+        source_shape_autofit=10,
+        imported_shape_autofit=5,
+        source_normal_autofit=0,
+        imported_normal_autofit=5,
+        page_count_match=True,
+        text_coverage=1.0,
+        autofit_coverage=0.5,
+        shape_autofit_coverage=0.5,
+        normal_autofit_coverage=1.0,
+    ).to_dict()
+
+    gate = inspect_production_gate(document, require_visual_fidelity=False)
+
+    assert not gate.ready
+    assert gate.mapping_autofit_coverage == 0.5
+    assert gate.score <= 50
+    assert any(issue.code == "PPTX_AUTOFIT_COVERAGE_FAILED" for issue in gate.issues)
 
 
 def test_import_audit_and_production_gate_block_severe_pptx_mapping_loss():
@@ -182,6 +238,10 @@ def test_import_audit_and_production_gate_block_severe_pptx_mapping_loss():
         imported_pages=1,
         source_text_shapes=10,
         imported_text_nodes=6,
+        source_autofit_contracts=10,
+        imported_autofit_contracts=5,
+        source_shape_autofit=10,
+        imported_shape_autofit=5,
         source_image_shapes=10,
         imported_image_nodes=4,
         source_groups=4,
@@ -192,6 +252,8 @@ def test_import_audit_and_production_gate_block_severe_pptx_mapping_loss():
         imported_fill_outsets=2,
         page_count_match=True,
         text_coverage=0.6,
+        autofit_coverage=0.5,
+        shape_autofit_coverage=0.5,
         image_coverage=0.4,
         group_coverage=0.25,
         fill_rect_coverage=0.5,
@@ -210,11 +272,13 @@ def test_import_audit_and_production_gate_block_severe_pptx_mapping_loss():
     assert audit.errors >= 4
     assert not gate.ready
     assert gate.mapping_text_coverage == 0.6
+    assert gate.mapping_autofit_coverage == 0.5
     assert gate.mapping_image_coverage == 0.4
     assert gate.mapping_group_coverage == 0.25
     assert gate.mapping_fill_rect_coverage == 0.5
     assert gate.mapping_fill_outset_coverage == 0.4
     assert gate.score <= 40
+    assert any(issue.code == "PPTX_AUTOFIT_COVERAGE_FAILED" for issue in gate.issues)
     assert any(issue.code == "PPTX_IMAGE_COVERAGE_FAILED" for issue in gate.issues)
     assert any(issue.code == "PPTX_FILL_RECT_COVERAGE_FAILED" for issue in gate.issues)
     assert any(issue.code == "PPTX_FILL_OUTSET_COVERAGE_FAILED" for issue in gate.issues)
@@ -228,6 +292,10 @@ def test_production_gate_accepts_complete_mapping_metadata():
         imported_pages=1,
         source_text_shapes=12,
         imported_text_nodes=12,
+        source_autofit_contracts=8,
+        imported_autofit_contracts=8,
+        source_shape_autofit=8,
+        imported_shape_autofit=8,
         source_image_shapes=8,
         imported_image_nodes=8,
         source_groups=2,
@@ -238,6 +306,8 @@ def test_production_gate_accepts_complete_mapping_metadata():
         imported_fill_outsets=3,
         page_count_match=True,
         text_coverage=1.0,
+        autofit_coverage=1.0,
+        shape_autofit_coverage=1.0,
         image_coverage=1.0,
         group_coverage=1.0,
         fill_rect_coverage=1.0,
@@ -248,6 +318,7 @@ def test_production_gate_accepts_complete_mapping_metadata():
 
     assert gate.mapping_page_count_match is True
     assert gate.mapping_text_coverage == 1.0
+    assert gate.mapping_autofit_coverage == 1.0
     assert gate.mapping_image_coverage == 1.0
     assert gate.mapping_group_coverage == 1.0
     assert gate.mapping_fill_rect_coverage == 1.0

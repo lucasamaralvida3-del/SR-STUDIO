@@ -40,6 +40,7 @@ class ProductionGateReport:
     embedded_fonts_extracted: int
     mapping_page_count_match: bool = True
     mapping_text_coverage: float = 1.0
+    mapping_autofit_coverage: float = 1.0
     mapping_image_coverage: float = 1.0
     mapping_group_coverage: float = 1.0
     mapping_fill_rect_coverage: float = 1.0
@@ -86,9 +87,10 @@ def inspect_production_gate(
     - para ativação/release, ``require_visual_fidelity=True`` exige que a última
       comparação visual tenha passado antes do Engine 2 ser considerado pronto.
 
-    Para PPTX, cobertura de páginas/textos/imagens e enquadramento DrawingML é
-    parte do score. Isso evita aprovar uma cena internamente válida quando o
-    conversor perdeu conteúdo, fillRect ou máscara existentes na fonte.
+    Para PPTX, cobertura de páginas/textos/imagens, contratos de auto-fit e
+    enquadramento DrawingML é parte do score. Isso evita aprovar uma cena
+    internamente válida quando o conversor perdeu conteúdo, tipografia semântica,
+    fillRect ou máscara existentes na fonte.
     """
 
     structural = inspect_quality(document, available_fonts=available_fonts)
@@ -135,12 +137,14 @@ def inspect_production_gate(
     mapping = dict(metadata.get("pptx_mapping_audit") or {})
     mapping_page_match = bool(mapping.get("page_count_match", True))
     mapping_text = _clamp01(mapping.get("text_coverage", 1.0))
+    mapping_autofit = _clamp01(mapping.get("autofit_coverage", 1.0))
     mapping_image = _clamp01(mapping.get("image_coverage", 1.0))
     mapping_group = _clamp01(mapping.get("group_coverage", 1.0))
     mapping_fill_rect = _clamp01(mapping.get("fill_rect_coverage", 1.0))
     mapping_fill_outset = _clamp01(mapping.get("fill_outset_coverage", 1.0))
     mapping_image_clip = _clamp01(mapping.get("image_clip_coverage", 1.0))
     source_text = _as_int(mapping.get("source_text_shapes", 0))
+    source_autofit = _as_int(mapping.get("source_autofit_contracts", 0))
     source_images = _as_int(mapping.get("source_image_shapes", 0))
     source_groups = _as_int(mapping.get("source_groups", 0))
     source_fill_rects = _as_int(mapping.get("source_fill_rects", 0))
@@ -169,6 +173,22 @@ def inspect_production_gate(
                     "warning",
                     "PPTX_TEXT_COVERAGE_LOW",
                     f"Cobertura de textos OOXML abaixo do alvo: {mapping_text * 100:.2f}%.",
+                )
+            )
+        if source_autofit >= 4 and mapping_autofit < 0.80:
+            issues.append(
+                ProductionGateIssue(
+                    "blocker",
+                    "PPTX_AUTOFIT_COVERAGE_FAILED",
+                    f"Cobertura semântica de auto-fit OOXML crítica: {mapping_autofit * 100:.2f}%.",
+                )
+            )
+        elif source_autofit >= 4 and mapping_autofit < 0.95:
+            issues.append(
+                ProductionGateIssue(
+                    "warning",
+                    "PPTX_AUTOFIT_COVERAGE_LOW",
+                    f"Cobertura semântica de auto-fit OOXML abaixo do alvo: {mapping_autofit * 100:.2f}%.",
                 )
             )
         if source_images >= 2 and mapping_image < 0.60:
@@ -292,10 +312,11 @@ def inspect_production_gate(
     score_candidates = [float(structural.score), import_confidence * 100.0]
     if mapping:
         # Grupos são editabilidade/semântica e não entram no score visual puro;
-        # páginas, texto, imagem, fillRect e máscaras são conteúdo perceptível.
+        # páginas, texto, auto-fit, imagem, fillRect e máscaras são conteúdo perceptível.
         mapping_score = min(
             1.0 if mapping_page_match else 0.0,
             mapping_text if source_text else 1.0,
+            mapping_autofit if source_autofit else 1.0,
             mapping_image if source_images else 1.0,
             mapping_fill_rect if source_fill_rects else 1.0,
             mapping_fill_outset if source_fill_outsets else 1.0,
@@ -330,6 +351,7 @@ def inspect_production_gate(
         embedded_fonts_extracted=fonts_extracted,
         mapping_page_count_match=mapping_page_match,
         mapping_text_coverage=mapping_text,
+        mapping_autofit_coverage=mapping_autofit,
         mapping_image_coverage=mapping_image,
         mapping_group_coverage=mapping_group,
         mapping_fill_rect_coverage=mapping_fill_rect,
