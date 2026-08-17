@@ -76,13 +76,36 @@ def inspect_encarte_usability(
     )
 
     page_ids = [page.id for page in document.pages]
+    node_ids = [node_id for page in document.pages for node_id in page.nodes]
+    slot_ids = [slot_id for page in document.pages for slot_id in page.slots]
     duplicate_page_ids = len(page_ids) - len(set(page_ids))
+    duplicate_node_ids = len(node_ids) - len(set(node_ids))
+    duplicate_slot_ids = len(slot_ids) - len(set(slot_ids))
+
     _check(
         checks,
         "UNIQUE_PAGE_IDS",
         duplicate_page_ids == 0,
         "blocker",
         "IDs de página são únicos." if duplicate_page_ids == 0 else f"Há {duplicate_page_ids} página(s) com ID duplicado.",
+    )
+    _check(
+        checks,
+        "UNIQUE_NODE_IDS",
+        duplicate_node_ids == 0,
+        "blocker",
+        "IDs de elementos são únicos entre páginas."
+        if duplicate_node_ids == 0
+        else f"Há {duplicate_node_ids} identidade(s) de elemento repetida(s) entre páginas.",
+    )
+    _check(
+        checks,
+        "UNIQUE_SLOT_IDS",
+        duplicate_slot_ids == 0,
+        "blocker",
+        "IDs de SmartSlot são únicos entre páginas."
+        if duplicate_slot_ids == 0
+        else f"Há {duplicate_slot_ids} identidade(s) de SmartSlot repetida(s) entre páginas.",
     )
 
     active_page_valid = document.page(document.active_page_id) is not None
@@ -102,6 +125,7 @@ def inspect_encarte_usability(
     product_cards = 0
     price_blocks = 0
     semantic_missing_members = 0
+    semantic_missing_slots = 0
     slots = 0
     bound_slots = 0
     slot_page_mismatches = 0
@@ -118,7 +142,7 @@ def inspect_encarte_usability(
         raw_blocks = page.metadata.get("semantic_blocks")
         if isinstance(raw_blocks, dict):
             semantic_blocks += len(raw_blocks)
-            for block in raw_blocks.values():
+            for block_id, block in raw_blocks.items():
                 if not isinstance(block, dict):
                     continue
                 kind = str(block.get("kind") or "")
@@ -129,6 +153,18 @@ def inspect_encarte_usability(
                 for member_id in block.get("members") or []:
                     if str(member_id) not in page.nodes:
                         semantic_missing_members += 1
+                for role_node_ids in (block.get("roles") or {}).values():
+                    for node_id in role_node_ids or []:
+                        if str(node_id) not in page.nodes:
+                            semantic_missing_members += 1
+                for node_id in (block.get("template_geometry") or {}).keys():
+                    if str(node_id) not in page.nodes:
+                        semantic_missing_members += 1
+                slot_id = str(block.get("slot_id") or "")
+                if slot_id and slot_id not in page.slots:
+                    semantic_missing_slots += 1
+                if str(block.get("id") or block_id) != str(block_id):
+                    semantic_missing_members += 1
 
     _check(
         checks,
@@ -170,7 +206,18 @@ def inspect_encarte_usability(
         "SEMANTIC_MEMBER_INTEGRITY",
         semantic_missing_members == 0,
         "blocker",
-        "Blocos semânticos apontam apenas para nodes existentes." if semantic_missing_members == 0 else f"Há {semantic_missing_members} referência(s) semântica(s) órfã(s).",
+        "Blocos semânticos apontam apenas para nodes existentes."
+        if semantic_missing_members == 0
+        else f"Há {semantic_missing_members} referência(s) semântica(s) órfã(s)/inconsistente(s).",
+    )
+    _check(
+        checks,
+        "SEMANTIC_SLOT_INTEGRITY",
+        semantic_missing_slots == 0,
+        "blocker",
+        "Blocos semânticos apontam apenas para SmartSlots existentes."
+        if semantic_missing_slots == 0
+        else f"Há {semantic_missing_slots} referência(s) para SmartSlot inexistente.",
     )
 
     if require_semantic_products:
@@ -217,10 +264,13 @@ def inspect_encarte_usability(
         "product_cards": product_cards,
         "price_blocks": price_blocks,
         "semantic_missing_members": semantic_missing_members,
+        "semantic_missing_slots": semantic_missing_slots,
         "slot_page_mismatches": slot_page_mismatches,
         "preflight_errors": preflight_errors,
         "preflight_warnings": preflight_warnings,
         "duplicate_page_ids": duplicate_page_ids,
+        "duplicate_node_ids": duplicate_node_ids,
+        "duplicate_slot_ids": duplicate_slot_ids,
         "active_page_valid": active_page_valid,
     }
     blockers = sum(not item.passed and item.severity == "blocker" for item in checks)
