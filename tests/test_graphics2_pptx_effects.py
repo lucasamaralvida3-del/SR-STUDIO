@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import zipfile
 
+from srstudio.graphics2.import_bridge import _store_pptx_effect_audit
+from srstudio.graphics2.model import GraphicsDocument
 from srstudio.graphics2.pptx_effects import audit_pptx_effects, main
 
 
@@ -72,6 +74,34 @@ def test_effect_audit_counts_and_orders_slides(tmp_path):
     assert report.totals["slides_with_advanced_effects"] == 2
     assert report.totals["alpha_modifiers"] == 2
     assert report.totals["slides_with_alpha"] == 1
+
+
+def test_import_bridge_persists_effect_inventory_in_scene_metadata(tmp_path):
+    source = _pptx(tmp_path / "effects.pptx")
+    document = GraphicsDocument(name="Effects import")
+
+    _store_pptx_effect_audit(source, document)
+
+    stored = document.metadata["pptx_effects"]
+    assert stored["totals"]["advanced_effects"] == 9
+    assert stored["totals"]["gradient_fills"] == 1
+    assert stored["totals"]["outer_shadows"] == 1
+    assert stored["totals"]["inner_shadows"] == 1
+    assert stored["slides"][0]["slide"] == 1
+
+
+def test_import_bridge_records_effect_audit_error_without_breaking_import(tmp_path):
+    source = tmp_path / "broken.pptx"
+    source.write_bytes(b"not-a-zip")
+    document = GraphicsDocument(name="Broken effects import")
+
+    _store_pptx_effect_audit(source, document)
+
+    stored = document.metadata["pptx_effects"]
+    assert stored["source"].endswith("broken.pptx")
+    assert stored["totals"] == {}
+    assert stored["slides"] == []
+    assert stored["error"]
 
 
 def test_effect_audit_cli_writes_json(tmp_path, capsys):
