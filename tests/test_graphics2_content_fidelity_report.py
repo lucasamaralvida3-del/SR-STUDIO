@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pytest
 from PIL import Image, ImageDraw
 
 from srstudio.graphics2.content_fidelity import compare_content_masks
@@ -20,7 +21,7 @@ def test_named_summary_exposes_text_and_wordart_without_touching_official_gate()
     summary = summarize_content_groups({"text": [perfect_text], "WordArt": [shifted_wordart]})
     payload = summary.to_dict()
 
-    assert payload["TEXT_REGION_SCORE"] == 100.0
+    assert payload["TEXT_REGION_SCORE"] == pytest.approx(100.0)
     assert 0.0 < payload["WORDART_REGION_SCORE"] < 100.0
     assert 0.0 < payload["CONTENT_REGION_SCORE"] < 100.0
     assert payload["FOREGROUND_PIXEL_PASS"] > 0.0
