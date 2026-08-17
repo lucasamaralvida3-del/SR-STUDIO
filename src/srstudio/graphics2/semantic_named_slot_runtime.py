@@ -66,8 +66,17 @@ def _recover_page(page: GraphicsPage) -> int:
             else None
         )
         primary_currency = _nearest_currency(page, primary, currencies)
-        secondary_currency = _nearest_currency(page, secondary, currencies, exclude={primary_currency.id} if primary_currency else set()) if secondary else None
-        image = _explicit_product_image(page, product, primary, images)
+        secondary_currency = (
+            _nearest_currency(
+                page,
+                secondary,
+                currencies,
+                exclude={primary_currency.id} if primary_currency is not None else set(),
+            )
+            if secondary is not None
+            else None
+        )
+        image = _explicit_product_image(page, product, images)
 
         node_by_role: dict[str, str] = {
             "name": product.id,
@@ -213,42 +222,24 @@ def _nearest_currency(
 def _explicit_product_image(
     page: GraphicsPage,
     product: GraphicsNode,
-    primary_price: GraphicsNode,
     images: list[GraphicsNode],
 ) -> GraphicsNode | None:
+    """Só vincula imagem quando o próprio PPTX a nomeia como foto do produto.
+
+    Em templates reais existem faixas e logos próximos ao preço. A heurística
+    espacial anterior podia promovê-los a imagem do produto, o que é pior do
+    que deixar o slot sem imagem. Para o caminho de nomes explícitos adotamos a
+    regra conservadora: ausência de marcador de imagem => ausência de binding.
+    """
+
     explicit = [
         image
         for image in images
-        if "PRODUTO" in _marker(image) and any(token in _marker(image) for token in ("IMAGEM", "FOTO", "PRODUTO"))
+        if "PRODUTO" in _marker(image) and any(token in _marker(image) for token in ("IMAGEM", "FOTO"))
     ]
-    if explicit:
-        return _nearest_node(page, product, explicit, set(), max_dx=0.50, max_dy=0.50)
-
-    # Fallback ainda conservador: só imagens de porte compatível com produto e
-    # dentro da região vertical entre nome e preço. Logos/faixas muito grandes
-    # ou muito pequenos ficam de fora. O fallback nunca é necessário para
-    # reconhecer preço/nome; serve apenas para completar o binding de imagem.
-    top = min(product.rect.y, primary_price.rect.y) - page.height * 0.08
-    bottom = max(product.rect.bottom, primary_price.rect.bottom) + page.height * 0.08
-    candidates: list[GraphicsNode] = []
-    for image in images:
-        area_ratio = (image.rect.width * image.rect.height) / max(page.width * page.height, 1.0)
-        if area_ratio < 0.004 or area_ratio > 0.30:
-            continue
-        if image.rect.center_y < top or image.rect.center_y > bottom:
-            continue
-        candidates.append(image)
-    anchor_x = (product.rect.center_x + primary_price.rect.center_x) / 2.0
-    anchor_y = (product.rect.center_y + primary_price.rect.center_y) / 2.0
-    best: tuple[float, str, GraphicsNode] | None = None
-    for image in candidates:
-        dx = abs(image.rect.center_x - anchor_x) / max(page.width, 1.0)
-        dy = abs(image.rect.center_y - anchor_y) / max(page.height, 1.0)
-        score = hypot(dx, dy)
-        candidate = (score, image.id, image)
-        if best is None or candidate[:2] < best[:2]:
-            best = candidate
-    return best[2] if best is not None else None
+    if not explicit:
+        return None
+    return _nearest_node(page, product, explicit, set(), max_dx=0.55, max_dy=0.55)
 
 
 def _slot_id(page: GraphicsPage, product: GraphicsNode) -> str:
