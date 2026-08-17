@@ -16,6 +16,7 @@ class AutosaveTickReport:
     saved: bool
     path: str
     document_id: str
+    blocked_by_recovery: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -68,6 +69,17 @@ class ProfessionalAutosaveController:
         )
 
     def tick(self, *, min_interval_seconds: float | None = None) -> AutosaveTickReport:
+        # Never create a newer generation while an older divergent recovery is
+        # waiting for a user decision. Otherwise the just-opened manual state
+        # could become the newest autosave and visually hide the crash recovery.
+        recovery = self.status()
+        if recovery.recoverable:
+            return AutosaveTickReport(
+                saved=False,
+                path=recovery.path,
+                document_id=self.session.document.id,
+                blocked_by_recovery=True,
+            )
         path = self.manager.save_if_changed(
             self.session.document,
             min_interval_seconds=min_interval_seconds,
@@ -76,6 +88,7 @@ class ProfessionalAutosaveController:
             saved=path is not None,
             path=str(path or ""),
             document_id=self.session.document.id,
+            blocked_by_recovery=False,
         )
 
     def status(self) -> RecoveryStatus:
