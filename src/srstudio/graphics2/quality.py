@@ -41,6 +41,8 @@ class ProductionGateReport:
     mapping_page_count_match: bool = True
     mapping_text_coverage: float = 1.0
     mapping_autofit_coverage: float = 1.0
+    mapping_letter_spacing_coverage: float = 1.0
+    mapping_line_spacing_coverage: float = 1.0
     mapping_image_coverage: float = 1.0
     mapping_group_coverage: float = 1.0
     mapping_fill_rect_coverage: float = 1.0
@@ -81,16 +83,10 @@ def inspect_production_gate(
 ) -> ProductionGateReport:
     """Combina preflight, import audit, mapeamento OOXML e Golden Master.
 
-    O gate pode ser usado em duas fases:
-    - durante o desenvolvimento, ``require_visual_fidelity=False`` permite editar
-      documentos ainda sem um Golden Master;
-    - para ativação/release, ``require_visual_fidelity=True`` exige que a última
-      comparação visual tenha passado antes do Engine 2 ser considerado pronto.
-
-    Para PPTX, cobertura de páginas/textos/imagens, contratos de auto-fit e
-    enquadramento DrawingML é parte do score. Isso evita aprovar uma cena
-    internamente válida quando o conversor perdeu conteúdo, tipografia semântica,
-    fillRect ou máscara existentes na fonte.
+    Durante desenvolvimento o Golden Master pode ser opcional. Para ativação ou
+    release ele pode ser obrigatório. Em PPTX, páginas, texto, auto-fit,
+    espaçamento tipográfico, imagens, fillRect e máscaras entram no gate para
+    impedir que uma cena estruturalmente válida esconda perda visual da fonte.
     """
 
     structural = inspect_quality(document, available_fonts=available_fonts)
@@ -138,6 +134,8 @@ def inspect_production_gate(
     mapping_page_match = bool(mapping.get("page_count_match", True))
     mapping_text = _clamp01(mapping.get("text_coverage", 1.0))
     mapping_autofit = _clamp01(mapping.get("autofit_coverage", 1.0))
+    mapping_letter_spacing = _clamp01(mapping.get("letter_spacing_coverage", 1.0))
+    mapping_line_spacing = _clamp01(mapping.get("line_spacing_coverage", 1.0))
     mapping_image = _clamp01(mapping.get("image_coverage", 1.0))
     mapping_group = _clamp01(mapping.get("group_coverage", 1.0))
     mapping_fill_rect = _clamp01(mapping.get("fill_rect_coverage", 1.0))
@@ -145,6 +143,8 @@ def inspect_production_gate(
     mapping_image_clip = _clamp01(mapping.get("image_clip_coverage", 1.0))
     source_text = _as_int(mapping.get("source_text_shapes", 0))
     source_autofit = _as_int(mapping.get("source_autofit_contracts", 0))
+    source_letter_spacing = _as_int(mapping.get("source_letter_spacing_contracts", 0))
+    source_line_spacing = _as_int(mapping.get("source_line_spacing_contracts", 0))
     source_images = _as_int(mapping.get("source_image_shapes", 0))
     source_groups = _as_int(mapping.get("source_groups", 0))
     source_fill_rects = _as_int(mapping.get("source_fill_rects", 0))
@@ -189,6 +189,38 @@ def inspect_production_gate(
                     "warning",
                     "PPTX_AUTOFIT_COVERAGE_LOW",
                     f"Cobertura semântica de auto-fit OOXML abaixo do alvo: {mapping_autofit * 100:.2f}%.",
+                )
+            )
+        if source_letter_spacing >= 4 and mapping_letter_spacing < 0.80:
+            issues.append(
+                ProductionGateIssue(
+                    "blocker",
+                    "PPTX_LETTER_SPACING_COVERAGE_FAILED",
+                    f"Cobertura exata de letter spacing OOXML crítica: {mapping_letter_spacing * 100:.2f}%.",
+                )
+            )
+        elif source_letter_spacing >= 4 and mapping_letter_spacing < 0.95:
+            issues.append(
+                ProductionGateIssue(
+                    "warning",
+                    "PPTX_LETTER_SPACING_COVERAGE_LOW",
+                    f"Cobertura exata de letter spacing OOXML abaixo do alvo: {mapping_letter_spacing * 100:.2f}%.",
+                )
+            )
+        if source_line_spacing >= 4 and mapping_line_spacing < 0.80:
+            issues.append(
+                ProductionGateIssue(
+                    "blocker",
+                    "PPTX_LINE_SPACING_COVERAGE_FAILED",
+                    f"Cobertura exata de entrelinhas OOXML crítica: {mapping_line_spacing * 100:.2f}%.",
+                )
+            )
+        elif source_line_spacing >= 4 and mapping_line_spacing < 0.95:
+            issues.append(
+                ProductionGateIssue(
+                    "warning",
+                    "PPTX_LINE_SPACING_COVERAGE_LOW",
+                    f"Cobertura exata de entrelinhas OOXML abaixo do alvo: {mapping_line_spacing * 100:.2f}%.",
                 )
             )
         if source_images >= 2 and mapping_image < 0.60:
@@ -311,12 +343,12 @@ def inspect_production_gate(
 
     score_candidates = [float(structural.score), import_confidence * 100.0]
     if mapping:
-        # Grupos são editabilidade/semântica e não entram no score visual puro;
-        # páginas, texto, auto-fit, imagem, fillRect e máscaras são conteúdo perceptível.
         mapping_score = min(
             1.0 if mapping_page_match else 0.0,
             mapping_text if source_text else 1.0,
             mapping_autofit if source_autofit else 1.0,
+            mapping_letter_spacing if source_letter_spacing else 1.0,
+            mapping_line_spacing if source_line_spacing else 1.0,
             mapping_image if source_images else 1.0,
             mapping_fill_rect if source_fill_rects else 1.0,
             mapping_fill_outset if source_fill_outsets else 1.0,
@@ -352,6 +384,8 @@ def inspect_production_gate(
         mapping_page_count_match=mapping_page_match,
         mapping_text_coverage=mapping_text,
         mapping_autofit_coverage=mapping_autofit,
+        mapping_letter_spacing_coverage=mapping_letter_spacing,
+        mapping_line_spacing_coverage=mapping_line_spacing,
         mapping_image_coverage=mapping_image,
         mapping_group_coverage=mapping_group,
         mapping_fill_rect_coverage=mapping_fill_rect,
