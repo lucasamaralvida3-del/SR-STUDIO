@@ -46,6 +46,7 @@ def test_real_sr_pptx_corpus_imports_with_structural_and_editability_safety():
         graphics_gate = inspect_encarte_usability(document, require_semantic_products=False)
         semantic_gate = inspect_encarte_usability(document, require_semantic_products=True)
         semantic_report = dict(document.metadata.get("semantic_blocks") or {})
+        transform_report = dict(document.metadata.get("pptx_image_transform_recovery") or {})
         named_slots = [
             slot
             for page in document.pages
@@ -83,6 +84,22 @@ def test_real_sr_pptx_corpus_imports_with_structural_and_editability_safety():
                 "explicit_named_slots": len(named_slots),
                 "recovered_slots": len(recovered_slots),
                 "import_audit": _audit_payload(context.import_audit),
+                "image_transform_recovery": transform_report,
+                "image_transform_metrics": {
+                    "source_contracts": int(transform_report.get("source_contracts", 0) or 0),
+                    "non_identity_contracts": int(transform_report.get("non_identity_contracts", 0) or 0),
+                    "mapped_contracts": int(transform_report.get("mapped_contracts", 0) or 0),
+                    "exact_contracts": int(transform_report.get("exact_contracts", 0) or 0),
+                    "exact_non_identity_contracts": int(
+                        transform_report.get("exact_non_identity_contracts", 0) or 0
+                    ),
+                    "deferred_group_contracts": int(transform_report.get("deferred_group_contracts", 0) or 0),
+                    "coverage": float(transform_report.get("coverage", 1.0) or 0.0),
+                    "non_identity_coverage": float(
+                        transform_report.get("non_identity_coverage", 1.0) or 0.0
+                    ),
+                    "error": str(transform_report.get("error") or ""),
+                },
                 "text_names": text_names,
             }
         )
@@ -94,11 +111,32 @@ def test_real_sr_pptx_corpus_imports_with_structural_and_editability_safety():
         assert graphics_gate.metrics.get("preflight_errors", 0) == 0
         assert graphics_gate.metrics.get("visible_nodes", 0) > 0
         assert graphics_gate.metrics.get("editable_nodes", 0) > 0
+        assert "error" not in transform_report, {
+            "file": filename,
+            "image_transform_recovery": transform_report,
+        }
 
     payload = {
-        "version": 1,
+        "version": 2,
         "count": len(cases),
         "semantic_ready": sum(1 for case in cases if case["semantic_ready"]),
+        "image_transform_totals": {
+            "source_contracts": sum(
+                int(case["image_transform_metrics"]["source_contracts"]) for case in cases
+            ),
+            "non_identity_contracts": sum(
+                int(case["image_transform_metrics"]["non_identity_contracts"]) for case in cases
+            ),
+            "exact_contracts": sum(
+                int(case["image_transform_metrics"]["exact_contracts"]) for case in cases
+            ),
+            "exact_non_identity_contracts": sum(
+                int(case["image_transform_metrics"]["exact_non_identity_contracts"]) for case in cases
+            ),
+            "deferred_group_contracts": sum(
+                int(case["image_transform_metrics"]["deferred_group_contracts"]) for case in cases
+            ),
+        },
         "cases": cases,
     }
     _AUDIT_PATH.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
