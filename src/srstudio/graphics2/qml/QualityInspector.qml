@@ -5,7 +5,7 @@ import QtQuick.Layouts
 Rectangle {
     id: panel
     width: 326
-    height: expanded ? 364 : 56
+    height: expanded ? 400 : 56
     anchors.right: parent ? parent.right : undefined
     anchors.top: parent ? parent.top : undefined
     anchors.rightMargin: 8
@@ -35,6 +35,11 @@ Rectangle {
         if (number <= 1.00001)
             number *= 100
         return number.toFixed(1) + "%"
+    }
+
+    function coverageColor(value) {
+        var number = Number(value === undefined ? 1 : value)
+        return number < 0.80 ? "#B91C1C" : number < 0.95 ? "#A16207" : "#334155"
     }
 
     function autofitSummary() {
@@ -138,8 +143,26 @@ Rectangle {
                 Label { text: "Cobertura auto-fit"; color: "#64748B"; font.pixelSize: 9 }
                 Label {
                     text: percent(gate.mapping_autofit_coverage)
-                    color: Number(gate.mapping_autofit_coverage === undefined ? 1 : gate.mapping_autofit_coverage) < 0.80 ? "#B91C1C" : Number(gate.mapping_autofit_coverage === undefined ? 1 : gate.mapping_autofit_coverage) < 0.95 ? "#A16207" : "#334155"
+                    color: coverageColor(gate.mapping_autofit_coverage)
                     font.bold: Number(gate.mapping_autofit_coverage === undefined ? 1 : gate.mapping_autofit_coverage) < 0.95
+                    horizontalAlignment: Text.AlignRight
+                    Layout.fillWidth: true
+                }
+
+                Label { text: "Espaço letras"; color: "#64748B"; font.pixelSize: 9 }
+                Label {
+                    text: percent(gate.mapping_letter_spacing_coverage)
+                    color: coverageColor(gate.mapping_letter_spacing_coverage)
+                    font.bold: Number(gate.mapping_letter_spacing_coverage === undefined ? 1 : gate.mapping_letter_spacing_coverage) < 0.95
+                    horizontalAlignment: Text.AlignRight
+                    Layout.fillWidth: true
+                }
+
+                Label { text: "Entrelinhas"; color: "#64748B"; font.pixelSize: 9 }
+                Label {
+                    text: percent(gate.mapping_line_spacing_coverage)
+                    color: coverageColor(gate.mapping_line_spacing_coverage)
+                    font.bold: Number(gate.mapping_line_spacing_coverage === undefined ? 1 : gate.mapping_line_spacing_coverage) < 0.95
                     horizontalAlignment: Text.AlignRight
                     Layout.fillWidth: true
                 }
@@ -150,7 +173,7 @@ Rectangle {
                 Label { text: "Cobertura fillRect"; color: "#64748B"; font.pixelSize: 9 }
                 Label {
                     text: percent(gate.mapping_fill_rect_coverage)
-                    color: Number(gate.mapping_fill_rect_coverage === undefined ? 1 : gate.mapping_fill_rect_coverage) < 0.80 ? "#B91C1C" : Number(gate.mapping_fill_rect_coverage === undefined ? 1 : gate.mapping_fill_rect_coverage) < 0.95 ? "#A16207" : "#334155"
+                    color: coverageColor(gate.mapping_fill_rect_coverage)
                     font.bold: Number(gate.mapping_fill_rect_coverage === undefined ? 1 : gate.mapping_fill_rect_coverage) < 0.95
                     horizontalAlignment: Text.AlignRight
                     Layout.fillWidth: true
@@ -159,7 +182,7 @@ Rectangle {
                 Label { text: "Outset de imagem"; color: "#64748B"; font.pixelSize: 9 }
                 Label {
                     text: percent(gate.mapping_fill_outset_coverage)
-                    color: Number(gate.mapping_fill_outset_coverage === undefined ? 1 : gate.mapping_fill_outset_coverage) < 0.80 ? "#B91C1C" : Number(gate.mapping_fill_outset_coverage === undefined ? 1 : gate.mapping_fill_outset_coverage) < 0.95 ? "#A16207" : "#334155"
+                    color: coverageColor(gate.mapping_fill_outset_coverage)
                     font.bold: Number(gate.mapping_fill_outset_coverage === undefined ? 1 : gate.mapping_fill_outset_coverage) < 0.95
                     horizontalAlignment: Text.AlignRight
                     Layout.fillWidth: true
@@ -168,7 +191,7 @@ Rectangle {
                 Label { text: "Máscaras imagem"; color: "#64748B"; font.pixelSize: 9 }
                 Label {
                     text: percent(gate.mapping_image_clip_coverage)
-                    color: Number(gate.mapping_image_clip_coverage === undefined ? 1 : gate.mapping_image_clip_coverage) < 0.80 ? "#B91C1C" : Number(gate.mapping_image_clip_coverage === undefined ? 1 : gate.mapping_image_clip_coverage) < 0.95 ? "#A16207" : "#334155"
+                    color: coverageColor(gate.mapping_image_clip_coverage)
                     font.bold: Number(gate.mapping_image_clip_coverage === undefined ? 1 : gate.mapping_image_clip_coverage) < 0.95
                     horizontalAlignment: Text.AlignRight
                     Layout.fillWidth: true
