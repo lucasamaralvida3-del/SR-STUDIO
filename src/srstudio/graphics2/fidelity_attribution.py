@@ -254,6 +254,8 @@ def _suspect_score(
 
 
 def _diagnostic_hint(node: GraphicsNode) -> str:
+    source_effects = dict((node.metadata or {}).get("pptx_effects") or {})
+    effect_hint = _pptx_effect_hint(source_effects)
     role = node.binding_role
     if role in {
         BindingRole.CURRENCY,
@@ -264,22 +266,50 @@ def _diagnostic_hint(node: GraphicsNode) -> str:
         BindingRole.WHOLESALE_PRICE,
         BindingRole.RETAIL_PRICE,
     }:
-        return "preço: revisar tipografia, baseline, alinhamento, auto-fit/wrap e formatação semântica"
-    if role == BindingRole.IMAGE or node.kind == NodeKind.IMAGE:
-        return "imagem: revisar asset, crop, fillRect, máscara, foco, zoom e fit mode"
-    if node.kind == NodeKind.TEXT:
-        return "texto: revisar fonte, métricas, spacing, alinhamento, wrap e auto-fit"
-    if node.kind == NodeKind.PATH:
-        return "vetor: revisar custGeom/path, stroke, fill, gradiente e efeitos"
-    if node.kind in {NodeKind.RECT, NodeKind.ELLIPSE, NodeKind.LINE}:
-        return "shape: revisar geometria, stroke, fill, gradiente, opacidade e efeitos"
-    if node.kind == NodeKind.PRODUCT_CARD:
-        return "ProductCard: revisar geometria e vínculos dos Smart Slots"
-    if node.kind == NodeKind.GROUP:
-        return "grupo: revisar transformações herdadas e geometria dos filhos"
-    if node.kind == NodeKind.BACKGROUND:
-        return "fundo: revisar cor, imagem de fundo, recorte e dimensões da página"
-    return "nó: revisar geometria, estilo e conteúdo"
+        base = "preço: revisar tipografia, baseline, alinhamento, auto-fit/wrap e formatação semântica"
+    elif role == BindingRole.IMAGE or node.kind == NodeKind.IMAGE:
+        base = "imagem: revisar asset, crop, fillRect, máscara, foco, zoom e fit mode"
+    elif node.kind == NodeKind.TEXT:
+        base = "texto: revisar fonte, métricas, spacing, alinhamento, wrap e auto-fit"
+    elif node.kind == NodeKind.PATH:
+        base = "vetor: revisar custGeom/path, stroke, fill, gradiente e efeitos"
+    elif node.kind in {NodeKind.RECT, NodeKind.ELLIPSE, NodeKind.LINE}:
+        base = "shape: revisar geometria, stroke, fill, gradiente, opacidade e efeitos"
+    elif node.kind == NodeKind.PRODUCT_CARD:
+        base = "ProductCard: revisar geometria e vínculos dos Smart Slots"
+    elif node.kind == NodeKind.GROUP:
+        base = "grupo: revisar transformações herdadas e geometria dos filhos"
+    elif node.kind == NodeKind.BACKGROUND:
+        base = "fundo: revisar cor, imagem de fundo, recorte e dimensões da página"
+    else:
+        base = "nó: revisar geometria, estilo e conteúdo"
+    return f"{effect_hint}; {base}" if effect_hint else base
+
+
+def _pptx_effect_hint(effects: dict[str, Any]) -> str:
+    advanced = _as_int(effects.get("advanced_effects"))
+    alpha = _as_int(effects.get("alpha_modifiers"))
+    if advanced <= 0 and alpha <= 0:
+        return ""
+    gradients = _as_int(effects.get("gradient_fills"))
+    shadows = _as_int(effects.get("outer_shadows")) + _as_int(effects.get("inner_shadows"))
+    details: list[str] = []
+    if gradients:
+        details.append(f"{gradients} gradiente(s)")
+    if shadows:
+        details.append(f"{shadows} sombra(s)")
+    if alpha:
+        details.append(f"{alpha} alpha")
+    if not details:
+        details.append(f"{advanced} efeito(s) avançado(s)")
+    return "efeitos PPTX: " + ", ".join(details) + " — validar reprodução no Golden Master"
+
+
+def _as_int(value: object) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
 
 
 def _enum_value(value: Any) -> str:
