@@ -64,6 +64,12 @@ from .pptx_effect_mapping import (
 )
 from .pptx_effects import PptxEffectAudit, ShapeEffectStats, SlideEffectStats, audit_pptx_effects
 from .pptx_fidelity import EmbeddedPptxFont, PptxFidelityReport, enhance_pptx_document
+from .pptx_fill_rect import (
+    PptxFillRectContract,
+    PptxFillRectIssue,
+    PptxFillRectRecoveryReport,
+    recover_pptx_fill_rects,
+)
 from .pptx_groups import PptxGroupReport, rebuild_pptx_groups
 from .pptx_spacing import PptxSpacingIssue, PptxSpacingRecoveryReport, recover_pptx_spacing
 from .pptx_structure import PptxMappingAudit, PptxSlideStructure, PptxStructureReport, inspect_pptx_structure
@@ -93,7 +99,7 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.38"
+ENGINE_VERSION = "2.0.0-alpha.39"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -136,6 +142,9 @@ __all__ = [
     "PptxEffectMappingReport",
     "PptxEffectNodeMapping",
     "PptxFidelityReport",
+    "PptxFillRectContract",
+    "PptxFillRectIssue",
+    "PptxFillRectRecoveryReport",
     "PptxGroupReport",
     "PptxMappingAudit",
     "PptxSlideStructure",
@@ -187,6 +196,7 @@ __all__ = [
     "rebuild_pptx_groups",
     "recover_canva_image_placeholders",
     "recover_canva_semantic_cards",
+    "recover_pptx_fill_rects",
     "recover_pptx_spacing",
     "render_pdf",
     "render_pdf_baselines",
