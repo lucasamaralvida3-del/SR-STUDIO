@@ -1,0 +1,11 @@
+SR Studio Beta 7.35 Professional
+Graphics2 + Cartazes Orthography
+
+Publicar a partir da linha integration/sr-studio-next mais recente.
+Requisitos de ativacao:
+- Quality Gate completo verde;
+- corretor ortografico presente no frozen app;
+- Graphics2 host presente, validado e principal;
+- bundle Windows path-safe;
+- canal publico ainda em Beta 7.33 durante a ativacao;
+- nenhuma mudanca posterior na integration durante o build.
