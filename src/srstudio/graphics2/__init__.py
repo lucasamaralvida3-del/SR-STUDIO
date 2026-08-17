@@ -56,7 +56,7 @@ from .model import (
 )
 from .operations import GraphicsSession
 from .pdf_baseline import PdfBaselinePage, render_pdf_baselines
-from .pptx_effects import PptxEffectAudit, SlideEffectStats, audit_pptx_effects
+from .pptx_effects import PptxEffectAudit, ShapeEffectStats, SlideEffectStats, audit_pptx_effects
 from .pptx_fidelity import EmbeddedPptxFont, PptxFidelityReport, enhance_pptx_document
 from .pptx_groups import PptxGroupReport, rebuild_pptx_groups
 from .pptx_structure import PptxMappingAudit, PptxSlideStructure, PptxStructureReport, inspect_pptx_structure
@@ -86,7 +86,7 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.33"
+ENGINE_VERSION = "2.0.0-alpha.34"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -139,6 +139,7 @@ __all__ = [
     "SceneFingerprint",
     "SemanticBlock",
     "SemanticBlockReport",
+    "ShapeEffectStats",
     "SlideEffectStats",
     "SmartSlot",
     "StudioBridgeLaunchResult",
