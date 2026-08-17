@@ -57,6 +57,7 @@ jobs:
           src/srstudio/graphics2/binding_runtime.py
           src/srstudio/graphics2/image_replace_runtime.py
           src/srstudio/graphics2/import_edit_runtime.py
+          src/srstudio/graphics2/pptx_image_transform.py
           tests/test_graphics2_page_duplicate.py
           tests/test_graphics2_usability_gate.py
           tests/test_graphics2_professional_workflow.py
@@ -73,6 +74,10 @@ jobs:
           tests/test_graphics2_real_corpus_audit.py
           tests/test_graphics2_usable_preview_e2e.py
           tests/test_graphics2_real_qml_host_preview.py
+          tests/test_graphics2_pptx_image_transform_recovery.py
+          tests/test_graphics2_pptx_image_transform_pipeline.py
+          tests/test_graphics2_pptx_image_transform_gate.py
+          tests/test_graphics2_quinta_file_image_transform_parity.py
 
       - name: Professional usability contracts
         id: professional_tests
@@ -100,6 +105,10 @@ jobs:
             "tests/test_graphics2_real_corpus_audit.py",
             "tests/test_graphics2_usable_preview_e2e.py",
             "tests/test_graphics2_real_qml_host_preview.py",
+            "tests/test_graphics2_pptx_image_transform_recovery.py",
+            "tests/test_graphics2_pptx_image_transform_pipeline.py",
+            "tests/test_graphics2_pptx_image_transform_gate.py",
+            "tests/test_graphics2_quinta_file_image_transform_parity.py",
             "tests/test_graphics2_qml_load.py",
             "tests/test_graphics2_qt_host_cli.py",
             "tests/test_graphics2_qt_image_provider.py",
