@@ -11,6 +11,15 @@ A recuperação é deliberadamente conservadora: um valor só é aplicado quando
 shape fonte possui um contrato uniforme e existe um único node TEXT correspondente
 na página. Shapes com múltiplos valores por run/parágrafo permanecem sem uma
 simplificação falsa e são reportados como ambíguos.
+
+Unidades persistidas:
+- ``letter_spacing_pt``: pontos, igual ao contrato DrawingML ``spc / 100``;
+- ``letter_spacing``: pixels lógicos (96 dpi), consumidos pelo Qt Quick/QPainter;
+- ``line_spacing_pt`` + ``line_spacing_px`` para ``spcPts``;
+- ``line_spacing_percent`` em escala percentual (100 = 100%) para ``spcPct``.
+
+Essas chaves espelham o contrato de ``pptx_structure`` e evitam que auditoria e
+renderer discordem sobre uma importação visualmente correta.
 """
 
 from dataclasses import asdict, dataclass, field
@@ -82,7 +91,7 @@ class _ShapeSpacing:
     shape_name: str
     letter_spacing: float | None
     line_spacing_percent: float | None
-    line_spacing_px: float | None
+    line_spacing_pt: float | None
     letter_ambiguous: bool = False
     line_ambiguous: bool = False
 
@@ -92,7 +101,7 @@ class _ShapeSpacing:
 
     @property
     def has_line_spacing(self) -> bool:
-        return self.line_spacing_percent is not None or self.line_spacing_px is not None or self.line_ambiguous
+        return self.line_spacing_percent is not None or self.line_spacing_pt is not None or self.line_ambiguous
 
 
 def recover_pptx_spacing(source: str | Path, document: GraphicsDocument) -> PptxSpacingRecoveryReport:
@@ -134,23 +143,55 @@ def recover_pptx_spacing(source: str | Path, document: GraphicsDocument) -> Pptx
         spacing_meta = dict(node.metadata.get("pptx_spacing") or {})
 
         if contract.letter_ambiguous:
+            # A primeira passagem de fidelidade historicamente usa o primeiro
+            # a:rPr. Em um shape com runs mistos isso é uma simplificação falsa;
+            # remova-a para que preview, renderer e Production Gate não tratem o
+            # primeiro valor como se representasse todo o shape.
+            node.style.pop("letter_spacing", None)
+            node.style.pop("letter_spacing_pt", None)
+            spacing_meta.pop("letter_spacing_pt", None)
+            spacing_meta.pop("letter_spacing_px", None)
+            spacing_meta["letter_spacing_mixed"] = True
             report.issues.append(_issue("PPTX_LETTER_SPACING_MIXED", contract, "Shape usa múltiplos valores de letter spacing; SR Scene não simplificou o conteúdo."))
         elif contract.letter_spacing is not None:
-            node.style["letter_spacing"] = float(contract.letter_spacing)
-            spacing_meta["letter_spacing"] = float(contract.letter_spacing)
+            points = float(contract.letter_spacing)
+            pixels = points * _PT_TO_PX
+            node.style["letter_spacing_pt"] = points
+            node.style["letter_spacing"] = pixels
+            spacing_meta.pop("letter_spacing_mixed", None)
+            spacing_meta["letter_spacing_pt"] = points
+            spacing_meta["letter_spacing_px"] = pixels
             report.letter_spacing_applied += 1
 
         if contract.line_ambiguous:
+            node.style.pop("line_spacing_percent", None)
+            node.style.pop("line_spacing_pt", None)
+            node.style.pop("line_spacing_px", None)
+            spacing_meta.pop("line_spacing_percent", None)
+            spacing_meta.pop("line_spacing_pt", None)
+            spacing_meta.pop("line_spacing_px", None)
+            spacing_meta["line_spacing_mixed"] = True
             report.issues.append(_issue("PPTX_LINE_SPACING_MIXED", contract, "Shape usa múltiplos contratos de line spacing; SR Scene não simplificou o conteúdo."))
         elif contract.line_spacing_percent is not None:
-            node.style["line_spacing_percent"] = float(contract.line_spacing_percent)
+            percent = float(contract.line_spacing_percent)
+            node.style["line_spacing_percent"] = percent
+            node.style.pop("line_spacing_pt", None)
             node.style.pop("line_spacing_px", None)
-            spacing_meta["line_spacing_percent"] = float(contract.line_spacing_percent)
+            spacing_meta.pop("line_spacing_mixed", None)
+            spacing_meta.pop("line_spacing_pt", None)
+            spacing_meta.pop("line_spacing_px", None)
+            spacing_meta["line_spacing_percent"] = percent
             report.line_spacing_applied += 1
-        elif contract.line_spacing_px is not None:
-            node.style["line_spacing_px"] = float(contract.line_spacing_px)
+        elif contract.line_spacing_pt is not None:
+            points = float(contract.line_spacing_pt)
+            pixels = points * _PT_TO_PX
+            node.style["line_spacing_pt"] = points
+            node.style["line_spacing_px"] = pixels
             node.style.pop("line_spacing_percent", None)
-            spacing_meta["line_spacing_px"] = float(contract.line_spacing_px)
+            spacing_meta.pop("line_spacing_mixed", None)
+            spacing_meta.pop("line_spacing_percent", None)
+            spacing_meta["line_spacing_pt"] = points
+            spacing_meta["line_spacing_px"] = pixels
             report.line_spacing_applied += 1
 
         if spacing_meta:
@@ -183,13 +224,13 @@ def _read_contracts(path: Path) -> list[_ShapeSpacing]:
                 letter_value, letter_ambiguous = _uniform(letter_values)
                 line_value, line_ambiguous = _uniform(line_values)
                 percent: float | None = None
-                pixels: float | None = None
+                points: float | None = None
                 if line_value is not None:
                     kind, value = line_value
                     if kind == "percent":
                         percent = value
                     else:
-                        pixels = value
+                        points = value
                 contracts.append(
                     _ShapeSpacing(
                         slide=slide,
@@ -197,7 +238,7 @@ def _read_contracts(path: Path) -> list[_ShapeSpacing]:
                         shape_name=shape_name,
                         letter_spacing=letter_value,
                         line_spacing_percent=percent,
-                        line_spacing_px=pixels,
+                        line_spacing_pt=points,
                         letter_ambiguous=letter_ambiguous,
                         line_ambiguous=line_ambiguous,
                     )
@@ -233,12 +274,14 @@ def _line_values(tx_body: ET.Element) -> list[tuple[str, float]]:
         pts = ln_spc.find("./a:spcPts", _NS)
         if pct is not None and pct.get("val") not in (None, ""):
             try:
-                values.append(("percent", int(pct.get("val")) / 100000.0))
+                # DrawingML usa milésimos de porcentagem: 100000 = 100%.
+                values.append(("percent", int(pct.get("val")) / 1000.0))
             except ValueError:
                 pass
         elif pts is not None and pts.get("val") not in (None, ""):
             try:
-                values.append(("px", (int(pts.get("val")) / 100.0) * _PT_TO_PX))
+                # spcPts usa centésimos de ponto.
+                values.append(("pt", int(pts.get("val")) / 100.0))
             except ValueError:
                 pass
     return _dedupe_pairs(values)
