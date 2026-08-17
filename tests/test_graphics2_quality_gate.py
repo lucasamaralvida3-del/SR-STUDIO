@@ -81,7 +81,7 @@ def test_gate_blocks_failed_visual_comparison_even_with_high_numeric_score():
     assert any(issue.code == "VISUAL_FIDELITY_FAILED" for issue in report.issues)
 
 
-def test_pptx_advanced_effects_are_visible_without_inventing_score_penalty():
+def test_pptx_unresolved_advanced_effects_are_visible_without_score_penalty():
     document = _healthy_document()
     baseline = inspect_production_gate(document, require_visual_fidelity=False)
     document.metadata["pptx_effects"] = {
@@ -94,6 +94,10 @@ def test_pptx_advanced_effects_are_visible_without_inventing_score_penalty():
         },
         "slides": [],
     }
+    document.metadata["pptx_effect_mapping"] = {
+        "applied_gradients": 1,
+        "applied_outer_shadows": 1,
+    }
 
     report = inspect_production_gate(document, require_visual_fidelity=False)
 
@@ -103,9 +107,42 @@ def test_pptx_advanced_effects_are_visible_without_inventing_score_penalty():
     assert report.pptx_gradient_fills == 2
     assert report.pptx_shadows == 2
     assert report.pptx_alpha_modifiers == 7
-    issue = next(item for item in report.issues if item.code == "PPTX_ADVANCED_EFFECTS_PRESENT")
+    assert report.pptx_applied_gradients == 1
+    assert report.pptx_applied_outer_shadows == 1
+    assert report.pptx_unresolved_advanced_effects == 2
+    issue = next(item for item in report.issues if item.code == "PPTX_ADVANCED_EFFECTS_UNRESOLVED")
     assert issue.severity == "warning"
-    assert "Golden Master" in issue.message
+    assert "2 ainda dependem" in issue.message
+
+
+def test_pptx_fully_rendered_effects_are_info_only():
+    document = _healthy_document()
+    baseline = inspect_production_gate(document, require_visual_fidelity=False)
+    document.metadata["pptx_effects"] = {
+        "totals": {
+            "advanced_effects": 3,
+            "gradient_fills": 2,
+            "outer_shadows": 1,
+            "inner_shadows": 0,
+            "alpha_modifiers": 2,
+        },
+        "slides": [],
+    }
+    document.metadata["pptx_effect_mapping"] = {
+        "applied_gradients": 2,
+        "applied_outer_shadows": 1,
+    }
+
+    report = inspect_production_gate(document, require_visual_fidelity=False)
+
+    assert report.ready == baseline.ready
+    assert report.score == baseline.score
+    assert report.pptx_unresolved_advanced_effects == 0
+    assert report.pptx_applied_gradients == 2
+    assert report.pptx_applied_outer_shadows == 1
+    issue = next(item for item in report.issues if item.code == "PPTX_ADVANCED_EFFECTS_RENDERED")
+    assert issue.severity == "info"
+    assert not any(item.code == "PPTX_ADVANCED_EFFECTS_UNRESOLVED" for item in report.issues)
 
 
 def test_pptx_effect_audit_failure_is_warning_only():
