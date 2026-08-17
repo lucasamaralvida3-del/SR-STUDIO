@@ -55,6 +55,7 @@ from .model import (
     Transform,
 )
 from .operations import GraphicsSession
+from .page_duplicate import clone_page_with_fresh_ids, install_safe_page_duplication
 from .pdf_baseline import PdfBaselinePage, render_pdf_baselines
 from .pptx_artwork import PptxArtworkIssue, PptxArtworkRecoveryReport, recover_pptx_artwork
 from .pptx_effect_mapping import (
@@ -102,6 +103,10 @@ from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merg
 ENGINE_NAME = "SR Graphics Engine"
 ENGINE_VERSION = "2.0.0-alpha.43"
 SCHEMA_VERSION = "srscene/2.0"
+
+# Mantém a API GraphicsSession.add_page existente, porém endurece a duplicação
+# para projetos multipágina com identidades únicas e referências remapeadas.
+install_safe_page_duplication(GraphicsSession)
 
 __all__ = [
     "AssetRef",
@@ -179,6 +184,7 @@ __all__ = [
     "audit_pptx_effects",
     "bridge_flags",
     "build_semantic_blocks",
+    "clone_page_with_fresh_ids",
     "compact_fidelity_triage",
     "compare_images",
     "crop_pixel_box",
