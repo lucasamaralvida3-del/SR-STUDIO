@@ -37,6 +37,9 @@ class PptxSlideStructure:
     slide: int
     shapes: int = 0
     text_shapes: int = 0
+    shape_autofit: int = 0
+    normal_autofit: int = 0
+    no_autofit: int = 0
     pictures: int = 0
     image_fill_shapes: int = 0
     image_fill_rects: int = 0
@@ -53,8 +56,14 @@ class PptxSlideStructure:
     estimated_split_prices: int = 0
     image_fill_shape_names: list[str] = field(default_factory=list)
 
+    @property
+    def autofit_contracts(self) -> int:
+        return self.shape_autofit + self.normal_autofit + self.no_autofit
+
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        payload["autofit_contracts"] = self.autofit_contracts
+        return payload
 
 
 @dataclass(slots=True)
@@ -63,6 +72,14 @@ class PptxMappingAudit:
     imported_pages: int = 0
     source_text_shapes: int = 0
     imported_text_nodes: int = 0
+    source_autofit_contracts: int = 0
+    imported_autofit_contracts: int = 0
+    source_shape_autofit: int = 0
+    imported_shape_autofit: int = 0
+    source_normal_autofit: int = 0
+    imported_normal_autofit: int = 0
+    source_no_autofit: int = 0
+    imported_no_autofit: int = 0
     source_image_shapes: int = 0
     imported_image_nodes: int = 0
     source_groups: int = 0
@@ -75,6 +92,10 @@ class PptxMappingAudit:
     imported_image_clips: int = 0
     page_count_match: bool = True
     text_coverage: float = 1.0
+    autofit_coverage: float = 1.0
+    shape_autofit_coverage: float = 1.0
+    normal_autofit_coverage: float = 1.0
+    no_autofit_coverage: float = 1.0
     image_coverage: float = 1.0
     group_coverage: float = 1.0
     fill_rect_coverage: float = 1.0
@@ -100,6 +121,9 @@ class PptxStructureReport:
     slide_height_emu: int = 0
     shapes: int = 0
     text_shapes: int = 0
+    shape_autofit: int = 0
+    normal_autofit: int = 0
+    no_autofit: int = 0
     pictures: int = 0
     image_fill_shapes: int = 0
     image_fill_rects: int = 0
@@ -113,11 +137,17 @@ class PptxStructureReport:
     warnings: list[str] = field(default_factory=list)
 
     @property
+    def autofit_contracts(self) -> int:
+        return self.shape_autofit + self.normal_autofit + self.no_autofit
+
+    @property
     def ready(self) -> bool:
         return not self.warnings
 
     def to_dict(self) -> dict[str, Any]:
-        return asdict(self)
+        payload = asdict(self)
+        payload["autofit_contracts"] = self.autofit_contracts
+        return payload
 
     def audit_document(self, document: GraphicsDocument) -> PptxMappingAudit:
         imported_text = sum(
@@ -126,6 +156,25 @@ class PptxStructureReport:
             for node in page.nodes.values()
             if node.kind is NodeKind.TEXT and str(node.text or "").strip()
         )
+        imported_shape_autofit = sum(
+            1
+            for page in document.pages
+            for node in page.nodes.values()
+            if node.kind is NodeKind.TEXT and str(node.style.get("pptx_auto_fit") or "").lower() == "shape"
+        )
+        imported_normal_autofit = sum(
+            1
+            for page in document.pages
+            for node in page.nodes.values()
+            if node.kind is NodeKind.TEXT and str(node.style.get("pptx_auto_fit") or "").lower() == "normal"
+        )
+        imported_no_autofit = sum(
+            1
+            for page in document.pages
+            for node in page.nodes.values()
+            if node.kind is NodeKind.TEXT and str(node.style.get("pptx_auto_fit") or "").lower() == "none"
+        )
+        imported_autofit = imported_shape_autofit + imported_normal_autofit + imported_no_autofit
         imported_images = sum(
             1
             for page in document.pages
@@ -154,11 +203,24 @@ class PptxStructureReport:
                     imported_image_clips += 1
 
         source_images = self.pictures + self.image_fill_shapes
+        type_coverages = [
+            _coverage(imported_shape_autofit, self.shape_autofit) if self.shape_autofit else 1.0,
+            _coverage(imported_normal_autofit, self.normal_autofit) if self.normal_autofit else 1.0,
+            _coverage(imported_no_autofit, self.no_autofit) if self.no_autofit else 1.0,
+        ]
         audit = PptxMappingAudit(
             source_slides=self.slide_count,
             imported_pages=len(document.pages),
             source_text_shapes=self.text_shapes,
             imported_text_nodes=imported_text,
+            source_autofit_contracts=self.autofit_contracts,
+            imported_autofit_contracts=imported_autofit,
+            source_shape_autofit=self.shape_autofit,
+            imported_shape_autofit=imported_shape_autofit,
+            source_normal_autofit=self.normal_autofit,
+            imported_normal_autofit=imported_normal_autofit,
+            source_no_autofit=self.no_autofit,
+            imported_no_autofit=imported_no_autofit,
             source_image_shapes=source_images,
             imported_image_nodes=imported_images,
             source_groups=self.groups,
@@ -171,6 +233,10 @@ class PptxStructureReport:
             imported_image_clips=imported_image_clips,
             page_count_match=len(document.pages) == self.slide_count,
             text_coverage=_coverage(imported_text, self.text_shapes),
+            autofit_coverage=min(type_coverages) if self.autofit_contracts else 1.0,
+            shape_autofit_coverage=_coverage(imported_shape_autofit, self.shape_autofit),
+            normal_autofit_coverage=_coverage(imported_normal_autofit, self.normal_autofit),
+            no_autofit_coverage=_coverage(imported_no_autofit, self.no_autofit),
             image_coverage=_coverage(imported_images, source_images),
             group_coverage=_coverage(imported_groups, self.groups),
             fill_rect_coverage=_coverage(imported_fill_rects, self.image_fill_rects),
@@ -185,6 +251,11 @@ class PptxStructureReport:
             audit.warnings.append(
                 f"Cobertura de texto PPTX baixa: {audit.text_coverage * 100:.2f}% "
                 f"({imported_text}/{self.text_shapes})."
+            )
+        if self.autofit_contracts >= 4 and audit.autofit_coverage < 0.95:
+            audit.warnings.append(
+                f"Cobertura de contratos auto-fit PPTX baixa: {audit.autofit_coverage * 100:.2f}% "
+                f"({imported_autofit}/{self.autofit_contracts}); verifique spAutoFit/normAutofit/noAutofit."
             )
         if source_images >= 2 and audit.image_coverage < 0.85:
             audit.warnings.append(
@@ -243,6 +314,9 @@ def inspect_pptx_structure(source: str | Path) -> PptxStructureReport:
                 report.slides.append(item)
                 report.shapes += item.shapes
                 report.text_shapes += item.text_shapes
+                report.shape_autofit += item.shape_autofit
+                report.normal_autofit += item.normal_autofit
+                report.no_autofit += item.no_autofit
                 report.pictures += item.pictures
                 report.image_fill_shapes += item.image_fill_shapes
                 report.image_fill_rects += item.image_fill_rects
@@ -278,6 +352,8 @@ def main(argv: list[str] | None = None) -> int:
     print(
         "SR PPTX Structure: "
         f"slides={report.slide_count} · textos={report.text_shapes} · "
+        f"autofit={report.autofit_contracts} "
+        f"(forma={report.shape_autofit}, texto={report.normal_autofit}, sem={report.no_autofit}) · "
         f"imagens={report.pictures + report.image_fill_shapes} "
         f"(pic={report.pictures}, blipFill={report.image_fill_shapes}) · "
         f"fillRect={report.image_fill_rects} (outset={report.image_fill_outsets}) · "
@@ -289,6 +365,8 @@ def main(argv: list[str] | None = None) -> int:
         for slide in report.slides:
             print(
                 f"  slide {slide.slide}: shapes={slide.shapes} textos={slide.text_shapes} "
+                f"autofit={slide.autofit_contracts} "
+                f"(forma={slide.shape_autofit}, texto={slide.normal_autofit}, sem={slide.no_autofit}) "
                 f"imagens={slide.pictures + slide.image_fill_shapes} grupos={slide.groups} "
                 f"custGeom={slide.custom_geometry} fillRect={slide.image_fill_rects} "
                 f"outset={slide.image_fill_outsets} máscaras irregulares={slide.image_custom_geometry} "
@@ -308,6 +386,14 @@ def _inspect_slide(root: ET.Element, slide_no: int) -> PptxSlideStructure:
         text = _shape_text(shape)
         if text:
             item.text_shapes += 1
+            body = shape.find(f"./{{{P_NS}}}txBody/{{{A_NS}}}bodyPr")
+            if body is not None:
+                if body.find(f"{{{A_NS}}}spAutoFit") is not None:
+                    item.shape_autofit += 1
+                elif body.find(f"{{{A_NS}}}normAutofit") is not None:
+                    item.normal_autofit += 1
+                elif body.find(f"{{{A_NS}}}noAutofit") is not None:
+                    item.no_autofit += 1
             cleaned = _clean_text(text)
             currencies += int(bool(_CURRENCY_RE.fullmatch(cleaned)))
             integers += int(bool(_INTEGER_RE.fullmatch(cleaned)))
