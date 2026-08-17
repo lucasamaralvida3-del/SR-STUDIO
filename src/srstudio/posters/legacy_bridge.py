@@ -320,6 +320,7 @@ class LegacyPosterBridge:
 
     @staticmethod
     def _legacy_unit(value: str) -> str:
+        """Translate internal sale units to the wording printed on promotion posters."""
         unit = (value or "UN").upper().strip()
         if unit in {"À LATA", "A LATA"}:
             return "À LATA"
@@ -327,7 +328,8 @@ class LegacyPosterBridge:
             return "À GARRAFA"
         if unit == "KG":
             return "KG"
-        return "UN"
+        # Keep UN as the internal/business unit while using the cleaner retail wording on the artwork.
+        return "CADA"
 
     @staticmethod
     def _validity_label(value: str) -> str:
