@@ -7,7 +7,9 @@ from srstudio.graphics2.qt_host import load_launch_context
 
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_REAL_CARTAZ_VENDA = _REPO_ROOT / "src" / "srstudio" / "assets" / "poster_templates" / "legacy" / "models" / "CARTAZ_VENDA.pptx"
+_MODELS = _REPO_ROOT / "src" / "srstudio" / "assets" / "poster_templates" / "legacy" / "models"
+_REAL_CARTAZ_VENDA = _MODELS / "CARTAZ_VENDA.pptx"
+_REAL_SEMANTIC_TEMPLATE = _MODELS / "SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx"
 
 
 def test_real_cartaz_venda_runs_editor_import_persistence_and_exports(tmp_path: Path):
@@ -51,3 +53,28 @@ def test_real_cartaz_venda_runs_editor_import_persistence_and_exports(tmp_path: 
     assert Path(report.png_path).is_file()
     assert Path(report.pdf_path).is_file()
     assert report.errors == []
+
+
+def test_real_two_price_template_recovers_professional_product_semantics(tmp_path: Path):
+    """Require real ProductCard/PriceBlock/SmartSlot semantics from a production SR template."""
+
+    assert _REAL_SEMANTIC_TEMPLATE.is_file()
+    output = tmp_path / "semantic-pptx-probe"
+    report = run_professional_probe(
+        _REAL_SEMANTIC_TEMPLATE,
+        output_dir=output,
+        require_semantic_products=True,
+    )
+
+    metrics = dict(report.usability.get("metrics") or {})
+    assert metrics.get("price_blocks", 0) > 0, report.to_dict()
+    assert metrics.get("product_cards", 0) > 0, report.to_dict()
+    assert metrics.get("smart_slots", 0) > 0, report.to_dict()
+    assert metrics.get("semantic_missing_members", 0) == 0, report.to_dict()
+    assert metrics.get("semantic_missing_slots", 0) == 0, report.to_dict()
+    assert metrics.get("duplicate_slot_ids", 0) == 0, report.to_dict()
+    assert report.ready is True, report.to_dict()
+    assert report.gate_blockers == []
+    assert report.persistence_ok is True
+    assert report.png_ok is True
+    assert report.pdf_ok is True
