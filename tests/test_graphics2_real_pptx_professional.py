@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 from srstudio.graphics2.professional_probe import run_professional_probe
@@ -10,6 +11,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _MODELS = _REPO_ROOT / "src" / "srstudio" / "assets" / "poster_templates" / "legacy" / "models"
 _REAL_CARTAZ_VENDA = _MODELS / "CARTAZ_VENDA.pptx"
 _REAL_SEMANTIC_TEMPLATE = _MODELS / "SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx"
+_SEMANTIC_DIAGNOSTIC = _REPO_ROOT / "g2-real-semantic-diagnostic.json"
 
 
 def test_real_cartaz_venda_runs_editor_import_persistence_and_exports(tmp_path: Path):
@@ -70,6 +72,9 @@ def test_real_two_price_template_recovers_professional_product_semantics(tmp_pat
             "w": round(node.transform.width, 3),
             "h": round(node.transform.height, 3),
             "parent": node.parent_id or "",
+            "font_size": node.style.get("font_size"),
+            "binding_role": node.binding_role.value if node.binding_role is not None else "",
+            "locked": node.locked,
         }
         for page in context.document.pages
         for node in page.nodes.values()
@@ -85,11 +90,18 @@ def test_real_two_price_template_recovers_professional_product_semantics(tmp_pat
 
     metrics = dict(report.usability.get("metrics") or {})
     diagnostic = {
+        "source": str(_REAL_SEMANTIC_TEMPLATE),
         "metrics": metrics,
         "gate_blockers": report.gate_blockers,
         "semantic_report": context.document.metadata.get("semantic_blocks"),
+        "semantic_recovery_complete": context.document.metadata.get("semantic_recovery_complete"),
         "text_nodes": text_diagnostics,
     }
+    _SEMANTIC_DIAGNOSTIC.write_text(
+        json.dumps(diagnostic, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+
     assert metrics.get("price_blocks", 0) > 0, diagnostic
     assert metrics.get("product_cards", 0) > 0, diagnostic
     assert metrics.get("smart_slots", 0) > 0, diagnostic
