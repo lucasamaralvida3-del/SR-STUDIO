@@ -107,16 +107,19 @@ def test_gpu_flag_uses_automatic_accelerated_backend_selection(tmp_path, monkeyp
     assert captured["args"][captured["args"].index("--graphics-api") + 1] == "auto"
 
 
-def test_turbo_shell_exposes_engine2_only_through_feature_flagged_launcher_and_keeps_beta727_cartazes():
+def test_turbo_shell_promotes_engine2_in_beta_and_keeps_cartazes_modules_isolated():
     source = (Path(srstudio.__file__).with_name("app") / "turbo_posters.py").read_text(encoding="utf-8")
 
     assert "import srstudio.app.cartazes_productivity as cartazes_productivity" in source
     assert "from srstudio.graphics2.saved_merge import analyze_saved_session_merge, resolve_saved_session_merge" in source
     assert 'if name == "Encartes Studio":' in source
+    assert "graphics2_runtime_flags(self.data_dir)" in source
+    assert "self._show_graphics2_primary_hub(gpu_enabled)" in source
+    assert "self.after(120, self._auto_launch_graphics2_primary)" in source
+    assert 'text="Studio de Encartes G2"' in source
+    assert 'text="ABRIR STUDIO DE ENCARTES G2"' in source
+    assert 'text="Abrir Encartes Clássico"' in source
     assert "self._attach_graphics2_launcher()" in source
-    assert "engine_enabled, gpu_enabled = bridge_flags(self.data_dir)" in source
-    assert "if not engine_enabled:" in source
-    assert 'label = "ENGINE 2 · GPU" if gpu_enabled else "ENGINE 2 · TESTE"' in source
     assert "launch_studio_project_if_enabled(self.project, self.data_dir)" in source
     assert "ask_graphics2_merge_resolutions(self, analysis.report)" in source
     assert "resolve_saved_session_merge(" in source
