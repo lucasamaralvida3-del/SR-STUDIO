@@ -79,3 +79,48 @@ def test_gate_blocks_failed_visual_comparison_even_with_high_numeric_score():
     report = inspect_production_gate(document, require_visual_fidelity=True)
     assert not report.ready
     assert any(issue.code == "VISUAL_FIDELITY_FAILED" for issue in report.issues)
+
+
+def test_pptx_advanced_effects_are_visible_without_inventing_score_penalty():
+    document = _healthy_document()
+    baseline = inspect_production_gate(document, require_visual_fidelity=False)
+    document.metadata["pptx_effects"] = {
+        "totals": {
+            "advanced_effects": 4,
+            "gradient_fills": 2,
+            "outer_shadows": 1,
+            "inner_shadows": 1,
+            "alpha_modifiers": 7,
+        },
+        "slides": [],
+    }
+
+    report = inspect_production_gate(document, require_visual_fidelity=False)
+
+    assert report.score == baseline.score
+    assert report.ready == baseline.ready
+    assert report.pptx_advanced_effects == 4
+    assert report.pptx_gradient_fills == 2
+    assert report.pptx_shadows == 2
+    assert report.pptx_alpha_modifiers == 7
+    issue = next(item for item in report.issues if item.code == "PPTX_ADVANCED_EFFECTS_PRESENT")
+    assert issue.severity == "warning"
+    assert "Golden Master" in issue.message
+
+
+def test_pptx_effect_audit_failure_is_warning_only():
+    document = _healthy_document()
+    document.metadata["pptx_effects"] = {
+        "source": "modelo.pptx",
+        "totals": {},
+        "slides": [],
+        "error": "OOXML inválido",
+    }
+
+    report = inspect_production_gate(document, require_visual_fidelity=False)
+
+    assert report.ready
+    assert any(
+        issue.code == "PPTX_EFFECT_AUDIT_FAILED" and issue.severity == "warning"
+        for issue in report.issues
+    )
