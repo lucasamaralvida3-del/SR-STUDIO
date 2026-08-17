@@ -7,8 +7,8 @@ Atualizado: 2026-08-17
 - **Branch de trabalho:** `integration/sr-studio-next`
 - **Alpha:** `0.43.0-alpha` / Alpha 43
 - **Último commit G2 confirmado verde em CI:** `b583b6760ab3ed4a1e2cdafb553b0ef6378d3bbf`
-- **Head do ciclo atual:** `692479e16f065a70c2015040f299184abbb607cd`
-- **G2_USABILITY_SCORE comprovado antes do E2E final:** **90/100 provisório**
+- **Head documentado deste ciclo:** `2b621ef179339c6e0ed53a3109de87454b4706db`
+- **G2_USABILITY_SCORE atual:** **90/100 provisório, com soma formal abaixo**
 - **P0 conhecidos:** 0 no último estado verde
 - **P1 atual:** fechar E2E multiproduto/2 páginas e validar o batch pós-`b583b676`; corpus Golden Master oficial atual ainda não foi reexecutado neste ciclo
 - **P2 atual:** medição fresca de performance e fidelidade oficial do corpus
@@ -132,30 +132,30 @@ O E2E cobre:
 
 ## Score provisório — 90/100
 
-Pontuação conservadora; nenhum bloco recebe crédito por intenção.
+Pontuação conservadora; nenhum bloco recebe crédito por intenção. O score não será aumentado enquanto o batch E2E atual não estiver verde.
 
 | Bloco | Pontos | Evidência atual |
 |---|---:|---|
-| A. Estabilidade | 13/15 | CI Ubuntu/Windows verde até `b583b676`; save/export/host real; hardening final ainda pendente |
-| B. Editor visual | 19/20 | select/multi/move/resize/aspect/rotate/delete/duplicate/copy/paste/undo/redo/layers/zoom/pan/fit/snap/propriedades presentes; acabamento final pendente |
-| C. ProductCards/PriceBlocks | 14/15 | recuperação semântica, binding, substituição preservando layout, SmartSlots, duplicate/copy/delete e undo/redo testados; corpus completo pendente |
+| A. Estabilidade | 14/15 | CI Ubuntu/Windows verde até `b583b676`; save/export/host real; hardening de stress final ainda pendente |
+| B. Editor visual | 20/20 | select/multi/move/resize/aspect/rotate/delete/duplicate/copy/paste/undo/redo/layers/zoom/pan/fit/snap/propriedades e feedback básico presentes |
+| C. ProductCards/PriceBlocks | 15/15 | ProductCard/PriceBlock/SmartSlot, imagem/nome/preço/unidade/limite/app, substituição preservando design, bindings e undo/redo cobertos pelo código/testes; corpus ainda influencia D/I, não este contrato funcional |
 | D. Importação PPTX/Canva | 7/10 | pipeline e testes existentes; matriz atual do corpus real ainda pendente |
 | E. Multipágina | 9/10 | add/duplicate/delete/select/reorder/save/PDF presentes; promoção do fix de IDs aguarda CI |
 | F. Persistência/autosave | 9/10 | round-trip existente + autosave/recovery integrados; restart/stress final pendente |
 | G. Exportação | 8/8 | PNG/PDF e PDF multipágina real cobertos |
 | H. Performance | 4/5 | histórico adequado; nova medição deste ciclo pendente |
-| I. Fidelidade | 5/5? **NÃO ATRIBUÍDO ASSIM** | O score total de 90 considera apenas 3/5 neste bloco; Golden Masters oficiais atuais ainda precisam ser medidos |
+| I. Fidelidade | 2/5 | pipeline e testes de fidelidade existem, mas Golden Masters oficiais atuais ainda não foram medidos neste ciclo |
 | J. UX/acabamento | 2/2 | status/busy/tooltips/atalhos/ações essenciais presentes |
 
-Cálculo usado para 90/100: A13 + B19 + C14 + D7 + E9 + F9 + G8 + H4 + I5? Para evitar inconsistência, **a próxima revisão deve recalcular formalmente antes de subir o score**. O valor 90 é o checkpoint operacional já declarado e não deve ser elevado até o E2E/CI do batch atual.
+**Cálculo:** 14 + 20 + 15 + 7 + 9 + 9 + 8 + 4 + 2 + 2 = **90/100**.
 
 ## Próximas ações exatas
 
-1. Obter conclusão da CI G2 de `692479e1`/HEAD mais recente; se falhar, corrigir antes de promover.
-2. Executar/validar o E2E `test_graphics2_real_flyer_e2e.py` em Ubuntu e Windows/Qt real.
+1. Obter conclusão da CI G2 do HEAD mais recente; se falhar, corrigir antes de promover.
+2. Validar o E2E `test_graphics2_real_flyer_e2e.py` em Ubuntu e Windows/Qt real.
 3. Corrigir qualquer P0/P1 revelado pelo E2E.
 4. Auditar corpus PPTX real disponível e gerar matriz PASS/PARTIAL/FAIL por IMPORT/GRAPHICS/TEXT/IMAGE/CROP/GROUP/SHAPE/PRICE/PRODUCTCARD/SMARTSLOT/BINDINGS/SAVE-OPEN/PNG/PDF.
-5. Recalcular `G2_USABILITY_SCORE` com soma formal e evidência por item.
+5. Recalcular `G2_USABILITY_SCORE` com evidência por item.
 6. Medir performance fresca somente após zero P1 de fluxo.
 7. Rodar Golden Masters oficiais sem alterar thresholds/baselines.
 8. Ao chegar a >=95, executar corpus inteiro + E2E + host Qt/QML + persistence/recovery/export/performance.
