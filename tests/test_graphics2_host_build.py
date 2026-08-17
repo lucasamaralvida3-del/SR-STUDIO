@@ -44,6 +44,29 @@ def test_pyinstaller_contract_is_onedir_windowed_no_upx_and_collects_qt(tmp_path
     assert module.HOST_NAME == "SRGraphicsEngine2Host"
 
 
+def test_prune_qt_build_artifacts_removes_only_objects_directories(tmp_path):
+    module = _build_module()
+    bundle = tmp_path / module.HOST_NAME
+    keep = bundle / "_internal" / "PySide6" / "Qt" / "qml" / "QtQuick"
+    keep.mkdir(parents=True)
+    (keep / "qmldir").write_text("module QtQuick", encoding="utf-8")
+
+    release_objects = bundle / "_internal" / "PySide6" / "objects-Release-x86_64"
+    nested_objects = bundle / "_internal" / "PySide6" / "Qt" / "objects-RelWithDebInfo-cache"
+    release_objects.mkdir(parents=True)
+    nested_objects.mkdir(parents=True)
+    (release_objects / "temporary.obj").write_bytes(b"build-only")
+    (nested_objects / "temporary.obj").write_bytes(b"build-only")
+
+    removed = module.prune_qt_build_artifacts(bundle)
+
+    assert len(removed) == 2
+    assert not release_objects.exists()
+    assert not nested_objects.exists()
+    assert keep.is_dir()
+    assert (keep / "qmldir").read_text(encoding="utf-8") == "module QtQuick"
+
+
 def test_build_entry_uses_graphics2_qt_host_directly():
     source = (ROOT / "build" / "graphics2_host_entry.py").read_text(encoding="utf-8")
     assert "from srstudio.graphics2.qt_host import main" in source
