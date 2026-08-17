@@ -5,7 +5,7 @@ import QtQuick.Layouts
 Rectangle {
     id: panel
     width: 326
-    height: expanded ? 346 : 56
+    height: expanded ? 364 : 56
     anchors.right: parent ? parent.right : undefined
     anchors.top: parent ? parent.top : undefined
     anchors.rightMargin: 8
@@ -134,6 +134,15 @@ Rectangle {
 
                 Label { text: "Auto-fit PPTX"; color: "#64748B"; font.pixelSize: 9 }
                 Label { text: autofitSummary(); color: "#334155"; font.bold: true; font.pixelSize: 9; horizontalAlignment: Text.AlignRight; Layout.fillWidth: true }
+
+                Label { text: "Cobertura auto-fit"; color: "#64748B"; font.pixelSize: 9 }
+                Label {
+                    text: percent(gate.mapping_autofit_coverage)
+                    color: Number(gate.mapping_autofit_coverage === undefined ? 1 : gate.mapping_autofit_coverage) < 0.80 ? "#B91C1C" : Number(gate.mapping_autofit_coverage === undefined ? 1 : gate.mapping_autofit_coverage) < 0.95 ? "#A16207" : "#334155"
+                    font.bold: Number(gate.mapping_autofit_coverage === undefined ? 1 : gate.mapping_autofit_coverage) < 0.95
+                    horizontalAlignment: Text.AlignRight
+                    Layout.fillWidth: true
+                }
 
                 Label { text: "Cobertura imagens"; color: "#64748B"; font.pixelSize: 9 }
                 Label { text: percent(gate.mapping_image_coverage); color: "#334155"; horizontalAlignment: Text.AlignRight; Layout.fillWidth: true }
