@@ -4,13 +4,14 @@ from __future__ import annotations
 
 Qt/QML and the Command Router should not need to know which domain service owns
 an operation. Keeping this façade thin lets UI wiring evolve without coupling
-QML to ProductCard, PriceBlock, image and page implementation details.
+QML to ProductCard, PriceBlock, image, recovery and page implementation details.
 """
 
 from dataclasses import dataclass
 from typing import Any
 
 from .asset_edit import replace_image
+from .identity_repair import IdentityRepairReport, repair_legacy_identity_collisions
 from .operations import GraphicsSession
 from .page_management import delete_page, duplicate_page, rename_page, reorder_page
 from .price_edit import edit_price_block
@@ -78,3 +79,6 @@ class G2ProfessionalActions:
             self.session.document,
             require_multi_product_page=require_multi_product_page,
         )
+
+    def repair_legacy_identities(self) -> IdentityRepairReport:
+        return repair_legacy_identity_collisions(self.session)
