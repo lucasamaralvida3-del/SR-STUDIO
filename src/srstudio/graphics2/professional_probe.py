@@ -41,6 +41,7 @@ class ProfessionalProbeReport:
     scene_path: str = ""
     png_path: str = ""
     pdf_path: str = ""
+    gate_blockers: list[str] = field(default_factory=list)
     errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -64,6 +65,11 @@ def run_professional_probe(
         require_semantic_products=require_semantic_products,
         require_bound_product=require_bound_product,
     )
+    gate_blockers = [
+        f"{item.code}: {item.message}"
+        for item in usability.checks
+        if not item.passed and item.severity == "blocker"
+    ]
 
     before = _counts(document)
     errors: list[str] = []
@@ -132,6 +138,7 @@ def run_professional_probe(
             scene_path=str(scene_path) if output_dir is not None else "",
             png_path=str(png_path) if output_dir is not None else "",
             pdf_path=str(pdf_path) if output_dir is not None else "",
+            gate_blockers=gate_blockers,
             errors=errors,
         )
     finally:
