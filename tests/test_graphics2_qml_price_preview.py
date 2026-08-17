@@ -57,6 +57,22 @@ def test_qml_preview_nowrap_without_autofit_preserves_original_scene_contract():
     assert document.active_page.node(title.id).style["nowrap"] is True
 
 
+def test_qml_preview_preserves_explicit_newlines_when_nowrap_is_true():
+    document = GraphicsDocument()
+    title = GraphicsNode(
+        kind=NodeKind.TEXT,
+        name="Título em parágrafos",
+        text="OFERTA\nESPECIAL",
+        transform=Transform(width=200, height=90),
+        style={"fit_inside_box": False, "nowrap": True, "font_size": 32},
+    )
+
+    preview_node = _preview_node(document, title)
+
+    assert preview_node["style"]["nowrap"] is True
+    assert preview_node["text"] == "OFERTA\nESPECIAL"
+
+
 def test_qml_preview_preserves_priceblock_overflow_only_fit_policy():
     document = GraphicsDocument()
     cents = GraphicsNode(
@@ -85,6 +101,8 @@ def test_graphics_editor_qml_separates_nowrap_from_autofit_policy():
 
     assert 'property bool fitTextInside: !!modelData.style.fit_inside_box || String(modelData.style.semantic_fit_policy || "").toLowerCase() === "overflow_only"' in qml
     assert "wrapMode: modelData.style.nowrap ? Text.NoWrap : Text.WordWrap" in qml
+    assert "maximumLineCount: 2147483647" in qml
+    assert "maximumLineCount: modelData.style.nowrap ? 1 : 2147483647" not in qml
     assert "fontSizeMode: fitTextInside ? Text.Fit : Text.FixedSize" in qml
     assert "elide: fitTextInside ? Text.ElideNone : (modelData.style.nowrap ? Text.ElideNone : Text.ElideRight)" in qml
     assert "fontSizeMode: (modelData.style.fit_inside_box || modelData.style.nowrap) ? Text.Fit : Text.FixedSize" not in qml
