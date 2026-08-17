@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 import zipfile
 
+import pytest
+
 from srstudio.graphics2.import_bridge import _store_pptx_effect_audit
 from srstudio.graphics2.model import GraphicsDocument
 from srstudio.graphics2.pptx_effects import audit_pptx_effects, main
@@ -15,9 +17,15 @@ SLIDE_1 = """<?xml version=\"1.0\" encoding=\"UTF-8\"?>
     <p:sp>
       <p:nvSpPr><p:cNvPr id=\"42\" name=\"Preço principal\"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
       <p:spPr>
-        <a:gradFill><a:gsLst><a:gs pos=\"0\"><a:srgbClr val=\"FF0000\"><a:alpha val=\"65000\"/></a:srgbClr></a:gs></a:gsLst></a:gradFill>
+        <a:gradFill>
+          <a:gsLst>
+            <a:gs pos=\"0\"><a:srgbClr val=\"FF0000\"><a:alpha val=\"65000\"/></a:srgbClr></a:gs>
+            <a:gs pos=\"100000\"><a:srgbClr val=\"0000FF\"/></a:gs>
+          </a:gsLst>
+          <a:lin ang=\"5400000\" scaled=\"1\"/>
+        </a:gradFill>
         <a:effectLst>
-          <a:outerShdw blurRad=\"12700\" dist=\"12700\" dir=\"5400000\"><a:srgbClr val=\"000000\"><a:alpha val=\"40000\"/></a:srgbClr></a:outerShdw>
+          <a:outerShdw blurRad=\"12700\" dist=\"19050\" dir=\"5400000\" rotWithShape=\"0\"><a:srgbClr val=\"000000\"><a:alpha val=\"40000\"/></a:srgbClr></a:outerShdw>
           <a:glow rad=\"63500\"><a:srgbClr val=\"FFFFFF\"/></a:glow>
         </a:effectLst>
       </p:spPr>
@@ -82,6 +90,8 @@ def test_effect_audit_counts_and_orders_slides(tmp_path):
     assert report.totals["slides_with_alpha"] == 1
     assert report.totals["shapes_with_advanced_effects"] == 2
     assert report.totals["shapes_with_alpha"] == 1
+    assert report.totals["renderable_linear_gradients"] == 1
+    assert report.totals["renderable_outer_shadows"] == 1
 
 
 def test_effect_audit_attributes_effects_to_specific_shapes(tmp_path):
@@ -101,6 +111,23 @@ def test_effect_audit_attributes_effects_to_specific_shapes(tmp_path):
     assert price.alpha_modifiers == 2
     assert price.advanced_effects == 3
 
+    assert price.linear_gradient is not None
+    assert price.linear_gradient["type"] == "linear"
+    assert price.linear_gradient["angle"] == pytest.approx(90.0)
+    assert price.linear_gradient["scaled"] is True
+    assert price.linear_gradient["stops"] == [
+        {"position": 0.0, "color": "#FF0000", "alpha": 0.65},
+        {"position": 1.0, "color": "#0000FF", "alpha": 1.0},
+    ]
+    assert price.outer_shadow is not None
+    assert price.outer_shadow["type"] == "outer"
+    assert price.outer_shadow["color"] == "#000000"
+    assert price.outer_shadow["alpha"] == pytest.approx(0.4)
+    assert price.outer_shadow["blur"] == pytest.approx(12700 / 9525)
+    assert price.outer_shadow["distance"] == pytest.approx(2.0)
+    assert price.outer_shadow["direction"] == pytest.approx(90.0)
+    assert price.outer_shadow["rot_with_shape"] is False
+
     assert (banner.slide, banner.shape_id, banner.shape_name) == (2, "7", "Faixa decorativa")
     assert banner.pattern_fills == 1
     assert banner.inner_shadows == 1
@@ -109,6 +136,8 @@ def test_effect_audit_attributes_effects_to_specific_shapes(tmp_path):
     assert banner.scene_3d == 1
     assert banner.shape_3d == 1
     assert banner.advanced_effects == 6
+    assert banner.linear_gradient is None
+    assert banner.outer_shadow is None
 
 
 def test_import_bridge_persists_effect_inventory_in_scene_metadata(tmp_path):
@@ -122,9 +151,13 @@ def test_import_bridge_persists_effect_inventory_in_scene_metadata(tmp_path):
     assert stored["totals"]["gradient_fills"] == 1
     assert stored["totals"]["outer_shadows"] == 1
     assert stored["totals"]["inner_shadows"] == 1
+    assert stored["totals"]["renderable_linear_gradients"] == 1
+    assert stored["totals"]["renderable_outer_shadows"] == 1
     assert stored["slides"][0]["slide"] == 1
     assert stored["shapes"][0]["shape_id"] == "42"
     assert stored["shapes"][0]["shape_name"] == "Preço principal"
+    assert stored["shapes"][0]["linear_gradient"]["angle"] == pytest.approx(90.0)
+    assert stored["shapes"][0]["outer_shadow"]["alpha"] == pytest.approx(0.4)
 
 
 def test_import_bridge_records_effect_audit_error_without_breaking_import(tmp_path):
@@ -150,11 +183,19 @@ def test_effect_audit_cli_writes_json_and_lists_shapes(tmp_path, capsys):
     assert payload["totals"]["gradient_fills"] == 1
     assert payload["totals"]["outer_shadows"] == 1
     assert payload["totals"]["pattern_fills"] == 1
+    assert payload["totals"]["renderable_linear_gradients"] == 1
+    assert payload["totals"]["renderable_outer_shadows"] == 1
     assert payload["slides"][0]["slide"] == 1
     assert payload["shapes"][0]["shape_id"] == "42"
+    assert payload["shapes"][0]["linear_gradient"]["stops"][1]["color"] == "#0000FF"
+    assert stdout_contains_effects(main, source, capsys)
+
+
+def stdout_contains_effects(main_fn, source, capsys) -> bool:
+    # A chamada anterior já consumiu a execução real; isolamos somente a
+    # asserção de saída para manter o teste legível e explícito.
     stdout = capsys.readouterr().out
-    assert "PPTX Effects:" in stdout
-    assert "Preço principal" in stdout
+    return "PPTX Effects:" in stdout and "Preço principal" in stdout
 
 
 def test_effect_audit_rejects_non_pptx(tmp_path):
