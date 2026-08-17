@@ -23,6 +23,7 @@ import zipfile
 
 from .image_fill import has_drawingml_fill_rect, normalize_fill_rect
 from .model import GraphicsDocument, GraphicsNode, NodeKind
+from .pptx_artwork import recover_pptx_artwork
 from .pptx_image_transform import recover_pptx_image_transforms
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -100,6 +101,11 @@ def recover_pptx_fill_rects(source: str | Path, document: GraphicsDocument) -> P
     if path.suffix.lower() != ".pptx":
         raise ValueError("Recuperação de fillRect requer um arquivo .pptx.")
 
+    # Artwork é recuperado antes dos contratos geométricos. Assim uma faixa,
+    # fundo ou banner que tenha sido descartado na primeira passagem volta à SR
+    # Scene a tempo de receber fillRect e rotação/flip exatos logo abaixo.
+    _recover_artwork_contracts(path, document)
+
     contracts = _read_contracts(path)
     report = PptxFillRectRecoveryReport(
         source_contracts=len(contracts),
@@ -151,6 +157,29 @@ def recover_pptx_fill_rects(source: str | Path, document: GraphicsDocument) -> P
     document.metadata["pptx_fill_rect_recovery"] = report.to_dict()
     _recover_image_transform_contracts(path, document)
     return report
+
+
+def _recover_artwork_contracts(path: Path, document: GraphicsDocument) -> None:
+    """Recupera assets fixos sem transformar falha diagnóstica em crash."""
+
+    try:
+        recover_pptx_artwork(path, document)
+    except Exception as exc:
+        document.metadata["pptx_artwork_recovery"] = {
+            "source_images": 0,
+            "source_large_artworks": 0,
+            "matched_images": 0,
+            "recovered_nodes": 0,
+            "repaired_assets": 0,
+            "ready_images": 0,
+            "ready_large_artworks": 0,
+            "missing_media": 0,
+            "ambiguous_images": 0,
+            "coverage": 0.0,
+            "large_artwork_coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
 
 
 def _recover_image_transform_contracts(path: Path, document: GraphicsDocument) -> None:
