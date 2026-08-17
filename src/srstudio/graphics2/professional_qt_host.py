@@ -3,13 +3,12 @@ from __future__ import annotations
 """Safe opt-in Qt host for the professional Studio de Encartes actions.
 
 The stable ``qt_host`` remains untouched. This wrapper temporarily injects the
-ProfessionalGraphicsCommandRouter into the already-tested host module while the
-professional editor flow is validated in CI and real flyers. Once the opt-in
-host proves itself, Codex can make the final two-line host switch with evidence
-instead of rewriting the host blindly.
+ProfessionalGraphicsCommandRouter and a contextual ProfessionalInspector into
+the already-tested host module while the professional editor flow is validated.
 """
 
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Iterator
 
 from . import qt_host as base
@@ -27,26 +26,41 @@ def professional_router_enabled() -> Iterator[None]:
         base.GraphicsCommandRouter = previous
 
 
+@contextmanager
+def professional_host_enabled() -> Iterator[None]:
+    """Enable professional routing plus the opt-in contextual QML inspector."""
+    previous_router = base.GraphicsCommandRouter
+    previous_attach = base._attach_context_qml_tool
+    attached_professional_objects: list[object] = []
+
+    def attach_with_professional_inspector(engine, root_window, qml_path: Path, **kwargs):
+        result = previous_attach(engine, root_window, qml_path, **kwargs)
+        if not attached_professional_objects:
+            professional_qml = Path(qml_path).with_name("ProfessionalInspector.qml")
+            component, tool = previous_attach(engine, root_window, professional_qml, **kwargs)
+            attached_professional_objects.extend((component, tool))
+        return result
+
+    base.GraphicsCommandRouter = ProfessionalGraphicsCommandRouter
+    base._attach_context_qml_tool = attach_with_professional_inspector
+    try:
+        yield
+    finally:
+        base._attach_context_qml_tool = previous_attach
+        base.GraphicsCommandRouter = previous_router
+        attached_professional_objects.clear()
+
+
 def launch_qt_quick_editor(*args, **kwargs) -> int:
-    with professional_router_enabled():
+    with professional_host_enabled():
         return base.launch_qt_quick_editor(*args, **kwargs)
 
 
 def main(argv: list[str] | None = None) -> int:
-    # base.main resolves base.launch_qt_quick_editor at call time, so patch both
-    # router construction and launch entrypoint only for the duration of this
-    # opt-in process.
-    previous_launch = base.launch_qt_quick_editor
-    with professional_router_enabled():
-        base.launch_qt_quick_editor = previous_launch
-        try:
-            return base.main(argv)
-        finally:
-            base.launch_qt_quick_editor = previous_launch
+    with professional_host_enabled():
+        return base.main(argv)
 
 
-# Re-export read-only diagnostics/probe helpers so test scripts can use the
-# professional host without importing implementation details from qt_host.
 build_parser = base.build_parser
 load_launch_context = base.load_launch_context
 probe_graphics_api = base.probe_graphics_api
