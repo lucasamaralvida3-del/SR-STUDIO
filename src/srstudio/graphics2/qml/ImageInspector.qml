@@ -1,11 +1,12 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 Rectangle {
     id: panel
     width: 336
-    height: 610
+    height: 650
     anchors.right: parent ? parent.right : undefined
     anchors.bottom: parent ? parent.bottom : undefined
     anchors.rightMargin: 8
@@ -38,6 +39,14 @@ Rectangle {
         var node = id && page.nodes ? page.nodes[id] : null
         if (!node && scene.editor.selection && scene.editor.selection.length)
             node = page.nodes[String(scene.editor.selection[0])] || null
+        if (!node && page.nodes) {
+            for (var nodeId in page.nodes) {
+                if (page.nodes[nodeId] && page.nodes[nodeId].selected) {
+                    node = page.nodes[nodeId]
+                    break
+                }
+            }
+        }
         return node && (node.kind === "image" || node.kind === "background") ? node : null
     }
 
@@ -127,7 +136,26 @@ Rectangle {
         function onSceneChanged() { panel.refresh() }
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: Qt.callLater(refresh)
+
+    FileDialog {
+        id: replaceImageDialog
+        title: "Selecionar nova imagem"
+        fileMode: FileDialog.OpenFile
+        nameFilters: [
+            "Imagens (*.png *.jpg *.jpeg *.jfif *.webp *.bmp *.gif *.tif *.tiff)",
+            "Todos os arquivos (*)"
+        ]
+        onAccepted: {
+            if (!imageNode)
+                return
+            sceneBridge.dispatch(JSON.stringify({
+                "name": "replace_image",
+                "node_id": imageNode.id,
+                "source": selectedFile.toString()
+            }))
+        }
+    }
 
     Rectangle {
         anchors.fill: parent
@@ -182,6 +210,12 @@ Rectangle {
                     border.color: "#FFFFFFCC"
                     visible: previewImage.status === Image.Ready
                 }
+            }
+
+            Button {
+                Layout.fillWidth: true
+                text: "Substituir imagem…"
+                onClicked: if (imageNode) replaceImageDialog.open()
             }
 
             RowLayout {
@@ -334,7 +368,7 @@ Rectangle {
 
             Label {
                 Layout.fillWidth: true
-                text: "Crop, foco, zoom e espelhamento são persistidos no SR Scene e usados pelo canvas e pela exportação."
+                text: "A substituição preserva posição, tamanho, crop, rotação e camadas. Crop, foco, zoom e espelhamento são persistidos no SR Scene e usados pelo canvas e pela exportação."
                 wrapMode: Text.WordWrap
                 color: "#64748B"
                 font.pixelSize: 9

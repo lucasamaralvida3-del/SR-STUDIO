@@ -35,20 +35,31 @@ def normalize_local_image_source(raw_source: str) -> Path:
     if not raw:
         raise ValueError("Nenhuma imagem foi selecionada.")
 
-    parsed = urlparse(raw)
-    if parsed.scheme and parsed.scheme.lower() != "file":
-        raise ValueError("A substituição de imagem aceita somente arquivos locais.")
+    is_windows_drive = (
+        len(raw) >= 3
+        and raw[0].isalpha()
+        and raw[1] == ":"
+        and raw[2] in {"\\", "/"}
+    )
+    is_unc_path = raw.startswith("\\\\")
 
-    if parsed.scheme.lower() == "file":
-        if parsed.netloc and parsed.netloc not in {"", "localhost"}:
-            # UNC: file://server/share/file.png
-            value = f"//{parsed.netloc}{unquote(parsed.path)}"
-        else:
-            value = unquote(parsed.path)
-        if os.name == "nt" and len(value) >= 3 and value[0] == "/" and value[2] == ":":
-            value = value[1:]
-    else:
+    if is_windows_drive or is_unc_path:
         value = raw
+    else:
+        parsed = urlparse(raw)
+        if parsed.scheme and parsed.scheme.lower() != "file":
+            raise ValueError("A substituição de imagem aceita somente arquivos locais.")
+
+        if parsed.scheme.lower() == "file":
+            if parsed.netloc and parsed.netloc not in {"", "localhost"}:
+                # UNC: file://server/share/file.png
+                value = f"//{parsed.netloc}{unquote(parsed.path)}"
+            else:
+                value = unquote(parsed.path)
+            if os.name == "nt" and len(value) >= 3 and value[0] == "/" and value[2] == ":":
+                value = value[1:]
+        else:
+            value = raw
 
     path = Path(value).expanduser()
     try:

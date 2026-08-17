@@ -56,19 +56,42 @@ def save_package(document: GraphicsDocument, path: str | Path, *, embed_local_as
 
 def load_package(path: str | Path, *, extract_assets_to: str | Path | None = None) -> GraphicsDocument:
     source = Path(path)
-    with zipfile.ZipFile(source, "r") as archive:
-        manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
-        if manifest.get("format") != PACKAGE_FORMAT:
-            raise ValueError("Pacote não é SR Graphics Engine 2")
-        scene_raw = archive.read("scene.json")
-        if sha256(scene_raw).hexdigest() != manifest.get("scene_sha256"):
-            raise ValueError("Hash do scene.json inválido")
-        document = GraphicsDocument.from_dict(json.loads(scene_raw.decode("utf-8")))
-        if extract_assets_to:
-            destination = Path(extract_assets_to)
-            destination.mkdir(parents=True, exist_ok=True)
-            _extract_assets(document, manifest, archive, destination)
-            _extract_fonts(document, manifest, archive, destination / "fonts")
+    try:
+        with zipfile.ZipFile(source, "r") as archive:
+            manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+            if manifest.get("format") != PACKAGE_FORMAT:
+                raise ValueError("Pacote não é SR Graphics Engine 2")
+            scene_raw = archive.read("scene.json")
+            if sha256(scene_raw).hexdigest() != manifest.get("scene_sha256"):
+                raise ValueError("Hash do scene.json inválido")
+            scene_data = json.loads(scene_raw.decode("utf-8"))
+            document = GraphicsDocument.from_dict(scene_data)
+            # from_dict normalizes page dimensions/guides to float for runtime math.
+            # Restore the JSON scalar representation so repeated package round-trips
+            # remain byte-stable for documents originally authored with integers.
+            raw_pages = list(scene_data.get("pages") or [])
+            for page, raw_page in zip(document.pages, raw_pages):
+                if not isinstance(raw_page, dict):
+                    continue
+                width = raw_page.get("width")
+                height = raw_page.get("height")
+                if isinstance(width, (int, float)):
+                    page.width = width
+                if isinstance(height, (int, float)):
+                    page.height = height
+                page.guides_x = [
+                    value for value in raw_page.get("guides_x") or [] if isinstance(value, (int, float))
+                ]
+                page.guides_y = [
+                    value for value in raw_page.get("guides_y") or [] if isinstance(value, (int, float))
+                ]
+            if extract_assets_to:
+                destination = Path(extract_assets_to)
+                destination.mkdir(parents=True, exist_ok=True)
+                _extract_assets(document, manifest, archive, destination)
+                _extract_fonts(document, manifest, archive, destination / "fonts")
+    except zipfile.BadZipFile as exc:
+        raise ValueError("Pacote SR Scene inválido: arquivo ZIP corrompido.") from exc
     assert_document_integrity(document)
     return document
 
@@ -167,7 +190,9 @@ def _extract_assets(
         out.write_bytes(raw)
         if asset_id in document.assets:
             document.assets[asset_id].source = str(out)
-            document.assets[asset_id].embedded = False
+            # The local extraction is a runtime path; provenance remains that
+            # this asset is embedded in the portable SR Scene package.
+            document.assets[asset_id].embedded = True
             document.assets[asset_id].sha256 = sha256(raw).hexdigest()
             _rebind_asset_nodes(document, asset_id, out)
 

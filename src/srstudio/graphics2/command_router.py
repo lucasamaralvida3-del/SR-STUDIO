@@ -7,6 +7,8 @@ import json
 
 from .drop_target import find_drop_target
 from .geometry import SnapEngine, SnapSettings
+from .id_repair import repair_legacy_cross_page_ids
+from .image_replace import replace_image_source
 from .import_bridge import CanvaBindingService
 from .model import GraphicsNode, NodeKind, Transform, _id
 from .operations import GraphicsSession
@@ -29,6 +31,8 @@ class GraphicsCommandRouter:
 
     def __init__(self, session: GraphicsSession) -> None:
         self.session = session
+        # Open-time migration is deliberately outside the undo stack.
+        self.integrity_repair = repair_legacy_cross_page_ids(self.session.document)
         self.snap = SnapSettings()
         self._clipboard: dict[str, Any] | None = None
 
@@ -49,6 +53,7 @@ class GraphicsCommandRouter:
             "clipboard_available": bool(self._clipboard),
             "snap": asdict(self.snap),
             "products": list(self.session.document.metadata.get("products") or []),
+            "integrity_repair": self.integrity_repair.to_dict(),
         }
         return scene
 
@@ -211,6 +216,26 @@ class GraphicsCommandRouter:
                     crop_reset=bool(command.get("crop_reset", False)),
                 )
                 return CommandResult(True, True, "Enquadramento e crop atualizados.", {"node_id": node_id})
+            if name == "replace_image":
+                node_id = str(command.get("node_id") or self.session.anchor_id or "")
+                if not node_id:
+                    return CommandResult(False, False, "Nenhuma imagem selecionada.")
+                replacement = replace_image_source(
+                    self.session,
+                    node_id,
+                    str(command.get("source") or ""),
+                )
+                return CommandResult(
+                    True,
+                    True,
+                    "Imagem substituída.",
+                    {
+                        "node_id": replacement.node_id,
+                        "asset_id": replacement.asset_id,
+                        "source": replacement.source,
+                        "reused_asset": replacement.reused_asset,
+                    },
+                )
             if name in {"add_page", "duplicate_page"}:
                 page_id = self.session.add_page(name=str(command.get("name_value") or "") or None, duplicate_active=name == "duplicate_page")
                 return CommandResult(True, True, "Página criada.", {"page_id": page_id})
