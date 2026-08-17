@@ -9,6 +9,7 @@ import copy
 from .history import TransactionHistory
 from .image_crop import update_crop
 from .model import BindingRole, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Rect, SmartSlot, Transform, _id
+from .page_clone import clone_page_with_fresh_ids
 from .preflight import assert_document_integrity
 
 
@@ -457,11 +458,7 @@ class GraphicsSession:
     def add_page(self, *, name: str | None = None, duplicate_active: bool = False) -> str:
         with self.transaction("Duplicar página" if duplicate_active else "Adicionar página"):
             if duplicate_active:
-                page = copy.deepcopy(self.page)
-                page.id = _id("page")
-                page.name = name or f"{self.page.name} - cópia"
-                for slot in page.slots.values():
-                    slot.page_id = page.id
+                page = clone_page_with_fresh_ids(self.page, name=name)
                 self.document.pages.append(page)
                 self.document.active_page_id = page.id
             else:
