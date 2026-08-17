@@ -7,11 +7,11 @@ import pytest
 pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6 import QtCore
+from PySide6 import QtCore, QtGui
 from PySide6.QtGui import QFont, QFontMetricsF, QGuiApplication, QImage
 
 from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, Transform
-from srstudio.graphics2.qt_renderer import _text_flags, render_pdf, render_png
+from srstudio.graphics2.qt_renderer import _explicit_multiline_layout, _text_flags, render_pdf, render_png
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -137,6 +137,38 @@ def test_qpainter_nowrap_preserves_explicit_newlines():
     assert not flags & QtCore.Qt.TextSingleLine
     assert not flags & QtCore.Qt.TextWordWrap
     assert multiline.height() > single.height() * 1.5
+
+
+def test_explicit_multiline_layout_uses_drawingml_baseline_spacing():
+    font = QFont("Arial")
+    font.setPixelSize(20)
+    rect = QtCore.QRectF(10, 20, 300, 120)
+    style = {
+        "align": "center",
+        "v_align": "top",
+        "line_spacing_px": 27.5,
+        "nowrap": False,
+    }
+
+    layout = _explicit_multiline_layout("COXA SOBRECOXA\nDESOSSADA 1KG", rect, style, font, QtCore, QtGui)
+
+    assert layout is not None
+    assert len(layout) == 2
+    assert layout[1][2] - layout[0][2] == pytest.approx(27.5)
+    metrics = QFontMetricsF(font)
+    assert layout[0][2] == pytest.approx(rect.top() + metrics.ascent())
+    assert layout[0][1] == pytest.approx(rect.left() + (rect.width() - metrics.horizontalAdvance(layout[0][0])) * 0.5)
+
+
+def test_explicit_multiline_layout_keeps_native_qt_when_word_wrap_is_needed():
+    font = QFont("Arial")
+    font.setPixelSize(20)
+    rect = QtCore.QRectF(0, 0, 30, 120)
+    style = {"align": "left", "v_align": "top", "line_spacing_px": 24.0, "nowrap": False}
+
+    layout = _explicit_multiline_layout("LINHA MUITO GRANDE\nOUTRA", rect, style, font, QtCore, QtGui)
+
+    assert layout is None
 
 
 def test_qt_renderer_draws_linear_gradient_and_outer_shadow(tmp_path):
