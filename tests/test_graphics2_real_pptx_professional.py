@@ -59,6 +59,23 @@ def test_real_two_price_template_recovers_professional_product_semantics(tmp_pat
     """Require real ProductCard/PriceBlock/SmartSlot semantics from a production SR template."""
 
     assert _REAL_SEMANTIC_TEMPLATE.is_file()
+    context = load_launch_context(_REAL_SEMANTIC_TEMPLATE)
+    text_diagnostics = [
+        {
+            "id": node.id,
+            "name": node.name,
+            "text": node.text,
+            "x": round(node.transform.x, 3),
+            "y": round(node.transform.y, 3),
+            "w": round(node.transform.width, 3),
+            "h": round(node.transform.height, 3),
+            "parent": node.parent_id or "",
+        }
+        for page in context.document.pages
+        for node in page.nodes.values()
+        if node.visible and node.kind.value == "text"
+    ]
+
     output = tmp_path / "semantic-pptx-probe"
     report = run_professional_probe(
         _REAL_SEMANTIC_TEMPLATE,
@@ -67,12 +84,18 @@ def test_real_two_price_template_recovers_professional_product_semantics(tmp_pat
     )
 
     metrics = dict(report.usability.get("metrics") or {})
-    assert metrics.get("price_blocks", 0) > 0, report.to_dict()
-    assert metrics.get("product_cards", 0) > 0, report.to_dict()
-    assert metrics.get("smart_slots", 0) > 0, report.to_dict()
-    assert metrics.get("semantic_missing_members", 0) == 0, report.to_dict()
-    assert metrics.get("semantic_missing_slots", 0) == 0, report.to_dict()
-    assert metrics.get("duplicate_slot_ids", 0) == 0, report.to_dict()
+    diagnostic = {
+        "metrics": metrics,
+        "gate_blockers": report.gate_blockers,
+        "semantic_report": context.document.metadata.get("semantic_blocks"),
+        "text_nodes": text_diagnostics,
+    }
+    assert metrics.get("price_blocks", 0) > 0, diagnostic
+    assert metrics.get("product_cards", 0) > 0, diagnostic
+    assert metrics.get("smart_slots", 0) > 0, diagnostic
+    assert metrics.get("semantic_missing_members", 0) == 0, diagnostic
+    assert metrics.get("semantic_missing_slots", 0) == 0, diagnostic
+    assert metrics.get("duplicate_slot_ids", 0) == 0, diagnostic
     assert report.ready is True, report.to_dict()
     assert report.gate_blockers == []
     assert report.persistence_ok is True
