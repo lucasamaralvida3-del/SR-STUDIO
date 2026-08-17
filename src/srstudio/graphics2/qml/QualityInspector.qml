@@ -5,7 +5,7 @@ import QtQuick.Layouts
 Rectangle {
     id: panel
     width: 326
-    height: expanded ? 328 : 56
+    height: expanded ? 346 : 56
     anchors.right: parent ? parent.right : undefined
     anchors.top: parent ? parent.top : undefined
     anchors.rightMargin: 8
@@ -22,6 +22,7 @@ Rectangle {
     property var audit: ({})
     property var visual: ({})
     property var mapping: ({})
+    property var pptxFidelity: ({})
     property bool expanded: true
     property bool gateReady: Boolean(gate.ready)
     property int blockers: Number(gate.blockers || 0)
@@ -36,6 +37,15 @@ Rectangle {
         return number.toFixed(1) + "%"
     }
 
+    function autofitSummary() {
+        var shape = Number(pptxFidelity.shape_autofit_nodes || 0)
+        var normal = Number(pptxFidelity.normal_autofit_nodes || 0)
+        var none = Number(pptxFidelity.no_autofit_nodes || 0)
+        if (shape === 0 && normal === 0 && none === 0)
+            return "—"
+        return "Forma " + shape + " · Texto " + normal + " · Sem " + none
+    }
+
     function refresh() {
         try {
             scene = JSON.parse(sceneBridge.sceneJson)
@@ -47,6 +57,7 @@ Rectangle {
         audit = diagnostics.import_audit || ({})
         visual = diagnostics.visual_fidelity || ({})
         mapping = diagnostics.pptx_mapping || ({})
+        pptxFidelity = diagnostics.pptx_fidelity || ({})
     }
 
     Connections {
@@ -120,6 +131,9 @@ Rectangle {
 
                 Label { text: "Cobertura texto"; color: "#64748B"; font.pixelSize: 9 }
                 Label { text: percent(gate.mapping_text_coverage); color: "#334155"; horizontalAlignment: Text.AlignRight; Layout.fillWidth: true }
+
+                Label { text: "Auto-fit PPTX"; color: "#64748B"; font.pixelSize: 9 }
+                Label { text: autofitSummary(); color: "#334155"; font.bold: true; font.pixelSize: 9; horizontalAlignment: Text.AlignRight; Layout.fillWidth: true }
 
                 Label { text: "Cobertura imagens"; color: "#64748B"; font.pixelSize: 9 }
                 Label { text: percent(gate.mapping_image_coverage); color: "#334155"; horizontalAlignment: Text.AlignRight; Layout.fillWidth: true }

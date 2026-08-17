@@ -122,6 +122,9 @@ def test_pptx_fidelity_extracts_embedded_font_and_exact_custom_path(tmp_path):
     assert report.fonts_declared == 1
     assert report.fonts_extracted == 1
     assert report.text_nodes_enriched == 1
+    assert report.shape_autofit_nodes == 1
+    assert report.normal_autofit_nodes == 0
+    assert report.no_autofit_nodes == 0
     assert report.custom_paths_enriched == 1
     assert not report.warnings
 
@@ -141,6 +144,7 @@ def test_pptx_fidelity_extracts_embedded_font_and_exact_custom_path(tmp_path):
     assert spec["height"] == 500
     assert any(command["op"] == "C" for command in spec["paths"][0]["commands"])
     assert document.metadata["pptx_fidelity"]["custom_paths_enriched"] == 1
+    assert document.metadata["pptx_fidelity"]["shape_autofit_nodes"] == 1
 
 
 def test_pptx_fidelity_normal_autofit_still_scales_text_inside_box(tmp_path):
@@ -148,8 +152,26 @@ def test_pptx_fidelity_normal_autofit_still_scales_text_inside_box(tmp_path):
     source = _pptx(tmp_path / "normal-autofit.pptx", slide_xml=normal_slide)
     document = _document()
 
-    enhance_pptx_document(source, document, cache_dir=tmp_path / "cache-normal")
+    report = enhance_pptx_document(source, document, cache_dir=tmp_path / "cache-normal")
 
     text = next(node for node in document.active_page.nodes.values() if node.name == "Text Box 1")
     assert text.style["fit_inside_box"] is True
     assert text.style["pptx_auto_fit"] == "normal"
+    assert report.shape_autofit_nodes == 0
+    assert report.normal_autofit_nodes == 1
+    assert report.no_autofit_nodes == 0
+
+
+def test_pptx_fidelity_no_autofit_is_counted_without_scaling_text(tmp_path):
+    no_fit_slide = SLIDE.replace("<a:spAutoFit/>", "<a:noAutofit/>")
+    source = _pptx(tmp_path / "no-autofit.pptx", slide_xml=no_fit_slide)
+    document = _document()
+
+    report = enhance_pptx_document(source, document, cache_dir=tmp_path / "cache-none")
+
+    text = next(node for node in document.active_page.nodes.values() if node.name == "Text Box 1")
+    assert text.style["fit_inside_box"] is False
+    assert text.style["pptx_auto_fit"] == "none"
+    assert report.shape_autofit_nodes == 0
+    assert report.normal_autofit_nodes == 0
+    assert report.no_autofit_nodes == 1
