@@ -1,0 +1,243 @@
+name: Publish SR Studio 5 Beta 7.32 Graphics2 Primary
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [sr-studio-5-professional]
+    paths:
+      - 'release/BETA732_G2_PUBLISH'
+
+permissions:
+  contents: write
+
+jobs:
+  publish-beta:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout Professional branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install main app toolchain
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e . pyinstaller pytest ruff
+
+      - name: Validate source and Graphics2 primary routing
+        shell: pwsh
+        run: |
+          python -m compileall -q src
+          ruff check src tests --select E9,F63,F7,F82
+          pytest -q
+          pytest -q tests/test_graphics2_beta_primary_route.py tests/test_graphics2_beta_activation.py
+          python -c "from srstudio import __distribution_version__, __release_label__; assert __distribution_version__ == '5.0.0-hybrid.beta7.32'; assert __release_label__ == 'Beta 7.32 Professional'; print(__release_label__)"
+
+      - name: Build SR Studio 5 Professional
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" --paths src src/srstudio/app/turbo_posters.py
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Executavel Professional nao foi gerado." }
+          $modelA = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
+          $modelB = "dist/SR Studio 5/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
+          if (!(Test-Path $modelA) -and !(Test-Path $modelB)) { throw "Modelo oficial ATACADO.pptx ausente." }
+          $pdfium = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "pdfium.dll" | Select-Object -First 1
+          if ($null -eq $pdfium) { throw "PDFium nativo ausente do executavel principal." }
+
+      - name: Install Graphics2 frozen host toolchain
+        shell: pwsh
+        run: |
+          python -m pip install -e '.[graphics2-build]'
+          python -c "import PyInstaller, PySide6; print('PyInstaller', PyInstaller.__version__, 'PySide6', PySide6.__version__)"
+          python -m pytest -q tests -k graphics2
+
+      - name: Build and embed isolated Graphics2 Qt host
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $hostRoot = Join-Path $env:RUNNER_TEMP 'graphics2-host'
+          python build/build_graphics2_host.py --output "$hostRoot"
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao construir Graphics2Host." }
+          $hostSource = Join-Path $hostRoot 'SRGraphicsEngine2Host'
+          $hostTarget = 'dist/SR Studio 5/Graphics2Host'
+          if (!(Test-Path $hostSource)) { throw "Bundle Graphics2Host nao foi gerado." }
+          New-Item -ItemType Directory -Force -Path $hostTarget | Out-Null
+          Copy-Item "$hostSource\*" $hostTarget -Recurse -Force
+          if (!(Test-Path "$hostTarget/SRGraphicsEngine2Host.exe")) { throw "Host Qt nao foi incorporado ao SR Studio." }
+          if (!(Test-Path "$hostTarget/graphics2-host-runtime.json")) { throw "Manifesto de runtime Graphics2 ausente." }
+          python -m srstudio.graphics2.host_runtime "$hostTarget" --full
+          if ($LASTEXITCODE -ne 0) { throw "Catalogo do runtime Graphics2 invalido." }
+          $probe = Start-Process -FilePath (Resolve-Path "$hostTarget/SRGraphicsEngine2Host.exe") -ArgumentList @('--graphics-api','software','--probe-graphics-api') -Wait -PassThru
+          if ($probe.ExitCode -ne 0) { throw "Probe do Graphics2Host falhou: $($probe.ExitCode)" }
+
+      - name: Read release metadata
+        shell: pwsh
+        run: |
+          $version = python -c "from srstudio import __version__; print(__version__)"
+          $label = python -c "from srstudio import __release_label__; print(__release_label__)"
+          $distribution = python -c "from srstudio import __distribution_version__; print(__distribution_version__)"
+          $productVersion = ($version.Trim() -split '-')[0]
+          $fileSafe = ($distribution.Trim() -replace '[^A-Za-z0-9._-]', '_') -replace '\.', '_'
+          "PRODUCT_VERSION=$productVersion" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "RELEASE_LABEL=$($label.Trim())" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "DIST_VERSION=$($distribution.Trim())" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_TAG=v$($distribution.Trim())" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_FILE=SR_STUDIO_${fileSafe}_PROFESSIONAL.zip" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Assemble launcher-compatible Beta bundle
+        shell: pwsh
+        run: |
+          $bundleRoot = 'release/beta732-bundle'
+          $filesRoot = Join-Path $bundleRoot 'files'
+          $appRoot = Join-Path $filesRoot 'SRStudio5'
+          Remove-Item $bundleRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $appRoot | Out-Null
+          Copy-Item 'dist/SR Studio 5/*' $appRoot -Recurse -Force
+
+          "SR Studio $env:PRODUCT_VERSION - $env:RELEASE_LABEL - Studio de Encartes G2 Principal" | Set-Content -LiteralPath (Join-Path $filesRoot 'VERSAO.txt') -Encoding UTF8
+          @{
+            version = $env:DIST_VERSION
+            product_version = $env:PRODUCT_VERSION
+            channel = 'beta'
+            release_label = $env:RELEASE_LABEL
+            entrypoint = 'SRStudio5/SR Studio 5.exe'
+            professional_executable = 'SRStudio5/SR Studio 5.exe'
+            graphics2_host = 'SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe'
+            graphics2_test = $true
+            graphics2_primary = $true
+            legacy_encartes_fallback = $true
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $filesRoot 'version.json') -Encoding UTF8
+
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $zip = Join-Path 'release' $env:BETA_FILE
+          Remove-Item $zip -Force -ErrorAction SilentlyContinue
+          Compress-Archive -Path $filesRoot -DestinationPath $zip -CompressionLevel Optimal
+          if (!(Test-Path $zip)) { throw "Bundle Beta 7.32 nao foi criado." }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $size = (Get-Item $zip).Length
+          "BETA_ZIP=$zip" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_SHA256=$hash" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_SIZE=$size" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Beta 7.32: $zip | $size bytes | $hash"
+
+      - name: Validate final Beta bundle
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $validation = 'release/beta732-validate'
+          Remove-Item $validation -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $env:BETA_ZIP -DestinationPath $validation -Force
+          if (Test-Path "$validation/files/SR_Studio_Gerador.py") { throw "Shim Python antigo nao deve existir na Beta 7.32." }
+          if (!(Test-Path "$validation/files/SRStudio5/SR Studio 5.exe")) { throw "Executavel principal ausente." }
+          $hostExePath = "$validation/files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe"
+          if (!(Test-Path $hostExePath)) { throw "Graphics2Host ausente do bundle final." }
+          if (!(Test-Path "$validation/files/SRStudio5/Graphics2Host/graphics2-host-runtime.json")) { throw "Manifesto Graphics2 ausente do bundle final." }
+          $versionJson = Get-Content -Raw "$validation/files/version.json" | ConvertFrom-Json
+          if ([string]$versionJson.entrypoint -ne 'SRStudio5/SR Studio 5.exe') { throw "Entrypoint Beta 7.32 invalido." }
+          if (-not [bool]$versionJson.graphics2_primary) { throw "Graphics2 nao foi marcado como editor principal." }
+          $probe = Start-Process -FilePath (Resolve-Path $hostExePath) -ArgumentList @('--graphics-api','software','--probe-graphics-api') -Wait -PassThru
+          if ($probe.ExitCode -ne 0) { throw "Graphics2Host do ZIP final falhou no probe: $($probe.ExitCode)" }
+          $got = (Get-FileHash $env:BETA_ZIP -Algorithm SHA256).Hash.ToLower()
+          if ($got -ne $env:BETA_SHA256) { throw "SHA-256 mudou apos validacao." }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR_Studio_Beta_7_32_Graphics2_Primary
+          path: ${{ env.BETA_ZIP }}
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Create Beta 7.32 prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $notes = @"
+          SR Studio Beta 7.32 Professional - Studio de Encartes G2 Principal
+
+          - Corrige a Beta 7.31, que ainda abria primeiro o Encartes Studio clássico.
+          - Ao clicar em Encartes Studio, o Graphics Engine 2 é agora a experiência principal e abre automaticamente.
+          - Tela explícita Studio de Encartes G2 com botão principal, Aplicar G2 e fallback Encartes Clássico.
+          - A ativação G2 é garantida pelo próprio build Beta, mesmo se um Launcher antigo não propagar as flags.
+          - Graphics2Host Qt/PySide6 continua isolado e validado por probe real.
+          - Preserva Cartazes Pro, Venda, Atacado e a regra CADA da Beta 7.30.
+          - Stable permanece inalterada.
+          "@
+          if (gh release view $env:BETA_TAG *> $null) {
+            gh release upload $env:BETA_TAG $env:BETA_ZIP --clobber
+            gh release edit $env:BETA_TAG --prerelease --title "SR Studio $env:RELEASE_LABEL - Studio de Encartes G2" --notes $notes
+          } else {
+            gh release create $env:BETA_TAG $env:BETA_ZIP --target $env:GITHUB_SHA --prerelease --title "SR Studio $env:RELEASE_LABEL - Studio de Encartes G2" --notes $notes
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao publicar prerelease Beta 7.32." }
+
+      - name: Checkout main only for Beta manifest activation
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: mainrepo
+
+      - name: Activate Beta 7.32 channel after all validations
+        shell: pwsh
+        run: |
+          $manifestPath = 'mainrepo/beta/manifest.json'
+          $previousVersion = ''
+          if (Test-Path $manifestPath) {
+            try { $previousVersion = [string]((Get-Content -Raw $manifestPath | ConvertFrom-Json).version) } catch { }
+          }
+          $published = (Get-Date).ToString('o')
+          $url = "https://github.com/${{ github.repository }}/releases/download/$env:BETA_TAG/$env:BETA_FILE"
+          $manifest = [ordered]@{
+            format = 'SRSTUDIO_HYBRID_BUNDLE_1'
+            product = 'SR Studio'
+            channel = 'beta'
+            version = $env:DIST_VERSION
+            product_version = $env:PRODUCT_VERSION
+            release_label = $env:RELEASE_LABEL
+            published_at = $published
+            min_launcher = '4.0.1-hybrid.base3.5'
+            min_launcher_version = '4.0.1-hybrid.base3.5'
+            bundle = [ordered]@{
+              url = $url
+              sha256 = $env:BETA_SHA256
+              size = [int64]$env:BETA_SIZE
+              member_prefix = 'files/'
+            }
+            url = $url
+            bundle_url = $url
+            sha256 = $env:BETA_SHA256
+            size = [int64]$env:BETA_SIZE
+            member_prefix = 'files/'
+            previous_version = $previousVersion
+            entrypoint = 'SRStudio5/SR Studio 5.exe'
+            graphics2_test = $true
+            graphics2_primary = $true
+            notes = 'Beta 7.32 Professional - Studio de Encartes G2 agora e a experiencia principal; Encartes Classico mantido como fallback.'
+          }
+          $manifest | ConvertTo-Json -Depth 10 | Set-Content -LiteralPath $manifestPath -Encoding UTF8
+
+          Push-Location mainrepo
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git pull --rebase origin main
+          git add beta/manifest.json
+          git commit -m 'release: activate SR Studio Beta 7.32 Graphics2 Primary'
+          git push origin HEAD:main
+          Pop-Location
+
+      - name: Publication summary
+        shell: pwsh
+        run: |
+          Write-Host "Beta 7.32 Graphics2 Primary publicada e ativada no canal Beta."
+          Write-Host "Tag: $env:BETA_TAG"
+          Write-Host "SHA256: $env:BETA_SHA256"
