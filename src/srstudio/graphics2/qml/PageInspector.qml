@@ -39,6 +39,20 @@ Rectangle {
         sceneBridge.dispatch(JSON.stringify({"name": "reorder_page", "page_id": pageId, "mode": mode}))
     }
 
+    function addPage() {
+        sceneBridge.dispatch(JSON.stringify({"name": "add_page"}))
+    }
+
+    function duplicateActivePage() {
+        sceneBridge.dispatch(JSON.stringify({"name": "duplicate_page"}))
+    }
+
+    function deletePage(pageId) {
+        if (pageCount() <= 1)
+            return
+        sceneBridge.dispatch(JSON.stringify({"name": "delete_page", "page_id": pageId}))
+    }
+
     function beginPageDrag(sourceItem, mouseX, pageData) {
         pageDragActive = true
         draggedPageId = String(pageData.id || "")
@@ -54,7 +68,7 @@ Rectangle {
         var contentPoint = sourceItem.mapToItem(pageStrip.contentItem, mouseX, pageStrip.height / 2)
         var target = pageStrip.indexAt(contentPoint.x, contentPoint.y)
         if (target < 0 && pageCount() > 0) {
-            var approximate = Math.floor((contentPoint.x + pageStrip.spacing / 2) / (166 + pageStrip.spacing))
+            var approximate = Math.floor((contentPoint.x + pageStrip.spacing / 2) / (196 + pageStrip.spacing))
             target = Math.max(0, Math.min(pageCount() - 1, approximate))
         }
         dragTargetIndex = target
@@ -104,6 +118,24 @@ Rectangle {
                 font.pixelSize: 9
             }
             Item { Layout.fillWidth: true }
+            ToolButton {
+                text: "+"
+                implicitWidth: 28
+                implicitHeight: 26
+                enabled: !pageDragActive
+                ToolTip.text: "Adicionar página"
+                ToolTip.visible: hovered
+                onClicked: addPage()
+            }
+            ToolButton {
+                text: "⧉"
+                implicitWidth: 28
+                implicitHeight: 26
+                enabled: !pageDragActive && pageCount() > 0
+                ToolTip.text: "Duplicar página atual"
+                ToolTip.visible: hovered
+                onClicked: duplicateActivePage()
+            }
             Label {
                 text: pageDragActive
                     ? (dragTargetIndex >= 0 ? "Soltar na posição " + (dragTargetIndex + 1) : "Arraste para a posição")
@@ -135,7 +167,7 @@ Rectangle {
             delegate: Rectangle {
                 id: pageCard
                 required property var modelData
-                width: 166
+                width: 196
                 height: 62
                 radius: 6
                 opacity: pageDragActive && draggedPageId === String(modelData.id) ? 0.45 : 1.0
@@ -235,6 +267,16 @@ Rectangle {
                         ToolTip.text: "Mover página para a direita"
                         ToolTip.visible: hovered
                         onClicked: movePage(modelData.id, "next")
+                    }
+
+                    ToolButton {
+                        text: "×"
+                        enabled: !pageDragActive && pageCount() > 1
+                        implicitWidth: 25
+                        implicitHeight: 28
+                        ToolTip.text: pageCount() > 1 ? "Excluir esta página (desfazer disponível)" : "O projeto precisa manter uma página"
+                        ToolTip.visible: hovered
+                        onClicked: deletePage(modelData.id)
                     }
                 }
             }
