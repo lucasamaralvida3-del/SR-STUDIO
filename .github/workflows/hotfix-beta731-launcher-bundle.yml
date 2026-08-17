@@ -1,0 +1,104 @@
+name: Hotfix SR Studio Beta 7.31 Launcher Bundle
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'release/BETA731_LAUNCHER_HOTFIX'
+
+permissions:
+  contents: write
+
+jobs:
+  hotfix:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download published Beta 7.31 bundle
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path release/hotfix731 | Out-Null
+          gh release download v5.0.0-hybrid.beta7.31 --pattern 'SR_STUDIO_5_0_0-hybrid_beta7_31_PROFESSIONAL.zip' --dir release/hotfix731 --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Nao foi possivel baixar o bundle publicado da Beta 7.31.' }
+
+      - name: Remove Python shim and validate executable entrypoint
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $zip = 'release/hotfix731/SR_STUDIO_5_0_0-hybrid_beta7_31_PROFESSIONAL.zip'
+          $root = 'release/hotfix731/extracted'
+          Remove-Item $root -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $zip -DestinationPath $root -Force
+          $files = Join-Path $root 'files'
+          if (!(Test-Path "$files/SRStudio5/SR Studio 5.exe")) { throw 'SR Studio 5.exe ausente do bundle.' }
+          if (!(Test-Path "$files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw 'Graphics2Host ausente do bundle.' }
+          Remove-Item "$files/SR_Studio_Gerador.py" -Force -ErrorAction SilentlyContinue
+          if (Test-Path "$files/SR_Studio_Gerador.py") { throw 'O shim Python nao foi removido.' }
+
+          $versionPath = Join-Path $files 'version.json'
+          $version = Get-Content -Raw -LiteralPath $versionPath | ConvertFrom-Json
+          $version.entrypoint = 'SRStudio5/SR Studio 5.exe'
+          $version.graphics2_test = $true
+          $version | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $versionPath -Encoding UTF8
+
+          $hostExe = Resolve-Path "$files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe"
+          $probe = Start-Process -FilePath $hostExe -ArgumentList @('--graphics-api','software','--probe-graphics-api') -Wait -PassThru
+          if ($probe.ExitCode -ne 0) { throw "Graphics2Host falhou no probe: $($probe.ExitCode)" }
+
+      - name: Repack and validate fixed Beta 7.31
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $zip = 'release/hotfix731/SR_STUDIO_5_0_0-hybrid_beta7_31_PROFESSIONAL.zip'
+          $files = 'release/hotfix731/extracted/files'
+          Remove-Item $zip -Force
+          Compress-Archive -Path $files -DestinationPath $zip -CompressionLevel Optimal
+          $check = 'release/hotfix731/check'
+          Remove-Item $check -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath $zip -DestinationPath $check -Force
+          if (Test-Path "$check/files/SR_Studio_Gerador.py") { throw 'Bundle final ainda contem shim Python.' }
+          if (!(Test-Path "$check/files/SRStudio5/SR Studio 5.exe")) { throw 'Executavel principal ausente no bundle final.' }
+          $graphicsHost = Resolve-Path "$check/files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe"
+          $probe = Start-Process -FilePath $graphicsHost -ArgumentList @('--graphics-api','software','--probe-graphics-api') -Wait -PassThru
+          if ($probe.ExitCode -ne 0) { throw "Graphics2Host do ZIP corrigido falhou no probe: $($probe.ExitCode)" }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $zip).Length
+          "HOTFIX_SHA=$hash" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "HOTFIX_SIZE=$size" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "Hotfix validado: $size bytes | $hash"
+
+      - name: Replace prerelease asset
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload v5.0.0-hybrid.beta7.31 release/hotfix731/SR_STUDIO_5_0_0-hybrid_beta7_31_PROFESSIONAL.zip --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Falha ao substituir o asset da Beta 7.31.' }
+
+      - name: Activate fixed manifest
+        shell: pwsh
+        run: |
+          $path = 'beta/manifest.json'
+          $manifest = Get-Content -Raw -LiteralPath $path | ConvertFrom-Json
+          $manifest.bundle.sha256 = $env:HOTFIX_SHA
+          $manifest.bundle.size = [int64]$env:HOTFIX_SIZE
+          $manifest.sha256 = $env:HOTFIX_SHA
+          $manifest.size = [int64]$env:HOTFIX_SIZE
+          $manifest.published_at = (Get-Date).ToString('o')
+          $manifest.notes = 'Beta 7.31 Professional Graphics2 Test - hotfix de Launcher: abertura direta pelo SR Studio 5.exe, sem shim Python; Stable permanece intacta.'
+          if ($manifest.PSObject.Properties.Name -contains 'entrypoint') { $manifest.entrypoint = 'SRStudio5/SR Studio 5.exe' } else { $manifest | Add-Member -NotePropertyName entrypoint -NotePropertyValue 'SRStudio5/SR Studio 5.exe' }
+          if ($manifest.PSObject.Properties.Name -contains 'graphics2_test') { $manifest.graphics2_test = $true } else { $manifest | Add-Member -NotePropertyName graphics2_test -NotePropertyValue $true }
+          $manifest | ConvertTo-Json -Depth 12 | Set-Content -LiteralPath $path -Encoding UTF8
+          git config user.name 'SR Studio Update Bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add beta/manifest.json
+          git commit -m 'release: hotfix Beta 7.31 direct executable launch'
+          git push origin HEAD:main
