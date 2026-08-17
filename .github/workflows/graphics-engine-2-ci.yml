@@ -51,6 +51,7 @@ jobs:
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_quality_inspector_qml.py
           tests/test_graphics2_quality_inspector_spacing.py
+          tests/test_graphics2_quality_inspector_image_transform.py
           tests/test_graphics2_golden_master.py
           tests/test_graphics2_reference_suite.py
           tests/test_graphics2_package_fonts.py
@@ -65,6 +66,9 @@ jobs:
           tests/test_graphics2_pptx_spacing_pipeline.py
           tests/test_graphics2_pptx_fill_rect_recovery.py
           tests/test_graphics2_pptx_fill_rect_pipeline.py
+          tests/test_graphics2_pptx_image_transform_recovery.py
+          tests/test_graphics2_pptx_image_transform_gate.py
+          tests/test_graphics2_pptx_image_transform_pipeline.py
           tests/test_graphics2_semantic_blocks.py
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_semantic_spatial_card.py
@@ -130,6 +134,7 @@ jobs:
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_quality_inspector_qml.py
           tests/test_graphics2_quality_inspector_spacing.py
+          tests/test_graphics2_quality_inspector_image_transform.py
           tests/test_graphics2_golden_master.py
           tests/test_graphics2_reference_suite.py
           tests/test_graphics2_package_fonts.py
@@ -144,6 +149,9 @@ jobs:
           tests/test_graphics2_pptx_spacing_pipeline.py
           tests/test_graphics2_pptx_fill_rect_recovery.py
           tests/test_graphics2_pptx_fill_rect_pipeline.py
+          tests/test_graphics2_pptx_image_transform_recovery.py
+          tests/test_graphics2_pptx_image_transform_gate.py
+          tests/test_graphics2_pptx_image_transform_pipeline.py
           tests/test_graphics2_semantic_blocks.py
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_semantic_spatial_card.py
