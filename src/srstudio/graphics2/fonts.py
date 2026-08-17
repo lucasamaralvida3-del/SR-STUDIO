@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
+import os
+import sys
+import threading
 
 DEFAULT_FALLBACKS: dict[str, tuple[str, ...]] = {
     "anton": ("Impact", "Arial Narrow", "Arial"),
@@ -14,6 +17,7 @@ DEFAULT_FALLBACKS: dict[str, tuple[str, ...]] = {
 }
 
 _QT_FONT_CACHE: dict[str, tuple[str, ...]] = {}
+_GUI_APPLICATION = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -81,11 +85,55 @@ def embedded_font_entries(document: Any) -> list[dict[str, Any]]:
     return []
 
 
+def ensure_qgui_application():
+    """Garante um QGuiApplication antes de usar fontes/rasterização Qt.
+
+    O host Qt já possui a aplicação. O CLI/harness pode chamar o renderer sem
+    criá-la; nesse caso ela é criada somente na thread principal. Em worker do
+    host, uma instância já existente precisa ser reutilizada — nunca construímos
+    um QGuiApplication secundário em background.
+    """
+
+    global _GUI_APPLICATION
+    from PySide6.QtCore import QCoreApplication
+    from PySide6.QtGui import QGuiApplication
+
+    existing = QCoreApplication.instance()
+    if existing is not None:
+        if not isinstance(existing, QGuiApplication):
+            raise RuntimeError(
+                "SR Graphics Engine 2 requer QGuiApplication; o processo possui apenas QCoreApplication."
+            )
+        _GUI_APPLICATION = existing
+        return existing
+
+    if threading.current_thread() is not threading.main_thread():
+        raise RuntimeError(
+            "SR Graphics Engine 2 não pode criar QGuiApplication em thread de worker; "
+            "inicialize o host Qt na thread principal antes de renderizar."
+        )
+
+    if sys.platform.startswith("linux"):
+        if not os.environ.get("QT_QPA_PLATFORM") and not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+            os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+    _GUI_APPLICATION = QGuiApplication(["sr-graphics-engine-2-render"])
+    _GUI_APPLICATION.setApplicationName("SR Graphics Engine 2 Renderer")
+    return _GUI_APPLICATION
+
+
 def register_qt_document_fonts(document: Any) -> QtFontRegistrationReport:
-    """Registra no processo Qt as fontes extraídas do PPTX, sem instalar no SO."""
+    """Registra fontes PPTX e, antes disso, garante o runtime gráfico do Qt."""
 
     report = QtFontRegistrationReport()
     entries = embedded_font_entries(document)
+    try:
+        ensure_qgui_application()
+    except ModuleNotFoundError as exc:
+        if entries:
+            report.warnings.append(f"Qt indisponível para registrar fontes embutidas: {exc}")
+        return report
+
     if not entries:
         return report
     try:
