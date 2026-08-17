@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import os
+import subprocess
+import sys
+import textwrap
 
 import pytest
 
@@ -122,6 +125,56 @@ def test_qt_renderer_exports_pdf(tmp_path):
     assert report.ok
     assert report.pages == 1
     assert report.output.read_bytes().startswith(b"%PDF")
+
+
+def test_renderer_bootstraps_qgui_application_in_fresh_process(tmp_path):
+    script = textwrap.dedent(
+        r"""
+        import os
+        import sys
+        from pathlib import Path
+
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        from PySide6.QtGui import QGuiApplication
+        from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, Transform
+        from srstudio.graphics2.qt_renderer import render_pdf, render_png
+
+        assert QGuiApplication.instance() is None
+        root = Path(sys.argv[1])
+        document = GraphicsDocument(name="Fresh Qt process")
+        page = document.active_page
+        page.width = 320
+        page.height = 240
+        page.add_node(
+            GraphicsNode(
+                kind=NodeKind.TEXT,
+                text="OFERTA 9,99",
+                transform=Transform(x=20, y=40, width=280, height=80),
+                style={"font_family": "Arial", "font_size": 28, "font_size_unit": "pt"},
+            )
+        )
+        png = render_png(document, root / "fresh.png", target_width=640)
+        assert QGuiApplication.instance() is not None
+        pdf = render_pdf(document, root / "fresh.pdf", dpi=300)
+        assert png.ok and png.output.is_file() and png.output.stat().st_size > 0
+        assert pdf.ok and pdf.output.is_file() and pdf.output.read_bytes().startswith(b"%PDF")
+        print("fresh-qgui-render-ok")
+        """
+    )
+    env = os.environ.copy()
+    env["QT_QPA_PLATFORM"] = "offscreen"
+    result = subprocess.run(
+        [sys.executable, "-c", script, str(tmp_path)],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, f"stdout={result.stdout}\nstderr={result.stderr}"
+    assert "fresh-qgui-render-ok" in result.stdout
+    assert (tmp_path / "fresh.png").is_file()
+    assert (tmp_path / "fresh.pdf").is_file()
 
 
 def test_qpainter_nowrap_preserves_explicit_newlines():
