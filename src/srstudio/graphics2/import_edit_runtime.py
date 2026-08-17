@@ -23,7 +23,7 @@ from typing import Any, Callable
 
 from .import_audit import audit_import
 from .model import GraphicsDocument, NodeKind
-from .pptx_image_transform import recover_pptx_image_transforms
+from .pptx_image_transform_runtime import recover_pptx_image_transforms_professional
 from .scene_fingerprint import store_scene_fingerprint
 
 
@@ -78,7 +78,7 @@ def _apply_pptx_image_transform_proof(source: Path, document: GraphicsDocument) 
     if source.suffix.lower() != ".pptx":
         return
     try:
-        recover_pptx_image_transforms(source, document)
+        recover_pptx_image_transforms_professional(source, document)
     except Exception as exc:
         # Importação continua utilizável, porém a falha deixa de ser mascarada
         # como cobertura perfeita. O Production Gate verá o erro explicitamente.
