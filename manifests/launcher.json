@@ -1,14 +1,20 @@
 {
-    "format":  "SRSTUDIO_LAUNCHER_MANIFEST_1",
-    "product":  "SR Studio Launcher",
-    "version":  "4.0.1-hybrid.base3.4",
-    "published_at":  "2026-08-14T18:30:47-03:00",
-    "files":  [
-                  {
-                      "path":  "SRStudioLauncher.ps1",
-                      "source":  "launcher/files/SRStudioLauncher.ps1",
-                      "sha256":  "22eace4713ed91cb2977497bfc01e5e25de294b984464c994013ae0df7c1ecad",
-                      "size":  48058
-                  }
-              ]
+  "format": "SRSTUDIO_LAUNCHER_MANIFEST_1",
+  "product": "SR Studio Launcher",
+  "version": "4.0.1-hybrid.base3.5",
+  "published_at": "2026-08-17T10:09:00-03:00",
+  "files": [
+    {
+      "path": "SRStudioLauncher.ps1",
+      "source": "launcher/files/SRStudioLauncherBase35.ps1",
+      "sha256": "ce9dc1c1f28b12142942a1dc43030d2c872e86e750ff27a18dfa42ba98e760ad",
+      "size": 2508
+    },
+    {
+      "path": "SRStudioLauncherCore.ps1",
+      "source": "launcher/files/SRStudioLauncher.ps1",
+      "sha256": "22eace4713ed91cb2977497bfc01e5e25de294b984464c994013ae0df7c1ecad",
+      "size": 48058
+    }
+  ]
 }
