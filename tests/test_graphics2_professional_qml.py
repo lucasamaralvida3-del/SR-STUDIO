@@ -7,8 +7,9 @@ from pathlib import Path
 import pytest
 
 
+@pytest.mark.parametrize("filename", ["ProfessionalInspector.qml", "ProfessionalRecovery.qml"])
 @pytest.mark.skipif(os.environ.get("SR_SKIP_QT_TESTS") == "1", reason="Qt tests disabled")
-def test_professional_inspector_qml_component_loads_when_qt_available(monkeypatch):
+def test_professional_qml_components_load_when_qt_available(monkeypatch, filename):
     pytest.importorskip("PySide6")
     monkeypatch.setenv("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", "offscreen"))
 
@@ -19,14 +20,7 @@ def test_professional_inspector_qml_component_loads_when_qt_available(monkeypatc
     scene = {
         "id": "doc-test",
         "active_page_id": "page-test",
-        "pages": [
-            {
-                "id": "page-test",
-                "name": "Página 1",
-                "nodes": {},
-                "slots": {},
-            }
-        ],
+        "pages": [{"id": "page-test", "name": "Página 1", "nodes": {}, "slots": {}}],
         "editor": {
             "professional": {
                 "inspector": {
@@ -46,11 +40,7 @@ def test_professional_inspector_qml_component_loads_when_qt_available(monkeypatc
                     "can_move_previous": False,
                     "can_move_next": False,
                 },
-                "usability": {
-                    "professional_usable": True,
-                    "blockers": 0,
-                    "issues": [],
-                },
+                "usability": {"professional_usable": True, "blockers": 0, "issues": []},
             }
         },
     }
@@ -69,13 +59,32 @@ def test_professional_inspector_qml_component_loads_when_qt_available(monkeypatc
 
         @Slot(str, result=str)
         def dispatch(self, payload):
+            command = json.loads(payload)
+            command_payload = {}
+            if command.get("name") == "recovery_status":
+                command_payload = {
+                    "available": False,
+                    "recoverable": False,
+                    "path": "",
+                    "saved_at": "",
+                    "size": 0,
+                    "same_as_live": False,
+                    "error": "",
+                }
+            elif command.get("name") == "autosave_tick":
+                command_payload = {
+                    "saved": False,
+                    "path": "",
+                    "document_id": "doc-test",
+                    "blocked_by_recovery": False,
+                }
             return json.dumps(
                 {
                     "ok": True,
                     "changed": False,
                     "message": "ok",
                     "payload": scene,
-                    "command_payload": {},
+                    "command_payload": command_payload,
                 },
                 ensure_ascii=False,
             )
@@ -84,7 +93,7 @@ def test_professional_inspector_qml_component_loads_when_qt_available(monkeypatc
     engine = QQmlApplicationEngine()
     bridge = Bridge()
     engine.rootContext().setContextProperty("sceneBridge", bridge)
-    qml = Path(__file__).parents[1] / "src" / "srstudio" / "graphics2" / "qml" / "ProfessionalInspector.qml"
+    qml = Path(__file__).parents[1] / "src" / "srstudio" / "graphics2" / "qml" / filename
     component = QQmlComponent(engine, QUrl.fromLocalFile(str(qml.resolve())))
 
     assert not component.isError(), "; ".join(error.toString() for error in component.errors())
