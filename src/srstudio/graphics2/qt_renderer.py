@@ -252,7 +252,84 @@ def _draw_text(painter, node: GraphicsNode, QtCore, QtGui, *, color_override: st
         )
     painter.setFont(font)
     painter.setPen(QtGui.QPen(QtGui.QColor(str(color_override or style.get("color") or "#111827"))))
-    painter.drawText(rect, flags, str(node.text or ""))
+    text = str(node.text or "")
+    layout = _explicit_multiline_layout(text, rect, style, font, QtCore, QtGui)
+    if layout is not None:
+        painter.save()
+        try:
+            painter.setClipRect(rect)
+            for line, x, baseline in layout:
+                painter.drawText(QtCore.QPointF(x, baseline), line)
+        finally:
+            painter.restore()
+        return
+    painter.drawText(rect, flags, text)
+
+
+def _explicit_multiline_layout(text: str, rect, style: dict, font, QtCore, QtGui):
+    """Calcula linhas explícitas com o baseline spacing DrawingML exato.
+
+    ``a:lnSpc/a:spcPts`` define a distância vertical entre baselines, não um
+    fator genérico de fonte. O QPainter ``drawText(QRectF, ...)`` não expõe esse
+    controle. Para textos que já possuem quebras explícitas e cabem horizontalmente
+    na caixa, desenhamos cada linha no baseline calculado. Se uma linha precisar
+    de word-wrap, retornamos ``None`` e mantemos a rota nativa do Qt para não
+    inventar quebras diferentes do Office.
+    """
+
+    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if "\n" not in normalized:
+        return None
+    lines = normalized.split("\n")
+    while len(lines) > 1 and lines[-1] == "":
+        lines.pop()
+    if len(lines) <= 1:
+        return None
+
+    metrics = QtGui.QFontMetricsF(font)
+    line_advance = 0.0
+    if style.get("line_spacing_px") not in (None, ""):
+        try:
+            line_advance = float(style.get("line_spacing_px") or 0.0)
+        except (TypeError, ValueError):
+            line_advance = 0.0
+    elif style.get("line_spacing_percent") not in (None, ""):
+        try:
+            percent = float(style.get("line_spacing_percent") or 0.0)
+        except (TypeError, ValueError):
+            percent = 0.0
+        if percent > 0:
+            line_advance = metrics.height() * percent / 100.0
+    if line_advance <= 0.0:
+        return None
+
+    widths = [float(metrics.horizontalAdvance(line)) for line in lines]
+    if not bool(style.get("nowrap")) and any(width > rect.width() + 0.75 for width in widths):
+        return None
+
+    ascent = float(metrics.ascent())
+    descent = float(metrics.descent())
+    block_height = ascent + descent + line_advance * (len(lines) - 1)
+    vertical = str(style.get("v_align") or style.get("vertical_align") or "center").lower()
+    if vertical in {"top", "t"}:
+        block_top = rect.top()
+    elif vertical in {"bottom", "b"}:
+        block_top = rect.bottom() - block_height
+    else:
+        block_top = rect.top() + (rect.height() - block_height) * 0.5
+    first_baseline = block_top + ascent
+
+    horizontal = str(style.get("align") or "center").lower()
+    result: list[tuple[str, float, float]] = []
+    for index, (line, width) in enumerate(zip(lines, widths)):
+        if horizontal in {"left", "l"}:
+            x = rect.left()
+        elif horizontal in {"right", "r"}:
+            x = rect.right() - width
+        else:
+            x = rect.left() + (rect.width() - width) * 0.5
+        result.append((line, float(x), float(first_baseline + index * line_advance)))
+    return result
 
 
 def _draw_outer_shadow(painter, node: GraphicsNode, QtCore, QtGui) -> None:
