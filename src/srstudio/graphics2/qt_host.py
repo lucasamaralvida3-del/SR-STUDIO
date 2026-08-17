@@ -7,9 +7,11 @@ from pathlib import Path
 from typing import Any, Callable
 import copy
 import json
+import os
 import sys
 import threading
 
+from .autosave import AutosaveManager
 from .command_router import GraphicsCommandRouter
 from .fonts import register_qt_document_fonts
 from .model import GraphicsDocument
@@ -18,6 +20,7 @@ from .quality import ProductionGateReport, inspect_production_gate
 from .qt_image_provider import PREVIEW_PROVIDER_NAME, create_live_scene_image_provider, inject_preview_image_urls
 
 GRAPHICS_API_CHOICES = ("auto", "d3d11", "d3d12", "vulkan", "opengl", "software")
+AUTOSAVE_DELAY_MS = 1500
 
 
 @dataclass(slots=True)
@@ -167,6 +170,24 @@ def _snapshot_document(session: GraphicsSession) -> GraphicsDocument:
     return GraphicsDocument.from_dict(session.document.to_dict())
 
 
+def _document_digest(document: GraphicsDocument) -> str:
+    payload = json.dumps(document.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _autosave_root(source: str | Path | None) -> Path:
+    configured = str(os.environ.get("SR_STUDIO_G2_AUTOSAVE_ROOT") or "").strip()
+    base = Path(configured).expanduser() if configured else Path.home() / ".srstudio5" / "autosave-g2"
+    if source is None:
+        identity = "untitled"
+    else:
+        identity = str(Path(source).expanduser().resolve()).casefold()
+    digest = sha256(identity.encode("utf-8")).hexdigest()[:20]
+    root = base / digest
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
 def launch_qt_quick_editor(
     document: GraphicsDocument | None = None,
     *,
@@ -174,7 +195,7 @@ def launch_qt_quick_editor(
     launch_context: GraphicsLaunchContext | None = None,
 ) -> int:
     try:
-        from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl
+        from PySide6.QtCore import QObject, Property, QTimer, Signal, Slot, QUrl
         from PySide6.QtGui import QGuiApplication
         from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
         from PySide6.QtQuick import QQuickItem, QQuickWindow, QSGRendererInterface
@@ -198,12 +219,27 @@ def launch_qt_quick_editor(
         sceneChanged = Signal()
         statusChanged = Signal()
         fileJobDone = Signal(bool, str, str, str)
+        autosaveDone = Signal(bool, str, str)
 
         def __init__(self) -> None:
             super().__init__()
             self._status = _startup_status(context, gate, requested_api)
             self._busy = False
+            self._autosave_manager = AutosaveManager(
+                _autosave_root(context.source),
+                generations=8,
+                embed_local_assets=True,
+            )
+            self._autosave_running = False
+            self._autosave_pending = False
+            self._last_autosave_digest = _document_digest(session.document)
+            self._recovery_point = self._find_recovery_point()
+            self._autosave_timer = QTimer(self)
+            self._autosave_timer.setSingleShot(True)
+            self._autosave_timer.setInterval(AUTOSAVE_DELAY_MS)
+            self._autosave_timer.timeout.connect(self._start_autosave)
             self.fileJobDone.connect(self._finish_file_job)
+            self.autosaveDone.connect(self._finish_autosave)
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
@@ -216,6 +252,7 @@ def launch_qt_quick_editor(
                 source=context.source,
                 graphics_api=requested_api,
             )
+            editor["recovery_available"] = self._recovery_point is not None
             return json.dumps(prepare_qml_payload(payload), ensure_ascii=False, separators=(",", ":"))
 
         @Property(str, notify=statusChanged)
@@ -229,12 +266,115 @@ def launch_qt_quick_editor(
         def _run(self, command: dict) -> None:
             result = router.dispatch(command)
             self._status = result.message or ("Concluído" if result.ok else "Falha")
+            if result.changed:
+                self._schedule_autosave()
             self.statusChanged.emit()
             self.sceneChanged.emit()
 
         def set_status(self, text: str) -> None:
             self._status = str(text)
             self.statusChanged.emit()
+
+        def _find_recovery_point(self):
+            preferred = self._autosave_manager.latest(session.document.id)
+            return preferred or self._autosave_manager.latest_any()
+
+        def _reset_autosave_manager(self, source: str | Path | None) -> None:
+            self._autosave_manager = AutosaveManager(
+                _autosave_root(source),
+                generations=8,
+                embed_local_assets=True,
+            )
+            self._recovery_point = self._find_recovery_point()
+            self._last_autosave_digest = ""
+
+        def _schedule_autosave(self) -> None:
+            self._autosave_pending = True
+            if not self._autosave_running:
+                self._autosave_timer.start()
+
+        def _start_autosave(self) -> None:
+            if self._autosave_running:
+                self._autosave_pending = True
+                return
+            snapshot = _snapshot_document(session)
+            digest = _document_digest(snapshot)
+            if digest == self._last_autosave_digest:
+                self._autosave_pending = False
+                return
+            manager = self._autosave_manager
+            self._autosave_running = True
+            self._autosave_pending = False
+
+            def worker() -> None:
+                try:
+                    path = manager.save(snapshot)
+                    self.autosaveDone.emit(True, str(path), digest)
+                except Exception as exc:
+                    self.autosaveDone.emit(False, f"{type(exc).__name__}: {exc}", digest)
+
+            threading.Thread(target=worker, name="sr-graphics2-autosave", daemon=True).start()
+
+        def _finish_autosave(self, ok: bool, detail: str, digest: str) -> None:
+            self._autosave_running = False
+            if ok:
+                self._last_autosave_digest = digest
+                try:
+                    saved_path = Path(detail).resolve()
+                    current_root = self._autosave_manager.root.resolve()
+                    if saved_path == current_root or current_root in saved_path.parents:
+                        self._recovery_point = self._find_recovery_point()
+                except OSError:
+                    self._recovery_point = self._find_recovery_point()
+            else:
+                self._status = f"Falha no autosave: {detail}"
+                self.statusChanged.emit()
+            self.sceneChanged.emit()
+            if self._autosave_pending:
+                self._autosave_timer.start(250)
+
+        @Slot()
+        def flushAutosave(self) -> None:
+            self._autosave_timer.stop()
+            snapshot = _snapshot_document(session)
+            digest = _document_digest(snapshot)
+            if digest == self._last_autosave_digest:
+                return
+            try:
+                path = self._autosave_manager.save(snapshot)
+                self._last_autosave_digest = digest
+                self._recovery_point = self._autosave_manager.latest(snapshot.id) or self._autosave_manager.latest_any()
+                self._status = f"Autosave final preservado · {path.name}"
+            except Exception as exc:
+                self._status = f"Falha no autosave final: {type(exc).__name__}: {exc}"
+            self.statusChanged.emit()
+
+        @Slot(result=bool)
+        def recoverLatest(self) -> bool:
+            point = self._find_recovery_point()
+            if point is None:
+                self._status = "Nenhum ponto de recuperação disponível."
+                self.statusChanged.emit()
+                return False
+            try:
+                recovered = self._autosave_manager.recover(
+                    point,
+                    extract_assets_to=self._autosave_manager.root / "recovered-assets" / point.document_id,
+                )
+                session.document = recovered
+                session.history.clear()
+                session.clear_selection()
+                context.document = recovered
+                self._last_autosave_digest = _document_digest(recovered)
+                self._recovery_point = point
+                self._status = f"Projeto recuperado · {point.document_name} · {point.saved_at.astimezone().strftime('%d/%m %H:%M:%S')}"
+                self.statusChanged.emit()
+                self.sceneChanged.emit()
+                return True
+            except Exception as exc:
+                self._status = f"Falha ao recuperar autosave: {type(exc).__name__}: {exc}"
+                self.statusChanged.emit()
+                return False
 
         def _start_file_job(
             self,
@@ -265,6 +405,8 @@ def launch_qt_quick_editor(
             self._busy = False
             if ok and kind == "save":
                 context.source = Path(target)
+                self._reset_autosave_manager(context.source)
+                self._schedule_autosave()
             self._status = message if ok else f"Falha: {message}"
             self.statusChanged.emit()
             self.sceneChanged.emit()
@@ -310,7 +452,10 @@ def launch_qt_quick_editor(
         def dispatch(self, payload: str) -> str:
             result_raw = router.dispatch_json(payload)
             try:
-                self._status = str(json.loads(result_raw).get("message") or "")
+                result_data = json.loads(result_raw)
+                self._status = str(result_data.get("message") or "")
+                if bool(result_data.get("changed")):
+                    self._schedule_autosave()
             except Exception:
                 self._status = "Comando processado"
             self.statusChanged.emit()
@@ -416,6 +561,7 @@ def launch_qt_quick_editor(
         project_actions,
     )
 
+    app.aboutToQuit.connect(bridge.flushAutosave)
     app.processEvents()
     resolved_value = _resolved_api_from_window(root_window, QQuickWindow)
     resolved_api = _graphics_api_name(resolved_value, QSGRendererInterface)
@@ -428,6 +574,8 @@ def launch_qt_quick_editor(
         details.append("fontes: " + ", ".join(font_report.families))
     elif font_report.warnings:
         details.append(font_report.warnings[0])
+    if bridge._recovery_point is not None:
+        details.append("recovery disponível")
     bridge.set_status(" · ".join(details))
     return int(app.exec())
 
