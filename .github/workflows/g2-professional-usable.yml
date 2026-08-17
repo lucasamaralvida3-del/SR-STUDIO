@@ -50,11 +50,14 @@ jobs:
           src/srstudio/graphics2/page_duplicate.py
           src/srstudio/graphics2/usability_gate.py
           src/srstudio/graphics2/professional_probe.py
+          src/srstudio/graphics2/qt_render_runtime.py
+          src/srstudio/graphics2/semantic_runtime.py
           tests/test_graphics2_page_duplicate.py
           tests/test_graphics2_usability_gate.py
           tests/test_graphics2_professional_workflow.py
           tests/test_graphics2_professional_export.py
           tests/test_graphics2_professional_probe.py
+          tests/test_graphics2_recovered_slot_identity.py
 
       - name: Professional usability contracts
         id: professional_tests
@@ -71,6 +74,9 @@ jobs:
             "tests/test_graphics2_professional_workflow.py",
             "tests/test_graphics2_professional_export.py",
             "tests/test_graphics2_professional_probe.py",
+            "tests/test_graphics2_recovered_slot_identity.py",
+            "tests/test_graphics2_semantic_product_card.py",
+            "tests/test_graphics2_semantic_spatial_card.py",
             "tests/test_graphics2_core.py",
             "tests/test_graphics2_autosave.py"
           )
