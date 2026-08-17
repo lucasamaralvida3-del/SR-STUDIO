@@ -80,6 +80,24 @@ def test_real_two_price_template_recovers_professional_product_semantics(tmp_pat
         for node in page.nodes.values()
         if node.visible and node.kind.value == "text"
     ]
+    image_diagnostics = [
+        {
+            "id": node.id,
+            "name": node.name,
+            "kind": node.kind.value,
+            "x": round(node.transform.x, 3),
+            "y": round(node.transform.y, 3),
+            "w": round(node.transform.width, 3),
+            "h": round(node.transform.height, 3),
+            "parent": node.parent_id or "",
+            "asset_id": node.asset_id,
+            "bound_image_source": node.metadata.get("bound_image_source", ""),
+            "locked": node.locked,
+        }
+        for page in context.document.pages
+        for node in page.nodes.values()
+        if node.visible and node.kind.value in {"image", "background"}
+    ]
 
     output = tmp_path / "semantic-pptx-probe"
     report = run_professional_probe(
@@ -89,6 +107,26 @@ def test_real_two_price_template_recovers_professional_product_semantics(tmp_pat
     )
 
     metrics = dict(report.usability.get("metrics") or {})
+    page_semantics = []
+    for page in context.document.pages:
+        slots = [
+            {
+                "id": slot.id,
+                "name": slot.name,
+                "node_by_role": dict(slot.node_by_role),
+                "product_id": slot.product_id,
+                "confidence": slot.confidence,
+                "metadata": dict(slot.metadata),
+            }
+            for slot in page.slots.values()
+        ]
+        page_semantics.append(
+            {
+                "page_id": page.id,
+                "semantic_blocks": dict(page.metadata.get("semantic_blocks") or {}),
+                "slots": slots,
+            }
+        )
     diagnostic = {
         "source": str(_REAL_SEMANTIC_TEMPLATE),
         "metrics": metrics,
@@ -96,6 +134,8 @@ def test_real_two_price_template_recovers_professional_product_semantics(tmp_pat
         "semantic_report": context.document.metadata.get("semantic_blocks"),
         "semantic_recovery_complete": context.document.metadata.get("semantic_recovery_complete"),
         "text_nodes": text_diagnostics,
+        "image_nodes": image_diagnostics,
+        "pages": page_semantics,
     }
     _SEMANTIC_DIAGNOSTIC.write_text(
         json.dumps(diagnostic, ensure_ascii=False, indent=2),
