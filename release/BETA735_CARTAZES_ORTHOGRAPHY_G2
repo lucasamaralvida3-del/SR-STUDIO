@@ -9,3 +9,6 @@ Requisitos de ativacao:
 - bundle Windows path-safe;
 - canal publico ainda em Beta 7.33 durante a ativacao;
 - nenhuma mudanca posterior na integration durante o build.
+
+Disparo autorizado em 2026-08-17 para teste do estado atual do Studio de Encartes.
+Graphics Engine 2 esperado: 2.0.0-alpha.42.
