@@ -181,15 +181,200 @@ Added `tests/test_graphics2_professional_workflow.py` covering a practical encar
 
 Commit: `193f6ff9eaf81f46045b0751c6d6d891ce8b1544`.
 
-## Validation status
-- GitHub is receiving the branch commits.
-- A repository workflow named `upgrade-installer-1.2-retry.yml` is automatically firing on pushes and reports failure with zero jobs; it is an unrelated installer workflow and is outside this G2 mission.
-- No G2 test workflow/status has been produced for the latest commits through the available connector, so the newly added tests must still be executed in a Python test environment before merge or release.
-- Do not merge this branch to operational Beta/Stable until the G2-focused tests are executed and green.
+### Cycle C6 — safe page duplication, dedicated CI and headless export
+Problem:
+- the old page clone only refreshed the page ID, which could leave node, SmartSlot and semantic identities duplicated;
+- G2 lacked a short dedicated Windows gate;
+- direct PNG/PDF calls outside the editor could run without a `QGuiApplication`.
 
-## Next priorities
-1. Execute the focused G2 test suite when a runnable environment becomes available; fix any failures before expanding scope.
-2. Audit page duplication identity remapping (node/slot/semantic IDs) because the current implementation deep-copies the active page and only refreshes the page ID/slot page ownership.
-3. Audit ProductCard/PriceBlock unit recognition and real SR encarte variants without importing Cartazes rules into G2.
-4. Continue real PPTX/Canva fidelity blockers: transform stack, WordArt, Office line-box, vertical anchor, margins/autofit.
-5. Verify preview/PNG/PDF parity on a real multi-product encarte.
+Change:
+- added safe page duplication with fresh/remapped page/node/slot/semantic IDs and internal references;
+- added `.github/workflows/g2-professional-usable.yml` with Windows/Python 3.11, compile, Ruff, pytest, JUnit and diagnostic artifacts;
+- added a headless Qt render runtime guard.
+
+Result:
+- multipage clones no longer collide;
+- G2 has a dedicated CI source of truth;
+- CLI/probe/tests can export PNG/PDF without a Qt process crash.
+
+### Cycle C7 — recovered SmartSlot identity and persisted image replacement
+Problem:
+- recovered slots could collide between pages and lose bound product state during semantic rebuild;
+- imported images could be cropped/moved but not safely replaced as a persistent `.srscene` asset.
+
+Change:
+- `semantic_runtime.py` scopes recovered identities only when collisions exist and restores product/lock/snapshot on rebuild;
+- image replacement now embeds/updates the asset, preserves the frame and participates in undo/redo;
+- page add/duplicate controls were exposed in the G2 QML UI.
+
+Result:
+- recovered semantic state is stable across rebuild/multipage;
+- image replacement persists after save/open.
+
+### Cycle C8 — real PPTX editability
+Problem:
+- the historical import bridge intentionally locked nodes outside SmartSlots, so a real PPTX could open visually but remain effectively read-only.
+
+Change:
+- added `import_edit_runtime.py` policy `content-v1`:
+  - visible imported TEXT => editable;
+  - visible imported IMAGE => editable;
+  - structural shapes remain protected;
+  - hidden/template-hidden nodes remain protected.
+
+Result:
+- `CARTAZ_VENDA.pptx` opens through the real editor import path with editable text and passes save/open + PNG/PDF.
+
+### Cycle C9 — complete Brazilian price recovery
+Problem:
+- the historical fallback recognized split prices such as `R$` + `92` + `,77` + unit;
+- real SR PPTX files also use `R$` + `92,77` + `CADA`.
+
+Change:
+- added `semantic_price_runtime.py` as a conservative secondary path;
+- associates currency/unit by rectangle gap instead of center distance;
+- keeps the historical split-price algorithm intact;
+- rejects isolated decimal text without currency+unit evidence.
+
+Result:
+- complete Brazilian price tokens become valid PriceBlocks without filename-specific rules.
+
+### Cycle C10 — explicit named semantics: one product, two prices
+Problem:
+- a real two-price template initially produced two fake ProductCards/SmartSlots because each price was recovered independently.
+
+Change:
+- added `semantic_named_slot_runtime.py`, prioritizing explicit PPTX names such as:
+  - `SR_PRODUTO`;
+  - `SR_PRECO_PROMO`;
+  - `SR_PRECO_CLUBE`;
+  - `SR_UNIDADE_PROMO`;
+  - `SR_UNIDADE_CLUBE`.
+- added template-aware binding so a separate `R$` box stays separate and numeric boxes receive only `12,34`;
+- preserves `CADA` for unit-sold products;
+- product-image binding is deliberately conservative: footer/banner/logo images are not promoted as product photos without explicit image semantics.
+
+Result on the real two-price template:
+- 1 ProductCard;
+- 1 SmartSlot;
+- 1 normal PriceBlock;
+- 1 Club/app PriceBlock;
+- binding, undo/redo, save/open and export all pass.
+
+### Cycle C11 — Club Exclusive and CPF limits
+Problem:
+- Club-only templates still depended on spatial fallback;
+- `SR_LIMITE` / `SR_CLUBE_LIMITE` were not part of the explicit product slot.
+
+Change:
+- explicit named recovery now supports `SR_CLUBE_PRODUTO`, `SR_CLUBE_PRECO`, `SR_LIMITE` and `SR_CLUBE_LIMITE`;
+- Club-only price is represented as app/Club price when no base price exists;
+- limit binding supports `limit` and `cpf_limit`, renders `LIMITE DE [valor] POR CPF`, and hides the field when empty.
+
+Result:
+- Club Exclusive is no longer dependent on spatial fallback;
+- limit and price behavior passes real-template tests and undo/redo.
+
+### Cycle C12 — eight-model real PPTX corpus audit
+Added `tests/test_graphics2_real_corpus_audit.py` and audited the eight preserved SR PPTX models.
+
+Final result:
+
+| Model | Graphics Ready | Semantic Ready | SmartSlots | ProductCards | PriceBlocks |
+|---|---:|---:|---:|---:|---:|
+| `ATACADO.pptx` | yes | yes | 1 | 1 | 1 |
+| `CARTAZ_VENDA.pptx` | yes | yes | 1 | 1 | 1 |
+| `CLUBE_EXCLUSIVO.pptx` | yes | yes | 1 | 1 | 1 |
+| `CLUBE_EXCLUSIVO_COM_LIMITE.pptx` | yes | yes | 1 | 1 | 1 |
+| `SEGUNDA_DA_LIMPEZA_1_PRECO.pptx` | yes | yes | 1 | 1 | 1 |
+| `SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx` | yes | yes | 1 | 1 | 1 |
+| `SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx` | yes | yes | 1 | 1 | 2 |
+| `SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx` | yes | yes | 1 | 1 | 2 |
+
+Corpus invariants:
+- no duplicate page/node/slot IDs;
+- no orphan semantic members;
+- no missing SmartSlot nodes;
+- no Preview preflight errors;
+- visible editable content in all eight models.
+
+### Cycle C13 — real Professional Usable Preview end-to-end gate
+Added `tests/test_graphics2_usable_preview_e2e.py`, which executes one continuous real operator workflow from `SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx`:
+1. import the real PPTX;
+2. resolve SmartSlot;
+3. drag/drop a product through the real `drop_product` Command Router path;
+4. update product name, normal price, Club/app price and CPF limit;
+5. edit text;
+6. select and move;
+7. resize;
+8. undo/redo;
+9. replace an imported image while preserving its frame;
+10. undo/redo image replacement;
+11. duplicate the page with safe identities;
+12. autosave and recover;
+13. save portable `.srscene`;
+14. reopen;
+15. verify edits/product persistence;
+16. render PNG;
+17. compare PNG before/after save-open — pixel-identical;
+18. export two-page PDF.
+
+Result: PASS.
+
+### Cycle C14 — complete real Qt/QML host gate
+Added `tests/test_graphics2_real_qml_host_preview.py`.
+
+The test loads a real PPTX and starts the actual Qt Quick host with software/offscreen rendering, covering:
+- `GraphicsEditor.qml`;
+- real `SceneBridge`;
+- live scene image provider;
+- `ImageInspector.qml`;
+- `QualityInspector.qml`;
+- `ProjectActions.qml`;
+- QQuick window creation;
+- Qt event processing and controlled shutdown.
+
+Result: PASS.
+
+### Cycle C15 — G2 USABLE PREVIEW milestone
+Final dedicated validation:
+- workflow: `G2 Professional Usable`;
+- run: `32068031581`;
+- Windows / Python 3.11;
+- **61 passed in 6.47s**;
+- compile: PASS;
+- Ruff: PASS;
+- Professional usability contracts: PASS;
+- real Qt/QML host: PASS.
+
+Decision:
+
+**G2 USABLE PREVIEW ACHIEVED — 2026-08-17.**
+
+The original continuous mission to reach a usable Preview has reached its defined safe stop condition.
+
+Detailed evidence: `docs/G2_USABLE_PREVIEW.md`.
+
+## Validation status
+- Dedicated G2 workflow is green at run `32068031581`.
+- Eight of eight preserved SR PPTX models are Graphics Ready and Semantic Ready for the Preview gate.
+- The real one-session operator E2E passes through import, product drop, editing, move/resize, image replacement, undo/redo, multipage, autosave/recovery, save/open, PNG and PDF.
+- The Qt/QML host starts successfully with a real PPTX.
+- The unrelated `upgrade-installer-1.2-retry.yml` workflow remains outside this G2 mission and is not used as the G2 acceptance signal.
+- No operational Beta/Stable branch, launcher, installer or release manifest was modified by the Preview milestone work.
+
+## Not declared
+- **Production Ready:** not declared.
+- **Final PowerPoint fidelity:** not declared.
+- **Golden Master pass:** not declared and thresholds were not lowered.
+- **Release/installer/main merge:** not performed.
+
+## Next priorities if the mission is extended to Production Hardening
+1. DrawingML transforms, groups and off-slide content.
+2. WordArt and Office text geometry.
+3. Office line-box, vertical anchor, transformed margins and autofit/run inheritance.
+4. Continue content-aware diagnostics alongside the unchanged official Golden Master gate.
+5. Human tests with additional real Canva/PPTX flyers.
+6. Performance testing on larger and multi-page documents.
+7. Final editor UX polish.
+8. Only then evaluate a distributable Preview build and promotion path.
