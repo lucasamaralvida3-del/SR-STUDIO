@@ -1,0 +1,41 @@
+name: Apply G2 Alpha 43 Validation Fix
+
+on:
+  push:
+    branches:
+      - integration/sr-studio-next
+    paths:
+      - 'tools/apply_g2_alpha43_validation_fix.py'
+      - '.github/workflows/g2-alpha43-apply-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/sr-studio-next
+          fetch-depth: 0
+      - name: Apply audited patch
+        run: python tools/apply_g2_alpha43_validation_fix.py
+      - name: Static sanity checks
+        run: |
+          git diff --check
+          python -m py_compile \
+            src/srstudio/graphics2/command_router.py \
+            src/srstudio/graphics2/image_replace.py \
+            src/srstudio/graphics2/package.py
+      - name: Commit repaired integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            src/srstudio/graphics2/command_router.py \
+            src/srstudio/graphics2/image_replace.py \
+            src/srstudio/graphics2/package.py \
+            src/srstudio/graphics2/qml/ImageInspector.qml
+          git commit -m "fix: integrate Alpha 43 validation batch"
+          git push origin HEAD:integration/sr-studio-next
