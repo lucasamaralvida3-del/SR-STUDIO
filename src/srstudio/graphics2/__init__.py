@@ -86,7 +86,7 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.31"
+ENGINE_VERSION = "2.0.0-alpha.32"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
