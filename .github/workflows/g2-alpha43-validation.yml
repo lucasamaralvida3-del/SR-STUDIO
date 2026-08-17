@@ -10,12 +10,19 @@ on:
       - 'tests/test_graphics2_*.py'
       - 'pyproject.toml'
       - '.github/workflows/g2-alpha43-validation.yml'
+  pull_request:
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'src/srstudio/settings/features.py'
+      - 'tests/test_graphics2_*.py'
+      - 'pyproject.toml'
+      - '.github/workflows/g2-alpha43-validation.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: g2-alpha43-validation-${{ github.ref }}
+  group: g2-alpha43-validation-${{ github.event_name }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -102,7 +109,7 @@ jobs:
         run: python -m pytest -q tests -k graphics2
 
   record-validation:
-    if: always()
+    if: ${{ always() && github.event_name == 'push' }}
     needs:
       - ubuntu-g2
       - windows-qt-quick
