@@ -157,7 +157,7 @@ class LegacyPosterBridge:
                 {
                     "tipo": poster_type,
                     "campanha": campaign,
-                    "produto": product.name,
+                    "produto": self.engine.display_name(product.name),
                     "promocao": promo,
                     "clube": club,
                     "validade_rotulo": self._validity_label(product.validity),
@@ -320,6 +320,7 @@ class LegacyPosterBridge:
 
     @staticmethod
     def _legacy_unit(value: str) -> str:
+        """Translate internal sale units to the wording printed on promotion posters."""
         unit = (value or "UN").upper().strip()
         if unit in {"À LATA", "A LATA"}:
             return "À LATA"
@@ -327,7 +328,7 @@ class LegacyPosterBridge:
             return "À GARRAFA"
         if unit == "KG":
             return "KG"
-        return "UN"
+        return "CADA"
 
     @staticmethod
     def _validity_label(value: str) -> str:
