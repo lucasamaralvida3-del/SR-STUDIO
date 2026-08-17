@@ -56,6 +56,7 @@ from .model import (
 )
 from .operations import GraphicsSession
 from .pdf_baseline import PdfBaselinePage, render_pdf_baselines
+from .pptx_artwork import PptxArtworkIssue, PptxArtworkRecoveryReport, recover_pptx_artwork
 from .pptx_effect_mapping import (
     PptxEffectMappingIssue,
     PptxEffectMappingReport,
@@ -99,7 +100,7 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.42"
+ENGINE_VERSION = "2.0.0-alpha.43"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -137,6 +138,8 @@ __all__ = [
     "PageFingerprint",
     "PdfBaselinePage",
     "PlaceholderRecoveryReport",
+    "PptxArtworkIssue",
+    "PptxArtworkRecoveryReport",
     "PptxEffectAudit",
     "PptxEffectMappingIssue",
     "PptxEffectMappingReport",
@@ -196,6 +199,7 @@ __all__ = [
     "rebuild_pptx_groups",
     "recover_canva_image_placeholders",
     "recover_canva_semantic_cards",
+    "recover_pptx_artwork",
     "recover_pptx_fill_rects",
     "recover_pptx_spacing",
     "render_pdf",
