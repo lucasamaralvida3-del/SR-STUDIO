@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 
 Rectangle {
     id: panel
-    width: 338
+    width: 520
     height: 42
     anchors.left: parent ? parent.left : undefined
     anchors.top: parent ? parent.top : undefined
@@ -22,6 +22,27 @@ Rectangle {
         anchors.margins: 5
         spacing: 5
 
+        ToolButton {
+            text: "+ Página"
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Adicionar uma nova página ao encarte"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.dispatch(JSON.stringify({"name": "add_page"}))
+        }
+        ToolButton {
+            text: "Duplicar pág."
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Duplicar a página atual preservando o layout com identidades internas seguras"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.dispatch(JSON.stringify({"name": "duplicate_page"}))
+        }
+        Rectangle {
+            Layout.preferredWidth: 1
+            Layout.fillHeight: true
+            Layout.topMargin: 6
+            Layout.bottomMargin: 6
+            color: "#E2E8F0"
+        }
         ToolButton {
             text: "💾 Salvar"
             enabled: !sceneBridge.busy
