@@ -72,6 +72,7 @@ jobs:
           tests/test_graphics2_real_pptx_professional.py
           tests/test_graphics2_real_corpus_audit.py
           tests/test_graphics2_usable_preview_e2e.py
+          tests/test_graphics2_real_qml_host_preview.py
 
       - name: Professional usability contracts
         id: professional_tests
@@ -98,6 +99,10 @@ jobs:
             "tests/test_graphics2_real_pptx_professional.py",
             "tests/test_graphics2_real_corpus_audit.py",
             "tests/test_graphics2_usable_preview_e2e.py",
+            "tests/test_graphics2_real_qml_host_preview.py",
+            "tests/test_graphics2_qml_load.py",
+            "tests/test_graphics2_qt_host_cli.py",
+            "tests/test_graphics2_qt_image_provider.py",
             "tests/test_graphics2_semantic_product_card.py",
             "tests/test_graphics2_semantic_spatial_card.py",
             "tests/test_graphics2_core.py",
