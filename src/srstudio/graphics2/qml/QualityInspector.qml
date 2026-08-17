@@ -5,7 +5,7 @@ import QtQuick.Layouts
 Rectangle {
     id: panel
     width: 326
-    height: expanded ? 430 : 56
+    height: expanded ? 466 : 56
     anchors.right: parent ? parent.right : undefined
     anchors.top: parent ? parent.top : undefined
     anchors.rightMargin: 8
@@ -45,6 +45,13 @@ Rectangle {
         if (shape === 0 && normal === 0 && none === 0)
             return "—"
         return "Forma " + shape + " · Texto " + normal + " · Sem " + none
+    }
+
+    function effectsSummary() {
+        var advanced = Number(gate.pptx_advanced_effects || 0)
+        if (advanced <= 0)
+            return "—"
+        return advanced + " · G" + Number(gate.pptx_gradient_fills || 0) + " · S" + Number(gate.pptx_shadows || 0)
     }
 
     function topTriageSuspect() {
@@ -202,6 +209,25 @@ Rectangle {
 
                 Label { text: "Cobertura grupos"; color: "#64748B"; font.pixelSize: 9 }
                 Label { text: percent(gate.mapping_group_coverage); color: "#334155"; horizontalAlignment: Text.AlignRight; Layout.fillWidth: true }
+
+                Label { text: "Efeitos PPTX"; color: "#64748B"; font.pixelSize: 9 }
+                Label {
+                    text: effectsSummary()
+                    color: Number(gate.pptx_advanced_effects || 0) > 0 ? "#A16207" : "#334155"
+                    font.bold: Number(gate.pptx_advanced_effects || 0) > 0
+                    horizontalAlignment: Text.AlignRight
+                    Layout.fillWidth: true
+                    ToolTip.text: "Total · G gradientes · S sombras"
+                    ToolTip.visible: hovered
+                }
+
+                Label { text: "Alpha DrawingML"; color: "#64748B"; font.pixelSize: 9 }
+                Label {
+                    text: String(Number(gate.pptx_alpha_modifiers || 0))
+                    color: Number(gate.pptx_alpha_modifiers || 0) > 0 ? "#A16207" : "#334155"
+                    horizontalAlignment: Text.AlignRight
+                    Layout.fillWidth: true
+                }
             }
 
             Rectangle {
