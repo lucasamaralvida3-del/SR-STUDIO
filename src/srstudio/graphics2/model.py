@@ -243,9 +243,114 @@ class GraphicsPage:
                 current.children = [nid for nid in current.children if nid not in target_set]
         for nid in target_set:
             self.nodes.pop(nid, None)
-        for slot in self.slots.values():
-            slot.node_by_role = {role: nid for role, nid in slot.node_by_role.items() if nid not in target_set}
+        self._prune_deleted_references(target_set)
         return removed
+
+    def _prune_deleted_references(self, target_set: set[str]) -> None:
+        removed_slot_ids: set[str] = set()
+        for slot_id, slot in list(self.slots.items()):
+            slot.node_by_role = {
+                role: nid
+                for role, nid in slot.node_by_role.items()
+                if nid not in target_set and nid in self.nodes
+            }
+            extras = slot.metadata.get("extra_bindings")
+            extra_node_ids: set[str] = set()
+            if isinstance(extras, dict):
+                cleaned_extras: dict[str, Any] = {}
+                for role, raw_ids in extras.items():
+                    if isinstance(raw_ids, (list, tuple, set)):
+                        values = [str(nid) for nid in raw_ids if str(nid) not in target_set and str(nid) in self.nodes]
+                        if values:
+                            cleaned_extras[str(role)] = values
+                            extra_node_ids.update(values)
+                    elif raw_ids:
+                        value = str(raw_ids)
+                        if value not in target_set and value in self.nodes:
+                            cleaned_extras[str(role)] = value
+                            extra_node_ids.add(value)
+                slot.metadata["extra_bindings"] = cleaned_extras
+            if not slot.node_by_role and not extra_node_ids:
+                removed_slot_ids.add(slot_id)
+                self.slots.pop(slot_id, None)
+
+        raw_blocks = self.metadata.get("semantic_blocks")
+        if not isinstance(raw_blocks, dict):
+            return
+
+        removed_block_ids: set[str] = set()
+        for block_id, block in list(raw_blocks.items()):
+            if not isinstance(block, dict):
+                continue
+            slot_id = str(block.get("slot_id") or "")
+            members = [str(nid) for nid in block.get("members") or [] if str(nid) not in target_set and str(nid) in self.nodes]
+            roles: dict[str, list[str]] = {}
+            for role, raw_ids in dict(block.get("roles") or {}).items():
+                values = [str(nid) for nid in raw_ids if str(nid) not in target_set and str(nid) in self.nodes]
+                if values:
+                    roles[str(role)] = values
+            metadata = block.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+                block["metadata"] = metadata
+            content_members = metadata.get("content_members")
+            if isinstance(content_members, list):
+                metadata["content_members"] = [
+                    str(nid)
+                    for nid in content_members
+                    if str(nid) not in target_set and str(nid) in self.nodes
+                ]
+            for key in ("source_group_id", "name_node_id", "image_node_id"):
+                value = str(metadata.get(key) or "")
+                if value in target_set or (value and value not in self.nodes):
+                    metadata[key] = ""
+            geometry = block.get("template_geometry")
+            if isinstance(geometry, dict):
+                block["template_geometry"] = {
+                    str(nid): value
+                    for nid, value in geometry.items()
+                    if str(nid) not in target_set and str(nid) in self.nodes
+                }
+            block["members"] = members
+            block["roles"] = roles
+
+            remaining_context = list(metadata.get("content_members") or [])
+            has_references = bool(members or remaining_context or any(roles.values()))
+            if slot_id in removed_slot_ids or not has_references:
+                removed_block_ids.add(str(block_id))
+                raw_blocks.pop(block_id, None)
+                continue
+
+            bounds_ids = members or remaining_context
+            bounds = self.bounds(bounds_ids)
+            if bounds is not None:
+                block["bounds"] = {
+                    "x": bounds.x,
+                    "y": bounds.y,
+                    "width": bounds.width,
+                    "height": bounds.height,
+                }
+
+        if removed_block_ids:
+            for block in raw_blocks.values():
+                if not isinstance(block, dict):
+                    continue
+                metadata = block.get("metadata")
+                if not isinstance(metadata, dict):
+                    continue
+                price_blocks = metadata.get("price_blocks")
+                if isinstance(price_blocks, list):
+                    metadata["price_blocks"] = [str(item) for item in price_blocks if str(item) not in removed_block_ids]
+
+        for slot in self.slots.values():
+            product_card_id = str(slot.metadata.get("semantic_product_card_id") or "")
+            if product_card_id in removed_block_ids:
+                slot.metadata.pop("semantic_product_card_id", None)
+            price_ids = slot.metadata.get("semantic_price_block_ids")
+            if isinstance(price_ids, list):
+                slot.metadata["semantic_price_block_ids"] = [
+                    str(item) for item in price_ids if str(item) not in removed_block_ids
+                ]
 
     def bounds(self, node_ids: Iterable[str]) -> Rect | None:
         rects = [self.nodes[nid].rect for nid in node_ids if nid in self.nodes and self.nodes[nid].visible]
