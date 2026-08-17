@@ -80,14 +80,21 @@ from .quality import ProductionGateIssue, ProductionGateReport, inspect_producti
 from . import qt_renderer as _qt_renderer
 from .qt_render_runtime import ensure_qt_gui_application, install_headless_renderer_guard
 from .scene_fingerprint import PageFingerprint, SceneFingerprint, fingerprint_document, store_scene_fingerprint
+from . import semantic_blocks as _semantic_blocks
 from .semantic_blocks import (
     SemanticBlock,
     SemanticBlockReport,
-    build_semantic_blocks,
     semantic_block,
     semantic_member_ids,
     semantic_owner,
 )
+from .semantic_runtime import install_semantic_recovery_guard
+
+# A proteção precisa ser instalada antes de importadores/recuperadores posteriores
+# capturarem uma referência local ao builder semântico histórico.
+install_semantic_recovery_guard(_semantic_blocks)
+build_semantic_blocks = _semantic_blocks.build_semantic_blocks
+
 from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_image_placeholders
 from .semantic_recovery import recover_canva_semantic_cards
 from .studio_bridge import (
