@@ -23,17 +23,16 @@ from srstudio.posters import PosterKind
 
 
 def graphics2_runtime_flags(data_dir) -> tuple[bool, bool]:
-    """Resolve G2 para o executável real sem depender só do Launcher.
+    """Resolve o modo G2 sem contaminar o ambiente global do processo.
 
-    Builds do canal Beta que já carregam o Graphics Engine 2 devem expô-lo como
-    editor principal de Encartes. A ativação é apenas de processo; não altera
-    preferências persistidas e não afeta o canal Stable.
+    Builds Beta que já carregam o Graphics Engine 2 o apresentam como editor
+    principal de Encartes. Stable continua obedecendo somente às feature flags.
     """
 
+    enabled, gpu_enabled = bridge_flags(data_dir)
     if str(__channel__).strip().lower() == "beta":
-        os.environ["SR_GRAPHICS_ENGINE_2_BETA"] = "1"
-        os.environ.setdefault("SR_GRAPHICS_ENGINE_2_GPU", "1")
-    return bridge_flags(data_dir)
+        return True, True
+    return enabled, gpu_enabled
 
 
 class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
@@ -274,13 +273,32 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
         sync_button.place(relx=1.0, x=-292, y=13, anchor="ne")
 
     def _launch_graphics2_optional(self) -> None:
-        # Revalida a ativação de processo antes de chamar a ponte. Isso torna o
-        # executável Beta autossuficiente mesmo se for aberto por um Launcher antigo.
         engine_enabled, _gpu_enabled = graphics2_runtime_flags(self.data_dir)
         if not engine_enabled:
             self.toast.show("Graphics Engine 2 não está habilitado neste canal.", "warning", 6200)
             return
-        result = launch_studio_project_if_enabled(self.project, self.data_dir)
+
+        # A ponte existente continua feature-flagged. No build Beta, ativa-se a flag
+        # somente durante esta chamada. O subprocesso herda o ambiente correto e o
+        # processo Tk volta ao estado anterior logo depois, evitando contaminar testes,
+        # preferências locais ou outros módulos.
+        previous_beta = os.environ.get("SR_GRAPHICS_ENGINE_2_BETA")
+        previous_gpu = os.environ.get("SR_GRAPHICS_ENGINE_2_GPU")
+        try:
+            if str(__channel__).strip().lower() == "beta":
+                os.environ["SR_GRAPHICS_ENGINE_2_BETA"] = "1"
+                os.environ["SR_GRAPHICS_ENGINE_2_GPU"] = "1"
+            result = launch_studio_project_if_enabled(self.project, self.data_dir)
+        finally:
+            if previous_beta is None:
+                os.environ.pop("SR_GRAPHICS_ENGINE_2_BETA", None)
+            else:
+                os.environ["SR_GRAPHICS_ENGINE_2_BETA"] = previous_beta
+            if previous_gpu is None:
+                os.environ.pop("SR_GRAPHICS_ENGINE_2_GPU", None)
+            else:
+                os.environ["SR_GRAPHICS_ENGINE_2_GPU"] = previous_gpu
+
         if result.launched:
             self.toast.show(result.message, "success", 5200)
             return
