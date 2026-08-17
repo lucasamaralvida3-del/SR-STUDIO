@@ -9,6 +9,7 @@ from typing import Callable
 import json
 import os
 import time
+import zipfile
 
 from .model import GraphicsDocument
 from .package import load_package, save_package
@@ -90,7 +91,7 @@ class AutosaveManager:
                 if latest is not None:
                     try:
                         baseline = document_fingerprint(self.recover(latest))
-                    except (OSError, ValueError, KeyError):
+                    except (OSError, ValueError, KeyError, zipfile.BadZipFile):
                         baseline = None
             if baseline == fingerprint:
                 self._last_fingerprint[document.id] = fingerprint
@@ -181,7 +182,7 @@ class AutosaveManager:
                 stat = path.stat()
                 saved = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
                 points.append(RecoveryPoint(path, document.id, document.name, saved, stat.st_size))
-            except (OSError, ValueError, KeyError, json.JSONDecodeError):
+            except (OSError, ValueError, KeyError, json.JSONDecodeError, zipfile.BadZipFile):
                 # A damaged generation must not hide older valid recovery points.
                 pass
         return sorted(points, key=lambda item: item.saved_at, reverse=True)
