@@ -20,6 +20,8 @@ import sys
 from PIL import Image
 
 from .fidelity import FidelityPolicy, compare_images
+from .fidelity_attribution import attribute_fidelity_regions
+from .fidelity_diagnostics import store_fidelity_triage
 from .fidelity_triage import analyze_fidelity_regions, write_triage_report
 
 
@@ -168,6 +170,7 @@ def run_reference_suite(args: Namespace) -> int:
     results = []
     render_reports = []
     case_payloads = []
+    portable_triage_by_case: list[dict[str, Any]] = []
     for case in manifest.cases:
         if case.page >= len(imported.document.pages):
             raise IndexError(f"Manifesto pede slide {case.page + 1}, mas o Engine importou {len(imported.document.pages)} páginas.")
@@ -200,8 +203,21 @@ def run_reference_suite(args: Namespace) -> int:
             triage,
             output / "triage" / f"slide-{case.page + 1:03d}-{slug}-triage.json",
         )
+        attribution = attribute_fidelity_regions(triage, imported.document.pages[case.page])
+        attribution_path = output / "triage" / f"slide-{case.page + 1:03d}-{slug}-attribution.json"
+        attribution_path.parent.mkdir(parents=True, exist_ok=True)
+        attribution_path.write_text(
+            json.dumps(attribution.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        portable_triage = {
+            "available": True,
+            "spatial": triage.to_dict(),
+            "attribution": attribution.to_dict(),
+        }
         results.append(result)
         render_reports.append(report)
+        portable_triage_by_case.append(portable_triage)
         case_payloads.append(
             {
                 "name": case.name,
@@ -211,11 +227,22 @@ def run_reference_suite(args: Namespace) -> int:
                 "result": result.to_dict(),
                 "triage": triage.to_dict(),
                 "triage_report": str(triage_path),
+                "attribution": attribution.to_dict(),
+                "attribution_report": str(attribution_path),
             }
         )
 
     aggregate = _aggregate(results)
     store_visual_fidelity(imported.document, aggregate)
+    if results:
+        worst_index = min(range(len(results)), key=lambda index: float(results[index].metrics.score))
+        store_fidelity_triage(imported.document, portable_triage_by_case[worst_index])
+        imported.document.metadata["visual_fidelity_worst_case"] = {
+            "name": manifest.cases[worst_index].name,
+            "page": manifest.cases[worst_index].page,
+            "slide": manifest.cases[worst_index].page + 1,
+            "score": float(results[worst_index].metrics.score),
+        }
     gate = inspect_production_gate(imported.document, require_visual_fidelity=True)
     scene_path = ""
     if args.save_scene:
@@ -228,6 +255,7 @@ def run_reference_suite(args: Namespace) -> int:
         "manifest": str(manifest_path),
         "scene_fingerprint": fingerprint.to_dict(),
         "aggregate": aggregate,
+        "worst_case": dict(imported.document.metadata.get("visual_fidelity_worst_case") or {}),
         "cases": case_payloads,
         "render": [
             {
@@ -244,6 +272,8 @@ def run_reference_suite(args: Namespace) -> int:
         "import_audit": imported.audit.to_dict(),
         "pptx_structure": pptx_structure,
         "pptx_mapping": pptx_mapping,
+        "pptx_effects": dict(imported.document.metadata.get("pptx_effects") or {}),
+        "pptx_effect_mapping": dict(imported.document.metadata.get("pptx_effect_mapping") or {}),
         "pptx_fidelity": dict(imported.document.metadata.get("pptx_fidelity") or {}),
         "production_gate": gate.to_dict(),
         "scene": scene_path,
@@ -274,12 +304,26 @@ def run_reference_suite(args: Namespace) -> int:
                 f" · maior região x={first['x']} y={first['y']} "
                 f"{first['width']}×{first['height']}"
             )
+        suspect_note = _top_suspect_note(case_payload.get("attribution") or {})
         print(
             f"  {'PASS' if result.passed else 'FAIL'} slide {case.page + 1}: "
-            f"{case.name} · {result.metrics.percent:.4f}%{region_note}"
+            f"{case.name} · {result.metrics.percent:.4f}%{region_note}{suspect_note}"
         )
     print(f"  Relatório: {report_path}")
     return 0 if gate.ready and aggregate["passed"] else 1
+
+
+def _top_suspect_note(attribution: dict[str, Any]) -> str:
+    regions = list(attribution.get("regions") or [])
+    if not regions:
+        return ""
+    suspects = list((regions[0] or {}).get("suspects") or [])
+    if not suspects:
+        return " · sem node SR Scene associado"
+    suspect = suspects[0]
+    role = str(suspect.get("binding_role") or suspect.get("kind") or "node")
+    name = str(suspect.get("name") or suspect.get("node_id") or "sem nome")
+    return f" · provável {role}: {name}"
 
 
 def _aggregate(results: list[Any]) -> dict[str, Any]:
