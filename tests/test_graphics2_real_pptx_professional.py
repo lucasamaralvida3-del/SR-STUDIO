@@ -37,7 +37,8 @@ def test_real_cartaz_venda_runs_editor_import_persistence_and_exports(tmp_path: 
         require_semantic_products=False,
     )
 
-    assert report.ready is True, report.errors
+    assert report.ready is True, report.to_dict()
+    assert report.gate_blockers == []
     assert report.persistence_ok is True
     assert report.png_ok is True
     assert report.pdf_ok is True
