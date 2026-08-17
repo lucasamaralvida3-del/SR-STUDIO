@@ -30,6 +30,7 @@ class GraphicsCommandRouter:
     def __init__(self, session: GraphicsSession) -> None:
         self.session = session
         self.snap = SnapSettings()
+        self._clipboard: dict[str, Any] | None = None
 
     def payload(self) -> dict[str, Any]:
         scene = self.session.document.to_dict()
@@ -45,6 +46,7 @@ class GraphicsCommandRouter:
             "can_redo": self.session.history.can_redo,
             "undo_label": self.session.history.undo_label,
             "redo_label": self.session.history.redo_label,
+            "clipboard_available": bool(self._clipboard),
             "snap": asdict(self.snap),
             "products": list(self.session.document.metadata.get("products") or []),
         }
@@ -151,6 +153,26 @@ class GraphicsCommandRouter:
                     True,
                     bool(created),
                     "Elementos duplicados." if created else "Nada para duplicar.",
+                    {"node_ids": created, "slot_ids": slot_ids},
+                )
+            if name == "copy":
+                count = self._copy_selection()
+                return CommandResult(
+                    True,
+                    False,
+                    f"{count} elemento(s) copiado(s)." if count else "Nada selecionado para copiar.",
+                    {"count": count, "clipboard_available": bool(self._clipboard)},
+                )
+            if name == "paste":
+                if not self._clipboard:
+                    return CommandResult(False, False, "A área de transferência está vazia.")
+                dx = 20.0 if command.get("dx") in (None, "") else float(command["dx"])
+                dy = 20.0 if command.get("dy") in (None, "") else float(command["dy"])
+                created, slot_ids = self._paste_clipboard(dx, dy)
+                return CommandResult(
+                    True,
+                    bool(created),
+                    "Elementos colados." if created else "Nada para colar.",
                     {"node_ids": created, "slot_ids": slot_ids},
                 )
             if name == "delete":
@@ -376,6 +398,72 @@ class GraphicsCommandRouter:
             self.session.selection = set(valid)
         self.session.anchor_id = anchor_id if anchor_id in self.session.selection else next(iter(self.session.selection), None)
 
+    def _copy_selection(self) -> int:
+        roots = list(self.session._selection_roots(editable_only=False))
+        if not roots:
+            return 0
+        page = self.session.page
+        nodes: dict[str, GraphicsNode] = {}
+        for root in roots:
+            for node_id in self.session._tree_ids(root.id):
+                node = page.node(node_id)
+                if node is not None:
+                    nodes[node_id] = copy.deepcopy(node)
+        source_blocks_raw = page.metadata.get("semantic_blocks")
+        self._clipboard = {
+            "root_ids": [root.id for root in roots],
+            "nodes": nodes,
+            "slots": copy.deepcopy(list(page.slots.values())),
+            "blocks": copy.deepcopy(source_blocks_raw) if isinstance(source_blocks_raw, dict) else {},
+        }
+        return len(nodes)
+
+    def _paste_clipboard(self, dx: float, dy: float) -> tuple[list[str], list[str]]:
+        clipboard = self._clipboard
+        if not clipboard:
+            return [], []
+        source_nodes = dict(clipboard.get("nodes") or {})
+        root_ids = [str(node_id) for node_id in clipboard.get("root_ids") or []]
+        if not source_nodes or not root_ids:
+            return [], []
+        mapping: dict[str, str] = {}
+        created: list[str] = []
+        slot_ids: list[str] = []
+        source_slots = copy.deepcopy(list(clipboard.get("slots") or []))
+        source_blocks = copy.deepcopy(dict(clipboard.get("blocks") or {}))
+
+        with self.session.transaction("Colar elementos"):
+            for root_id in root_ids:
+                if root_id not in source_nodes:
+                    continue
+                created.append(self._paste_tree_snapshot(root_id, None, dx, dy, mapping, source_nodes))
+            slot_ids = self._duplicate_semantic_state(mapping, source_slots, source_blocks)
+
+        self.session.selection = set(created)
+        self.session.anchor_id = created[-1] if created else None
+        return created, slot_ids
+
+    def _paste_tree_snapshot(
+        self,
+        node_id: str,
+        new_parent_id: str | None,
+        dx: float,
+        dy: float,
+        mapping: dict[str, str],
+        source_nodes: dict[str, GraphicsNode],
+    ) -> str:
+        source = source_nodes[node_id]
+        clone = source.clone()
+        clone.transform.x += float(dx)
+        clone.transform.y += float(dy)
+        clone.z_index += 1
+        mapping[node_id] = clone.id
+        self.session.page.add_node(clone, parent_id=new_parent_id)
+        for child_id in source.children:
+            if child_id in source_nodes:
+                self._paste_tree_snapshot(child_id, clone.id, dx, dy, mapping, source_nodes)
+        return clone.id
+
     def _duplicate_selected_with_semantics(self, dx: float, dy: float) -> tuple[list[str], list[str]]:
         roots = list(self.session._selection_roots(editable_only=False))
         if not roots:
@@ -409,10 +497,6 @@ class GraphicsCommandRouter:
         if not mapping:
             return []
         page = self.session.page
-        page_blocks_raw = page.metadata.get("semantic_blocks")
-        if not isinstance(page_blocks_raw, dict):
-            return []
-        created_slots: list[str] = []
 
         for clone_id in mapping.values():
             node = page.node(clone_id)
@@ -425,6 +509,12 @@ class GraphicsCommandRouter:
             node.metadata.pop("semantic_source_locked", None)
             node.style.pop("semantic_price_block_id", None)
             node.style.pop("semantic_price_role", None)
+
+        page_blocks_raw = page.metadata.get("semantic_blocks")
+        if not isinstance(page_blocks_raw, dict):
+            page_blocks_raw = {}
+            page.metadata["semantic_blocks"] = page_blocks_raw
+        created_slots: list[str] = []
 
         for source_slot in source_slots:
             bound_ids = {str(node_id) for node_id in source_slot.node_by_role.values() if str(node_id)}
