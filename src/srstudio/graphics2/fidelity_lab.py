@@ -9,6 +9,8 @@ import json
 import sys
 
 from .fidelity import FidelityPolicy, compare_images, load_manifest, run_suite, write_report
+from .fidelity_attribution import attribute_fidelity_regions
+from .fidelity_triage import analyze_fidelity_regions, write_triage_report
 
 
 def build_parser() -> ArgumentParser:
@@ -132,17 +134,30 @@ def _render_compare(args: Namespace) -> int:
     output.mkdir(parents=True, exist_ok=True)
     assets_dir = output / "assets"
     document = load_package(args.scene, extract_assets_to=assets_dir)
-    candidate = output / f"{_slug(args.name)}-candidate.png"
+    if not 0 <= args.page < len(document.pages):
+        raise IndexError(f"Página {args.page} inexistente no SR Scene carregado.")
+    stem = _slug(args.name)
+    candidate = output / f"{stem}-candidate.png"
     render_png(document, candidate, page_index=args.page, dpi=args.dpi)
+    policy = _policy_from(args)
     result = compare_images(
         args.baseline,
         candidate,
         name=args.name,
-        policy=_policy_from(args),
-        diff_path=output / f"{_slug(args.name)}-diff.png",
+        policy=policy,
+        diff_path=output / f"{stem}-diff.png",
     )
-    report = write_report(result, output / f"{_slug(args.name)}-report.json")
+    triage = _scene_aware_triage(
+        args.baseline,
+        candidate,
+        document.pages[args.page],
+        output=output,
+        stem=stem,
+        pixel_tolerance=policy.pixel_tolerance,
+    )
+    report = write_report(result, output / f"{stem}-report.json")
     _print_case(result, report)
+    _print_triage_summary(triage)
     return 0 if result.passed else 1
 
 
@@ -207,12 +222,21 @@ def _pptx_render_compare(args: Namespace) -> int:
         dpi=args.dpi,
         target_width=target_width,
     )
+    policy = _policy_from(args)
     fidelity = compare_images(
         baseline,
         candidate,
         name=args.name,
-        policy=_policy_from(args),
+        policy=policy,
         diff_path=output / f"{stem}-diff.png",
+    )
+    triage = _scene_aware_triage(
+        baseline,
+        candidate,
+        imported.document.pages[args.page],
+        output=output,
+        stem=stem,
+        pixel_tolerance=policy.pixel_tolerance,
     )
     store_visual_fidelity(imported.document, fidelity)
     gate = inspect_production_gate(imported.document, require_visual_fidelity=True)
@@ -242,15 +266,94 @@ def _pptx_render_compare(args: Namespace) -> int:
             ],
         },
         "fidelity": fidelity.to_dict(),
+        "triage": triage,
     }
     report = output / f"{stem}-pipeline-report.json"
     _write_json(report, payload)
     _print_case(fidelity, report)
+    _print_triage_summary(triage)
     print(f"  Production Gate: {'PASS' if gate.ready else 'FAIL'} · {gate.score}/100")
     for issue in gate.issues:
         if issue.severity == "blocker":
             print(f"  - {issue.code}: {issue.message}")
     return 0 if gate.ready else 1
+
+
+def _scene_aware_triage(
+    baseline: str | Path,
+    candidate: str | Path,
+    page,
+    *,
+    output: Path,
+    stem: str,
+    pixel_tolerance: int,
+) -> dict:
+    """Gera triagem espacial + atribuição SR Scene sem influenciar PASS/FAIL.
+
+    O Fidelity Gate continua sendo a autoridade. Se a triagem não puder rodar —
+    por exemplo, quando ``--allow-resize`` compara imagens de dimensões diferentes —
+    o pipeline registra a indisponibilidade em vez de transformar diagnóstico em falha.
+    """
+
+    heatmap = output / f"{stem}-triage-heatmap.png"
+    triage_report_path = output / f"{stem}-triage.json"
+    attribution_report_path = output / f"{stem}-attribution.json"
+    try:
+        triage = analyze_fidelity_regions(
+            baseline,
+            candidate,
+            pixel_tolerance=pixel_tolerance,
+            heatmap_path=heatmap,
+        )
+    except ValueError as exc:
+        return {
+            "available": False,
+            "reason": str(exc),
+            "triage_report": "",
+            "heatmap": "",
+            "attribution_report": "",
+        }
+
+    write_triage_report(triage, triage_report_path)
+    attribution = attribute_fidelity_regions(triage, page)
+    _write_json(attribution_report_path, attribution.to_dict())
+    return {
+        "available": True,
+        "triage_report": str(triage_report_path),
+        "heatmap": str(heatmap),
+        "attribution_report": str(attribution_report_path),
+        "spatial": triage.to_dict(),
+        "attribution": attribution.to_dict(),
+    }
+
+
+def _print_triage_summary(payload: dict) -> None:
+    if not payload.get("available"):
+        print(f"  Triage scene-aware: indisponível · {payload.get('reason', 'sem motivo informado')}")
+        return
+    attribution = dict(payload.get("attribution") or {})
+    regions = list(attribution.get("regions") or [])
+    if not regions:
+        print("  Triage scene-aware: nenhuma divergência acima da tolerância.")
+        return
+
+    print(f"  Triage scene-aware: {len(regions)} região(ões) prioritária(s)")
+    for item in regions[:3]:
+        suspects = list(item.get("suspects") or [])
+        region_index = int(item.get("region_index") or 0)
+        if not suspects:
+            print(f"    #{region_index}: sem nó SR Scene correspondente")
+            continue
+        suspect = suspects[0]
+        semantic = str(suspect.get("binding_role") or suspect.get("kind") or "nó")
+        name = str(suspect.get("name") or suspect.get("node_id") or "sem nome")
+        print(
+            f"    #{region_index}: {semantic} · {name} · "
+            f"score suspeito {float(suspect.get('score') or 0.0):.3f}"
+        )
+        hint = str(suspect.get("diagnostic_hint") or "").strip()
+        if hint:
+            print(f"       ↳ {hint}")
 
 
 def _pptx_diagnostic_payload(source: Path, imported) -> dict:
