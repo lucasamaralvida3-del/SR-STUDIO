@@ -6,8 +6,8 @@
   "product_version": "5.0.0",
   "release_label": "Beta 7.31 Professional",
   "published_at": "2026-08-17T13:03:15.3822827+00:00",
-  "min_launcher": "4.0.1-hybrid.base3.4",
-  "min_launcher_version": "4.0.1-hybrid.base3.4",
+  "min_launcher": "4.0.1-hybrid.base3.5",
+  "min_launcher_version": "4.0.1-hybrid.base3.5",
   "bundle": {
     "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.beta7.31/SR_STUDIO_5_0_0-hybrid_beta7_31_PROFESSIONAL.zip",
     "sha256": "c42a12816f276af67c178ca4b2f6df4ae07cc2d23a18d624e5d06422a8601ed3",
