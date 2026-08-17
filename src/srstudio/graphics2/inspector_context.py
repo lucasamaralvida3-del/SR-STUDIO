@@ -17,6 +17,7 @@ class InspectorContext:
     properties: tuple[str, ...]
     multi_selection: bool = False
     semantic: bool = False
+    slot_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -77,6 +78,7 @@ def inspector_context(page: GraphicsPage, selection: Iterable[str]) -> Inspector
     semantic = _semantic_block(page, target_id)
     if semantic is not None:
         kind = str(semantic.get("kind") or "semantic")
+        slot_id = str(semantic.get("slot_id") or "")
         if kind == "product_card":
             return InspectorContext(
                 "product_card",
@@ -97,6 +99,7 @@ def inspector_context(page: GraphicsPage, selection: Iterable[str]) -> Inspector
                     "z_index",
                 ),
                 semantic=True,
+                slot_id=slot_id,
             )
         if kind == "price_block":
             return InspectorContext(
@@ -116,6 +119,7 @@ def inspector_context(page: GraphicsPage, selection: Iterable[str]) -> Inspector
                     "z_index",
                 ),
                 semantic=True,
+                slot_id=slot_id,
             )
 
     node = page.node(target_id)
