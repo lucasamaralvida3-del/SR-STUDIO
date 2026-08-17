@@ -5,7 +5,7 @@ import QtQuick.Layouts
 Rectangle {
     id: panel
     width: 326
-    height: expanded ? 492 : 56
+    height: expanded ? 528 : 56
     anchors.right: parent ? parent.right : undefined
     anchors.top: parent ? parent.top : undefined
     anchors.rightMargin: 8
@@ -202,6 +202,30 @@ Rectangle {
 
                 Label { text: "Cobertura imagens"; color: "#64748B"; font.pixelSize: 9 }
                 Label { text: percent(gate.mapping_image_coverage); color: "#334155"; horizontalAlignment: Text.AlignRight; Layout.fillWidth: true }
+
+                Label { text: "Transform. imagens"; color: "#64748B"; font.pixelSize: 9 }
+                Label {
+                    text: percent(gate.image_transform_coverage)
+                    color: coverageColor(gate.image_transform_coverage)
+                    font.bold: Number(gate.image_transform_coverage === undefined ? 1 : gate.image_transform_coverage) < 0.95
+                    horizontalAlignment: Text.AlignRight
+                    Layout.fillWidth: true
+                }
+
+                Label {
+                    text: "Rotação/flip especial"
+                    visible: Number(gate.image_transform_non_identity_contracts || 0) > 0
+                    color: "#64748B"
+                    font.pixelSize: 9
+                }
+                Label {
+                    visible: Number(gate.image_transform_non_identity_contracts || 0) > 0
+                    text: percent(gate.image_transform_non_identity_coverage)
+                    color: coverageColor(gate.image_transform_non_identity_coverage)
+                    font.bold: Number(gate.image_transform_non_identity_coverage === undefined ? 1 : gate.image_transform_non_identity_coverage) < 0.95
+                    horizontalAlignment: Text.AlignRight
+                    Layout.fillWidth: true
+                }
 
                 Label { text: "Cobertura fillRect"; color: "#64748B"; font.pixelSize: 9 }
                 Label {
