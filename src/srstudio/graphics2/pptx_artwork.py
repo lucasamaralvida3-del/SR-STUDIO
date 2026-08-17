@@ -142,18 +142,18 @@ def _resolve_candidate(candidates: list[GraphicsNode], target: tuple[float, floa
     if not candidates:
         return None
     tx, ty, tw, th = target
-    ranked = sorted(
-        (
+    ranked: list[tuple[float, str, GraphicsNode]] = []
+    for node in candidates:
+        delta = (
             abs(node.transform.x - tx)
             + abs(node.transform.y - ty)
             + abs(node.transform.width - tw)
-            + abs(node.transform.height - th),
-            node,
+            + abs(node.transform.height - th)
         )
-        for node in candidates
-    )
+        ranked.append((delta, node.id, node))
+    ranked.sort(key=lambda item: (item[0], item[1]))
     if ranked[0][0] <= 4.0 and (len(ranked) == 1 or ranked[1][0] - ranked[0][0] > 1.0):
-        return ranked[0][1]
+        return ranked[0][2]
     return None
 
 
