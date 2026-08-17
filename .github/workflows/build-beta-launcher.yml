@@ -25,8 +25,14 @@ jobs:
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          if(-not (Test-Path 'installer/beta/SRStudioBeta.cs')) { throw 'Fonte Beta ausente.' }
+          if(-not (Test-Path 'installer/beta/SRStudioBetaResilient.cs')) { throw 'Fonte Beta resiliente ausente.' }
           if(-not (Test-Path 'staging/logo_update/source/SR_Studio.ico')) { throw 'Logo SR_Studio.ico ausente.' }
+          $beta = Get-Content -Raw 'beta/manifest.json' | ConvertFrom-Json
+          if([string]$beta.channel -ne 'beta') { throw 'Manifesto Beta local invalido.' }
+          $launcher = Get-Content -Raw 'manifests/launcher.json' | ConvertFrom-Json
+          if(-not [string]$launcher.version) { throw 'Manifesto Launcher local invalido.' }
+          Write-Host "Beta local: $($beta.version)"
+          Write-Host "Launcher local: $($launcher.version)"
 
       - name: Compilar SR_Studio_Beta.exe
         shell: powershell
@@ -56,24 +62,19 @@ jobs:
             "/reference:$ref\System.Drawing.dll",
             "/reference:$ref\System.Windows.Forms.dll",
             "/reference:$ref\System.Web.Extensions.dll",
-            'installer/beta/SRStudioBeta.cs'
+            'installer/beta/SRStudioBetaResilient.cs'
           )
           & $csc @args
           if($LASTEXITCODE -ne 0) { throw "Falha na compilacao: $LASTEXITCODE" }
           if(-not (Test-Path 'dist/SR_Studio_Beta.exe')) { throw 'EXE Beta nao foi gerado.' }
 
-      - name: Self-test online
+      - name: Self-test local e offline-safe
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
           $p=Start-Process -FilePath (Resolve-Path 'dist/SR_Studio_Beta.exe') -ArgumentList '/selftest' -Wait -PassThru
           if($p.ExitCode -ne 0) { throw "Self-test Beta falhou: $($p.ExitCode)" }
-          $beta=Invoke-RestMethod -Uri ('https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/beta/manifest.json?x='+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -Headers @{'Cache-Control'='no-cache'}
-          if([string]$beta.channel -ne 'beta') { throw 'Manifesto Beta invalido.' }
-          $launcher=Invoke-RestMethod -Uri ('https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main/manifests/launcher.json?x='+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -Headers @{'Cache-Control'='no-cache'}
-          if([string]$launcher.version -notmatch 'base3\.3|base[4-9]\.|base[1-9][0-9]') { Write-Host "Launcher atual: $($launcher.version)" }
-          Write-Host "Beta atual: $($beta.version)"
-          Write-Host "Launcher atual: $($launcher.version)"
+          Write-Host 'Self-test concluido sem depender de requisicoes externas.'
 
       - name: Gerar SHA-256
         shell: powershell
@@ -101,13 +102,14 @@ jobs:
           $notes=@"
           Executavel universal de acesso ao canal Beta do SR Studio.
 
-          - Nao contem numero fixo de Beta.
-          - A cada abertura baixa o Bootstrap atual.
-          - Forca o canal Beta.
-          - Bootstrap atualiza o Launcher pelo manifesto oficial.
-          - Launcher valida a chave Beta quando necessario.
-          - Baixa e aplica automaticamente a Beta mais recente.
-          - Usa o runtime Python portatil oficial do SR Studio.
+          Hotfix 1.1:
+          - Nao falha mais quando o GitHub responde HTTP 429 temporariamente.
+          - Reutiliza Bootstrap local valido por ate 6 horas.
+          - Usa cache do manifesto Beta para o rotulo da interface.
+          - Faz retry com espera progressiva e respeita Retry-After.
+          - Abre o SR Studio pelo executavel SRStudio5/SR Studio 5.exe.
+          - Continua atualizando Launcher/Beta automaticamente quando a rede esta disponivel.
+          - Mantem fallback local quando ja existe uma instalacao valida.
           "@
           cmd /c "gh release view $tag >nul 2>&1"
           $exists=($LASTEXITCODE -eq 0)
