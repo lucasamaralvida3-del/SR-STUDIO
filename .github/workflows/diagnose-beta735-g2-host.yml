@@ -1,0 +1,110 @@
+name: Diagnose Beta 7.35 Graphics2 Host
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/diagnose-beta735-g2-host.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose-g2-host:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Graphics2 build toolchain
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e '.[dev,graphics2-build]'
+          python -c "import PyInstaller, PySide6; print('PyInstaller', PyInstaller.__version__, 'PySide6', PySide6.__version__)"
+
+      - name: Validate Graphics2 source contracts
+        shell: pwsh
+        run: |
+          python -m pytest -q tests -k graphics2
+          python build/build_graphics2_host.py --print-args
+
+      - name: Build Graphics2 Qt host
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $hostRoot = Join-Path $env:RUNNER_TEMP 'g2host-diagnostic'
+          Remove-Item $hostRoot -Recurse -Force -ErrorAction SilentlyContinue
+          python build/build_graphics2_host.py --output "$hostRoot"
+          if ($LASTEXITCODE -ne 0) { throw "build_graphics2_host.py falhou com codigo $LASTEXITCODE" }
+          if (!(Test-Path "$hostRoot/graphics2-host-manifest.json")) { throw 'Manifesto externo do host ausente.' }
+          if (!(Test-Path "$hostRoot/SRGraphicsEngine2Host/SRGraphicsEngine2Host.exe")) { throw 'Executavel do host ausente.' }
+          "G2_HOST_ROOT=$hostRoot" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          "G2_HOST_SOURCE=$hostRoot/SRGraphicsEngine2Host" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+          Get-Content -Raw "$hostRoot/graphics2-host-manifest.json"
+
+      - name: Inspect Graphics2 host directory contract
+        shell: pwsh
+        run: |
+          $source = $env:G2_HOST_SOURCE
+          if (!(Test-Path $source)) { throw 'G2_HOST_SOURCE ausente.' }
+          $allFiles = @(Get-ChildItem $source -Recurse -File)
+          $allDirs = @(Get-ChildItem $source -Recurse -Directory)
+          Write-Host "Arquivos: $($allFiles.Count)"
+          Write-Host "Diretorios: $($allDirs.Count)"
+          Write-Host "Bytes: $((($allFiles | Measure-Object Length -Sum).Sum))"
+          $objects = @($allDirs | Where-Object { $_.Name -like 'objects-Debug*' -or $_.Name -like 'objects-RelWithDebInfo*' -or $_.Name -like 'objects-Release*' -or $_.Name -like 'objects-MinSizeRel*' })
+          Write-Host "Diretorios objects-* encontrados: $($objects.Count)"
+          $objects | ForEach-Object { Write-Host "OBJECTS_DIR=$($_.FullName)" }
+          if ($objects.Count -gt 0) { throw "Host contém $($objects.Count) diretorio(s) objects-* que impediriam a publicacao." }
+
+      - name: Validate Graphics2 runtime catalog at source
+        shell: pwsh
+        run: |
+          python -m srstudio.graphics2.host_runtime "$env:G2_HOST_SOURCE" --full
+          if ($LASTEXITCODE -ne 0) { throw "Catalogo de runtime falhou com codigo $LASTEXITCODE" }
+
+      - name: Probe Graphics2 source executable
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $exe = Join-Path $env:G2_HOST_SOURCE 'SRGraphicsEngine2Host.exe'
+          if (!(Test-Path $exe)) { throw 'Executavel de probe ausente.' }
+          $probe = Start-Process -FilePath (Resolve-Path $exe) -ArgumentList @('--graphics-api','software','--probe-graphics-api') -Wait -PassThru
+          Write-Host "Probe exit code: $($probe.ExitCode)"
+          if ($probe.ExitCode -ne 0) { throw "Probe do host fonte falhou: $($probe.ExitCode)" }
+
+      - name: Copy host into production layout
+        shell: pwsh
+        run: |
+          $target = Join-Path $env:RUNNER_TEMP 'production-layout/SRStudio5/Graphics2Host'
+          Remove-Item (Split-Path $target -Parent) -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          Copy-Item "$env:G2_HOST_SOURCE\*" $target -Recurse -Force
+          if (!(Test-Path "$target/SRGraphicsEngine2Host.exe")) { throw 'Executavel nao sobreviveu a copia.' }
+          "G2_HOST_TARGET=$target" | Out-File $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Validate copied runtime catalog
+        shell: pwsh
+        run: |
+          python -m srstudio.graphics2.host_runtime "$env:G2_HOST_TARGET" --full
+          if ($LASTEXITCODE -ne 0) { throw "Catalogo copiado falhou com codigo $LASTEXITCODE" }
+
+      - name: Probe copied Graphics2 executable
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $exe = Join-Path $env:G2_HOST_TARGET 'SRGraphicsEngine2Host.exe'
+          $probe = Start-Process -FilePath (Resolve-Path $exe) -ArgumentList @('--graphics-api','software','--probe-graphics-api') -Wait -PassThru
+          Write-Host "Copied probe exit code: $($probe.ExitCode)"
+          if ($probe.ExitCode -ne 0) { throw "Probe do host copiado falhou: $($probe.ExitCode)" }
