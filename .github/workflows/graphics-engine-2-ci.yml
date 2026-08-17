@@ -50,6 +50,7 @@ jobs:
           tests/test_graphics2_import_audit.py
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_quality_inspector_qml.py
+          tests/test_graphics2_quality_inspector_spacing.py
           tests/test_graphics2_golden_master.py
           tests/test_graphics2_reference_suite.py
           tests/test_graphics2_package_fonts.py
@@ -59,6 +60,7 @@ jobs:
           tests/test_graphics2_pptx_groups.py
           tests/test_graphics2_pptx_fidelity.py
           tests/test_graphics2_pptx_structure.py
+          tests/test_graphics2_pptx_spacing_coverage.py
           tests/test_graphics2_semantic_blocks.py
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_semantic_spatial_card.py
@@ -123,6 +125,7 @@ jobs:
           tests/test_graphics2_import_audit.py
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_quality_inspector_qml.py
+          tests/test_graphics2_quality_inspector_spacing.py
           tests/test_graphics2_golden_master.py
           tests/test_graphics2_reference_suite.py
           tests/test_graphics2_package_fonts.py
@@ -132,6 +135,7 @@ jobs:
           tests/test_graphics2_pptx_groups.py
           tests/test_graphics2_pptx_fidelity.py
           tests/test_graphics2_pptx_structure.py
+          tests/test_graphics2_pptx_spacing_coverage.py
           tests/test_graphics2_semantic_blocks.py
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_semantic_spatial_card.py
