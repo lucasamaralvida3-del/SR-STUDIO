@@ -158,10 +158,10 @@ jobs:
           Expand-Archive -LiteralPath $env:BETA_ZIP -DestinationPath $validation -Force
           if (!(Test-Path "$validation/files/SR_Studio_Gerador.py")) { throw "Shim Beta ausente." }
           if (!(Test-Path "$validation/files/SRStudio5/SR Studio 5.exe")) { throw "Executavel principal ausente." }
-          $host = "$validation/files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe"
-          if (!(Test-Path $host)) { throw "Graphics2Host ausente do bundle final." }
+          $hostExePath = "$validation/files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe"
+          if (!(Test-Path $hostExePath)) { throw "Graphics2Host ausente do bundle final." }
           if (!(Test-Path "$validation/files/SRStudio5/Graphics2Host/graphics2-host-runtime.json")) { throw "Manifesto Graphics2 ausente do bundle final." }
-          $p = Start-Process -FilePath (Resolve-Path $host) -ArgumentList @('--graphics-api','software','--probe-graphics-api') -Wait -PassThru
+          $p = Start-Process -FilePath (Resolve-Path $hostExePath) -ArgumentList @('--graphics-api','software','--probe-graphics-api') -Wait -PassThru
           if ($p.ExitCode -ne 0) { throw "Graphics2Host do ZIP final falhou no probe: $($p.ExitCode)" }
           $got = (Get-FileHash $env:BETA_ZIP -Algorithm SHA256).Hash.ToLower()
           if ($got -ne $env:BETA_SHA256) { throw "SHA-256 mudou apos validacao." }
