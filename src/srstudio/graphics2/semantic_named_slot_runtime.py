@@ -59,15 +59,15 @@ def _recover_page(page: GraphicsPage) -> int:
         if primary is None:
             continue
         secondary = _nearest_node(page, primary, secondary_prices, used_secondary, max_dx=0.28, max_dy=0.42)
-        primary_unit = _nearest_node(page, primary, primary_units, set(), max_dx=0.32, max_dy=0.24)
+        primary_unit = _nearest_price_companion(page, primary, primary_units)
         secondary_unit = (
-            _nearest_node(page, secondary, secondary_units, set(), max_dx=0.32, max_dy=0.24)
+            _nearest_price_companion(page, secondary, secondary_units)
             if secondary is not None
             else None
         )
-        primary_currency = _nearest_currency(page, primary, currencies)
+        primary_currency = _nearest_price_companion(page, primary, currencies)
         secondary_currency = (
-            _nearest_currency(
+            _nearest_price_companion(
                 page,
                 secondary,
                 currencies,
@@ -190,21 +190,29 @@ def _nearest_node(
     return best[2] if best is not None else None
 
 
-def _nearest_currency(
+def _nearest_price_companion(
     page: GraphicsPage,
     price: GraphicsNode | None,
-    currencies: list[GraphicsNode],
+    candidates: list[GraphicsNode],
     *,
     exclude: set[str] | None = None,
 ) -> GraphicsNode | None:
+    """Associa moeda/unidade pela distância entre caixas, não entre centros.
+
+    WordArt de preço pode ocupar quase toda a largura do cartaz. Mesmo com
+    ``CADA`` ou ``R$`` colados visualmente à borda esquerda, os centros ficam
+    muito distantes. O gap entre retângulos representa a composição real e não
+    depende de coordenadas fixas do template.
+    """
+
     if price is None:
         return None
     excluded = exclude or set()
     pr = price.rect.normalized()
     max_gap = max(48.0, pr.height * 0.95, min(pr.width * 0.20, page.width * 0.16))
     best: tuple[float, str, GraphicsNode] | None = None
-    for node in currencies:
-        if node.id in excluded:
+    for node in candidates:
+        if node.id in excluded or node.id == price.id:
             continue
         nr = node.rect.normalized()
         dx = max(pr.x - nr.right, nr.x - pr.right, 0.0)
