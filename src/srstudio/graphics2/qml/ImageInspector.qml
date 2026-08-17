@@ -16,10 +16,11 @@ Rectangle {
     color: "#FFFFFFF8"
     border.width: 1
     border.color: "#CBD5E1"
-    visible: !!imageNode
+    visible: hasImageSelection
 
     property var scene: ({})
     property var imageNode: null
+    property bool hasImageSelection: false
     property bool syncing: false
 
     function activePage() {
@@ -87,8 +88,10 @@ Rectangle {
         syncing = true
         try {
             scene = JSON.parse(sceneBridge.sceneJson)
-            imageNode = selectedImage()
-            if (!imageNode)
+            var selected = selectedImage()
+            imageNode = selected
+            hasImageSelection = selected !== null && selected !== undefined
+            if (!hasImageSelection)
                 return
             var fit = String(styleValue("fit", "contain"))
             fitCombo.currentIndex = fit === "cover" ? 1 : fit === "fill" ? 2 : 0
@@ -136,7 +139,7 @@ Rectangle {
         function onSceneChanged() { panel.refresh() }
     }
 
-    Component.onCompleted: Qt.callLater(refresh)
+    Component.onCompleted: refresh()
 
     FileDialog {
         id: replaceImageDialog
