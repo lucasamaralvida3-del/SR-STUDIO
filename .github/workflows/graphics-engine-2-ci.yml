@@ -45,6 +45,7 @@ jobs:
           tests/test_graphics2_fidelity.py
           tests/test_graphics2_fidelity_triage.py
           tests/test_graphics2_fidelity_attribution.py
+          tests/test_graphics2_fidelity_lab_triage.py
           tests/test_graphics2_import_audit.py
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_golden_master.py
@@ -109,6 +110,7 @@ jobs:
           tests/test_graphics2_fidelity.py
           tests/test_graphics2_fidelity_triage.py
           tests/test_graphics2_fidelity_attribution.py
+          tests/test_graphics2_fidelity_lab_triage.py
           tests/test_graphics2_import_audit.py
           tests/test_graphics2_quality_gate.py
           tests/test_graphics2_golden_master.py
