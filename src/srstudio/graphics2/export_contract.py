@@ -8,9 +8,9 @@ edited. This module provides that boundary independently from Qt so it can be
 validated with lightweight tests and reused by PNG/PDF/background jobs.
 """
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, is_dataclass
 from pathlib import Path
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any, Callable, Generic, Mapping, TypeVar
 
 from .model import GraphicsDocument
 from .scene_fingerprint import SceneFingerprint, fingerprint_document
@@ -34,15 +34,18 @@ class ExportContractReport(Generic[T]):
         return self.original_unchanged
 
     def to_dict(self) -> dict[str, Any]:
-        result = asdict(self)
-        value = result.get("result")
-        if hasattr(self.result, "to_dict"):
-            result["result"] = self.result.to_dict()
-        elif isinstance(value, Path):
-            result["result"] = str(value)
-        result["output"] = str(self.output)
-        result["safe"] = self.safe
-        return result
+        payload = {
+            "output": str(self.output),
+            "original_before": self.original_before,
+            "original_after": self.original_after,
+            "snapshot_before": self.snapshot_before,
+            "snapshot_after": self.snapshot_after,
+            "original_unchanged": self.original_unchanged,
+            "snapshot_changed_by_exporter": self.snapshot_changed_by_exporter,
+            "result": _json_safe(self.result),
+            "safe": self.safe,
+        }
+        return payload
 
 
 def snapshot_document(document: GraphicsDocument) -> GraphicsDocument:
@@ -94,3 +97,20 @@ def fingerprints_match_visual_structure(
 ) -> bool:
     """Explicit helper for pre/post export assertions and diagnostics."""
     return before.sha256 == after.sha256
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert nested renderer reports into values safe for QML/JSON payloads."""
+    if isinstance(value, Path):
+        return str(value)
+    if is_dataclass(value) and not isinstance(value, type):
+        return _json_safe(asdict(value))
+    if isinstance(value, Mapping):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, list):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, (str, int, float, bool)) or value is None:
+        return value
+    return str(value)
