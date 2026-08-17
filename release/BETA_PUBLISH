@@ -1,4 +1,4 @@
-SR Studio 5.0 Beta 7.30 Professional
-Cartazes Pro: unidade visual CADA para produtos vendidos por unidade.
-Mantém a unidade interna UN para importação, tabela, filtros, validações e regras comerciais, mas passa a enviar CADA como unidade de exibição aos cartazes promocionais 1 preço, 2 preços, Clube Exclusivo e Cartaz Venda. KG, À LATA e À GARRAFA permanecem inalterados. O Atacado mantém suas frases atuais para preservar a gramática comercial. Nenhum arquivo do Studio de Encartes / Graphics Engine 2 foi alterado. Preserva todas as funções da Beta 7.29, incluindo tabela profissional, filtros, F8/F9, ordenação, edição inline/lote, histórico, preflight, geração com erro controlada, auditoria, PDF em segundo plano, cache, modelos automáticos, Image Cloud e compatibilidade com Launcher Base 3.4.
-Triggered: 2026-08-16 Beta 7.30
+SR Studio 5.0 Beta 7.34 Professional
+Cartazes Pro: corretor ortográfico e de acentuação na geração.
+Adiciona um corretor offline e conservador para o nome impresso nos cartazes de Promoção e Atacado. O nome original importado continua intacto na tabela, busca, edição e auditoria; somente o texto enviado ao renderer recebe correções de alta confiança. Exemplos: ACUCAR -> AÇÚCAR, CAFE MOIDO -> CAFÉ MOÍDO, FEIJAO -> FEIJÃO, LINGUICA SUINA -> LINGUIÇA SUÍNA, ALMONDEGA -> ALMÔNDEGA e ABOBRINNHA -> ABOBRINHA. Marcas desconhecidas, códigos, pesos e abreviações são preservados. A regra visual UN -> CADA continua ativa nos cartazes promocionais. Nenhum arquivo do Studio de Encartes / Graphics Engine 2 foi alterado por esta mudança; o Graphics2 principal da Beta 7.33 é preservado.
+Triggered: 2026-08-17 Beta 7.34
