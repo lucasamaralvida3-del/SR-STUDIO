@@ -6,12 +6,20 @@ O importador legado já preserva ``source_name`` nos nodes do Graphics2. Esta
 camada usa somente essa informação local, sem alterar o leitor PPTX compartilhado
 do SR Studio. O mapeamento é deliberadamente conservador: nomes ambíguos nunca
 são associados por adivinhação.
+
+Além de preservar o inventário bruto em metadata, os efeitos que possuem uma
+descrição segura e renderizável são promovidos para ``node.style``. Assim o
+QPainter, o Qt Quick e futuras rotas de exportação compartilham o mesmo contrato
+sem reabrir o OOXML durante o desenho.
 """
 
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind
+
+_GRADIENT_KINDS = {NodeKind.RECT, NodeKind.ELLIPSE, NodeKind.PATH}
+_SHADOW_KINDS = {NodeKind.TEXT, NodeKind.RECT, NodeKind.ELLIPSE, NodeKind.PATH}
 
 
 @dataclass(slots=True, frozen=True)
@@ -46,6 +54,8 @@ class PptxEffectMappingReport:
     mapped_shapes: int = 0
     ambiguous_shapes: int = 0
     missing_shapes: int = 0
+    applied_gradients: int = 0
+    applied_outer_shadows: int = 0
     mappings: list[PptxEffectNodeMapping] = field(default_factory=list)
     issues: list[PptxEffectMappingIssue] = field(default_factory=list)
 
@@ -61,6 +71,8 @@ class PptxEffectMappingReport:
             "mapped_shapes": self.mapped_shapes,
             "ambiguous_shapes": self.ambiguous_shapes,
             "missing_shapes": self.missing_shapes,
+            "applied_gradients": self.applied_gradients,
+            "applied_outer_shadows": self.applied_outer_shadows,
             "coverage": self.coverage,
             "mappings": [item.to_dict() for item in self.mappings],
             "issues": [item.to_dict() for item in self.issues],
@@ -100,6 +112,7 @@ def map_pptx_effects_to_document(document: GraphicsDocument) -> PptxEffectMappin
             node.metadata["pptx_effects"] = payload
             node.metadata["pptx_shape_id"] = shape_id
             node.metadata["pptx_shape_name"] = shape_name
+            _apply_renderable_effects(node, payload, report)
             report.mapped_shapes += 1
             report.mappings.append(
                 PptxEffectNodeMapping(
@@ -139,6 +152,40 @@ def map_pptx_effects_to_document(document: GraphicsDocument) -> PptxEffectMappin
 
     document.metadata["pptx_effect_mapping"] = report.to_dict()
     return report
+
+
+def _apply_renderable_effects(node: GraphicsNode, payload: dict[str, Any], report: PptxEffectMappingReport) -> None:
+    gradient = payload.get("linear_gradient")
+    if node.kind in _GRADIENT_KINDS and _valid_linear_gradient(gradient):
+        if "gradient" not in node.style:
+            node.style["gradient"] = _copy_effect(gradient)
+            report.applied_gradients += 1
+
+    shadow = payload.get("outer_shadow")
+    if node.kind in _SHADOW_KINDS and _valid_outer_shadow(shadow):
+        if "shadow" not in node.style:
+            node.style["shadow"] = _copy_effect(shadow)
+            report.applied_outer_shadows += 1
+
+
+def _valid_linear_gradient(value: object) -> bool:
+    if not isinstance(value, dict) or str(value.get("type") or "") != "linear":
+        return False
+    stops = value.get("stops")
+    if not isinstance(stops, list) or len(stops) < 2:
+        return False
+    return all(isinstance(stop, dict) and bool(stop.get("color")) for stop in stops)
+
+
+def _valid_outer_shadow(value: object) -> bool:
+    return isinstance(value, dict) and str(value.get("type") or "") == "outer" and bool(value.get("color"))
+
+
+def _copy_effect(value: object) -> dict[str, Any]:
+    source = dict(value) if isinstance(value, dict) else {}
+    if isinstance(source.get("stops"), list):
+        source["stops"] = [dict(item) for item in source["stops"] if isinstance(item, dict)]
+    return source
 
 
 def _named_candidates(nodes, shape_name: str) -> list[GraphicsNode]:
