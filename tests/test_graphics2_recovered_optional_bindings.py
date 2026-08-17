@@ -136,10 +136,10 @@ def test_ambiguous_two_secondary_prices_near_same_club_label_are_rejected():
     # Um terceiro preço completo dividido e praticamente equidistante do rótulo
     # torna a intenção ambígua. A recuperação deve preservar o layout sem bind.
     third = {
-        "currency": _text("Third Currency", "R$", 250, 460, 38, 42, 18),
-        "reais": _text("Third Whole", "20", 288, 445, 70, 72, 40),
-        "cents": _text("Third Cents", ",50", 358, 450, 48, 34, 18),
-        "unit": _text("Third Unit", "/UN", 358, 486, 48, 30, 15),
+        "currency": _text("Third Currency", "R$", 335, 460, 38, 42, 18),
+        "reais": _text("Third Whole", "20", 373, 445, 70, 72, 40),
+        "cents": _text("Third Cents", ",50", 443, 450, 48, 34, 18),
+        "unit": _text("Third Unit", "/UN", 443, 486, 48, 30, 15),
     }
     for node in third.values():
         page.add_node(node, parent_id=group_id)
