@@ -49,10 +49,12 @@ jobs:
           python -m ruff check
           src/srstudio/graphics2/page_duplicate.py
           src/srstudio/graphics2/usability_gate.py
+          src/srstudio/graphics2/professional_probe.py
           tests/test_graphics2_page_duplicate.py
           tests/test_graphics2_usability_gate.py
           tests/test_graphics2_professional_workflow.py
           tests/test_graphics2_professional_export.py
+          tests/test_graphics2_professional_probe.py
 
       - name: Professional usability contracts
         shell: pwsh
@@ -65,5 +67,6 @@ jobs:
           tests/test_graphics2_usability_gate.py
           tests/test_graphics2_professional_workflow.py
           tests/test_graphics2_professional_export.py
+          tests/test_graphics2_professional_probe.py
           tests/test_graphics2_core.py
           tests/test_graphics2_autosave.py
