@@ -77,7 +77,8 @@ from .pptx_spacing import PptxSpacingIssue, PptxSpacingRecoveryReport, recover_p
 from .pptx_structure import PptxMappingAudit, PptxSlideStructure, PptxStructureReport, inspect_pptx_structure
 from .preflight import PreflightIssue, run_preflight
 from .quality import ProductionGateIssue, ProductionGateReport, inspect_production_gate, store_visual_fidelity
-from .qt_renderer import RenderReport, render_pdf, render_png
+from . import qt_renderer as _qt_renderer
+from .qt_render_runtime import ensure_qt_gui_application, install_headless_renderer_guard
 from .scene_fingerprint import PageFingerprint, SceneFingerprint, fingerprint_document, store_scene_fingerprint
 from .semantic_blocks import (
     SemanticBlock,
@@ -107,6 +108,13 @@ SCHEMA_VERSION = "srscene/2.0"
 # Mantém a API GraphicsSession.add_page existente, porém endurece a duplicação
 # para projetos multipágina com identidades únicas e referências remapeadas.
 install_safe_page_duplication(GraphicsSession)
+
+# Exportadores também são usados por CLI, testes e automações, onde não existe
+# necessariamente uma QGuiApplication criada pelo editor Qt Quick.
+install_headless_renderer_guard(_qt_renderer)
+RenderReport = _qt_renderer.RenderReport
+render_png = _qt_renderer.render_png
+render_pdf = _qt_renderer.render_pdf
 
 __all__ = [
     "AssetRef",
@@ -190,6 +198,7 @@ __all__ = [
     "crop_pixel_box",
     "drawingml_fill_destination",
     "enhance_pptx_document",
+    "ensure_qt_gui_application",
     "find_drop_target",
     "fingerprint_document",
     "fingerprint_studio_project",
