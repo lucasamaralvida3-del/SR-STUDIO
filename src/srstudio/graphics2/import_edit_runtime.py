@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Política de editabilidade pós-importação para o Studio de Encartes/G2.
+"""Pós-processamento profissional de importações para o Studio de Encartes/G2.
 
 O bridge histórico preserva o layout marcando como bloqueado todo elemento que
 não nasceu dentro de um SmartSlot. Isso é seguro para fidelidade, porém torna um
@@ -8,14 +8,23 @@ PPTX real praticamente somente-leitura. A camada profissional mantém formas
 estruturais protegidas e libera apenas conteúdo que o operador precisa editar:
 texto e imagem visíveis.
 
+No mesmo ponto pós-importação também ativamos a prova exata de rotação/flip de
+imagens DrawingML. O recuperador já existia no G2 e o Production Gate já conhecia
+seu relatório, porém o caminho principal podia terminar sem executá-lo e então
+parecer 100% coberto por ausência de contratos medidos. A recuperação continua
+conservadora: ambiguidades ou transformações de grupo não são adivinhadas.
+
 A política é aplicada somente ao resultado de ``GraphicsImportService``. Ela não
-muda geometria, z-order, bindings, Golden Masters ou documentos já salvos que
-não passam por uma nova importação.
+altera Golden Masters nem documentos já salvos que não passam por nova importação.
 """
 
+from pathlib import Path
 from typing import Any, Callable
 
+from .import_audit import audit_import
 from .model import GraphicsDocument, NodeKind
+from .pptx_image_transform import recover_pptx_image_transforms
+from .scene_fingerprint import store_scene_fingerprint
 
 
 _EDITABLE_KINDS = {NodeKind.TEXT, NodeKind.IMAGE}
@@ -63,6 +72,39 @@ def apply_import_editability(document: GraphicsDocument) -> dict[str, int | str]
     return report
 
 
+def _apply_pptx_image_transform_proof(source: Path, document: GraphicsDocument) -> None:
+    """Mede/aplica contratos inequívocos de rotação/flip sem quebrar o import."""
+
+    if source.suffix.lower() != ".pptx":
+        return
+    try:
+        recover_pptx_image_transforms(source, document)
+    except Exception as exc:
+        # Importação continua utilizável, porém a falha deixa de ser mascarada
+        # como cobertura perfeita. O Production Gate verá o erro explicitamente.
+        document.metadata["pptx_image_transform_recovery"] = {
+            "source_contracts": 0,
+            "non_identity_contracts": 0,
+            "mapped_contracts": 0,
+            "exact_contracts": 0,
+            "exact_non_identity_contracts": 0,
+            "corrected_contracts": 0,
+            "deferred_group_contracts": 0,
+            "coverage": 0.0,
+            "non_identity_coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
+
+
+def _refresh_post_import_evidence(result: Any) -> None:
+    """Mantém fingerprint/audit coerentes com as correções pós-importação."""
+
+    fingerprint = store_scene_fingerprint(result.document)
+    result.document.metadata["import_fingerprint_sha256"] = fingerprint.sha256
+    result.audit = audit_import(result.document)
+
+
 def install_import_editability_guard(import_module: Any) -> None:
     """Envolve ``GraphicsImportService.import_file`` uma única vez."""
 
@@ -74,7 +116,11 @@ def install_import_editability_guard(import_module: Any) -> None:
 
     def guarded_import(self: Any, *args: Any, **kwargs: Any):
         result = original(self, *args, **kwargs)
+        raw_source = kwargs.get("path") if "path" in kwargs else (args[0] if args else "")
+        source = Path(raw_source) if raw_source else Path()
+        _apply_pptx_image_transform_proof(source, result.document)
         apply_import_editability(result.document)
+        _refresh_post_import_evidence(result)
         return result
 
     guarded_import.__name__ = original.__name__
