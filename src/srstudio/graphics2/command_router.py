@@ -198,6 +198,30 @@ class GraphicsCommandRouter:
                     return CommandResult(False, False, "Página inexistente.")
                 self.session.document.active_page_id = page_id; self.session.clear_selection()
                 return CommandResult(True, False, "Página selecionada.")
+            if name == "delete_page":
+                document = self.session.document
+                if len(document.pages) <= 1:
+                    return CommandResult(False, False, "O projeto precisa manter pelo menos uma página.")
+                page_id = str(command.get("page_id") or document.active_page_id or "")
+                page_index = next((index for index, page in enumerate(document.pages) if page.id == page_id), -1)
+                if page_index < 0:
+                    return CommandResult(False, False, "Página inexistente.")
+                with self.session.transaction("Excluir página"):
+                    document.pages.pop(page_index)
+                    if document.active_page_id == page_id:
+                        next_index = min(page_index, len(document.pages) - 1)
+                        document.active_page_id = document.pages[next_index].id
+                self.session.clear_selection()
+                return CommandResult(
+                    True,
+                    True,
+                    "Página excluída.",
+                    {
+                        "page_id": page_id,
+                        "active_page_id": document.active_page_id,
+                        "page_ids": [page.id for page in document.pages],
+                    },
+                )
             if name == "reorder_page":
                 document = self.session.document
                 pages = document.pages
