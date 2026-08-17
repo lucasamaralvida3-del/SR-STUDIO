@@ -12,6 +12,12 @@ from .fidelity import (
     compare_images,
     run_suite,
 )
+from .fidelity_attribution import (
+    FidelityAttributionReport,
+    FidelityNodeSuspect,
+    FidelityRegionAttribution,
+    attribute_fidelity_regions,
+)
 from .fidelity_triage import (
     FidelityRegion,
     FidelityTriageReport,
@@ -79,7 +85,7 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.28"
+ENGINE_VERSION = "2.0.0-alpha.29"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -91,10 +97,13 @@ __all__ = [
     "ENGINE_NAME",
     "ENGINE_VERSION",
     "EmbeddedPptxFont",
+    "FidelityAttributionReport",
     "FidelityCase",
     "FidelityMetrics",
+    "FidelityNodeSuspect",
     "FidelityPolicy",
     "FidelityRegion",
+    "FidelityRegionAttribution",
     "FidelityResult",
     "FidelitySuiteResult",
     "FidelityTriageReport",
@@ -138,6 +147,7 @@ __all__ = [
     "analyze_fidelity_regions",
     "analyze_legacy_merge",
     "analyze_saved_session_merge",
+    "attribute_fidelity_regions",
     "audit_import",
     "audit_pptx_effects",
     "bridge_flags",
