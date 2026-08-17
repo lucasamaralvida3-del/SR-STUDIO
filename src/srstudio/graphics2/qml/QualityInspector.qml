@@ -5,7 +5,7 @@ import QtQuick.Layouts
 Rectangle {
     id: panel
     width: 326
-    height: expanded ? 364 : 56
+    height: expanded ? 430 : 56
     anchors.right: parent ? parent.right : undefined
     anchors.top: parent ? parent.top : undefined
     anchors.rightMargin: 8
@@ -23,6 +23,7 @@ Rectangle {
     property var visual: ({})
     property var mapping: ({})
     property var pptxFidelity: ({})
+    property var triage: ({})
     property bool expanded: true
     property bool gateReady: Boolean(gate.ready)
     property int blockers: Number(gate.blockers || 0)
@@ -46,6 +47,30 @@ Rectangle {
         return "Forma " + shape + " · Texto " + normal + " · Sem " + none
     }
 
+    function topTriageSuspect() {
+        if (!triage || !triage.available || !triage.attribution)
+            return null
+        var regions = triage.attribution.regions || []
+        if (regions.length === 0)
+            return null
+        var suspects = regions[0].suspects || []
+        return suspects.length > 0 ? suspects[0] : null
+    }
+
+    function triageLabel() {
+        var suspect = topTriageSuspect()
+        if (!suspect)
+            return "Nenhum objeto associado"
+        var semantic = String(suspect.binding_role || suspect.kind || "objeto")
+        var name = String(suspect.name || suspect.node_id || "sem nome")
+        return semantic + " · " + name
+    }
+
+    function triageHint() {
+        var suspect = topTriageSuspect()
+        return suspect ? String(suspect.diagnostic_hint || "") : ""
+    }
+
     function refresh() {
         try {
             scene = JSON.parse(sceneBridge.sceneJson)
@@ -58,6 +83,7 @@ Rectangle {
         visual = diagnostics.visual_fidelity || ({})
         mapping = diagnostics.pptx_mapping || ({})
         pptxFidelity = diagnostics.pptx_fidelity || ({})
+        triage = diagnostics.visual_fidelity_triage || (scene.metadata && scene.metadata.visual_fidelity_triage_last ? scene.metadata.visual_fidelity_triage_last : ({}))
     }
 
     Connections {
@@ -176,6 +202,44 @@ Rectangle {
 
                 Label { text: "Cobertura grupos"; color: "#64748B"; font.pixelSize: 9 }
                 Label { text: percent(gate.mapping_group_coverage); color: "#334155"; horizontalAlignment: Text.AlignRight; Layout.fillWidth: true }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                implicitHeight: triageColumn.implicitHeight + 12
+                radius: 6
+                color: "#EFF6FF"
+                border.width: 1
+                border.color: "#BFDBFE"
+                visible: Boolean(triage.available) && topTriageSuspect() !== null
+
+                ColumnLayout {
+                    id: triageColumn
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    anchors.leftMargin: 7
+                    anchors.rightMargin: 7
+                    spacing: 2
+
+                    Label {
+                        text: "Causa provável · " + triageLabel()
+                        color: "#1D4ED8"
+                        font.bold: true
+                        font.pixelSize: 9
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                    }
+                    Label {
+                        text: triageHint()
+                        color: "#475569"
+                        font.pixelSize: 8
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        maximumLineCount: 2
+                        elide: Text.ElideRight
+                    }
+                }
             }
 
             RowLayout {
