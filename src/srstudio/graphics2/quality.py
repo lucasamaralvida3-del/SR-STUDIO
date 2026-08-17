@@ -46,6 +46,10 @@ class ProductionGateReport:
     mapping_fill_rect_coverage: float = 1.0
     mapping_fill_outset_coverage: float = 1.0
     mapping_image_clip_coverage: float = 1.0
+    pptx_advanced_effects: int = 0
+    pptx_gradient_fills: int = 0
+    pptx_shadows: int = 0
+    pptx_alpha_modifiers: int = 0
     issues: list[ProductionGateIssue] = field(default_factory=list)
 
     @property
@@ -88,9 +92,11 @@ def inspect_production_gate(
       comparação visual tenha passado antes do Engine 2 ser considerado pronto.
 
     Para PPTX, cobertura de páginas/textos/imagens, contratos de auto-fit e
-    enquadramento DrawingML é parte do score. Isso evita aprovar uma cena
-    internamente válida quando o conversor perdeu conteúdo, tipografia semântica,
-    fillRect ou máscara existentes na fonte.
+    enquadramento DrawingML é parte do score. O inventário de efeitos avançados
+    também acompanha o gate como diagnóstico: gradientes, sombras e afins não
+    reduzem score por estimativa; eles obrigam a equipe a olhar o Golden Master
+    real antes de afirmar fidelidade. Isso evita aprovar uma cena internamente
+    válida quando o conversor perdeu conteúdo perceptível da fonte.
     """
 
     structural = inspect_quality(document, available_fonts=available_fonts)
@@ -264,6 +270,33 @@ def inspect_production_gate(
                 )
             )
 
+    effects = dict(metadata.get("pptx_effects") or {})
+    effect_totals = dict(effects.get("totals") or {})
+    advanced_effects = _as_int(effect_totals.get("advanced_effects", 0))
+    gradient_fills = _as_int(effect_totals.get("gradient_fills", 0))
+    outer_shadows = _as_int(effect_totals.get("outer_shadows", 0))
+    inner_shadows = _as_int(effect_totals.get("inner_shadows", 0))
+    alpha_modifiers = _as_int(effect_totals.get("alpha_modifiers", 0))
+    if effects.get("error"):
+        issues.append(
+            ProductionGateIssue(
+                "warning",
+                "PPTX_EFFECT_AUDIT_FAILED",
+                f"Auditoria de efeitos DrawingML indisponível: {effects.get('error')}.",
+            )
+        )
+    elif advanced_effects:
+        issues.append(
+            ProductionGateIssue(
+                "warning",
+                "PPTX_ADVANCED_EFFECTS_PRESENT",
+                "PPTX contém "
+                f"{advanced_effects} efeito(s) avançado(s) DrawingML "
+                f"({gradient_fills} gradiente(s), {outer_shadows + inner_shadows} sombra(s)); "
+                "confirme a reprodução pelo Golden Master antes de liberar.",
+            )
+        )
+
     pptx = dict(metadata.get("pptx_fidelity") or {})
     fonts_declared = _as_int(pptx.get("fonts_declared", 0))
     fonts_extracted = _as_int(pptx.get("fonts_extracted", 0))
@@ -357,6 +390,10 @@ def inspect_production_gate(
         mapping_fill_rect_coverage=mapping_fill_rect,
         mapping_fill_outset_coverage=mapping_fill_outset,
         mapping_image_clip_coverage=mapping_image_clip,
+        pptx_advanced_effects=advanced_effects,
+        pptx_gradient_fills=gradient_fills,
+        pptx_shadows=outer_shadows + inner_shadows,
+        pptx_alpha_modifiers=alpha_modifiers,
         issues=issues,
     )
 
