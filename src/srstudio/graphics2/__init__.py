@@ -97,11 +97,14 @@ build_semantic_blocks = _semantic_blocks.build_semantic_blocks
 
 # O bridge histórico protege todos os nodes fora de SmartSlots. Para o Studio de
 # Encartes profissional, textos e imagens importados precisam permanecer
-# editáveis sem liberar as formas estruturais do template.
+# editáveis sem liberar as formas estruturais do template. O binder também usa
+# o texto original do template para preservar moeda/unidade em caixas separadas.
 from . import import_bridge as _import_bridge
+from .binding_runtime import install_template_aware_binding_guard
 from .import_edit_runtime import apply_import_editability, install_import_editability_guard
 
 install_import_editability_guard(_import_bridge)
+install_template_aware_binding_guard(_import_bridge)
 
 from . import command_router as _command_router
 from .image_replace_runtime import install_image_replace_command
