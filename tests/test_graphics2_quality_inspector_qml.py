@@ -29,6 +29,16 @@ def test_quality_inspector_consumes_live_editor_diagnostics():
     assert "gate.mapping_group_coverage" in source
 
 
+def test_quality_inspector_surfaces_scene_aware_probable_cause_without_changing_gate():
+    source = _source()
+    assert "visual_fidelity_triage_last" in source
+    assert "visual_fidelity_triage" in source
+    assert "topTriageSuspect" in source
+    assert "diagnostic_hint" in source
+    assert "Causa provável" in source
+    assert "triage.available" in source
+
+
 def test_quality_inspector_surfaces_blockers_warnings_and_gpu():
     source = _source()
     assert "Production Gate aprovado" in source
@@ -54,6 +64,26 @@ def test_quality_inspector_qml_loads_offscreen_when_pyside_is_available():
     from PySide6.QtQml import QQmlApplicationEngine
 
     scene = GraphicsDocument(name="Quality Inspector Smoke").to_dict()
+    scene["metadata"]["visual_fidelity_triage_last"] = {
+        "available": True,
+        "attribution": {
+            "regions": [
+                {
+                    "region_index": 1,
+                    "suspects": [
+                        {
+                            "node_id": "price_reais",
+                            "name": "Preço reais",
+                            "kind": "text",
+                            "binding_role": "price_reais",
+                            "score": 0.98,
+                            "diagnostic_hint": "preço: revisar tipografia e baseline",
+                        }
+                    ],
+                }
+            ]
+        },
+    }
     scene["editor"] = {
         "diagnostics": {
             "production_gate": {
@@ -64,7 +94,11 @@ def test_quality_inspector_qml_loads_offscreen_when_pyside_is_available():
                 "visual_score": None,
                 "visual_passed": None,
                 "mapping_text_coverage": 0.99,
+                "mapping_autofit_coverage": 1.0,
                 "mapping_image_coverage": 0.95,
+                "mapping_fill_rect_coverage": 1.0,
+                "mapping_fill_outset_coverage": 1.0,
+                "mapping_image_clip_coverage": 1.0,
                 "mapping_group_coverage": 0.90,
                 "blockers": 0,
                 "warnings": 2,
