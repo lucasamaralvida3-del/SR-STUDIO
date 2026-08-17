@@ -78,10 +78,15 @@ def foreground_mask(
         background = tuple(int(value) for value in rgb.getpixel((0, 0)))
     br, bg, bb = (max(0, min(255, int(value))) for value in background)
 
+    # PixelAccess avoids Pillow's deprecated Image.getdata() while keeping the
+    # diagnostic deterministic across supported Pillow versions.
+    source = rgb.load()
     pixels = []
-    for red, green, blue in rgb.getdata():
-        distance = max(abs(red - br), abs(green - bg), abs(blue - bb))
-        pixels.append(255 if distance > tolerance else 0)
+    for y in range(rgb.height):
+        for x in range(rgb.width):
+            red, green, blue = source[x, y]
+            distance = max(abs(red - br), abs(green - bg), abs(blue - bb))
+            pixels.append(255 if distance > tolerance else 0)
     mask = Image.new("L", rgb.size)
     mask.putdata(pixels)
     return _binary(mask)
