@@ -196,6 +196,9 @@ def _render_node(painter, document: GraphicsDocument, page: GraphicsPage, node: 
             painter.translate(cx, cy)
             painter.scale(float(t.scale_x), float(t.scale_y))
             painter.translate(-cx, -cy)
+
+        _draw_outer_shadow(painter, node, QtCore, QtGui)
+
         if node.kind is NodeKind.TEXT:
             _draw_text(painter, node, QtCore, QtGui)
         elif node.kind in {NodeKind.IMAGE, NodeKind.BACKGROUND}:
@@ -212,7 +215,7 @@ def _render_node(painter, document: GraphicsDocument, page: GraphicsPage, node: 
         painter.restore()
 
 
-def _draw_text(painter, node: GraphicsNode, QtCore, QtGui) -> None:
+def _draw_text(painter, node: GraphicsNode, QtCore, QtGui, *, color_override: str | None = None) -> None:
     t = node.transform
     style = node.style
     insets = dict(style.get("text_insets") or {})
@@ -248,8 +251,97 @@ def _draw_text(painter, node: GraphicsNode, QtCore, QtGui) -> None:
             min_px=max(3, round(float(style.get("min_font_size") or 4))),
         )
     painter.setFont(font)
-    painter.setPen(QtGui.QPen(QtGui.QColor(str(style.get("color") or "#111827"))))
+    painter.setPen(QtGui.QPen(QtGui.QColor(str(color_override or style.get("color") or "#111827"))))
     painter.drawText(rect, flags, str(node.text or ""))
+
+
+def _draw_outer_shadow(painter, node: GraphicsNode, QtCore, QtGui) -> None:
+    shadow = node.style.get("shadow")
+    if not isinstance(shadow, dict) or str(shadow.get("type") or "").lower() != "outer":
+        return
+    if node.kind not in {NodeKind.TEXT, NodeKind.RECT, NodeKind.ELLIPSE, NodeKind.PATH}:
+        return
+
+    color = QtGui.QColor(str(shadow.get("color") or ""))
+    if not color.isValid():
+        return
+    alpha = _clamp(float(shadow.get("alpha", 1.0) or 0.0), 0.0, 1.0)
+    if alpha <= 0.0:
+        return
+    distance = max(0.0, float(shadow.get("distance", 0.0) or 0.0))
+    blur = max(0.0, float(shadow.get("blur", 0.0) or 0.0))
+    direction = float(shadow.get("direction", 0.0) or 0.0)
+    rot_with_shape = bool(shadow.get("rot_with_shape", False))
+
+    # O transform do node já está ativo no painter. DrawingML rotWithShape=0
+    # mantém a direção da sombra no espaço da página, então compensamos a
+    # rotação local antes de converter distância em deslocamento.
+    if not rot_with_shape:
+        direction -= float(node.transform.rotation or 0.0)
+    radians = math.radians(direction)
+    dx = math.cos(radians) * distance
+    dy = math.sin(radians) * distance
+    if not rot_with_shape:
+        if abs(float(node.transform.scale_x or 1.0)) > 1e-9:
+            dx /= float(node.transform.scale_x or 1.0)
+        if abs(float(node.transform.scale_y or 1.0)) > 1e-9:
+            dy /= float(node.transform.scale_y or 1.0)
+
+    base_opacity = float(painter.opacity())
+    for ox, oy, weight in _shadow_samples(blur):
+        painter.save()
+        try:
+            painter.setOpacity(_clamp(base_opacity * alpha * weight, 0.0, 1.0))
+            painter.translate(dx + ox, dy + oy)
+            _draw_shadow_silhouette(painter, node, color, QtCore, QtGui)
+        finally:
+            painter.restore()
+
+
+def _shadow_samples(blur: float) -> list[tuple[float, float, float]]:
+    """Aproxima blur DrawingML com amostragem determinística do silhouette.
+
+    QPainter puro não expõe blur de primitivas. Para manter a mesma rota PNG/PDF
+    e evitar rasterizar o node inteiro, distribuímos 17 cópias leves em dois
+    anéis. Blur zero continua sendo uma única cópia exata.
+    """
+
+    if blur <= 0.25:
+        return [(0.0, 0.0, 1.0)]
+    radius = min(24.0, max(0.75, blur * 0.70))
+    samples: list[tuple[float, float, float]] = [(0.0, 0.0, 0.25)]
+    for ring_radius, ring_weight in ((radius * 0.48, 0.075), (radius, 0.01875)):
+        for index in range(8):
+            angle = math.tau * index / 8.0
+            samples.append((math.cos(angle) * ring_radius, math.sin(angle) * ring_radius, ring_weight))
+    return samples
+
+
+def _draw_shadow_silhouette(painter, node: GraphicsNode, color, QtCore, QtGui) -> None:
+    if node.kind is NodeKind.TEXT:
+        _draw_text(painter, node, QtCore, QtGui, color_override=color.name())
+        return
+
+    rect = QtCore.QRectF(node.transform.x, node.transform.y, node.transform.width, node.transform.height)
+    painter.setPen(QtGui.QPen(QtCore.Qt.NoPen))
+    painter.setBrush(QtGui.QBrush(color))
+    if node.kind is NodeKind.ELLIPSE:
+        painter.drawEllipse(rect)
+        return
+    if node.kind is NodeKind.PATH:
+        custom = _custom_path(node.metadata.get("custom_path"), rect, QtGui)
+        if custom is not None:
+            painter.drawPath(custom)
+        return
+    if node.kind is NodeKind.RECT:
+        custom = _custom_path(node.metadata.get("custom_path"), rect, QtGui)
+        if custom is not None:
+            painter.drawPath(custom)
+            return
+        radius = float(node.style.get("radius") or 0.0)
+        if not radius and node.style.get("radius_ratio") not in (None, ""):
+            radius = min(rect.width(), rect.height()) * max(0.0, float(node.style.get("radius_ratio") or 0.0))
+        painter.drawRoundedRect(rect, radius, radius) if radius > 0 else painter.drawRect(rect)
 
 
 def _should_fit_text(style: dict) -> bool:
@@ -389,9 +481,9 @@ def _crop_image(image, crop: dict, QtCore):
 
 def _draw_rect(painter, node: GraphicsNode, QtCore, QtGui) -> None:
     style = node.style
-    painter.setPen(_pen(style, QtCore, QtGui))
-    painter.setBrush(_brush(style, QtCore, QtGui))
     rect = QtCore.QRectF(node.transform.x, node.transform.y, node.transform.width, node.transform.height)
+    painter.setPen(_pen(style, QtCore, QtGui))
+    painter.setBrush(_brush(style, QtCore, QtGui, rect=rect))
     custom = _custom_path(node.metadata.get("custom_path"), rect, QtGui)
     if custom is not None:
         painter.drawPath(custom)
@@ -403,8 +495,10 @@ def _draw_rect(painter, node: GraphicsNode, QtCore, QtGui) -> None:
 
 
 def _draw_ellipse(painter, node: GraphicsNode, QtCore, QtGui) -> None:
-    painter.setPen(_pen(node.style, QtCore, QtGui)); painter.setBrush(_brush(node.style, QtCore, QtGui))
-    painter.drawEllipse(QtCore.QRectF(node.transform.x, node.transform.y, node.transform.width, node.transform.height))
+    rect = QtCore.QRectF(node.transform.x, node.transform.y, node.transform.width, node.transform.height)
+    painter.setPen(_pen(node.style, QtCore, QtGui))
+    painter.setBrush(_brush(node.style, QtCore, QtGui, rect=rect))
+    painter.drawEllipse(rect)
 
 
 def _draw_line(painter, node: GraphicsNode, QtCore, QtGui) -> None:
@@ -418,7 +512,7 @@ def _draw_path(painter, page: GraphicsPage, node: GraphicsNode, warnings: list[R
     custom = _custom_path(node.metadata.get("custom_path"), rect, QtGui)
     if custom is not None:
         painter.setPen(_pen(node.style, QtCore, QtGui))
-        painter.setBrush(_brush(node.style, QtCore, QtGui))
+        painter.setBrush(_brush(node.style, QtCore, QtGui, rect=rect))
         painter.drawPath(custom)
         return
     path_text = str(node.metadata.get("svg_path") or "").strip()
@@ -477,11 +571,58 @@ def _pen(style: dict, QtCore, QtGui, *, default: str = "transparent"):
     pen = QtGui.QPen(QtGui.QColor(color)); pen.setWidthF(width); pen.setJoinStyle(QtCore.Qt.RoundJoin); pen.setCapStyle(QtCore.Qt.RoundCap); return pen
 
 
-def _brush(style: dict, QtCore, QtGui):
+def _brush(style: dict, QtCore, QtGui, *, rect=None):
+    gradient = style.get("gradient")
+    if rect is not None and isinstance(gradient, dict):
+        brush = _linear_gradient_brush(gradient, rect, QtCore, QtGui)
+        if brush is not None:
+            return brush
     color = str(style.get("fill") or "transparent")
     if color.lower() in {"", "none", "transparent"}:
         return QtGui.QBrush(QtCore.Qt.NoBrush)
     return QtGui.QBrush(QtGui.QColor(color))
+
+
+def _linear_gradient_brush(spec: dict, rect, QtCore, QtGui):
+    if str(spec.get("type") or "").lower() != "linear":
+        return None
+    raw_stops = spec.get("stops")
+    if not isinstance(raw_stops, list) or len(raw_stops) < 2:
+        return None
+    stops: list[tuple[float, object]] = []
+    for item in raw_stops:
+        if not isinstance(item, dict):
+            continue
+        color = QtGui.QColor(str(item.get("color") or ""))
+        if not color.isValid():
+            continue
+        try:
+            alpha = _clamp(float(item.get("alpha", 1.0)), 0.0, 1.0)
+            position = _clamp(float(item.get("position", 0.0)), 0.0, 1.0)
+        except (TypeError, ValueError):
+            continue
+        color.setAlphaF(alpha)
+        stops.append((position, color))
+    if len(stops) < 2:
+        return None
+    stops.sort(key=lambda item: item[0])
+
+    angle = math.radians(float(spec.get("angle", 0.0) or 0.0))
+    dx = math.cos(angle)
+    dy = math.sin(angle)
+    center = rect.center()
+    half_span = abs(dx) * rect.width() * 0.5 + abs(dy) * rect.height() * 0.5
+    half_span = max(0.5, half_span)
+    start = QtCore.QPointF(center.x() - dx * half_span, center.y() - dy * half_span)
+    end = QtCore.QPointF(center.x() + dx * half_span, center.y() + dy * half_span)
+    gradient = QtGui.QLinearGradient(start, end)
+    for position, color in stops:
+        gradient.setColorAt(position, color)
+    return QtGui.QBrush(gradient)
+
+
+def _clamp(value: float, minimum: float, maximum: float) -> float:
+    return max(minimum, min(maximum, value))
 
 
 def _image_source(document: GraphicsDocument, node: GraphicsNode) -> str:
