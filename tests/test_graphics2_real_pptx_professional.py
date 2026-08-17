@@ -23,12 +23,15 @@ def test_real_cartaz_venda_runs_editor_import_persistence_and_exports(tmp_path: 
     assert document.metadata.get("graphics2_import_bridge") == 2
     assert document.metadata.get("pptx_structure")
     assert document.metadata.get("import_fingerprint_sha256")
+    assert document.metadata.get("import_editability", {}).get("policy") == "content-v1"
     assert len(document.pages) >= 1
 
     nodes = [node for page in document.pages for node in page.nodes.values()]
+    visible_text = [node for node in nodes if node.visible and node.kind.value == "text"]
     assert len(nodes) >= 4
     assert any(node.visible for node in nodes)
-    assert any(node.visible and node.kind.value == "text" for node in nodes)
+    assert visible_text
+    assert any(not node.locked for node in visible_text), "PPTX real precisa chegar ao editor com texto editável."
 
     output = tmp_path / "real-pptx-probe"
     report = run_professional_probe(
