@@ -6,9 +6,15 @@ from srstudio.graphics2.operations import GraphicsSession
 from srstudio.graphics2.qt_host import prepare_qml_payload
 
 
-def test_qml_preview_disables_independent_text_fit_only_in_semantic_price_tokens():
+def _preview_node(document: GraphicsDocument, node: GraphicsNode) -> dict:
+    document.active_page.add_node(node)
+    payload = GraphicsCommandRouter(GraphicsSession(document)).payload()
+    preview = prepare_qml_payload(payload)
+    return preview["pages"][0]["nodes"][node.id]
+
+
+def test_qml_preview_keeps_explicit_autofit_for_semantic_price_tokens():
     document = GraphicsDocument()
-    page = document.active_page
     price = GraphicsNode(
         kind=NodeKind.TEXT,
         name="Reais",
@@ -17,25 +23,57 @@ def test_qml_preview_disables_independent_text_fit_only_in_semantic_price_tokens
         style={"fit_inside_box": True, "nowrap": True, "font_size": 80},
         metadata={"semantic_price_block_id": "priceblock:test"},
     )
+
+    preview_node = _preview_node(document, price)
+
+    assert preview_node["style"]["fit_inside_box"] is True
+    assert preview_node["style"]["nowrap"] is True
+    assert "semantic_preview_fixed_size" not in preview_node["style"]
+    # O contrato persistido não é alterado pela normalização exclusiva do preview.
+    assert document.active_page.node(price.id).style["fit_inside_box"] is True
+    assert document.active_page.node(price.id).style["nowrap"] is True
+
+
+def test_qml_preview_nowrap_without_autofit_keeps_font_size_and_single_line_visual():
+    document = GraphicsDocument()
     title = GraphicsNode(
         kind=NodeKind.TEXT,
         name="Título",
-        text="LINGUIÇA MISTA",
+        text="OFERTA SEMANAL",
         transform=Transform(width=200, height=50),
-        style={"fit_inside_box": True, "nowrap": True, "font_size": 32},
+        style={"fit_inside_box": False, "nowrap": True, "font_size": 32},
     )
-    page.add_node(price)
-    page.add_node(title)
-    payload = GraphicsCommandRouter(GraphicsSession(document)).payload()
 
-    preview = prepare_qml_payload(payload)
-    preview_nodes = preview["pages"][0]["nodes"]
+    preview_node = _preview_node(document, title)
 
-    assert preview_nodes[price.id]["style"]["fit_inside_box"] is False
-    assert preview_nodes[price.id]["style"]["nowrap"] is False
-    assert preview_nodes[price.id]["style"]["semantic_preview_fixed_size"] is True
-    assert preview_nodes[title.id]["style"]["fit_inside_box"] is True
-    assert preview_nodes[title.id]["style"]["nowrap"] is True
-    # O contrato persistido não é alterado: a normalização existe só no JSON do preview.
-    assert page.node(price.id).style["fit_inside_box"] is True
-    assert page.node(price.id).style["nowrap"] is True
+    assert preview_node["style"]["fit_inside_box"] is False
+    assert preview_node["style"]["nowrap"] is False
+    assert preview_node["style"]["semantic_preview_fixed_size"] is True
+    assert preview_node["style"]["semantic_preview_nowrap"] is True
+    assert preview_node["text"] == "OFERTA\u00a0SEMANAL"
+    assert document.active_page.node(title.id).text == "OFERTA SEMANAL"
+    assert document.active_page.node(title.id).style["nowrap"] is True
+
+
+def test_qml_preview_preserves_priceblock_overflow_only_fit_policy():
+    document = GraphicsDocument()
+    cents = GraphicsNode(
+        kind=NodeKind.TEXT,
+        name="Centavos",
+        text=",98",
+        transform=Transform(width=80, height=60),
+        style={
+            "fit_inside_box": False,
+            "nowrap": True,
+            "semantic_fit_policy": "overflow_only",
+            "font_size": 48,
+        },
+        metadata={"semantic_price_block_id": "priceblock:test"},
+    )
+
+    preview_node = _preview_node(document, cents)
+
+    assert preview_node["style"]["nowrap"] is True
+    assert preview_node["style"]["semantic_fit_policy"] == "overflow_only"
+    assert "semantic_preview_fixed_size" not in preview_node["style"]
+    assert preview_node["text"] == ",98"
