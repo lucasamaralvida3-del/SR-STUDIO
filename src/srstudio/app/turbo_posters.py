@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import os
 import threading
 import tkinter as tk
 
+from srstudio import __channel__
 import srstudio.app.advanced_posters as advanced
 import srstudio.app.cartazes_productivity as cartazes_productivity
 import srstudio.app.responsive_posters as responsive
@@ -20,12 +22,27 @@ from srstudio.images.cloud_sync import ImageBankCloudSync
 from srstudio.posters import PosterKind
 
 
+def graphics2_runtime_flags(data_dir) -> tuple[bool, bool]:
+    """Resolve G2 para o executável real sem depender só do Launcher.
+
+    Builds do canal Beta que já carregam o Graphics Engine 2 devem expô-lo como
+    editor principal de Encartes. A ativação é apenas de processo; não altera
+    preferências persistidas e não afeta o canal Stable.
+    """
+
+    if str(__channel__).strip().lower() == "beta":
+        os.environ["SR_GRAPHICS_ENGINE_2_BETA"] = "1"
+        os.environ.setdefault("SR_GRAPHICS_ENGINE_2_GPU", "1")
+    return bridge_flags(data_dir)
+
+
 class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
     """Responsive poster shell plus the professional Encartes Studio experience."""
 
     def __init__(self) -> None:
         super().__init__()
         self._image_bank_sync_active = False
+        self._graphics2_auto_launch_pending = False
         self._image_bank_cloud = ImageBankCloudSync(
             self.image_library,
             self.data_dir / "image-bank-cloud",
@@ -62,6 +79,18 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             )
 
     def navigate(self, name: str) -> None:
+        if name == "Encartes Studio":
+            engine_enabled, gpu_enabled = graphics2_runtime_flags(self.data_dir)
+            if engine_enabled:
+                # O shell legado ainda atualiza corretamente seleção/estado da navegação,
+                # mas é imediatamente substituído pelo hub G2. O editor clássico não é
+                # mais a primeira experiência no canal Beta.
+                super().navigate(name)
+                self._show_graphics2_primary_hub(gpu_enabled)
+                self._graphics2_auto_launch_pending = True
+                self.after(120, self._auto_launch_graphics2_primary)
+                return
+
         super().navigate(name)
         if name == "Banco de Imagens":
             self._clear()
@@ -71,9 +100,6 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
                 self._image_bank_cloud,
                 on_changed=self._mark_changed,
             )
-            return
-        if name == "Encartes Studio":
-            self._attach_graphics2_launcher()
             return
         if name != "Modelos":
             return
@@ -88,20 +114,54 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             on_train=self.train_canva_library,
         )
 
-    def _attach_graphics2_launcher(self) -> None:
-        """Mostra controles G2 somente quando a feature flag foi ligada manualmente."""
+    def _show_graphics2_primary_hub(self, gpu_enabled: bool) -> None:
+        self._clear()
+        shell = tk.Frame(self.content, bg="#F3F6FA")
+        shell.pack(fill="both", expand=True)
 
-        engine_enabled, gpu_enabled = bridge_flags(self.data_dir)
-        if not engine_enabled:
-            return
-        children = list(self.content.winfo_children())
-        if not children:
-            return
-        editor = children[-1]
-        label = "ENGINE 2 · GPU" if gpu_enabled else "ENGINE 2 · TESTE"
-        button = tk.Button(
-            editor,
-            text=label,
+        card = tk.Frame(
+            shell,
+            bg="white",
+            highlightbackground="#D6E0ED",
+            highlightthickness=1,
+        )
+        card.pack(fill="x", padx=34, pady=(34, 16))
+
+        badge_text = "GRAPHICS ENGINE 2 · GPU · BETA" if gpu_enabled else "GRAPHICS ENGINE 2 · BETA"
+        tk.Label(
+            card,
+            text=badge_text,
+            bg="#EAF2FF",
+            fg="#0F5BD8",
+            font=("Segoe UI", 9, "bold"),
+            padx=12,
+            pady=6,
+        ).pack(anchor="w", padx=26, pady=(24, 10))
+        tk.Label(
+            card,
+            text="Studio de Encartes G2",
+            bg="white",
+            fg="#152033",
+            font=("Segoe UI", 24, "bold"),
+        ).pack(anchor="w", padx=26)
+        tk.Label(
+            card,
+            text=(
+                "Novo editor do SR Studio para encartes Canva/PPTX. "
+                "A Beta abre o G2 em uma janela separada com o host Qt isolado."
+            ),
+            bg="white",
+            fg="#657186",
+            font=("Segoe UI", 10),
+            justify="left",
+            wraplength=820,
+        ).pack(anchor="w", padx=26, pady=(7, 18))
+
+        actions = tk.Frame(card, bg="white")
+        actions.pack(fill="x", padx=26, pady=(0, 25))
+        tk.Button(
+            actions,
+            text="ABRIR STUDIO DE ENCARTES G2",
             command=self._launch_graphics2_optional,
             bg="#0F5BD8",
             fg="white",
@@ -109,8 +169,89 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             activeforeground="white",
             relief="flat",
             bd=0,
-            padx=12,
-            pady=6,
+            padx=20,
+            pady=11,
+            font=("Segoe UI", 10, "bold"),
+            cursor="hand2",
+        ).pack(side="left")
+        tk.Button(
+            actions,
+            text="APLICAR ALTERAÇÕES DO G2",
+            command=self._sync_graphics2_optional,
+            bg="#E2E8F0",
+            fg="#0F172A",
+            activebackground="#CBD5E1",
+            activeforeground="#0F172A",
+            relief="flat",
+            bd=0,
+            padx=16,
+            pady=11,
+            font=("Segoe UI", 9, "bold"),
+            cursor="hand2",
+        ).pack(side="left", padx=(10, 0))
+        tk.Button(
+            actions,
+            text="Abrir Encartes Clássico",
+            command=self._open_classic_encartes,
+            bg="white",
+            fg="#536175",
+            activebackground="#F3F6FA",
+            activeforeground="#152033",
+            relief="flat",
+            bd=0,
+            padx=14,
+            pady=11,
+            font=("Segoe UI", 9),
+            cursor="hand2",
+        ).pack(side="left", padx=(10, 0))
+
+        note = tk.Frame(shell, bg="#EAF8F1")
+        note.pack(fill="x", padx=34, pady=(0, 20))
+        tk.Label(
+            note,
+            text="✓  O editor clássico permanece disponível apenas como fallback durante os testes da Beta.",
+            bg="#EAF8F1",
+            fg="#116B47",
+            font=("Segoe UI", 9, "bold"),
+            anchor="w",
+            padx=16,
+            pady=12,
+        ).pack(fill="x")
+
+    def _auto_launch_graphics2_primary(self) -> None:
+        if not self._graphics2_auto_launch_pending:
+            return
+        self._graphics2_auto_launch_pending = False
+        self._launch_graphics2_optional()
+
+    def _open_classic_encartes(self) -> None:
+        self._graphics2_auto_launch_pending = False
+        super().navigate("Encartes Studio")
+        self._attach_graphics2_launcher()
+
+    def _attach_graphics2_launcher(self) -> None:
+        """Mantém atalhos G2 visíveis quando o usuário abre o editor clássico."""
+
+        engine_enabled, gpu_enabled = graphics2_runtime_flags(self.data_dir)
+        if not engine_enabled:
+            return
+        children = list(self.content.winfo_children())
+        if not children:
+            return
+        editor = children[-1]
+        label = "VOLTAR AO G2 · GPU" if gpu_enabled else "VOLTAR AO G2"
+        button = tk.Button(
+            editor,
+            text=label,
+            command=lambda: self.navigate("Encartes Studio"),
+            bg="#0F5BD8",
+            fg="white",
+            activebackground="#0B46AA",
+            activeforeground="white",
+            relief="flat",
+            bd=0,
+            padx=14,
+            pady=7,
             font=("Segoe UI", 8, "bold"),
             cursor="hand2",
         )
@@ -125,22 +266,26 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             relief="flat",
             bd=0,
             padx=10,
-            pady=6,
+            pady=7,
             font=("Segoe UI", 8, "bold"),
             cursor="hand2",
         )
-        # Overlays intencionais e isolados: não alteram o layout Tk antigo e só
-        # existem no modo experimental. Quando a flag está off, nem são criados.
         button.place(relx=1.0, x=-150, y=13, anchor="ne")
-        sync_button.place(relx=1.0, x=-276, y=13, anchor="ne")
+        sync_button.place(relx=1.0, x=-292, y=13, anchor="ne")
 
     def _launch_graphics2_optional(self) -> None:
+        # Revalida a ativação de processo antes de chamar a ponte. Isso torna o
+        # executável Beta autossuficiente mesmo se for aberto por um Launcher antigo.
+        engine_enabled, _gpu_enabled = graphics2_runtime_flags(self.data_dir)
+        if not engine_enabled:
+            self.toast.show("Graphics Engine 2 não está habilitado neste canal.", "warning", 6200)
+            return
         result = launch_studio_project_if_enabled(self.project, self.data_dir)
         if result.launched:
             self.toast.show(result.message, "success", 5200)
             return
         tone = "warning" if result.ok else "danger"
-        self.toast.show(result.message, tone, 6200)
+        self.toast.show(result.message, tone, 7200)
 
     def _sync_graphics2_optional(self) -> None:
         """Importa alterações representáveis e resolve conflitos por campo."""
@@ -268,8 +413,8 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
 
 
 def run() -> None:
-    # Beta 7.27 preserva o layout atual e injeta somente produtividade em
-    # Promoções/Atacado. Encartes Studio mantém o pipeline G2 independente.
+    # O shell principal continua responsável por Cartazes Pro. O Graphics2 é
+    # promovido somente na navegação de Encartes do canal Beta.
     advanced.base.PromotionPosterModule = cartazes_productivity.CartazesProductivityPromotionPosterModule
     advanced.base.WholesalePosterModule = cartazes_productivity.CartazesProductivityWholesalePosterModule
     app = SRStudioTurboPosters()
