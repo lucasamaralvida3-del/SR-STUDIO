@@ -52,6 +52,9 @@ class PptxFidelityReport:
     fonts_declared: int = 0
     fonts_extracted: int = 0
     text_nodes_enriched: int = 0
+    shape_autofit_nodes: int = 0
+    normal_autofit_nodes: int = 0
+    no_autofit_nodes: int = 0
     custom_paths_enriched: int = 0
     image_clips_enriched: int = 0
     drawingml_arcs_seen: int = 0
@@ -237,7 +240,7 @@ def _enrich_page(page, root: ET.Element, slide_width: int, slide_height: int, re
 
         text_body = shape.find(f"{{{P_NS}}}txBody")
         if text_body is not None and node.kind is NodeKind.TEXT:
-            _enrich_text(node, text_body, scale_x, scale_y)
+            _enrich_text(node, text_body, scale_x, scale_y, report)
 
         path_spec = _custom_path_spec(shape, report=report)
         if path_spec is None:
@@ -254,7 +257,13 @@ def _enrich_page(page, root: ET.Element, slide_width: int, slide_height: int, re
                 report.custom_paths_enriched += 1
 
 
-def _enrich_text(node: GraphicsNode, text_body: ET.Element, scale_x: float, scale_y: float) -> None:
+def _enrich_text(
+    node: GraphicsNode,
+    text_body: ET.Element,
+    scale_x: float,
+    scale_y: float,
+    report: PptxFidelityReport,
+) -> None:
     body = text_body.find(f"{{{A_NS}}}bodyPr")
     if body is not None:
         insets = {
@@ -272,12 +281,15 @@ def _enrich_text(node: GraphicsNode, text_body: ET.Element, scale_x: float, scal
             # o renderer deve preservar o tamanho da fonte importado.
             node.style["fit_inside_box"] = False
             node.style["pptx_auto_fit"] = "shape"
+            report.shape_autofit_nodes += 1
         elif body.find(f"{{{A_NS}}}normAutofit") is not None:
             node.style["fit_inside_box"] = True
             node.style["pptx_auto_fit"] = "normal"
+            report.normal_autofit_nodes += 1
         elif body.find(f"{{{A_NS}}}noAutofit") is not None:
             node.style["fit_inside_box"] = False
             node.style["pptx_auto_fit"] = "none"
+            report.no_autofit_nodes += 1
 
     run_properties = text_body.find(f".//{{{A_NS}}}rPr")
     if run_properties is None:
