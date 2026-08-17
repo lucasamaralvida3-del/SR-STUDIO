@@ -18,6 +18,7 @@ from .fidelity_attribution import (
     FidelityRegionAttribution,
     attribute_fidelity_regions,
 )
+from .fidelity_diagnostics import TRIAGE_METADATA_KEY, compact_fidelity_triage, store_fidelity_triage
 from .fidelity_triage import (
     FidelityRegion,
     FidelityTriageReport,
@@ -85,7 +86,7 @@ from .studio_bridge import (
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
 ENGINE_NAME = "SR Graphics Engine"
-ENGINE_VERSION = "2.0.0-alpha.30"
+ENGINE_VERSION = "2.0.0-alpha.31"
 SCHEMA_VERSION = "srscene/2.0"
 
 __all__ = [
@@ -143,6 +144,7 @@ __all__ = [
     "StudioBridgeLaunchResult",
     "StudioBridgePreparation",
     "StudioBridgeSyncResult",
+    "TRIAGE_METADATA_KEY",
     "Transform",
     "analyze_fidelity_regions",
     "analyze_legacy_merge",
@@ -152,6 +154,7 @@ __all__ = [
     "audit_pptx_effects",
     "bridge_flags",
     "build_semantic_blocks",
+    "compact_fidelity_triage",
     "compare_images",
     "crop_pixel_box",
     "drawingml_fill_destination",
@@ -181,6 +184,7 @@ __all__ = [
     "semantic_member_ids",
     "semantic_owner",
     "smart_slot_bounds",
+    "store_fidelity_triage",
     "store_scene_fingerprint",
     "store_visual_fidelity",
     "sync_graphics_to_studio",
