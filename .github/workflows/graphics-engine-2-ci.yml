@@ -1,0 +1,168 @@
+name: SR Graphics Engine 2 CI
+
+on:
+  push:
+    branches:
+      - feature/sr-graphics-engine-2
+      - integration/sr-studio-next
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'src/srstudio/settings/features.py'
+      - 'tests/test_graphics2_*.py'
+      - 'visual-fidelity/**'
+      - 'pyproject.toml'
+      - '.github/workflows/graphics-engine-2-ci.yml'
+  pull_request:
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'src/srstudio/settings/features.py'
+      - 'tests/test_graphics2_*.py'
+      - 'visual-fidelity/**'
+      - 'pyproject.toml'
+
+permissions:
+  contents: read
+
+jobs:
+  core-and-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install SR Studio + dev tools
+        run: python -m pip install -U pip && python -m pip install -e '.[dev]'
+      - name: Compile Python
+        run: python -m compileall -q src/srstudio
+      - name: Runtime lint gate
+        run: python -m ruff check src/srstudio/graphics2 tests/test_graphics2_*.py
+      - name: Visual Fidelity and Production Gate
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_fidelity.py
+          tests/test_graphics2_fidelity_triage.py
+          tests/test_graphics2_fidelity_attribution.py
+          tests/test_graphics2_fidelity_lab_triage.py
+          tests/test_graphics2_fidelity_diagnostics.py
+          tests/test_graphics2_import_audit.py
+          tests/test_graphics2_quality_gate.py
+          tests/test_graphics2_quality_inspector_qml.py
+          tests/test_graphics2_quality_inspector_spacing.py
+          tests/test_graphics2_quality_inspector_image_transform.py
+          tests/test_graphics2_golden_master.py
+          tests/test_graphics2_reference_suite.py
+          tests/test_graphics2_package_fonts.py
+          tests/test_graphics2_scene_fingerprint.py
+          tests/test_graphics2_pptx_effects.py
+          tests/test_graphics2_pptx_effect_mapping.py
+          tests/test_graphics2_pptx_groups.py
+          tests/test_graphics2_pptx_fidelity.py
+          tests/test_graphics2_pptx_structure.py
+          tests/test_graphics2_pptx_spacing_coverage.py
+          tests/test_graphics2_pptx_spacing_recovery.py
+          tests/test_graphics2_pptx_spacing_pipeline.py
+          tests/test_graphics2_pptx_fill_rect_recovery.py
+          tests/test_graphics2_pptx_fill_rect_pipeline.py
+          tests/test_graphics2_pptx_image_transform_recovery.py
+          tests/test_graphics2_pptx_image_transform_gate.py
+          tests/test_graphics2_pptx_image_transform_pipeline.py
+          tests/test_graphics2_semantic_blocks.py
+          tests/test_graphics2_semantic_product_card.py
+          tests/test_graphics2_semantic_spatial_card.py
+          tests/test_graphics2_semantic_placeholders.py
+          tests/test_graphics2_quinta_file_image_transform_parity.py
+          tests/test_graphics2_quinta_file_geometry_regression.py
+          tests/test_graphics2_drop_target.py
+          tests/test_graphics2_text_fit_policy.py
+          tests/test_graphics2_qml_price_preview.py
+          tests/test_graphics2_qt_renderer.py
+      - name: Fidelity Lab CLI smoke
+        run: python -m srstudio.graphics2.fidelity_lab --help
+      - name: Fidelity Triage CLI smoke
+        run: python -m srstudio.graphics2.fidelity_triage --help
+      - name: Golden Master CLI smoke
+        run: python -m srstudio.graphics2.golden_master --help
+      - name: Reference Suite CLI smoke
+        run: python -m srstudio.graphics2.reference_suite --help
+      - name: PPTX Structure CLI smoke
+        run: python -m srstudio.graphics2.pptx_structure --help
+      - name: PPTX Effects CLI smoke
+        run: python -m srstudio.graphics2.pptx_effects --help
+      - name: Graphics Host CLI smoke
+        run: python -m srstudio.graphics2.qt_host --help
+      - name: Graphics Engine 2 tests
+        run: python -m pytest -q tests -k graphics2
+      - name: Full SR Studio regression suite
+        run: python -m pytest -q
+
+  qt-quick-host:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install GPU host dependencies
+        shell: pwsh
+        run: python -m pip install -U pip; python -m pip install -e '.[dev,graphics2]'
+      - name: Validate Qt Quick runtime and backend probe
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "from pathlib import Path; from srstudio.graphics2.qt_host import qt_quick_available; import srstudio.graphics2.qt_host as h; assert qt_quick_available(); assert (Path(h.__file__).with_name('qml')/'GraphicsEditor.qml').is_file(); print('Qt Quick host OK')"
+          python -m srstudio.graphics2.qt_host --help
+          python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api
+          python -m srstudio.graphics2.fidelity_triage --help
+          python -m srstudio.graphics2.reference_suite --help
+          python -m srstudio.graphics2.pptx_structure --help
+          python -m srstudio.graphics2.pptx_effects --help
+      - name: Visual Fidelity and Production Gate on Windows
+        shell: pwsh
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_fidelity.py
+          tests/test_graphics2_fidelity_triage.py
+          tests/test_graphics2_fidelity_attribution.py
+          tests/test_graphics2_fidelity_lab_triage.py
+          tests/test_graphics2_fidelity_diagnostics.py
+          tests/test_graphics2_import_audit.py
+          tests/test_graphics2_quality_gate.py
+          tests/test_graphics2_quality_inspector_qml.py
+          tests/test_graphics2_quality_inspector_spacing.py
+          tests/test_graphics2_quality_inspector_image_transform.py
+          tests/test_graphics2_golden_master.py
+          tests/test_graphics2_reference_suite.py
+          tests/test_graphics2_package_fonts.py
+          tests/test_graphics2_scene_fingerprint.py
+          tests/test_graphics2_pptx_effects.py
+          tests/test_graphics2_pptx_effect_mapping.py
+          tests/test_graphics2_pptx_groups.py
+          tests/test_graphics2_pptx_fidelity.py
+          tests/test_graphics2_pptx_structure.py
+          tests/test_graphics2_pptx_spacing_coverage.py
+          tests/test_graphics2_pptx_spacing_recovery.py
+          tests/test_graphics2_pptx_spacing_pipeline.py
+          tests/test_graphics2_pptx_fill_rect_recovery.py
+          tests/test_graphics2_pptx_fill_rect_pipeline.py
+          tests/test_graphics2_pptx_image_transform_recovery.py
+          tests/test_graphics2_pptx_image_transform_gate.py
+          tests/test_graphics2_pptx_image_transform_pipeline.py
+          tests/test_graphics2_semantic_blocks.py
+          tests/test_graphics2_semantic_product_card.py
+          tests/test_graphics2_semantic_spatial_card.py
+          tests/test_graphics2_semantic_placeholders.py
+          tests/test_graphics2_quinta_file_image_transform_parity.py
+          tests/test_graphics2_quinta_file_geometry_regression.py
+          tests/test_graphics2_drop_target.py
+          tests/test_graphics2_text_fit_policy.py
+          tests/test_graphics2_qml_price_preview.py
+          tests/test_graphics2_qt_renderer.py
+      - name: Graphics Engine 2 tests on Windows
+        shell: pwsh
+        run: python -m pytest -q tests -k graphics2

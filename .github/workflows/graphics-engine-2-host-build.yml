@@ -1,0 +1,171 @@
+name: SR Graphics Engine 2 Host Build
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feature/sr-graphics-engine-2
+    paths:
+      - 'build/build_graphics2_host.py'
+      - 'build/package_graphics2_component.py'
+      - 'build/create_launcher_manifest.py'
+      - 'build/graphics2_host_entry.py'
+      - 'installer/build_setup.py'
+      - 'installer/SRStudioInstaller.ps1'
+      - 'launcher/files/SRStudioLauncher.ps1'
+      - 'launcher/files/SRStudioBootstrap.ps1'
+      - 'launcher/files/SRGraphics2Component.ps1'
+      - 'manifests/launcher.json'
+      - 'src/srstudio/graphics2/host_runtime.py'
+      - 'src/srstudio/graphics2/host_install.py'
+      - 'src/srstudio/graphics2/qt_host.py'
+      - 'src/srstudio/graphics2/qt_image_provider.py'
+      - 'src/srstudio/graphics2/studio_bridge.py'
+      - 'src/srstudio/graphics2/qml/**'
+      - 'tests/test_graphics2_component_package.py'
+      - 'tests/test_graphics2_installer_component.py'
+      - 'tests/test_graphics2_launcher_component.py'
+      - 'tests/test_graphics2_launcher_manifest.py'
+      - 'tests/test_graphics2_host_build.py'
+      - 'tests/test_graphics2_host_runtime.py'
+      - 'tests/test_graphics2_studio_bridge.py'
+      - 'pyproject.toml'
+      - '.github/workflows/graphics-engine-2-host-build.yml'
+  pull_request:
+    paths:
+      - 'build/build_graphics2_host.py'
+      - 'build/package_graphics2_component.py'
+      - 'build/create_launcher_manifest.py'
+      - 'build/graphics2_host_entry.py'
+      - 'installer/build_setup.py'
+      - 'installer/SRStudioInstaller.ps1'
+      - 'launcher/files/SRStudioLauncher.ps1'
+      - 'launcher/files/SRStudioBootstrap.ps1'
+      - 'launcher/files/SRGraphics2Component.ps1'
+      - 'manifests/launcher.json'
+      - 'src/srstudio/graphics2/host_runtime.py'
+      - 'src/srstudio/graphics2/host_install.py'
+      - 'src/srstudio/graphics2/qt_host.py'
+      - 'src/srstudio/graphics2/qt_image_provider.py'
+      - 'src/srstudio/graphics2/studio_bridge.py'
+      - 'src/srstudio/graphics2/qml/**'
+      - 'tests/test_graphics2_component_package.py'
+      - 'tests/test_graphics2_installer_component.py'
+      - 'tests/test_graphics2_launcher_component.py'
+      - 'tests/test_graphics2_launcher_manifest.py'
+      - 'tests/test_graphics2_host_build.py'
+      - 'tests/test_graphics2_host_runtime.py'
+      - 'tests/test_graphics2_studio_bridge.py'
+      - 'pyproject.toml'
+      - '.github/workflows/graphics-engine-2-host-build.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  windows-frozen-host:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install frozen host toolchain
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e '.[dev,graphics2-build]'
+          python -c "import PyInstaller, PySide6; print('PyInstaller', PyInstaller.__version__, 'PySide6', PySide6.__version__)"
+
+      - name: Validate host, launcher and installer contracts
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --print-args
+          python -m pytest -q tests/test_graphics2_host_build.py tests/test_graphics2_host_runtime.py tests/test_graphics2_studio_bridge.py tests/test_graphics2_component_package.py tests/test_graphics2_launcher_component.py tests/test_graphics2_launcher_manifest.py tests/test_graphics2_installer_component.py
+
+      - name: Verify launcher self-update manifest
+        shell: pwsh
+        run: |
+          python build/create_launcher_manifest.py --verify manifests/launcher.json
+          $generated = Join-Path $env:RUNNER_TEMP 'launcher.generated.json'
+          python build/create_launcher_manifest.py --output "$generated"
+          Get-Content -Raw -LiteralPath $generated
+
+      - name: Build isolated Qt host
+        shell: pwsh
+        run: python build/build_graphics2_host.py --output "$env:RUNNER_TEMP\graphics2-host"
+
+      - name: Validate build manifest and executable SHA-256
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'graphics2-host'
+          $manifestPath = Join-Path $root 'graphics2-host-manifest.json'
+          if(-not (Test-Path -LiteralPath $manifestPath)) { throw 'Manifest do host ausente.' }
+          $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+          $exe = Join-Path $root ([string]$manifest.executable).Replace('/','\')
+          if(-not (Test-Path -LiteralPath $exe)) { throw ('Executavel do host ausente: ' + $exe) }
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $exe).Hash.ToLowerInvariant()
+          if($actual -ne ([string]$manifest.executable_sha256).ToLowerInvariant()) { throw 'SHA-256 do host diverge do manifesto.' }
+          if([int64]$manifest.files -lt 10) { throw 'Bundle do host incompleto.' }
+          $runtime = Join-Path $root ([string]$manifest.runtime_manifest).Replace('/','\')
+          if(-not (Test-Path -LiteralPath $runtime)) { throw ('Catalogo de runtime ausente: ' + $runtime) }
+          $runtimeSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtime).Hash.ToLowerInvariant()
+          if($runtimeSha -ne ([string]$manifest.runtime_manifest_sha256).ToLowerInvariant()) { throw 'SHA-256 do catalogo de runtime diverge.' }
+          Write-Host ('Host OK: ' + $exe)
+          Write-Host ('Arquivos: ' + [string]$manifest.files + ' | bytes: ' + [string]$manifest.bytes)
+
+      - name: Validate full frozen runtime catalog
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'graphics2-host'
+          $bundle = Join-Path $root 'SRGraphicsEngine2Host'
+          python -m srstudio.graphics2.host_runtime "$bundle" --full
+
+      - name: Package optional launcher component
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'graphics2-host'
+          $zip = Join-Path $root 'graphics2-host-component.zip'
+          $descriptor = Join-Path $root 'graphics2-host-component.json'
+          python build/package_graphics2_component.py --build-root "$root" --output-zip "$zip" --descriptor "$descriptor"
+          $component = Get-Content -Raw -LiteralPath $descriptor | ConvertFrom-Json
+          if([bool]$component.enabled) { throw 'Artefato de CI nao pode ativar o componente automaticamente.' }
+          if([bool]$component.required) { throw 'Artefato de CI nao pode tornar o componente obrigatorio.' }
+          if(-not (Test-Path -LiteralPath $zip)) { throw 'ZIP distribuivel do Graphics2Host ausente.' }
+          if((Get-Item -LiteralPath $zip).Length -ne [int64]$component.size) { throw 'Tamanho do ZIP diverge do descritor.' }
+          $zipSha = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          if($zipSha -ne ([string]$component.sha256).ToLowerInvariant()) { throw 'SHA-256 do ZIP diverge do descritor.' }
+          Write-Host ('Componente opcional pronto: ' + [string]$component.engine_version + ' · ' + [string]$component.size + ' bytes')
+
+      - name: Frozen Qt backend probe
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'graphics2-host'
+          $manifest = Get-Content -Raw -LiteralPath (Join-Path $root 'graphics2-host-manifest.json') | ConvertFrom-Json
+          $exe = Join-Path $root ([string]$manifest.executable).Replace('/','\')
+          $process = Start-Process -FilePath $exe -ArgumentList @('--graphics-api','software','--probe-graphics-api') -Wait -PassThru
+          if($process.ExitCode -ne 0) { throw ('Probe do host congelado falhou com codigo ' + $process.ExitCode) }
+
+      - name: Upload host manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphics2-host-manifests
+          path: |
+            ${{ runner.temp }}\graphics2-host\graphics2-host-manifest.json
+            ${{ runner.temp }}\graphics2-host\graphics2-host-component.json
+            ${{ runner.temp }}\graphics2-host\SRGraphicsEngine2Host\graphics2-host-runtime.json
+            ${{ runner.temp }}\launcher.generated.json
+          retention-days: 7
+
+      - name: Upload optional host package
+        uses: actions/upload-artifact@v4
+        with:
+          name: graphics2-host-component
+          path: ${{ runner.temp }}\graphics2-host\graphics2-host-component.zip
+          compression-level: 0
+          retention-days: 7

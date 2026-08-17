@@ -16,9 +16,15 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0", "ruff>=0.6"]
+graphics2 = ["PySide6>=6.8,<7"]
+graphics2-build = ["PySide6>=6.8,<7", "PyInstaller>=6.21,<7"]
 
 [project.scripts]
 sr-studio-5 = "srstudio.app.turbo_posters:run"
+sr-graphics-engine-2 = "srstudio.graphics2.qt_host:main"
+sr-fidelity-lab = "srstudio.graphics2.fidelity_lab:main"
+sr-pptx-golden-master = "srstudio.graphics2.golden_master:main"
+sr-pptx-reference-suite = "srstudio.graphics2.reference_suite:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -36,7 +42,8 @@ srstudio = [
   "assets/brand/*.ico",
   "assets/poster_templates/legacy/manifest.json",
   "assets/poster_templates/legacy/models/*.pptx",
-  "assets/poster_templates/legacy/engines/*.ps1"
+  "assets/poster_templates/legacy/engines/*.ps1",
+  "graphics2/qml/*.qml"
 ]
 
 [tool.pytest.ini_options]

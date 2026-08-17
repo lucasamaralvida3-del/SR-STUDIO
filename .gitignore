@@ -1,0 +1,16 @@
+# SR Graphics Engine 2 — arquivos locais de fidelidade
+# Fontes, PPTX/PDF/PNGs reais do usuário não devem entrar no repositório.
+visual-fidelity/local/
+visual-fidelity/private/
+build/fidelity/
+build/golden-master/
+
+# Cache local do Engine 2 quando criado dentro do workspace.
+.srstudio5/
+
+# Python / ferramentas locais.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.venv/

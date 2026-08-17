@@ -1,0 +1,21 @@
+{
+  "defaults": {
+    "min_score": 0.985,
+    "min_pixel_pass_ratio": 0.965,
+    "pixel_tolerance": 12,
+    "max_changed_ratio": 0.035,
+    "require_same_size": true
+  },
+  "cases": [
+    {
+      "name": "quinta-file",
+      "baseline": "baselines/quinta-file.png",
+      "candidate": "candidates/quinta-file.png",
+      "policy": {
+        "min_score": 0.99,
+        "min_pixel_pass_ratio": 0.975,
+        "max_changed_ratio": 0.025
+      }
+    }
+  ]
+}

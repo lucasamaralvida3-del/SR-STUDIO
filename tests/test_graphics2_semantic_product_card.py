@@ -1,0 +1,215 @@
+from __future__ import annotations
+
+from copy import deepcopy
+
+from srstudio.graphics2.command_router import GraphicsCommandRouter
+from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsNode, NodeKind, Transform
+from srstudio.graphics2.operations import GraphicsSession
+from srstudio.graphics2.semantic_blocks import build_semantic_blocks, semantic_block
+
+
+def _locked_text(name: str, text: str, x: float, y: float, w: float, h: float) -> GraphicsNode:
+    return GraphicsNode(
+        kind=NodeKind.TEXT,
+        name=name,
+        text=text,
+        locked=True,
+        transform=Transform(x=x, y=y, width=w, height=h),
+        style={"font_family": "Anton", "font_size": 40},
+        metadata={"source_name": name},
+    )
+
+
+def _recovered_card_fixture():
+    document = GraphicsDocument(name="Quinta Filé card")
+    page = document.active_page
+    group = GraphicsNode(
+        kind=NodeKind.GROUP,
+        name="Group 42",
+        locked=False,
+        transform=Transform(x=100, y=100, width=420, height=330),
+        metadata={
+            "source": "pptx-group",
+            "source_name": "Group 42",
+            "pptx_group_generated": True,
+            "pptx_group_depth": 1,
+        },
+    )
+    page.add_node(group)
+    name = _locked_text("TextBox Name", "LINGUIÇA MISTA CASEIRA SR", 145, 125, 300, 55)
+    currency = _locked_text("TextBox 29", "R$", 255, 300, 45, 55)
+    whole = _locked_text("TextBox 31", "25", 300, 260, 125, 120)
+    cents = _locked_text("TextBox 32", ",77", 425, 270, 48, 45)
+    unit = _locked_text("TextBox 30", "KG", 425, 330, 48, 42)
+    image = GraphicsNode(
+        kind=NodeKind.IMAGE,
+        name="Picture 1",
+        locked=True,
+        transform=Transform(x=135, y=180, width=230, height=170),
+        metadata={"source_name": "Picture 1"},
+    )
+    for node in (name, image, currency, whole, cents, unit):
+        page.add_node(node, parent_id=group.id)
+    return document, group, name, image, currency, whole, cents, unit
+
+
+def test_recovered_price_promotes_real_pptx_group_to_atomic_product_card_and_slot():
+    document, group, name, image, currency, whole, cents, unit = _recovered_card_fixture()
+    page = document.active_page
+
+    report = build_semantic_blocks(document)
+
+    assert report.recovered_price_blocks == 1
+    assert report.recovered_product_cards == 1
+    assert report.recovered_smart_slots == 1
+    price_id = whole.metadata["semantic_price_block_id"]
+    card_id = whole.metadata["semantic_product_card_id"]
+    price = semantic_block(page, price_id)
+    card = semantic_block(page, card_id)
+    assert price is not None and price["metadata"]["recovered"] is True
+    assert card is not None and card["metadata"]["recovered"] is True
+    assert card["metadata"]["source"] == "pptx-group-recovery"
+    assert card["members"] == [group.id]
+    assert set(card["metadata"]["content_members"]) == {name.id, image.id, currency.id, whole.id, cents.id, unit.id}
+    assert group.metadata["semantic_product_card_id"] == card_id
+    assert name.metadata["semantic_product_card_id"] == card_id
+
+    assert list(page.slots) == ["slot:recovered:group-42"]
+    slot = page.slots["slot:recovered:group-42"]
+    assert slot.name == "LINGUIÇA MISTA CASEIRA SR"
+    assert slot.metadata["source"] == "canva-smart-slot"
+    assert slot.metadata["semantic_recovered"] is True
+    assert slot.metadata["recovered_from_pptx_group"] is True
+    assert slot.node_by_role == {
+        BindingRole.CURRENCY.value: currency.id,
+        BindingRole.PRICE_REAIS.value: whole.id,
+        BindingRole.PRICE_CENTS.value: cents.id,
+        BindingRole.UNIT.value: unit.id,
+        BindingRole.NAME.value: name.id,
+        BindingRole.IMAGE.value: image.id,
+    }
+    assert card["slot_id"] == slot.id
+    assert card["metadata"]["smart_slot_id"] == slot.id
+    assert price["slot_id"] == slot.id
+    assert price["metadata"]["smart_slot_id"] == slot.id
+    for node in (name, image, currency, whole, cents, unit):
+        assert node.locked is False
+
+
+def test_recovered_semantic_build_is_idempotent_and_keeps_one_slot():
+    document, group, name, image, currency, whole, cents, unit = _recovered_card_fixture()
+    page = document.active_page
+    before_geometry = {
+        node.id: deepcopy(node.transform)
+        for node in (group, name, image, currency, whole, cents, unit)
+    }
+
+    first = build_semantic_blocks(document)
+    first_slot = next(iter(page.slots.values()))
+    first_slot_id = first_slot.id
+    first_blocks = deepcopy(page.metadata["semantic_blocks"])
+    second = build_semantic_blocks(document)
+
+    assert first.recovered_smart_slots == second.recovered_smart_slots == 1
+    assert len(page.slots) == 1
+    assert next(iter(page.slots.values())).id == first_slot_id == "slot:recovered:group-42"
+    assert page.metadata["semantic_blocks"] == first_blocks
+    for node in (group, name, image, currency, whole, cents, unit):
+        assert node.transform == before_geometry[node.id]
+
+
+def test_recovered_slot_accepts_product_without_moving_template_geometry():
+    document, group, name, image, currency, whole, cents, unit = _recovered_card_fixture()
+    page = document.active_page
+    build_semantic_blocks(document)
+    slot = page.slots["slot:recovered:group-42"]
+    before = {
+        node.id: deepcopy(node.transform)
+        for node in (group, name, image, currency, whole, cents, unit)
+    }
+    document.metadata["products"] = [
+        {
+            "id": "produto-novo",
+            "display_name": "COSTELINHA SUÍNA TIPO 01",
+            "price": "28,66",
+            "unit": "KG",
+            "image_path": "/tmp/costelinha.png",
+        }
+    ]
+    router = GraphicsCommandRouter(GraphicsSession(document))
+
+    result = router.dispatch({"name": "bind_product", "slot_id": slot.id, "product_id": "produto-novo"})
+
+    assert result.ok and result.changed
+    assert page.node(name.id).text == "COSTELINHA SUÍNA TIPO 01"
+    assert page.node(currency.id).text == "R$"
+    assert page.node(whole.id).text == "28"
+    assert page.node(cents.id).text == ",66"
+    assert page.node(unit.id).text == "/KG"
+    assert page.node(image.id).metadata["bound_image_source"] == "/tmp/costelinha.png"
+    assert page.slots[slot.id].product_id == "produto-novo"
+    for node in (group, name, image, currency, whole, cents, unit):
+        assert node.transform == before[node.id]
+
+
+def test_auto_semantic_selection_promotes_recovered_name_and_image_to_whole_card():
+    document, group, name, image, currency, whole, cents, unit = _recovered_card_fixture()
+    build_semantic_blocks(document)
+    router = GraphicsCommandRouter(GraphicsSession(document))
+
+    selected_name = router.dispatch({"name": "select", "node_id": name.id, "semantic": True})
+    assert selected_name.ok
+    assert selected_name.payload["semantic_kind"] == "product_card"
+    assert router.session.selection == {group.id}
+
+    selected_image = router.dispatch({"name": "select", "node_id": image.id, "semantic": True})
+    assert selected_image.ok
+    assert selected_image.payload["semantic_kind"] == "product_card"
+    assert router.session.selection == {group.id}
+
+    # O preço continua priorizando o PriceBlock, permitindo editar/mover preço
+    # sem obrigatoriamente mover o card completo.
+    selected_price = router.dispatch({"name": "select", "node_id": whole.id, "semantic": True})
+    assert selected_price.ok
+    assert selected_price.payload["semantic_kind"] == "price_block"
+    assert router.session.selection == {currency.id, whole.id, cents.id, unit.id}
+
+
+def test_explicit_card_selection_moves_the_whole_recovered_pptx_group():
+    document = GraphicsDocument(name="Quinta Filé group move")
+    page = document.active_page
+    group = GraphicsNode(
+        kind=NodeKind.GROUP,
+        name="Group Card",
+        transform=Transform(x=50, y=50, width=350, height=280),
+        metadata={
+            "source": "pptx-group",
+            "source_name": "Group Card",
+            "pptx_group_generated": True,
+            "pptx_group_depth": 2,
+        },
+    )
+    page.add_node(group)
+    name = _locked_text("Name", "ACÉM BOVINO", 80, 70, 180, 45)
+    currency = _locked_text("Currency", "R$", 150, 220, 40, 50)
+    whole = _locked_text("Whole", "33", 190, 190, 100, 100)
+    cents = _locked_text("Cents", ",64", 290, 195, 45, 40)
+    unit = _locked_text("Unit", "KG", 290, 245, 45, 40)
+    for node in (name, currency, whole, cents, unit):
+        page.add_node(node, parent_id=group.id)
+    build_semantic_blocks(document)
+    router = GraphicsCommandRouter(GraphicsSession(document))
+    before = {node.id: (node.transform.x, node.transform.y) for node in (group, name, currency, whole, cents, unit)}
+
+    selected = router.dispatch(
+        {"name": "select", "node_id": whole.id, "semantic": True, "semantic_scope": "card"}
+    )
+    assert selected.ok
+    assert selected.payload["semantic_kind"] == "product_card"
+    assert router.session.selection == {group.id}
+    moved = router.dispatch({"name": "move", "dx": 25, "dy": 10, "snap": False})
+    assert moved.changed
+    for node in (group, name, currency, whole, cents, unit):
+        x, y = before[node.id]
+        assert page.node(node.id).transform.x == x + 25
+        assert page.node(node.id).transform.y == y + 10

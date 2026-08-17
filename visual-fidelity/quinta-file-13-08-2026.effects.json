@@ -1,0 +1,36 @@
+{
+  "schema": "srstudio/pptx-effects-audit-1",
+  "source": {
+    "name": "OFERTAS QUINTA FILÉ NOVO (1).pptx",
+    "sha256": "7c45cfa205c7e14af69e41c8d63b1c6a9d1a06df3cf9d0131ed612029884e536",
+    "slides": 23
+  },
+  "scope": {
+    "all_slides": true,
+    "golden_master_slides": [12, 13, 14, 15]
+  },
+  "totals": {
+    "gradient_fills": 0,
+    "pattern_fills": 0,
+    "alpha_modifiers": 0,
+    "outer_shadows": 0,
+    "inner_shadows": 0,
+    "glows": 0,
+    "reflections": 0,
+    "soft_edges": 0,
+    "blurs": 0,
+    "effect_dags": 0,
+    "scene_3d": 0,
+    "shape_3d": 0,
+    "advanced_effects": 0,
+    "slides_with_advanced_effects": 0,
+    "slides_with_alpha": 0
+  },
+  "golden_master": {
+    "12": {"advanced_effects": 0, "alpha_modifiers": 0},
+    "13": {"advanced_effects": 0, "alpha_modifiers": 0},
+    "14": {"advanced_effects": 0, "alpha_modifiers": 0},
+    "15": {"advanced_effects": 0, "alpha_modifiers": 0}
+  },
+  "interpretation": "O Golden Master Quinta Filé não depende de gradientes, sombras, glow, reflection, softEdge, blur ou 3D DrawingML. Divergências nessas quatro páginas devem priorizar texto, fillRect/crop, máscaras, geometria, grupos e imagens antes de efeitos avançados."
+}

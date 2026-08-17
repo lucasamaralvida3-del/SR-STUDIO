@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$InstallerVersion = '4.0.16-setup2'
+$InstallerVersion = '4.0.16-setup3'
 $OfficialRepositoryBase = 'https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main'
 $SrRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir = Join-Path $SrRoot 'App'
@@ -82,6 +82,7 @@ try {
   Write-Setup 'Validando arquivos do instalador...'
   $bootstrapSource = Test-PackageFile 'SRStudioBootstrap.ps1' '__BOOTSTRAP_SHA__' __BOOTSTRAP_SIZE__
   $launcherSource = Test-PackageFile 'SRStudioLauncher.ps1' '__LAUNCHER_SHA__' __LAUNCHER_SIZE__
+  $graphics2UpdaterSource = Test-PackageFile 'SRGraphics2Component.ps1' '__GRAPHICS2_UPDATER_SHA__' __GRAPHICS2_UPDATER_SIZE__
   $iconSource = Test-PackageFile 'SR_Studio.ico' '__ICON_SHA__' __ICON_SIZE__
 
   foreach($dirPath in @($SrRoot,$AppDir,$DataDir,$CacheDir,$ConfigDir,$LauncherDir,$RuntimeDir,$LogDir,$BackupDir,$StagingDir,$UninstallDir)) {
@@ -92,14 +93,14 @@ try {
   Write-Setup 'Instalando Launcher local...'
   Copy-Item -LiteralPath $bootstrapSource -Destination (Join-Path $LauncherDir 'SRStudioBootstrap.ps1') -Force
   Copy-Item -LiteralPath $launcherSource -Destination (Join-Path $LauncherDir 'SRStudioLauncher.ps1') -Force
+  Copy-Item -LiteralPath $graphics2UpdaterSource -Destination (Join-Path $LauncherDir 'SRGraphics2Component.ps1') -Force
   Copy-Item -LiteralPath $iconSource -Destination (Join-Path $LauncherDir 'SR_Studio.ico') -Force
 
-  $tokens = $null; $parseErrors = $null
-  [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $LauncherDir 'SRStudioBootstrap.ps1'),[ref]$tokens,[ref]$parseErrors) | Out-Null
-  if($parseErrors -and $parseErrors.Count -gt 0) { throw ('Bootstrap invalido: ' + $parseErrors[0].Message) }
-  $tokens = $null; $parseErrors = $null
-  [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $LauncherDir 'SRStudioLauncher.ps1'),[ref]$tokens,[ref]$parseErrors) | Out-Null
-  if($parseErrors -and $parseErrors.Count -gt 0) { throw ('Launcher invalido: ' + $parseErrors[0].Message) }
+  foreach($scriptName in @('SRStudioBootstrap.ps1','SRStudioLauncher.ps1','SRGraphics2Component.ps1')) {
+    $tokens = $null; $parseErrors = $null
+    [System.Management.Automation.Language.Parser]::ParseFile((Join-Path $LauncherDir $scriptName),[ref]$tokens,[ref]$parseErrors) | Out-Null
+    if($parseErrors -and $parseErrors.Count -gt 0) { throw ($scriptName + ' invalido: ' + $parseErrors[0].Message) }
+  }
 
   $configPath = Join-Path $ConfigDir 'launcher.json'
   $existingConfig = $null
@@ -158,9 +159,11 @@ Write-Host ('Pasta: ' + $root)
 $config = Join-Path $root 'Config\launcher.json'
 $installed = Join-Path $root 'Config\installed.json'
 $integrity = Join-Path $root 'Config\integrity.json'
+$g2Receipt = Join-Path $root 'App\Graphics2Host\graphics2-host-install.json'
 if(Test-Path $config) { Write-Host ''; Write-Host 'CONFIGURACAO:'; Get-Content -Raw $config }
 if(Test-Path $installed) { Write-Host ''; Write-Host 'VERSAO INSTALADA:'; Get-Content -Raw $installed }
 if(Test-Path $integrity) { try { $i=Get-Content -Raw $integrity|ConvertFrom-Json; Write-Host ''; Write-Host ('CATALOGO DE INTEGRIDADE: ' + @($i.files).Count + ' arquivos') } catch {} }
+if(Test-Path $g2Receipt) { Write-Host ''; Write-Host 'GRAPHICS ENGINE 2 HOST:'; Get-Content -Raw $g2Receipt }
 $log = Join-Path $root 'Logs\launcher.log'
 if(Test-Path $log) { Write-Host ''; Write-Host 'ULTIMAS LINHAS DO LOG:'; Get-Content $log -Tail 25 }
 '@
@@ -233,6 +236,7 @@ Get-ChildItem -LiteralPath $root -File -ErrorAction SilentlyContinue | Remove-It
     channel = [string]$config.channel
     zero_admin = $true
     install_root = $SrRoot
+    graphics2_component_updater = (Join-Path $LauncherDir 'SRGraphics2Component.ps1')
   }
   Save-SetupJson $setupState (Join-Path $ConfigDir 'setup.json')
   Write-Setup 'INSTALACAO CONCLUIDA COM SUCESSO.'

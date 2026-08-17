@@ -1,0 +1,46 @@
+{
+  "name": "Quinta Filé Santa Juliana 13-08-2026",
+  "source": {
+    "name": "OFERTAS QUINTA FILÉ NOVO (1).pptx",
+    "sha256": "7c45cfa205c7e14af69e41c8d63b1c6a9d1a06df3cf9d0131ed612029884e536"
+  },
+  "notes": "As imagens ficam fora do GitHub. Copie as quatro exportações oficiais para um diretório local e use --references. O mapeamento foi confirmado pelo texto OOXML do PPTX.",
+  "cases": [
+    {
+      "name": "Quinta Filé · grade Frango/Linguiça/Mocotó",
+      "page": 13,
+      "slide": 14,
+      "file": "1000255373.jpg",
+      "sha256": "91f2f8e3408a6ee1856e9634182a220d98d3021bf805972617119a7a629cf913",
+      "width": 1229,
+      "height": 1536
+    },
+    {
+      "name": "Quinta Filé · destaque Linguiça Mista Caseira SR",
+      "page": 14,
+      "slide": 15,
+      "file": "1000255374.jpg",
+      "sha256": "7ccd135039e35aab954f9e1b7e0223bb604223b73fb2b629acae56115a6c60ca",
+      "width": 1229,
+      "height": 1536
+    },
+    {
+      "name": "Quinta Filé · grade Acém/Frango/Costela/Bacon/Picanha",
+      "page": 11,
+      "slide": 12,
+      "file": "1000255371.jpg",
+      "sha256": "ece4c8ff770443f0861ddcfb01df17372a1aea6093c05d4640d98460a3d5469c",
+      "width": 1229,
+      "height": 1536
+    },
+    {
+      "name": "Quinta Filé · Costelinha/Linguiça Calabresa",
+      "page": 12,
+      "slide": 13,
+      "file": "1000255372.jpg",
+      "sha256": "9b487292ebe079ddde17d24f04477520bfcab4e21f5a7091ab489b9f6bc411bd",
+      "width": 1229,
+      "height": 1536
+    }
+  ]
+}
