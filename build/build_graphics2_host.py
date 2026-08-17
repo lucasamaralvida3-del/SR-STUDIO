@@ -24,6 +24,17 @@ ENTRY = ROOT / "build" / "graphics2_host_entry.py"
 DEFAULT_DIST = ROOT / "dist" / "graphics2-host"
 HOST_NAME = "SRGraphicsEngine2Host"
 
+# PySide6 6.11 pode carregar, via --collect-all, diretórios intermediários do
+# build do Qt (objetos .obj). Eles não participam do runtime e criam caminhos
+# muito longos dentro do ZIP. No Launcher Base 3.x isso pode ultrapassar o
+# MAX_PATH clássico do Windows durante Expand-Archive.
+QT_BUILD_DIR_PREFIXES = (
+    "objects-Debug",
+    "objects-RelWithDebInfo",
+    "objects-Release",
+    "objects-MinSizeRel",
+)
+
 
 @dataclass(slots=True, frozen=True)
 class HostBuildManifest:
@@ -83,6 +94,45 @@ def pyinstaller_args(
     return args
 
 
+def prune_non_runtime_qt_build_artifacts(bundle: Path) -> list[str]:
+    """Remove resíduos de compilação do Qt que nunca são usados pelo host.
+
+    PySide6 publica alguns diretórios ``objects-*`` dentro da árvore QML.
+    Além de desperdiçarem dezenas de MB, seus nomes podem fazer a extração do
+    bundle exceder 260 caracteres no caminho real do usuário. A limpeza é feita
+    antes do manifesto de integridade, portanto o catálogo final continua
+    descrevendo exatamente o runtime entregue.
+    """
+
+    removed: list[str] = []
+    directories = sorted(
+        (item for item in bundle.rglob("*") if item.is_dir()),
+        key=lambda item: len(item.parts),
+        reverse=True,
+    )
+    for directory in directories:
+        if not any(directory.name.startswith(prefix) for prefix in QT_BUILD_DIR_PREFIXES):
+            continue
+        try:
+            relative = directory.relative_to(bundle).as_posix()
+        except ValueError:
+            relative = str(directory)
+        shutil.rmtree(directory, ignore_errors=False)
+        removed.append(relative)
+    return sorted(removed)
+
+
+def max_relative_path_length(bundle: Path) -> tuple[int, str]:
+    longest = ""
+    for item in bundle.rglob("*"):
+        if not item.is_file():
+            continue
+        relative = item.relative_to(bundle).as_posix()
+        if len(relative) > len(longest):
+            longest = relative
+    return len(longest), longest
+
+
 def build(
     output: str | Path = DEFAULT_DIST,
     *,
@@ -132,8 +182,14 @@ def build(
     if not executable.is_file():
         raise RuntimeError(f"PyInstaller não gerou o executável esperado: {executable}")
 
+    removed = prune_non_runtime_qt_build_artifacts(bundle)
+    max_path_len, max_path = max_relative_path_length(bundle)
+    if removed:
+        print(f"Qt build artifacts removidos: {len(removed)} diretório(s)")
+    print(f"Maior caminho relativo do host: {max_path_len} caracteres · {max_path}")
+
     # O manifesto de runtime vive dentro do próprio bundle e cataloga todas as
-    # DLLs/plugins/QML. O manifesto de build externo referencia esse catálogo.
+    # DLLs/plugins/QML restantes. O manifesto de build externo referencia esse catálogo.
     runtime_manifest_path = write_runtime_manifest(
         bundle,
         engine_version=ENGINE_VERSION,
