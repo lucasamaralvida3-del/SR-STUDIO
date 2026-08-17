@@ -69,6 +69,7 @@ jobs:
           tests/test_graphics2_import_edit_runtime.py
           tests/test_graphics2_project_actions_qml.py
           tests/test_graphics2_real_pptx_professional.py
+          tests/test_graphics2_real_corpus_audit.py
 
       - name: Professional usability contracts
         id: professional_tests
@@ -92,6 +93,7 @@ jobs:
             "tests/test_graphics2_import_edit_runtime.py",
             "tests/test_graphics2_project_actions_qml.py",
             "tests/test_graphics2_real_pptx_professional.py",
+            "tests/test_graphics2_real_corpus_audit.py",
             "tests/test_graphics2_semantic_product_card.py",
             "tests/test_graphics2_semantic_spatial_card.py",
             "tests/test_graphics2_core.py",
@@ -109,6 +111,7 @@ jobs:
             g2-pytest.log
             g2-test-results.xml
             g2-real-semantic-diagnostic.json
+            g2-real-corpus-audit.json
           if-no-files-found: warn
           retention-days: 7
 
