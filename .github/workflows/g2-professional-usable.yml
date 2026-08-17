@@ -52,6 +52,7 @@ jobs:
           src/srstudio/graphics2/professional_probe.py
           src/srstudio/graphics2/qt_render_runtime.py
           src/srstudio/graphics2/semantic_runtime.py
+          src/srstudio/graphics2/semantic_price_runtime.py
           src/srstudio/graphics2/image_replace_runtime.py
           src/srstudio/graphics2/import_edit_runtime.py
           tests/test_graphics2_page_duplicate.py
@@ -60,6 +61,7 @@ jobs:
           tests/test_graphics2_professional_export.py
           tests/test_graphics2_professional_probe.py
           tests/test_graphics2_recovered_slot_identity.py
+          tests/test_graphics2_complete_price_recovery.py
           tests/test_graphics2_image_replace.py
           tests/test_graphics2_import_edit_runtime.py
           tests/test_graphics2_project_actions_qml.py
@@ -81,6 +83,7 @@ jobs:
             "tests/test_graphics2_professional_export.py",
             "tests/test_graphics2_professional_probe.py",
             "tests/test_graphics2_recovered_slot_identity.py",
+            "tests/test_graphics2_complete_price_recovery.py",
             "tests/test_graphics2_image_replace.py",
             "tests/test_graphics2_import_edit_runtime.py",
             "tests/test_graphics2_project_actions_qml.py",
