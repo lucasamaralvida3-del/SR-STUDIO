@@ -10,6 +10,7 @@ import sys
 
 from .fidelity import FidelityPolicy, compare_images, load_manifest, run_suite, write_report
 from .fidelity_attribution import attribute_fidelity_regions
+from .fidelity_diagnostics import store_fidelity_triage
 from .fidelity_triage import analyze_fidelity_regions, write_triage_report
 
 
@@ -155,6 +156,7 @@ def _render_compare(args: Namespace) -> int:
         stem=stem,
         pixel_tolerance=policy.pixel_tolerance,
     )
+    store_fidelity_triage(document, triage)
     report = write_report(result, output / f"{stem}-report.json")
     _print_case(result, report)
     _print_triage_summary(triage)
@@ -238,6 +240,7 @@ def _pptx_render_compare(args: Namespace) -> int:
         stem=stem,
         pixel_tolerance=policy.pixel_tolerance,
     )
+    store_fidelity_triage(imported.document, triage)
     store_visual_fidelity(imported.document, fidelity)
     gate = inspect_production_gate(imported.document, require_visual_fidelity=True)
 
