@@ -22,6 +22,7 @@ def run_preflight(document: GraphicsDocument, *, available_fonts: Iterable[str] 
     fonts = {str(name).strip().casefold() for name in available_fonts or []}
     if not document.pages:
         return [PreflightIssue("error", "NO_PAGES", "O projeto não possui páginas.")]
+    issues.extend(_global_id_issues(document))
     for page in document.pages:
         if page.width <= 0 or page.height <= 0:
             issues.append(PreflightIssue("error", "INVALID_PAGE_SIZE", "Dimensão de página inválida.", page.id))
@@ -47,6 +48,52 @@ def assert_document_integrity(document: GraphicsDocument) -> None:
     if fatal:
         first = fatal[0]
         raise ValueError(f"{first.code}: {first.message}")
+
+
+def _global_id_issues(document: GraphicsDocument) -> list[PreflightIssue]:
+    issues: list[PreflightIssue] = []
+    seen_pages: set[str] = set()
+    seen_nodes: dict[str, str] = {}
+    seen_slots: dict[str, str] = {}
+    seen_blocks: dict[str, str] = {}
+
+    for page in document.pages:
+        if page.id in seen_pages:
+            issues.append(PreflightIssue("error", "DUPLICATE_PAGE_ID", "ID de página repetido no documento.", page.id))
+        seen_pages.add(page.id)
+
+        for node_id, node in page.nodes.items():
+            if node.id != node_id:
+                issues.append(PreflightIssue("error", "NODE_KEY_ID_MISMATCH", "Chave do elemento diverge do ID interno.", page.id, node_id))
+            previous_page = seen_nodes.get(node_id)
+            if previous_page is not None and previous_page != page.id:
+                issues.append(PreflightIssue("error", "DUPLICATE_NODE_ID", "ID de elemento repetido entre páginas.", page.id, node_id))
+            else:
+                seen_nodes[node_id] = page.id
+
+        for slot_id, slot in page.slots.items():
+            if slot.id != slot_id:
+                issues.append(PreflightIssue("error", "SLOT_KEY_ID_MISMATCH", "Chave do SmartSlot diverge do ID interno.", page.id))
+            if slot.page_id and slot.page_id != page.id:
+                issues.append(PreflightIssue("error", "SLOT_PAGE_MISMATCH", "SmartSlot aponta para outra página.", page.id))
+            previous_page = seen_slots.get(slot_id)
+            if previous_page is not None and previous_page != page.id:
+                issues.append(PreflightIssue("error", "DUPLICATE_SLOT_ID", "ID de SmartSlot repetido entre páginas.", page.id))
+            else:
+                seen_slots[slot_id] = page.id
+
+        raw_blocks = page.metadata.get("semantic_blocks")
+        if isinstance(raw_blocks, dict):
+            for block_id, block in raw_blocks.items():
+                if isinstance(block, dict) and str(block.get("id") or block_id) != str(block_id):
+                    issues.append(PreflightIssue("error", "SEMANTIC_KEY_ID_MISMATCH", "Chave do bloco semântico diverge do ID interno.", page.id))
+                previous_page = seen_blocks.get(str(block_id))
+                if previous_page is not None and previous_page != page.id:
+                    issues.append(PreflightIssue("error", "DUPLICATE_SEMANTIC_ID", "ID de bloco semântico repetido entre páginas.", page.id))
+                else:
+                    seen_blocks[str(block_id)] = page.id
+
+    return issues
 
 
 def _node_issues(document: GraphicsDocument, page_id: str, page_width: float, page_height: float, node: GraphicsNode, nodes: dict[str, GraphicsNode], fonts: set[str]) -> list[PreflightIssue]:
