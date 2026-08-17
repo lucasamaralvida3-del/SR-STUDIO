@@ -24,6 +24,7 @@ from hashlib import sha1
 from typing import Any, Callable
 
 from .model import GraphicsDocument, GraphicsPage, SmartSlot
+from .semantic_price_runtime import install_complete_price_recovery_guard
 
 
 @dataclass(slots=True)
@@ -35,6 +36,12 @@ class _RecoveredSlotState:
 
 def install_semantic_recovery_guard(semantic_module: Any) -> None:
     """Envolve ``build_semantic_blocks`` uma única vez com invariantes globais."""
+
+    # O builder histórico resolve `_recover_unbound_price_blocks` pelo namespace
+    # do módulo a cada chamada. Instalar primeiro a extensão de preço completo
+    # mantém o caminho split legado intacto e o inclui dentro do mesmo guard de
+    # identidade/persistência.
+    install_complete_price_recovery_guard(semantic_module)
 
     if bool(getattr(semantic_module, "_sr_semantic_recovery_guard_installed", False)):
         return
