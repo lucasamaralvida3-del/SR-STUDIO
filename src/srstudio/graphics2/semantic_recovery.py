@@ -103,6 +103,8 @@ def _recover_optional_bindings(page: GraphicsPage, slot: SmartSlot) -> tuple[boo
 
     limit_added = _recover_limit_binding(page, slot, card, candidates)
     app_added = _recover_app_price_binding(page, slot, card, candidates)
+    if limit_added or app_added:
+        _refresh_spatial_card_bounds(page, card)
     return limit_added, app_added
 
 
@@ -182,10 +184,6 @@ def _recover_app_price_binding(
         extras = {}
         slot.metadata["extra_bindings"] = extras
     attached = False
-    card_roles = card.setdefault("roles", {})
-    if not isinstance(card_roles, dict):
-        card_roles = {}
-        card["roles"] = card_roles
 
     for canonical, raw_ids in dict(block.get("roles") or {}).items():
         binding = _APP_ROLE_MAP.get(str(canonical))
@@ -195,7 +193,7 @@ def _recover_app_price_binding(
         if not ids:
             continue
         extras[binding] = ids
-        card_roles[binding] = list(ids)
+        _attach_card_role(card, binding, ids)
         for node_id in ids:
             page.nodes[node_id].metadata["semantic_product_card_id"] = str(card.get("id") or "")
         attached = True
@@ -273,12 +271,39 @@ def _attach_card_role(card: dict, role: str, node_ids: list[str]) -> None:
     if isinstance(roles, dict):
         roles[str(role)] = list(node_ids)
     metadata = card.setdefault("metadata", {})
-    if isinstance(metadata, dict):
-        content = metadata.setdefault("content_members", [])
-        if isinstance(content, list):
+    if not isinstance(metadata, dict):
+        return
+    content = metadata.setdefault("content_members", [])
+    if isinstance(content, list):
+        for node_id in node_ids:
+            if node_id not in content:
+                content.append(node_id)
+    # Cards oriundos de p:grpSp são selecionados pelo grupo raiz; adicionar os
+    # descendentes em ``members`` geraria outlines redundantes. Cards espaciais
+    # não têm esse ancestral e precisam incluir cada binding para copy/duplicate
+    # permanecerem atômicos.
+    if not str(metadata.get("source_group_id") or ""):
+        members = card.setdefault("members", [])
+        if isinstance(members, list):
             for node_id in node_ids:
-                if node_id not in content:
-                    content.append(node_id)
+                if node_id not in members:
+                    members.append(node_id)
+
+
+def _refresh_spatial_card_bounds(page: GraphicsPage, card: dict) -> None:
+    metadata = card.get("metadata") or {}
+    if str(metadata.get("source_group_id") or ""):
+        return
+    members = [str(node_id) for node_id in card.get("members") or [] if str(node_id) in page.nodes]
+    bounds = page.bounds(members)
+    if bounds is None:
+        return
+    card["bounds"] = {
+        "x": bounds.x,
+        "y": bounds.y,
+        "width": bounds.width,
+        "height": bounds.height,
+    }
 
 
 def _clean_text(value: str) -> str:
