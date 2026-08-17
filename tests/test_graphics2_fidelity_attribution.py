@@ -72,6 +72,37 @@ def test_attributes_region_to_semantic_price_node_before_background() -> None:
     assert any(item.node_id == "background" for item in suspects)
 
 
+def test_mapped_pptx_effects_are_included_in_probable_cause_hint() -> None:
+    page = GraphicsPage(id="page_1", width=1000, height=1000)
+    page.add_node(
+        GraphicsNode(
+            id="price_reais",
+            kind=NodeKind.TEXT,
+            name="Preço principal",
+            transform=Transform(x=100, y=100, width=250, height=150),
+            binding_role=BindingRole.PRICE_REAIS,
+            metadata={
+                "pptx_effects": {
+                    "advanced_effects": 2,
+                    "gradient_fills": 1,
+                    "outer_shadows": 1,
+                    "inner_shadows": 0,
+                    "alpha_modifiers": 1,
+                }
+            },
+        )
+    )
+
+    attribution = attribute_fidelity_regions(_report(_region(180, 180, 520, 320)), page)
+    hint = attribution.regions[0].suspects[0].diagnostic_hint
+
+    assert hint.startswith("efeitos PPTX:")
+    assert "1 gradiente(s)" in hint
+    assert "1 sombra(s)" in hint
+    assert "Golden Master" in hint
+    assert "preço:" in hint
+
+
 def test_rotated_node_uses_transformed_aabb() -> None:
     page = GraphicsPage(id="page_1", width=1000, height=1000)
     page.add_node(
