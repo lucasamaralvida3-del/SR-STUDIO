@@ -2,12 +2,13 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from typing import Any
+import copy
 import json
 
 from .drop_target import find_drop_target
 from .geometry import SnapEngine, SnapSettings
 from .import_bridge import CanvaBindingService
-from .model import GraphicsNode, NodeKind, Transform
+from .model import GraphicsNode, NodeKind, Transform, _id
 from .operations import GraphicsSession
 from .semantic_blocks import semantic_block, semantic_member_ids, semantic_owner
 
@@ -142,8 +143,16 @@ class GraphicsCommandRouter:
                 count = self.session.ungroup_selected()
                 return CommandResult(True, count > 0, "Grupo desfeito." if count else "Nenhum grupo selecionado.", {"count": count})
             if name == "duplicate":
-                created = self.session.duplicate_selected(float(command.get("dx") or 20.0), float(command.get("dy") or 20.0))
-                return CommandResult(True, bool(created), "Elementos duplicados." if created else "Nada para duplicar.", {"node_ids": created})
+                created, slot_ids = self._duplicate_selected_with_semantics(
+                    float(command.get("dx") or 20.0),
+                    float(command.get("dy") or 20.0),
+                )
+                return CommandResult(
+                    True,
+                    bool(created),
+                    "Elementos duplicados." if created else "Nada para duplicar.",
+                    {"node_ids": created, "slot_ids": slot_ids},
+                )
             if name == "delete":
                 count = self.session.delete_selected()
                 return CommandResult(True, count > 0, "Elementos excluídos." if count else "Nada selecionado.", {"count": count})
@@ -342,6 +351,189 @@ class GraphicsCommandRouter:
         else:
             self.session.selection = set(valid)
         self.session.anchor_id = anchor_id if anchor_id in self.session.selection else next(iter(self.session.selection), None)
+
+    def _duplicate_selected_with_semantics(self, dx: float, dy: float) -> tuple[list[str], list[str]]:
+        roots = list(self.session._selection_roots(editable_only=False))
+        if not roots:
+            return [], []
+        page = self.session.page
+        source_slots = copy.deepcopy(list(page.slots.values()))
+        source_blocks_raw = page.metadata.get("semantic_blocks")
+        source_blocks = copy.deepcopy(source_blocks_raw) if isinstance(source_blocks_raw, dict) else {}
+        created: list[str] = []
+        mapping: dict[str, str] = {}
+        slot_ids: list[str] = []
+
+        with self.session.transaction("Duplicar elementos"):
+            for node in roots:
+                tree_mapping: dict[str, str] = {}
+                self.session._duplicate_tree(node.id, node.parent_id, float(dx), float(dy), tree_mapping)
+                mapping.update(tree_mapping)
+                created.append(tree_mapping[node.id])
+            slot_ids = self._duplicate_semantic_state(mapping, source_slots, source_blocks)
+
+        self.session.selection = set(created)
+        self.session.anchor_id = created[-1] if created else None
+        return created, slot_ids
+
+    def _duplicate_semantic_state(
+        self,
+        mapping: dict[str, str],
+        source_slots: list[Any],
+        source_blocks: dict[str, Any],
+    ) -> list[str]:
+        if not mapping:
+            return []
+        page = self.session.page
+        page_blocks_raw = page.metadata.get("semantic_blocks")
+        if not isinstance(page_blocks_raw, dict):
+            return []
+        created_slots: list[str] = []
+
+        for clone_id in mapping.values():
+            node = page.node(clone_id)
+            if node is None:
+                continue
+            node.metadata.pop("semantic_price_block_id", None)
+            node.metadata.pop("semantic_price_role", None)
+            node.metadata.pop("semantic_product_card_id", None)
+            node.metadata.pop("semantic_recovered_editable", None)
+            node.metadata.pop("semantic_source_locked", None)
+            node.style.pop("semantic_price_block_id", None)
+            node.style.pop("semantic_price_role", None)
+
+        for source_slot in source_slots:
+            bound_ids = {str(node_id) for node_id in source_slot.node_by_role.values() if str(node_id)}
+            extras = source_slot.metadata.get("extra_bindings")
+            if isinstance(extras, dict):
+                for node_ids in extras.values():
+                    if isinstance(node_ids, (list, tuple, set)):
+                        bound_ids.update(str(node_id) for node_id in node_ids if str(node_id))
+                    elif node_ids:
+                        bound_ids.add(str(node_ids))
+            if not bound_ids or not bound_ids.issubset(mapping):
+                continue
+
+            new_slot = copy.deepcopy(source_slot)
+            new_slot.id = _id("slot")
+            new_slot.page_id = page.id
+            new_slot.node_by_role = {
+                str(role): mapping[str(node_id)]
+                for role, node_id in source_slot.node_by_role.items()
+                if str(node_id) in mapping
+            }
+            new_slot.metadata = copy.deepcopy(source_slot.metadata)
+            new_slot.metadata["semantic_recovered"] = False
+            new_slot.metadata["duplicated_from_slot_id"] = source_slot.id
+            new_slot.metadata.pop("semantic_product_card_id", None)
+            new_slot.metadata.pop("semantic_price_block_ids", None)
+            source_group_id = str(new_slot.metadata.get("source_group_id") or "")
+            if source_group_id in mapping:
+                new_slot.metadata["source_group_id"] = mapping[source_group_id]
+            extra_bindings = new_slot.metadata.get("extra_bindings")
+            if isinstance(extra_bindings, dict):
+                remapped_extras: dict[str, Any] = {}
+                for role, node_ids in extra_bindings.items():
+                    if isinstance(node_ids, (list, tuple, set)):
+                        remapped_extras[str(role)] = [mapping[str(node_id)] for node_id in node_ids if str(node_id) in mapping]
+                    elif str(node_ids) in mapping:
+                        remapped_extras[str(role)] = mapping[str(node_ids)]
+                new_slot.metadata["extra_bindings"] = remapped_extras
+            page.slots[new_slot.id] = new_slot
+
+            source_slot_blocks = [
+                (str(block_id), block)
+                for block_id, block in source_blocks.items()
+                if isinstance(block, dict) and str(block.get("slot_id") or "") == source_slot.id
+            ]
+            block_id_map: dict[str, str] = {}
+            price_index = 0
+            for old_block_id, block in source_slot_blocks:
+                kind = str(block.get("kind") or "")
+                if kind == "product_card":
+                    new_block_id = f"productcard:{new_slot.id}"
+                elif kind == "price_block":
+                    price_index += 1
+                    suffix = "app-price" if "app-price" in old_block_id else "price" if price_index == 1 else f"price-{price_index}"
+                    new_block_id = f"priceblock:{new_slot.id}:{suffix}"
+                else:
+                    new_block_id = _id("semantic")
+                block_id_map[old_block_id] = new_block_id
+
+            new_price_ids: list[str] = []
+            new_product_id = ""
+            for old_block_id, source_block in source_slot_blocks:
+                new_block = copy.deepcopy(source_block)
+                new_block_id = block_id_map[old_block_id]
+                kind = str(new_block.get("kind") or "")
+                new_block["id"] = new_block_id
+                new_block["slot_id"] = new_slot.id
+                new_block["members"] = [mapping[str(node_id)] for node_id in source_block.get("members") or [] if str(node_id) in mapping]
+                roles: dict[str, list[str]] = {}
+                for role, node_ids in dict(source_block.get("roles") or {}).items():
+                    roles[str(role)] = [mapping[str(node_id)] for node_id in node_ids if str(node_id) in mapping]
+                new_block["roles"] = roles
+                geometry = dict(source_block.get("template_geometry") or {})
+                new_block["template_geometry"] = {
+                    mapping[str(node_id)]: copy.deepcopy(value)
+                    for node_id, value in geometry.items()
+                    if str(node_id) in mapping
+                }
+                bounds = page.bounds(new_block["members"])
+                if bounds is not None:
+                    new_block["bounds"] = {
+                        "x": bounds.x,
+                        "y": bounds.y,
+                        "width": bounds.width,
+                        "height": bounds.height,
+                    }
+                metadata = copy.deepcopy(source_block.get("metadata") or {})
+                for key in ("source_group_id", "name_node_id", "image_node_id"):
+                    node_id = str(metadata.get(key) or "")
+                    if node_id in mapping:
+                        metadata[key] = mapping[node_id]
+                content_members = metadata.get("content_members")
+                if isinstance(content_members, list):
+                    metadata["content_members"] = [mapping[str(node_id)] for node_id in content_members if str(node_id) in mapping]
+                price_blocks = metadata.get("price_blocks")
+                if isinstance(price_blocks, list):
+                    metadata["price_blocks"] = [block_id_map.get(str(block_id), str(block_id)) for block_id in price_blocks]
+                metadata["smart_slot_id"] = new_slot.id
+                metadata["duplicated_from_block_id"] = old_block_id
+                if "stable_key" in metadata:
+                    metadata["stable_key"] = new_slot.id
+                new_block["metadata"] = metadata
+                page_blocks_raw[new_block_id] = new_block
+
+                if kind == "price_block":
+                    new_price_ids.append(new_block_id)
+                    for role, node_ids in roles.items():
+                        for node_id in node_ids:
+                            node = page.node(node_id)
+                            if node is None:
+                                continue
+                            node.metadata["semantic_price_block_id"] = new_block_id
+                            node.metadata["semantic_price_role"] = role
+                            if node.kind is NodeKind.TEXT:
+                                node.style["semantic_price_block_id"] = new_block_id
+                                node.style["semantic_price_role"] = role
+                elif kind == "product_card":
+                    new_product_id = new_block_id
+                    semantic_members = set(new_block.get("members") or [])
+                    semantic_members.update(metadata.get("content_members") or [])
+                    for node_ids in roles.values():
+                        semantic_members.update(node_ids)
+                    for node_id in semantic_members:
+                        node = page.node(str(node_id))
+                        if node is not None:
+                            node.metadata["semantic_product_card_id"] = new_block_id
+
+            if new_product_id:
+                new_slot.metadata["semantic_product_card_id"] = new_product_id
+            new_slot.metadata["semantic_price_block_ids"] = new_price_ids
+            created_slots.append(new_slot.id)
+
+        return created_slots
 
     def _resize_handle(self, command: dict[str, Any]) -> CommandResult:
         node_id = str(command.get("node_id") or self.session.anchor_id or ""); node = self.session.page.node(node_id)
