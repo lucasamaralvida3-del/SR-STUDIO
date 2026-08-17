@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsNode, NodeKind, SmartSlot, Transform
 from srstudio.graphics2.operations import GraphicsSession
 from srstudio.graphics2.professional_command_router import ProfessionalGraphicsCommandRouter
@@ -8,18 +10,8 @@ from srstudio.graphics2.professional_command_router import ProfessionalGraphicsC
 def _router():
     document = GraphicsDocument(name="Router profissional")
     page = document.active_page
-    text = GraphicsNode(
-        kind=NodeKind.TEXT,
-        name="Título",
-        text="OFERTA",
-        transform=Transform(x=20, y=20, width=180, height=50),
-    )
-    image = GraphicsNode(
-        kind=NodeKind.IMAGE,
-        name="Imagem",
-        transform=Transform(x=30, y=100, width=160, height=140),
-        style={"fit": "cover", "zoom": 1.3},
-    )
+    text = GraphicsNode(kind=NodeKind.TEXT, name="Título", text="OFERTA", transform=Transform(x=20, y=20, width=180, height=50))
+    image = GraphicsNode(kind=NodeKind.IMAGE, name="Imagem", transform=Transform(x=30, y=100, width=160, height=140), style={"fit": "cover", "zoom": 1.3})
     page.add_node(text)
     page.add_node(image)
     return ProfessionalGraphicsCommandRouter(GraphicsSession(document)), text.id, image.id
@@ -74,6 +66,16 @@ def test_professional_router_exposes_context_usability_and_payload_state():
     assert professional["usability"]["blockers"] == 0
 
 
+def test_professional_dispatch_json_keeps_scene_payload_and_command_payload():
+    router, text_id, _ = _router()
+    raw = router.dispatch_json(json.dumps({"name": "select", "node_id": text_id}))
+    response = json.loads(raw)
+    assert response["ok"] is True
+    assert response["payload"]["editor"]["selection"] == [text_id]
+    assert response["payload"]["editor"]["professional"]["inspector"]["target_type"] == "text"
+    assert response["command_payload"]["selection"] == [text_id]
+
+
 def test_professional_router_page_delete_never_removes_last_page():
     router, _, _ = _router()
     page_id = router.session.page.id
@@ -87,24 +89,11 @@ def test_professional_router_plans_and_applies_reviewed_slot_fill():
     document = GraphicsDocument(name="Preencher encarte")
     page = document.active_page
     for index, x in enumerate((20, 280)):
-        name = GraphicsNode(
-            kind=NodeKind.TEXT,
-            name=f"Nome {index}",
-            text="",
-            transform=Transform(x=x, y=20, width=200, height=40),
-        )
+        name = GraphicsNode(kind=NodeKind.TEXT, name=f"Nome {index}", text="", transform=Transform(x=x, y=20, width=200, height=40))
         page.add_node(name)
-        slot = SmartSlot(
-            name=f"Slot {index}",
-            page_id=page.id,
-            node_by_role={BindingRole.NAME.value: name.id},
-            confidence=0.95,
-        )
+        slot = SmartSlot(name=f"Slot {index}", page_id=page.id, node_by_role={BindingRole.NAME.value: name.id}, confidence=0.95)
         page.slots[slot.id] = slot
-    document.metadata["products"] = [
-        {"id": "p1", "display_name": "ACÉM"},
-        {"id": "p2", "display_name": "LINGUIÇA"},
-    ]
+    document.metadata["products"] = [{"id": "p1", "display_name": "ACÉM"}, {"id": "p2", "display_name": "LINGUIÇA"}]
     router = ProfessionalGraphicsCommandRouter(GraphicsSession(document))
     planned = router.dispatch({"name": "plan_slot_fill"})
     assert planned.ok and not planned.changed
