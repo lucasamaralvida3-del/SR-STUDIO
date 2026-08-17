@@ -1,35 +1,37 @@
 {
-    "format":  "SRSTUDIO_HYBRID_BUNDLE_1",
-    "product":  "SR Studio",
-    "channel":  "stable",
-    "version":  "5.0.0-hybrid.stable1",
-    "product_version":  "5.0.0",
-    "release_label":  "Stable 1",
-    "published_at":  "2026-08-14T18:21:07-03:00",
-    "created_at":  "2026-08-14T18:21:07-03:00",
-    "min_launcher":  "4.0.1-hybrid.base3.4",
-    "min_launcher_version":  "4.0.1-hybrid.base3.4",
-    "bundle":  {
-                   "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable1/SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip",
-                   "sha256":  "1083fe9c13076412013c60810391a3896c17e0512581daf4b53087af2ac59b5b",
-                   "size":  2665601,
-                   "member_prefix":  "files/"
-               },
-    "url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable1/SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip",
-    "bundle_url":  "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable1/SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip",
-    "sha256":  "1083fe9c13076412013c60810391a3896c17e0512581daf4b53087af2ac59b5b",
-    "size":  2665601,
-    "member_prefix":  "files/",
-    "repair":  {
-                   "mode":  "local_hash_catalog",
-                   "full_check_every_days":  7
-               },
-    "delete":  [
-                   "Encartes3_app.js",
-                   "Encartes3_style.css",
-                   "Encartes4_beta6.js",
-                   "Encartes5_beta11.js",
-                   "Encartes6_beta12.js"
-               ],
-    "notes":  "SR Studio 5.0 Stable 1 - promoÃƒÂ§ÃƒÂ£o direta da Beta 6.1 validada; logo oficial corrigida e todos os recursos da Beta 6.1 preservados."
+  "format": "SRSTUDIO_HYBRID_BUNDLE_1",
+  "product": "SR Studio",
+  "channel": "stable",
+  "version": "5.0.0-hybrid.stable2",
+  "product_version": "5.0.0",
+  "release_label": "Stable 2 Professional",
+  "published_at": "2026-08-17T00:34:26.2770842+00:00",
+  "min_launcher": "4.0.1-hybrid.base3.4",
+  "min_launcher_version": "4.0.1-hybrid.base3.4",
+  "bundle": {
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable2/SR_STUDIO_5_0_0-hybrid_stable2_PROFESSIONAL.zip",
+    "sha256": "9d8c4fd558df242c18bac9a55cf1f2ba9faf714eb69ee9178c511cd3768f1c93",
+    "size": 28626694,
+    "member_prefix": "files/"
+  },
+  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable2/SR_STUDIO_5_0_0-hybrid_stable2_PROFESSIONAL.zip",
+  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable2/SR_STUDIO_5_0_0-hybrid_stable2_PROFESSIONAL.zip",
+  "sha256": "9d8c4fd558df242c18bac9a55cf1f2ba9faf714eb69ee9178c511cd3768f1c93",
+  "size": 28626694,
+  "member_prefix": "files/",
+  "previous_version": "5.0.0-hybrid.stable1",
+  "promoted_from": "5.0.0-hybrid.beta7.29",
+  "source_commit": "c8d0c3954ce7f54717ad009d81e6a6043212ae3a",
+  "repair": {
+    "mode": "local_hash_catalog",
+    "full_check_every_days": 7
+  },
+  "delete": [
+    "Encartes3_app.js",
+    "Encartes3_style.css",
+    "Encartes4_beta6.js",
+    "Encartes5_beta11.js",
+    "Encartes6_beta12.js"
+  ],
+  "notes": "SR Studio Stable 2 Professional - promoção da Beta 7.29 validada; Cartazes Pro, base profissional, Image Cloud e Encartes/Canva V2 preservados."
 }
