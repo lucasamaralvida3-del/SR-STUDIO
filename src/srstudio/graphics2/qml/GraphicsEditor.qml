@@ -732,7 +732,7 @@ ApplicationWindow {
                                         horizontalAlignment: modelData.style.align === "left" ? Text.AlignLeft : modelData.style.align === "right" ? Text.AlignRight : Text.AlignHCenter
                                         verticalAlignment: modelData.style.v_align === "top" ? Text.AlignTop : modelData.style.v_align === "bottom" ? Text.AlignBottom : Text.AlignVCenter
                                         wrapMode: modelData.style.nowrap ? Text.NoWrap : Text.WordWrap
-                                        maximumLineCount: modelData.style.nowrap ? 1 : 2147483647
+                                        maximumLineCount: 2147483647
                                         fontSizeMode: fitTextInside ? Text.Fit : Text.FixedSize
                                         minimumPixelSize: Math.max(1, 4 * zoom)
                                         elide: fitTextInside ? Text.ElideNone : (modelData.style.nowrap ? Text.ElideNone : Text.ElideRight)
