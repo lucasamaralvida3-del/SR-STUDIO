@@ -1,0 +1,109 @@
+name: G2 CustGeom Duplicate Guard
+
+on:
+  pull_request:
+    branches:
+      - g2/integration-beta
+    paths:
+      - ".github/workflows/g2-custgeom-duplicate-guard.yml"
+
+permissions:
+  contents: read
+
+env:
+  CERT_TARGET_SHA: 3e568f7717bb86978c58f50a5162fe44e27c4bd8
+  QT_QPA_PLATFORM: offscreen
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  custgeom-duplicate-guard:
+    name: custGeom corrected duplicate guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - name: Prove exact HEAD
+        run: test "$(git rev-parse HEAD)" = "$CERT_TARGET_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e '.[dev,graphics2]'
+      - name: Fixture and full custGeom regression
+        run: |
+          python -m pytest -q tests/test_graphics2_custgeom_picture_fill_diagnostic.py::test_import_bridge_recovers_late_artwork_before_custgeom_fidelity_pass
+          python -m pytest -q tests/test_graphics2_custgeom_picture_fill_diagnostic.py
+      - name: Idempotency generic PPTX and duplicate guards
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import tempfile
+          from pathlib import Path
+          import zipfile
+          from unittest.mock import patch
+
+          spec = importlib.util.spec_from_file_location("custgeom_fixture", "tests/test_graphics2_custgeom_picture_fill_diagnostic.py")
+          mod = importlib.util.module_from_spec(spec)
+          assert spec.loader is not None
+          spec.loader.exec_module(mod)
+
+          import srstudio.graphics2.import_bridge as bridge
+          import srstudio.graphics2.pptx_fill_rect as fillrect
+          from srstudio.graphics2.import_bridge import GraphicsImportService
+          from srstudio.graphics2.model import NodeKind
+
+          def import_blank(path: Path):
+              service = GraphicsImportService()
+              service.pipeline = mod._NoImagePipeline()
+              return service.import_file(path, project_name="post-port-duplicate-guard")
+
+          with tempfile.TemporaryDirectory() as td:
+              root = Path(td)
+              late = mod._write_late_artwork_pptx(root / "late.pptx")
+              real_recover = bridge.recover_pptx_artwork
+              real_nested = fillrect._recover_artwork_contracts
+              with patch.object(bridge, "recover_pptx_artwork", wraps=real_recover) as primary, patch.object(fillrect, "_recover_artwork_contracts", wraps=real_nested) as nested:
+                  first = import_blank(late)
+                  assert primary.call_count == 1
+                  assert nested.call_count == 0
+              second = import_blank(late)
+
+              def signature(result):
+                  images = [n for n in result.document.active_page.nodes.values() if n.kind is NodeKind.IMAGE]
+                  assert len(images) == 1
+                  image = images[0]
+                  return {
+                      "clip_path": image.metadata.get("clip_path"),
+                      "fill_rect": image.style.get("fill_rect"),
+                      "recovered": image.metadata.get("pptx_artwork_recovered"),
+                      "recovered_nodes": result.document.metadata["pptx_artwork_recovery"]["recovered_nodes"],
+                  }
+
+              assert signature(first) == signature(second)
+              images = [n for n in first.document.active_page.nodes.values() if n.kind is NodeKind.IMAGE]
+              duplicate_images = len(images) - len({n.id for n in images})
+              associations = [(n.id, n.asset_id) for n in images if n.asset_id]
+              duplicate_associations = len(associations) - len(set(associations))
+              assert duplicate_images == 0
+              assert duplicate_associations == 0
+
+              presentation = f'<p:presentation xmlns:p="{mod.P_NS}"><p:sldSz cx="1000000" cy="1000000"/></p:presentation>'
+              slide = f'''<p:sld xmlns:p="{mod.P_NS}" xmlns:a="{mod.A_NS}"><p:cSld><p:spTree><p:nvGrpSpPr/><p:grpSpPr/><p:sp><p:nvSpPr><p:cNvPr id="2" name="Generic Rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr><p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100000" cy="100000"/></a:xfrm><a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:sp></p:spTree></p:cSld></p:sld>'''
+              generic = root / "generic.pptx"
+              with zipfile.ZipFile(generic, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                  archive.writestr("ppt/presentation.xml", presentation)
+                  archive.writestr("ppt/slides/slide1.xml", slide)
+              generic_result = import_blank(generic)
+              assert generic_result.document.active_page is not None
+              assert generic_result.document.metadata.get("pptx_artwork_recovery", {}).get("error") is None
+
+          print("late_recovery_fixture=PASS")
+          print("idempotency=PASS")
+          print("generic_pptx=PASS")
+          print("duplicate_artwork_recovery=0")
+          print("duplicate_IMAGE=0")
+          print("duplicate_associations=0")
+          PY
