@@ -1,0 +1,26 @@
+{
+  "observed_from_sentinel_run_id": "32146461567",
+  "tested_sha": "e26378b0bfa5ede035a6eab97cce6d1970bec0aa",
+  "runs": [
+    {
+      "conclusion": "",
+      "createdAt": "2026-08-18T14:07:56Z",
+      "databaseId": 32146461567,
+      "event": "push",
+      "headSha": "e26378b0bfa5ede035a6eab97cce6d1970bec0aa",
+      "status": "in_progress",
+      "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32146461567",
+      "workflowName": "Image DB Phase 3 Run Sentinel"
+    },
+    {
+      "conclusion": "failure",
+      "createdAt": "2026-08-18T14:07:55Z",
+      "databaseId": 32146459929,
+      "event": "push",
+      "headSha": "e26378b0bfa5ede035a6eab97cce6d1970bec0aa",
+      "status": "completed",
+      "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32146459929",
+      "workflowName": ".github/workflows/upgrade-installer-1.2-retry.yml"
+    }
+  ]
+}
