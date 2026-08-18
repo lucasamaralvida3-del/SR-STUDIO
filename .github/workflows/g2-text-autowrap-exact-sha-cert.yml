@@ -1,0 +1,294 @@
+name: G2 Text Autowrap Exact SHA Certification
+
+on:
+  push:
+    branches:
+      - g2/cert-text-autowrap-line-spacing
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REQUESTED_SHA: 7efcae25e2372b4c2896ebe7bd426955840b5062
+  QT_QPA_PLATFORM: offscreen
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  linux-exact-sha:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout exact target SHA
+        uses: actions/checkout@v4
+        with:
+          ref: 7efcae25e2372b4c2896ebe7bd426955840b5062
+          fetch-depth: 1
+      - name: Verify exact SHA
+        shell: bash
+        run: |
+          checked=$(git rev-parse HEAD)
+          echo "REQUESTED_SHA=$REQUESTED_SHA"
+          echo "CHECKED_OUT_SHA=$checked"
+          test "$checked" = "$REQUESTED_SHA"
+          echo "SHA_MATCH=true"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install Linux Qt prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+      - name: Install runtime
+        run: python -m pip install -U pip && python -m pip install -e '.[dev,graphics2]'
+      - name: Compile
+        id: compile
+        continue-on-error: true
+        run: python -m compileall -q src tests
+      - name: Ruff
+        id: ruff
+        continue-on-error: true
+        run: python -m ruff check src/srstudio/graphics2 tests/test_graphics2_*.py
+      - name: AUTO-WRAP exact-target test
+        id: autowrap
+        continue-on-error: true
+        run: python -m pytest -q tests/test_graphics2_text_autowrap_line_spacing.py
+      - name: GRAPHICS2 gate
+        id: graphics2
+        continue-on-error: true
+        run: python -m pytest -q tests -k graphics2
+      - name: QA gate
+        id: qa
+        continue-on-error: true
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_autosave.py
+          tests/test_graphics2_bridge_roundtrip.py
+          tests/test_graphics2_package_stress.py
+          tests/test_graphics2_page_clone_ids.py
+          tests/test_graphics2_project_actions.py
+          tests/test_graphics2_product_card_duplicate.py
+          tests/test_graphics2_pdf_multipage.py
+          tests/test_graphics2_real_flyer_e2e.py
+          tests/test_graphics2_image_replace_qml.py
+          tests/test_graphics2_qa_longrun.py
+          tests/test_graphics2_qa_pptx_e2e.py
+      - name: EXPORT gate
+        id: export
+        continue-on-error: true
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_export_output.py
+          tests/test_graphics2_export_roundtrip.py
+          tests/test_graphics2_export_batch_transaction.py
+          tests/test_graphics2_export_print_contract.py
+          tests/test_graphics2_qt_renderer.py
+      - name: ALPHA43 gate
+        id: alpha43
+        continue-on-error: true
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_real_flyer_e2e.py
+          tests/test_graphics2_global_id_preflight.py
+          tests/test_graphics2_page_clone_ids.py
+          tests/test_graphics2_id_repair.py
+          tests/test_graphics2_id_repair_router.py
+          tests/test_graphics2_recovered_optional_bindings.py
+          tests/test_graphics2_recovered_spatial_atomic.py
+          tests/test_graphics2_qt_renderer.py
+          tests/test_graphics2_package_stress.py
+          tests/test_graphics2_image_replace.py
+          tests/test_graphics2_image_replace_portable.py
+          tests/test_graphics2_image_replace_router.py
+          tests/test_graphics2_image_replace_qml.py
+      - name: QUALITY gate
+        id: quality
+        continue-on-error: true
+        run: python -m pytest -q
+      - name: GLOBAL gate
+        id: global
+        continue-on-error: true
+        run: python -m pytest -q tests -k graphics2
+      - name: Linux gate summary
+        if: always()
+        shell: bash
+        env:
+          AUTOWRAP: ${{ steps.autowrap.outcome }}
+          GRAPHICS2: ${{ steps.graphics2.outcome }}
+          QA: ${{ steps.qa.outcome }}
+          EXPORT: ${{ steps.export.outcome }}
+          ALPHA43: ${{ steps.alpha43.outcome }}
+          QUALITY: ${{ steps.quality.outcome }}
+          GLOBAL: ${{ steps.global.outcome }}
+          COMPILE: ${{ steps.compile.outcome }}
+          RUFF: ${{ steps.ruff.outcome }}
+        run: |
+          printf 'LINUX AUTOWRAP=%s GRAPHICS2=%s QA=%s EXPORT=%s ALPHA43=%s QUALITY=%s GLOBAL=%s COMPILE=%s RUFF=%s\n' "$AUTOWRAP" "$GRAPHICS2" "$QA" "$EXPORT" "$ALPHA43" "$QUALITY" "$GLOBAL" "$COMPILE" "$RUFF"
+          test "$AUTOWRAP" = success
+          test "$GRAPHICS2" = success
+          test "$QA" = success
+          test "$EXPORT" = success
+          test "$ALPHA43" = success
+          test "$QUALITY" = success
+          test "$GLOBAL" = success
+          test "$COMPILE" = success
+          test "$RUFF" = success
+
+  windows-exact-sha:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout exact target SHA
+        uses: actions/checkout@v4
+        with:
+          ref: 7efcae25e2372b4c2896ebe7bd426955840b5062
+          fetch-depth: 1
+      - name: Verify exact SHA
+        shell: pwsh
+        run: |
+          $checked = (git rev-parse HEAD).Trim()
+          Write-Host "REQUESTED_SHA=$env:REQUESTED_SHA"
+          Write-Host "CHECKED_OUT_SHA=$checked"
+          if($checked -ne $env:REQUESTED_SHA) { throw "SHA mismatch" }
+          Write-Host "SHA_MATCH=true"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install runtime
+        shell: pwsh
+        run: python -m pip install -U pip; python -m pip install -e '.[dev,graphics2]'
+      - name: AUTO-WRAP exact-target test
+        id: autowrap
+        continue-on-error: true
+        shell: pwsh
+        run: python -m pytest -q tests/test_graphics2_text_autowrap_line_spacing.py
+      - name: Windows Qt runtime
+        id: qt
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          python -c "from PySide6.QtGui import QGuiApplication; a=QGuiApplication.instance() or QGuiApplication([]); print('WINDOWS_QT=PASS')"
+          python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api
+      - name: GRAPHICS2 gate Windows
+        id: graphics2
+        continue-on-error: true
+        shell: pwsh
+        run: python -m pytest -q tests -k graphics2
+      - name: QA gate Windows
+        id: qa
+        continue-on-error: true
+        shell: pwsh
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_image_replace_qml.py
+          tests/test_graphics2_real_flyer_e2e.py
+          tests/test_graphics2_qa_longrun.py
+          tests/test_graphics2_qa_pptx_e2e.py
+          tests/test_graphics2_editor_persistence.py
+          tests/test_graphics2_editor_roundtrip.py
+          tests/test_graphics2_export_output.py
+          tests/test_graphics2_export_roundtrip.py
+      - name: EXPORT gate Windows
+        id: export
+        continue-on-error: true
+        shell: pwsh
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_export_output.py
+          tests/test_graphics2_export_roundtrip.py
+          tests/test_graphics2_export_batch_transaction.py
+          tests/test_graphics2_export_print_contract.py
+          tests/test_graphics2_qt_renderer.py
+      - name: ALPHA43 gate Windows
+        id: alpha43
+        continue-on-error: true
+        shell: pwsh
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_real_flyer_e2e.py
+          tests/test_graphics2_global_id_preflight.py
+          tests/test_graphics2_page_clone_ids.py
+          tests/test_graphics2_id_repair.py
+          tests/test_graphics2_id_repair_router.py
+          tests/test_graphics2_recovered_optional_bindings.py
+          tests/test_graphics2_recovered_spatial_atomic.py
+          tests/test_graphics2_qt_renderer.py
+          tests/test_graphics2_package_stress.py
+          tests/test_graphics2_image_replace.py
+          tests/test_graphics2_image_replace_portable.py
+          tests/test_graphics2_image_replace_router.py
+          tests/test_graphics2_image_replace_qml.py
+      - name: QUALITY gate Windows
+        id: quality
+        continue-on-error: true
+        shell: pwsh
+        run: python -m pytest -q
+      - name: Font observation Windows
+        id: fonts
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          @'
+          import os
+          os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
+          from PySide6.QtGui import QGuiApplication, QFont, QFontInfo
+          app = QGuiApplication.instance() or QGuiApplication([])
+          for family in ('Anton','High Cruiser'):
+              f = QFont(family)
+              info = QFontInfo(f)
+              exact = bool(info.exactMatch())
+              print(f"FONT requested={family!r} resolved={info.family()!r} exact={'YES' if exact else 'NO'}")
+          '@ | python -
+      - name: Preview vs export semantic parity
+        id: parity
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          @'
+          import os
+          os.environ.setdefault('QT_QPA_PLATFORM','offscreen')
+          from PySide6 import QtCore, QtGui, QtQml
+          from PySide6.QtGui import QGuiApplication
+          from srstudio.graphics2 import qt_renderer
+          app = QGuiApplication.instance() or QGuiApplication([])
+          font = QtGui.QFont('Arial'); font.setPixelSize(24)
+          text = 'ALHO A GRANEL'
+          m = QtGui.QFontMetricsF(font)
+          width = max(m.horizontalAdvance('ALHO A'), m.horizontalAdvance('GRANEL')) + 1.0
+          spacing = 31.25
+          rect = QtCore.QRectF(10.0,20.0,width,100.0)
+          export_layout = qt_renderer._explicit_multiline_layout(text,rect,{'line_spacing_px':spacing,'nowrap':False,'align':'center','v_align':'top'},font,QtCore,QtGui)
+          assert export_layout is not None and len(export_layout)==2
+          assert abs((export_layout[1][2]-export_layout[0][2])-spacing) < 1e-6
+          engine = QtQml.QQmlEngine()
+          component = QtQml.QQmlComponent(engine)
+          qml = f'''import QtQuick 2.15\nText {{ width: {width}; text: "{text}"; wrapMode: Text.WordWrap; font.pixelSize: 24; lineHeightMode: Text.FixedHeight; lineHeight: {spacing}; horizontalAlignment: Text.AlignHCenter }}'''
+          component.setData(qml.encode('utf-8'), QtCore.QUrl())
+          obj = component.create()
+          if obj is None:
+              raise RuntimeError(component.errorString())
+          qml_lines = int(obj.property('lineCount'))
+          print('PREVIEW_LINE_COUNT=',qml_lines)
+          print('EXPORT_LINE_COUNT=',len(export_layout))
+          print('EXPORT_BASELINES=',[round(x[2],6) for x in export_layout])
+          print('LINE_ADVANCE=',spacing)
+          print('TEXT_BOX=',[rect.x(),rect.y(),rect.width(),rect.height()])
+          assert qml_lines == len(export_layout) == 2
+          print('PREVIEW_VS_EXPORT=CONSISTENT')
+          '@ | python -
+      - name: Windows gate summary
+        if: always()
+        shell: pwsh
+        env:
+          AUTOWRAP: ${{ steps.autowrap.outcome }}
+          QT: ${{ steps.qt.outcome }}
+          GRAPHICS2: ${{ steps.graphics2.outcome }}
+          QA: ${{ steps.qa.outcome }}
+          EXPORT: ${{ steps.export.outcome }}
+          ALPHA43: ${{ steps.alpha43.outcome }}
+          QUALITY: ${{ steps.quality.outcome }}
+          FONTS: ${{ steps.fonts.outcome }}
+          PARITY: ${{ steps.parity.outcome }}
+        run: |
+          Write-Host "WINDOWS AUTOWRAP=$env:AUTOWRAP QT=$env:QT GRAPHICS2=$env:GRAPHICS2 QA=$env:QA EXPORT=$env:EXPORT ALPHA43=$env:ALPHA43 QUALITY=$env:QUALITY FONTS=$env:FONTS PARITY=$env:PARITY"
+          foreach($v in @($env:AUTOWRAP,$env:QT,$env:GRAPHICS2,$env:QA,$env:EXPORT,$env:ALPHA43,$env:QUALITY,$env:FONTS,$env:PARITY)) { if($v -ne 'success') { throw 'Exact-SHA Windows certification gate failed.' } }
