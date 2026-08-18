@@ -399,6 +399,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - name: Linux Qt prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
       - run: python -m pip install -U pip && python -m pip install -e '.[dev,graphics2]'
         shell: bash
       - name: Alpha 43 focused regression
