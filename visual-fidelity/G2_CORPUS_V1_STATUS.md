@@ -7,82 +7,99 @@ This registry belongs exclusively to the **SR Studio de Encartes G2**. The legac
 ## Current registry
 
 - Registry: `visual-fidelity/g2-official-corpus-v1.json`
-- Policy: measure first; no visual acceptance threshold is inherited from another product.
-- Approved cases: **0**
-- Real source candidates: **1 document / 3 slides**
-- Candidate source: `OFERTAS QUINTA FILÉ NOVO.pptx`
-- Exact source SHA-256: `0353b8e2848eb6019c970ae6c83610ecb821d66d29a2f8faff80ee416b1f76f8`
-- Source lineage: Canva PPTX export, with Canva UI capture retained only as provenance evidence, never as a visual baseline.
+- Measured provisional manifest: `visual-fidelity/g2-studio-corpus-v1.json`
+- Measured baseline results: `visual-fidelity/g2-studio-corpus-v1-baseline.json`
+- Policy: **measure first**; no visual acceptance threshold is inherited from another product.
+- Approved PNG cases: **0**
+- Provisional measured cases: **3 documents / 11 pages**
+- Reference conformance: **pending direct PNG exports**
 
-## Structural G2 audit of the candidate
+The recovered reference artwork is direct Canva **JPEG**, hash-pinned and provenance-checked. It is valid evidence for establishing a provisional visual distribution, but it does not satisfy the current official-corpus requirement that approved references be direct PNG exports. No JPEG was renamed or converted to pretend compliance.
 
-The candidate was imported using the G2 `GraphicsImportService` from the validated functional code line before any fidelity correction work.
+## Measured documents
 
-Observed result:
+1. `OFERTAS QUINTA FILÉ NOVO (1).pptx`
+   - SHA-256: `7c45cfa205c7e14af69e41c8d63b1c6a9d1a06df3cf9d0131ed612029884e536`
+   - slides 12–15
+2. `OFERTAS TERÇA VERDE NOVO.pptx`
+   - SHA-256: `6e186a90c5591da2801d9049d5357755ab323f8d76b373104cbf757b0bc9c920`
+   - slides 5, 6 and 8
+3. `OFERTAS QUARTA CAFÉ COM PÃO NOVO.pptx`
+   - SHA-256: `df20e5650711755cd9655b33eab2f72f0d7588f95c06bb34dca161dee2eae395`
+   - slides 7–10
 
-- imported pages: **3/3**;
-- observed import time: **~307.8 ms**;
-- page node counts: **119 / 76 / 27**;
-- page 1: 58 text, 20 rect, 20 group, 17 image, 4 line nodes;
-- page 2: 38 text, 13 image, 11 rect, 11 group, 3 line nodes;
-- page 3: 11 image, 8 text, 4 rect, 4 group nodes;
-- fonts observed: **Anton** and **High Cruiser**.
+All measurements were produced from the frozen functional G2 head `d14dc5bed4bf4f7402f4668eb66a63823f48a35a` before fidelity corrections.
 
-Coverage demonstrated by this candidate: multipage, text, prices, images, groups, shapes, layers, fonts and multiple layouts.
+## Hash and provenance validation
 
-Coverage still missing from corpus v1: crop, transparency, masks and ProductCards. These must be supplied by additional real G2 projects rather than inferred from this file.
+- PPTX identity: **PASS** for all three measured documents.
+- Provisional Canva JPEG identity: **PASS** for all 11 references.
+- Wrong-name/hash substitution: forbidden and detected by the manifest/reference tooling.
+- Direct-PNG requirement: **PENDING**; therefore `approved_cases` remains empty.
 
-This structural audit is **not** a visual score and must never be substituted for a direct-reference comparison.
+Screenshots with Canva/Studio UI chrome remain rejected as baselines.
 
-## Why the first quantitative baseline is not fabricated
+## Baseline distribution — 11 provisional cases
 
-A case is promoted to `approved_cases` only when the same source slide has a **direct PNG export from Canva or PowerPoint**, with an explicit slide mapping, width/height and SHA-256. The available Canva images with UI chrome are screenshots and are therefore rejected as references. Clean JPG artwork `7.jpg` through `10.jpg` is also not promoted because its source PPTX/slide pairing is not proven and corpus v1 requires direct PNG references.
+- score min: **94.4183%**
+- score max: **97.7681%**
+- score mean: **95.9754%**
+- score median: **96.3717%**
+- mean pixel pass: **87.0328%**
+- mean changed area: **12.9672%**
+- mean render time: **~601.9 ms/case**
+- acceptance thresholds: **UNSET**
 
-The previous `quinta-file-13-08-2026.json` cannot be silently reused: its expected PPTX SHA-256 is not present in the currently accessible corpus.
+These values are a G2-specific baseline distribution, not a production PASS/FAIL gate. No threshold from the legacy Gerador de Cartazes has been reused.
 
-## Immutability
+### Per-page baseline
 
-Once a case is approved, its source/reference hashes are immutable. A changed artwork or reference must create a new case/version. A hash mismatch is a hard validation failure.
+| Case | Score | Pixel pass | Changed area | Render |
+|---|---:|---:|---:|---:|
+| Quinta s12 | 94.5157% | 82.4941% | 17.5059% | 2054.5 ms |
+| Quinta s13 | 94.9060% | 84.3516% | 15.6484% | 453.9 ms |
+| Quinta s14 | 94.4183% | 81.8881% | 18.1119% | 469.8 ms |
+| Quinta s15 | 96.4772% | 89.6350% | 10.3650% | 496.4 ms |
+| Terça Verde s05 | 95.5706% | 84.7350% | 15.2650% | 396.8 ms |
+| Terça Verde s06 | 96.3717% | 86.9997% | 13.0003% | 391.9 ms |
+| Terça Verde s08 | 97.7422% | 93.5986% | 6.4014% | 443.0 ms |
+| Quarta Café s07 | 95.0775% | 84.7337% | 15.2663% | 368.7 ms |
+| Quarta Café s08 | 96.4502% | 87.6683% | 12.3317% | 317.0 ms |
+| Quarta Café s09 | 96.4323% | 88.4553% | 11.5447% | 631.2 ms |
+| Quarta Café s10 | 97.7681% | 92.8016% | 7.1984% | 597.1 ms |
+
+## Systemic findings
+
+All 11 candidates render at the same width as the reference and exactly **1 pixel shorter** in height. The original dimension mismatch is retained in the baseline records. For content measurement only, the lab normalized the missing canvas pixel without rescaling.
+
+Refined approximate attribution of measured visual gap:
+
+- LAYERS: **53.18%**
+- CROP: **30.13%**
+- MASK: **12.45%**
+- TEXT: **4.23%**
+
+`WORDART`, `PRICE`, `PRODUCT` and `IMPORT` are not independently isolated by the current scene-aware classifier; this must not be interpreted as zero contribution. `IMPORT/RENDER` have a separate cross-cutting geometry signal from the 1-pixel height mismatch in 11/11 cases.
 
 ## CI validation
 
-Validation-only PR #44 ran the G2 gates against the corpus registry/provenance tests without merging the probe marker.
+Corpus/provenance contracts have passed G2 Global Integration on Linux and Windows/Qt. The preceding validation probe also passed QA, Export and Release Engineering. No product code was changed to obtain these measurements.
 
-Results:
-
-- G2 Global Integration — **PASS**;
-- Windows/Qt full Graphics2 suite — **519 passed**, 229 deselected, 2 deprecation warnings;
-- Linux full Graphics2 suite — **517 passed, 2 skipped**, 229 deselected, 2 deprecation warnings;
-- G2 QA Integration — **PASS**;
-- G2 Export Integration — **PASS**;
-- G2 Release Engineering — **PASS**;
-- functional regressions introduced by corpus work: **0 known**.
-
-The two Linux skips are environment-conditioned tests already allowed by the suite; no failed G2 test was hidden or deleted.
+Functional regressions introduced by corpus work: **0 known**.
 
 ## Baseline state
 
-**VISUAL READINESS: UNMEASURED.**
+**VISUAL READINESS: BASELINE ESTABLISHED.**
 
-This means the official G2 reference pair is incomplete, not that the G2 renderer failed a visual score. Functional Beta evidence remains separate and unchanged.
+**OFFICIAL PNG CORPUS APPROVAL: PENDING.**
 
-There is currently no legitimate min/max/mean/median, no diff ranking and no category attribution for the official G2 corpus because there are **0 approved reference pairs**. Publishing numerical scores now would require using a screenshot, an unpaired artwork, a G2-generated image or a hash-mismatched source, all of which are forbidden by the corpus contract.
+This distinction is intentional: the visual truth has been measured from direct Canva JPEG evidence, while the stricter immutable official-v1 contract still waits for direct PNG references.
 
-## Promotion checklist
+## Next actions
 
-For each case to become official:
-
-1. direct Canva/PowerPoint PNG export;
-2. explicit source slide number;
-3. PPTX SHA-256;
-4. PNG SHA-256;
-5. PNG width/height;
-6. source type (`canva` or `powerpoint`);
-7. notes/provenance;
-8. run G2 importer → SR Scene 2 → `qt_renderer` → Fidelity Lab;
-9. store raw score, pixel pass, changed area, render time, diff and heatmap;
-10. only after the first real distribution, propose a G2-specific acceptance threshold.
-
-## Next corpus acquisition
-
-Promote this candidate only after direct PNG exports for its exact source version are recovered, or add new real Studio de Encartes projects with their official exports. Prefer the next 2–4 documents to close the current coverage gaps: crop, transparency/mask and ProductCard-heavy layouts.
+1. recover/export the 11 direct Canva/PowerPoint PNG references for these exact source versions and append their SHA-256 values without overwriting the provisional JPEG evidence;
+2. rerun the same 11 cases and confirm whether PNG-vs-JPEG materially changes the distribution;
+3. isolate the 1-pixel page-height discrepancy between imported page geometry and renderer output sizing;
+4. only after that baseline is frozen, prioritize systemic LAYERS → CROP → MASK issues;
+5. add real G2 documents that cover ProductCards and a dedicated transparency case;
+6. keep the legacy Gerador de Cartazes entirely outside this corpus and acceptance process.
