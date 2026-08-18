@@ -1,29 +1,49 @@
 {
-  "observed_from_sentinel_run_id": "32146658171",
-  "tested_sha": "7f9d5aa6ab0d8e7579dcec9767dc80be86b98244",
+  "observed_from_sentinel_run_id": "32147066165",
+  "tested_sha": "b9037eab72351c827bf7286cc4a86587a73a9b47",
   "current_sha_runs": [
     {
       "conclusion": "",
-      "createdAt": "2026-08-18T14:09:54Z",
-      "databaseId": 32146658171,
+      "createdAt": "2026-08-18T14:13:56Z",
+      "databaseId": 32147066016,
       "event": "push",
-      "headSha": "7f9d5aa6ab0d8e7579dcec9767dc80be86b98244",
+      "headSha": "b9037eab72351c827bf7286cc4a86587a73a9b47",
       "status": "in_progress",
-      "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32146658171",
+      "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32147066016",
+      "workflowName": "Image DB Phase 3 Operational Validation"
+    },
+    {
+      "conclusion": "",
+      "createdAt": "2026-08-18T14:13:56Z",
+      "databaseId": 32147066165,
+      "event": "push",
+      "headSha": "b9037eab72351c827bf7286cc4a86587a73a9b47",
+      "status": "in_progress",
+      "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32147066165",
       "workflowName": "Image DB Phase 3 Run Sentinel"
     },
     {
       "conclusion": "failure",
-      "createdAt": "2026-08-18T14:09:53Z",
-      "databaseId": 32146656538,
+      "createdAt": "2026-08-18T14:13:55Z",
+      "databaseId": 32147064667,
       "event": "push",
-      "headSha": "7f9d5aa6ab0d8e7579dcec9767dc80be86b98244",
+      "headSha": "b9037eab72351c827bf7286cc4a86587a73a9b47",
       "status": "completed",
-      "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32146656538",
+      "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32147064667",
       "workflowName": ".github/workflows/upgrade-installer-1.2-retry.yml"
     }
   ],
   "phase3_validation_runs": [
+    {
+      "conclusion": "",
+      "createdAt": "2026-08-18T14:13:56Z",
+      "databaseId": 32147066016,
+      "event": "push",
+      "headSha": "b9037eab72351c827bf7286cc4a86587a73a9b47",
+      "status": "in_progress",
+      "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32147066016",
+      "workflowName": "Image DB Phase 3 Operational Validation"
+    },
     {
       "conclusion": "failure",
       "createdAt": "2026-08-18T14:04:53Z",
