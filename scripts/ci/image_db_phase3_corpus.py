@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 import shutil
-import sys
+import subprocess
 import urllib.error
 import urllib.request
 import zipfile
@@ -34,23 +34,6 @@ def _request_json(url: str, token: str) -> Any:
         return json.load(response)
 
 
-def _download_asset(url: str, token: str, target: Path) -> None:
-    request = urllib.request.Request(
-        url,
-        headers={
-            "Accept": "application/octet-stream",
-            "Authorization": f"Bearer {token}",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "srstudio-image-db-phase3-ci",
-        },
-    )
-    temporary = target.with_suffix(target.suffix + ".part")
-    temporary.unlink(missing_ok=True)
-    with urllib.request.urlopen(request, timeout=180) as response, temporary.open("wb") as handle:
-        shutil.copyfileobj(response, handle, length=1024 * 1024)
-    temporary.replace(target)
-
-
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as handle:
@@ -70,6 +53,21 @@ def _append_env(name: str, value: str) -> None:
 def _write_json(path: Path, payload: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
+def _download_with_gh(tag: str, name: str, target_dir: Path, token: str) -> tuple[bool, str]:
+    env = dict(os.environ)
+    env["GH_TOKEN"] = token
+    completed = subprocess.run(
+        ["gh", "release", "download", tag, "-p", name, "-D", str(target_dir), "--clobber"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+        timeout=600,
+        check=False,
+    )
+    return completed.returncode == 0, completed.stdout
 
 
 def main() -> int:
@@ -119,7 +117,6 @@ def main() -> int:
                 "release_draft": bool(release.get("draft")),
                 "release_prerelease": bool(release.get("prerelease")),
                 "asset_id": asset.get("id"),
-                "api_url": str(asset.get("url") or ""),
                 "size": int(asset.get("size") or 0),
                 "digest": str(asset.get("digest") or ""),
                 "state": asset.get("state"),
@@ -136,6 +133,7 @@ def main() -> int:
     }
     _write_json(artifact_dir / "release-assets.json", release_payload)
 
+    download_log: list[str] = []
     verification: dict[str, dict[str, Any]] = {}
     for name in REQUIRED_ASSETS:
         meta = found.get(name)
@@ -149,10 +147,13 @@ def main() -> int:
             "tag": str((meta or {}).get("tag") or ""),
             "release_draft": bool((meta or {}).get("release_draft")),
         }
-        if meta and meta.get("api_url"):
+        if meta and meta.get("tag"):
             try:
-                _download_asset(str(meta["api_url"]), token, target)
-            except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError) as exc:
+                ok, output = _download_with_gh(str(meta["tag"]), name, corpus_dir, token)
+                download_log.append(f"[{name}] tag={meta['tag']} success={ok}\n{output}")
+                if not ok:
+                    row["download_error"] = output[-4000:]
+            except (OSError, subprocess.SubprocessError) as exc:
                 row["download_error"] = repr(exc)
         row["exists"] = target.is_file()
         row["actual_size"] = target.stat().st_size if target.is_file() else 0
@@ -181,6 +182,7 @@ def main() -> int:
         )
         verification[name] = row
 
+    (artifact_dir / "corpus-download.log").write_text("\n\n".join(download_log), encoding="utf-8")
     all_verified = all(verification[name]["verified"] for name in REQUIRED_ASSETS)
     _write_json(
         artifact_dir / "corpus-download-verification.json",
