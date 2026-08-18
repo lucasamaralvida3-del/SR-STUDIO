@@ -70,10 +70,58 @@ def test_png_exports_exact_social_dimensions_with_real_alpha_and_dpi(tmp_path):
     assert image.dotsPerMeterY() == pytest.approx(expected_dpm, abs=1)
 
 
+def test_png_dpi_only_a4_300_matches_physical_resolution(tmp_path):
+    document = GraphicsDocument(name="A4 PNG")
+    document.pages = [
+        _page(
+            name="A4",
+            width=210,
+            height=297,
+            unit=CoordinateUnit.MILLIMETER,
+            background="#FFFFFF",
+        )
+    ]
+    document.active_page_id = document.pages[0].id
+
+    report = export_png(document, tmp_path / "a4-300.png", dpi=300)
+
+    assert report.ok
+    assert (report.width, report.height) == (2480, 3508)
+    image = QImage(str(report.output))
+    expected_dpm = round(300 / 0.0254)
+    assert image.dotsPerMeterX() == pytest.approx(expected_dpm, abs=1)
+    assert image.dotsPerMeterY() == pytest.approx(expected_dpm, abs=1)
+
+
+def test_public_renderer_host_path_uses_production_output_guard(tmp_path):
+    from srstudio.graphics2 import qt_renderer
+
+    assert qt_renderer._sr_production_output_guard_installed is True
+    assert hasattr(qt_renderer, "render_jpeg")
+    assert hasattr(qt_renderer, "render_raster_batch")
+
+    document = _document_with_pages(1, width=96, height=120)
+    report = qt_renderer.render_png(document, tmp_path / "host-path.png", dpi=96)
+    assert report.ok
+    assert (report.width, report.height) == (96, 120)
+
+
 def test_png_rejects_dimension_pair_that_would_distort_page(tmp_path):
     document = _document_with_pages(1)
     with pytest.raises(ValueError, match="proporção"):
         export_png(document, tmp_path / "bad.png", target_width=1080, target_height=1080)
+
+
+def test_png_accepts_custom_height_without_distortion(tmp_path):
+    document = _document_with_pages(1, width=1080, height=1350)
+    report = export_png(document, tmp_path / "custom-height.png", target_height=2700)
+    assert (report.width, report.height) == (2160, 2700)
+
+
+def test_raster_rejects_unsafe_giant_allocation_before_qimage(tmp_path):
+    document = _document_with_pages(1, width=100, height=100)
+    with pytest.raises(ValueError, match="memória segura"):
+        export_png(document, tmp_path / "giant.png", target_width=20_000, target_height=20_000)
 
 
 def test_jpeg_exports_exact_dimensions_and_composites_opaque_background(tmp_path):
@@ -105,6 +153,15 @@ def test_jpeg_accepts_jpeg_extension_and_validates_quality(tmp_path):
     assert report.output.suffix == ".jpeg"
     with pytest.raises(ValueError, match="1 e 100"):
         export_jpeg(document, tmp_path / "bad.jpg", quality=0)
+
+
+def test_jpeg_dpi_metadata_is_written_when_supported_by_qt_plugin(tmp_path):
+    document = _document_with_pages(1, width=96, height=96)
+    report = export_jpeg(document, tmp_path / "dpi.jpg", dpi=150)
+    image = QImage(str(report.output))
+    expected_dpm = round(150 / 0.0254)
+    assert image.dotsPerMeterX() == pytest.approx(expected_dpm, abs=120)
+    assert image.dotsPerMeterY() == pytest.approx(expected_dpm, abs=120)
 
 
 def test_pdf_single_page_preserves_a4_physical_size(tmp_path):
@@ -145,6 +202,14 @@ def test_pdf_multipage_preserves_requested_order_and_each_page_size(tmp_path):
     assert sizes[2][1] == pytest.approx(210 * 72 / 25.4, abs=0.6)
 
 
+def test_pdf_ten_page_smoke_cannot_silently_lose_pages(tmp_path):
+    document = _document_with_pages(10, width=96, height=120)
+    report = export_pdf(document, tmp_path / "ten-pages.pdf", dpi=144)
+    reader = PdfReader(str(report.output))
+    assert report.pages == 10
+    assert len(reader.pages) == 10
+
+
 def test_pdf_rejects_duplicate_missing_or_empty_page_selection(tmp_path):
     document = _document_with_pages(3, width=100, height=100)
     with pytest.raises(ValueError, match="duplicadas"):
@@ -163,6 +228,17 @@ def test_project_without_pages_fails_clearly(tmp_path):
         export_png(document, tmp_path / "empty.png")
     with pytest.raises(ValueError, match="Projeto sem páginas"):
         export_pdf(document, tmp_path / "empty.pdf")
+
+
+def test_output_parent_that_is_a_file_fails_without_touching_project(tmp_path):
+    document = _document_with_pages(1, width=100, height=100)
+    before = document.to_dict()
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("block", encoding="utf-8")
+
+    with pytest.raises(OSError):
+        export_png(document, blocker / "page.png", target_width=100)
+    assert document.to_dict() == before
 
 
 def test_batch_exports_three_pages_in_source_order_with_predictable_names(tmp_path):
@@ -285,6 +361,24 @@ def test_pdf_failure_does_not_replace_existing_destination(monkeypatch, tmp_path
         export_pdf(document, target)
     assert target.read_bytes() == b"known-good"
     assert not list(tmp_path.glob(".*.tmp.pdf"))
+
+
+def test_pdf_renderer_report_page_loss_blocks_publish(monkeypatch, tmp_path):
+    from srstudio.graphics2 import export_output
+    from srstudio.graphics2.qt_renderer import RenderReport
+
+    document = _document_with_pages(2, width=100, height=100)
+    target = tmp_path / "lost-page.pdf"
+    target.write_bytes(b"previous-good")
+
+    def claims_one_page(_document, output, **_kwargs):
+        output.write_bytes(b"%PDF-1.4\n%%EOF")
+        return RenderReport(output=output, format="pdf", pages=1)
+
+    monkeypatch.setattr(export_output._renderer, "render_pdf", claims_one_page)
+    with pytest.raises(ExportValidationError, match="PDF incompleto"):
+        export_pdf(document, target)
+    assert target.read_bytes() == b"previous-good"
 
 
 def test_strict_asset_failure_never_publishes_partial_output(monkeypatch, tmp_path):
