@@ -1,0 +1,21 @@
+{
+  "release_found": true,
+  "release_id": 372506555,
+  "release_name": "Image DB Corpus v1",
+  "asset_found": true,
+  "asset_name": "standalone-images.zip",
+  "asset_id": 519806747,
+  "expected_size": 48848012,
+  "actual_size": 48848012,
+  "release_digest": "sha256:9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff",
+  "sha256": "9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff",
+  "download_complete": true,
+  "download_command_success": true,
+  "size_verified": true,
+  "hash_verified": true,
+  "zip_integrity": true,
+  "bad_member": null,
+  "zip_error": "",
+  "verified": true,
+  "download_output": ""
+}
