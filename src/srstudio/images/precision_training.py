@@ -1,9 +1,19 @@
 from __future__ import annotations
 
-from typing import Any
+import hashlib
+import json
+from typing import Any, Iterable
 
-from srstudio.images.association import AssociationEvidence, spatial_pair_score
-from srstudio.images.corpus_training import ProductImageCorpusTrainer, _ImageCandidate, _PRICE_TEXT_RE
+from srstudio.images.association import AssociationEvidence, normalize_product_name, spatial_pair_score
+from srstudio.images.corpus_training import (
+    CorpusTrainingReport,
+    ProductImageCorpusTrainer,
+    _ImageCandidate,
+    _PRICE_TEXT_RE,
+)
+
+
+PRECISION_TRAINER_VERSION = "g2-image-precision-v2"
 
 
 class PrecisionProductImageCorpusTrainer(ProductImageCorpusTrainer):
@@ -14,7 +24,77 @@ class PrecisionProductImageCorpusTrainer(ProductImageCorpusTrainer):
     each other. A one-product/one-logical-image slide is also useful evidence even
     when Canva's transparent shape bbox makes the geometric score weak; in that
     special case the observation is retained but capped below auto-accept.
+
+    Consensus also uses a logical-document fingerprint. Two files that differ only
+    by package metadata/export copy but contain the same product/image evidence do
+    not get to vote twice. This deliberately prefers precision over recall.
     """
+
+    def train(self, sources: Iterable[str], *, force: bool = False) -> CorpusTrainingReport:
+        state_before = self.state.load()
+        precision_upgrade = state_before.get("precision_trainer_version") != PRECISION_TRAINER_VERSION
+        report = super().train(sources, force=force or precision_upgrade)
+
+        state_after = self.state.load()
+        state_after["precision_trainer_version"] = PRECISION_TRAINER_VERSION
+        self.state.save(state_after)
+        if precision_upgrade and state_before.get("files"):
+            report.warnings.append(
+                f"Precision trainer upgraded to {PRECISION_TRAINER_VERSION}; active corpus was reprocessed."
+            )
+        return report
+
+    def _process_pptx(self, source, digest: str) -> dict:
+        record = super()._process_pptx(source, digest)
+        source_document_id = self._logical_document_fingerprint(record)
+        record["source_document_id"] = source_document_id
+        record["precision_trainer_version"] = PRECISION_TRAINER_VERSION
+        for item in record.get("evidence", []):
+            if not isinstance(item, dict):
+                continue
+            metadata = dict(item.get("metadata", {}) or {})
+            metadata["source_document_id"] = source_document_id
+            metadata["source_sha256"] = digest
+            item["metadata"] = metadata
+        return record
+
+    @staticmethod
+    def _logical_document_fingerprint(record: dict) -> str:
+        evidence_layout = []
+        for item in record.get("evidence", []):
+            if not isinstance(item, dict):
+                continue
+            evidence_layout.append(
+                {
+                    "product": normalize_product_name(str(item.get("product_name", ""))),
+                    "image_sha256": str(item.get("image_sha256", "")),
+                    "slide": int(item.get("source_slide", 0) or 0),
+                    "image_bbox": [int(value) for value in item.get("image_bbox", (0, 0, 0, 0))],
+                    "name_bbox": [int(value) for value in item.get("name_bbox", (0, 0, 0, 0))],
+                }
+            )
+        evidence_layout.sort(
+            key=lambda item: (
+                item["slide"],
+                item["image_sha256"],
+                item["product"],
+                item["image_bbox"],
+                item["name_bbox"],
+            )
+        )
+        payload = {
+            "slides": int(record.get("slides", 0) or 0),
+            "raw_image_refs": int(record.get("raw_image_refs", 0) or 0),
+            "image_sha256": sorted(str(value) for value in record.get("image_sha256", []) if value),
+            "product_names": sorted(
+                normalize_product_name(str(value))
+                for value in record.get("product_names", [])
+                if normalize_product_name(str(value))
+            ),
+            "evidence_layout": evidence_layout,
+        }
+        encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
+        return hashlib.sha256(encoded).hexdigest()
 
     def _pair_slide(
         self,
