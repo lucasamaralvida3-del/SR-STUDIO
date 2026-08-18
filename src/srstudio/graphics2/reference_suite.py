@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from hashlib import sha256
 from pathlib import Path
 from statistics import fmean
+from time import perf_counter
 from typing import Any
 import json
 import sys
@@ -169,6 +170,7 @@ def run_reference_suite(args: Namespace) -> int:
 
     results = []
     render_reports = []
+    render_timings_ms: list[float] = []
     case_payloads = []
     portable_triage_by_case: list[dict[str, Any]] = []
     for case in manifest.cases:
@@ -179,6 +181,7 @@ def run_reference_suite(args: Namespace) -> int:
             target_width = int(image.width)
         slug = _slug(case.name)
         candidate = output / "candidate" / f"slide-{case.page + 1:03d}-{slug}.png"
+        render_started = perf_counter()
         report = render_png(
             imported.document,
             candidate,
@@ -186,6 +189,7 @@ def run_reference_suite(args: Namespace) -> int:
             dpi=max(72, int(args.dpi)),
             target_width=target_width,
         )
+        render_ms = (perf_counter() - render_started) * 1000.0
         result = compare_images(
             baseline,
             candidate,
@@ -217,6 +221,7 @@ def run_reference_suite(args: Namespace) -> int:
         }
         results.append(result)
         render_reports.append(report)
+        render_timings_ms.append(render_ms)
         portable_triage_by_case.append(portable_triage)
         case_payloads.append(
             {
@@ -225,6 +230,7 @@ def run_reference_suite(args: Namespace) -> int:
                 "slide": case.page + 1,
                 "reference": _identity(baseline),
                 "result": result.to_dict(),
+                "render_ms": render_ms,
                 "triage": triage.to_dict(),
                 "triage_report": str(triage_path),
                 "attribution": attribution.to_dict(),
@@ -249,12 +255,14 @@ def run_reference_suite(args: Namespace) -> int:
         scene_path = str(save_package(imported.document, output / f"{_slug(manifest.name)}.srscene"))
     pptx_structure = dict(imported.document.metadata.get("pptx_structure") or {})
     pptx_mapping = dict(imported.document.metadata.get("pptx_mapping_audit") or {})
+    performance = _render_performance(render_timings_ms)
     payload = {
         "name": manifest.name,
         "source": source_identity,
         "manifest": str(manifest_path),
         "scene_fingerprint": fingerprint.to_dict(),
         "aggregate": aggregate,
+        "performance": performance,
         "worst_case": dict(imported.document.metadata.get("visual_fidelity_worst_case") or {}),
         "cases": case_payloads,
         "render": [
@@ -262,12 +270,13 @@ def run_reference_suite(args: Namespace) -> int:
                 "output": str(item.output),
                 "width": item.width,
                 "height": item.height,
+                "elapsed_ms": elapsed_ms,
                 "warnings": [
                     {"code": w.code, "message": w.message, "page_id": w.page_id, "node_id": w.node_id}
                     for w in item.warnings
                 ],
             }
-            for item in render_reports
+            for item, elapsed_ms in zip(render_reports, render_timings_ms)
         ],
         "import_audit": imported.audit.to_dict(),
         "pptx_structure": pptx_structure,
@@ -283,7 +292,8 @@ def run_reference_suite(args: Namespace) -> int:
     print(
         f"SR Reference Suite: {'PASS' if gate.ready and aggregate['passed'] else 'FAIL'} | "
         f"{len(results)} referência(s) | mínimo {aggregate['minimum_score'] * 100:.4f}% | "
-        f"média {aggregate['average_score'] * 100:.4f}% | gate {gate.score}/100"
+        f"média {aggregate['average_score'] * 100:.4f}% | gate {gate.score}/100 | "
+        f"render médio {performance['average_ms']:.1f} ms"
     )
     if pptx_mapping:
         print(
@@ -307,7 +317,8 @@ def run_reference_suite(args: Namespace) -> int:
         suspect_note = _top_suspect_note(case_payload.get("attribution") or {})
         print(
             f"  {'PASS' if result.passed else 'FAIL'} slide {case.page + 1}: "
-            f"{case.name} · {result.metrics.percent:.4f}%{region_note}{suspect_note}"
+            f"{case.name} · {result.metrics.percent:.4f}% · render {case_payload['render_ms']:.1f} ms"
+            f"{region_note}{suspect_note}"
         )
     print(f"  Relatório: {report_path}")
     return 0 if gate.ready and aggregate["passed"] else 1
@@ -324,6 +335,16 @@ def _top_suspect_note(attribution: dict[str, Any]) -> str:
     role = str(suspect.get("binding_role") or suspect.get("kind") or "node")
     name = str(suspect.get("name") or suspect.get("node_id") or "sem nome")
     return f" · provável {role}: {name}"
+
+
+def _render_performance(timings_ms: list[float]) -> dict[str, float]:
+    timings = [max(0.0, float(value)) for value in timings_ms]
+    return {
+        "total_ms": sum(timings),
+        "average_ms": fmean(timings) if timings else 0.0,
+        "minimum_ms": min(timings) if timings else 0.0,
+        "maximum_ms": max(timings) if timings else 0.0,
+    }
 
 
 def _aggregate(results: list[Any]) -> dict[str, Any]:
