@@ -11,6 +11,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
+from srstudio.images.evidence_aliases import apply_evidence_aliases
 from srstudio.images.lookup import ProductImageLookupService
 from srstudio.images.precision_training import PrecisionProductImageCorpusTrainer
 from srstudio.images.safe_library import SafeImageLibrary
@@ -49,6 +50,7 @@ def main(argv: list[str] | None = None) -> int:
     library = SafeImageLibrary(bank_root)
     trainer = PrecisionProductImageCorpusTrainer(library, imports_root=imports_root)
     report = trainer.train([Path(value).expanduser() for value in args.sources], force=args.force)
+    alias_stats = apply_evidence_aliases(library, report.decisions)
 
     lookups: list[dict] = []
     if args.query:
@@ -67,6 +69,7 @@ def main(argv: list[str] | None = None) -> int:
 
     payload = {
         "metrics": asdict(report.metrics),
+        "alias_learning": asdict(alias_stats),
         "warnings": report.warnings,
         "processed_files": report.processed_files,
         "skipped_files": report.skipped_files,
