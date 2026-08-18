@@ -75,7 +75,9 @@ def render_png(
     try:
         _configure_painter(painter, QtGui)
         painter.scale(scale, scale)
-        _render_page(painter, document, page, warnings, QtCore, QtGui, paint_background=transparent)
+        # O QImage já foi inicializado com o background opaco ou transparente.
+        # Repintar a página quando transparent=True destruía o canal alpha.
+        _render_page(painter, document, page, warnings, QtCore, QtGui, paint_background=False)
     finally:
         painter.end()
     target = Path(output)
