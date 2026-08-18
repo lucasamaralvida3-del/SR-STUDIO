@@ -5,4 +5,4 @@ Validation-only marker for the isolated `g2/parallel-release-engineering` releas
 - DO NOT MERGE.
 - No product or release behavior is changed by this marker.
 - The pull request exists only to expose GitHub Actions evidence to CHAT 7.
-- Probe revision: 4, validating explicit Linux `libegl1` runtime dependency and the latest CHAT 7 HEAD.
+- Probe revision: 5, validating the lean PySide6/QtQuick host without Qt WebEngine payload.
