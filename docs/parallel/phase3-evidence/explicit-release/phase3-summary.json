@@ -1,15 +1,18 @@
 {
-  "status": "BLOCKED — CORPUS NOT AVAILABLE TO CI",
-  "tested_sha": "db92d890b568602adb507924864ae74cea316c06",
-  "run_id": "32158589678",
+  "status": "NOT READY",
+  "phase": "3A",
+  "standalone_available": false,
+  "standalone_phase": "DEFERRED",
+  "standalone_validation": "DEFERRED",
+  "tested_sha": "a0bcd62fdff055751c7f1e900c439913ad29c561",
+  "run_id": "32164182108",
   "run_attempt": "1",
   "gates": {
     "Environment": true,
     "Tests": true,
     "Corpus integrity": false,
     "Rich corpus available": false,
-    "Catalog available": false,
-    "Standalone available": false,
+    "Catalog available": true,
     "Corpus baseline": false,
     "Ingest": false,
     "Persistence / Reload": false,
@@ -24,9 +27,85 @@
     "Performance": false,
     "Review dataset": false
   },
+  "release_found": true,
+  "release_assets": {
+    "lookup_mode": "explicit-tag-only",
+    "requested_tag": "image-db-corpus-v1",
+    "api_http_status": 200,
+    "release_found": true,
+    "release_tag": "image-db-corpus-v1",
+    "release_id": 372506555,
+    "release_name": "Image DB Corpus v1",
+    "release_draft": false,
+    "release_prerelease": false,
+    "all_assets_returned": [
+      {
+        "name": "Downloads.1.1.zip",
+        "asset_id": 519720279,
+        "size": 249253663,
+        "digest": "sha256:aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba",
+        "state": "uploaded",
+        "created_at": "2026-08-18T16:49:25Z",
+        "updated_at": "2026-08-18T16:49:43Z",
+        "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/Downloads.1.1.zip"
+      },
+      {
+        "name": "Downloads.2.1.zip",
+        "asset_id": 519719841,
+        "size": 344039590,
+        "digest": "sha256:035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86",
+        "state": "uploaded",
+        "created_at": "2026-08-18T16:48:59Z",
+        "updated_at": "2026-08-18T16:49:18Z",
+        "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/Downloads.2.1.zip"
+      },
+      {
+        "name": "publish_repository.zip",
+        "asset_id": 519734424,
+        "size": 19093966,
+        "digest": "sha256:5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
+        "state": "uploaded",
+        "created_at": "2026-08-18T17:03:00Z",
+        "updated_at": "2026-08-18T17:03:03Z",
+        "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/publish_repository.zip"
+      }
+    ],
+    "phase3a_required": [
+      "Downloads(1)(1).zip",
+      "Downloads(2)(1).zip",
+      "publish_repository.zip"
+    ],
+    "standalone_phase": "DEFERRED",
+    "standalone_asset": "standalone-images.zip",
+    "found": {
+      "publish_repository.zip": {
+        "name": "publish_repository.zip",
+        "asset_id": 519734424,
+        "size": 19093966,
+        "digest": "sha256:5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
+        "state": "uploaded",
+        "created_at": "2026-08-18T17:03:00Z",
+        "updated_at": "2026-08-18T17:03:03Z",
+        "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/publish_repository.zip",
+        "tag": "image-db-corpus-v1",
+        "release_id": 372506555,
+        "release_name": "Image DB Corpus v1",
+        "release_draft": false,
+        "release_prerelease": false
+      }
+    },
+    "missing_phase3a_required": [
+      "Downloads(1)(1).zip",
+      "Downloads(2)(1).zip"
+    ],
+    "errors": [],
+    "release_count_scanned": 1
+  },
   "release_asset_verification": {
     "requested_tag": "image-db-corpus-v1",
-    "all_verified": false,
+    "phase": "3A",
+    "standalone_phase": "DEFERRED",
+    "all_phase3a_required_verified": false,
     "assets": {
       "Downloads(1)(1).zip": {
         "name": "Downloads(1)(1).zip",
@@ -42,6 +121,7 @@
         "sha256": "",
         "size_verified": false,
         "hash_verified": false,
+        "hash_verification_basis": "downloaded-sha256-recorded",
         "zip_integrity": false,
         "verified": false
       },
@@ -59,47 +139,53 @@
         "sha256": "",
         "size_verified": false,
         "hash_verified": false,
+        "hash_verification_basis": "downloaded-sha256-recorded",
         "zip_integrity": false,
         "verified": false
       },
       "publish_repository.zip": {
         "name": "publish_repository.zip",
-        "release_found": false,
-        "asset_id": null,
+        "release_found": true,
+        "asset_id": 519734424,
         "path": ".phase3-corpus/publish_repository.zip",
-        "expected_size": 0,
-        "release_digest": "",
+        "expected_size": 19093966,
+        "release_digest": "sha256:5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
         "tag": "image-db-corpus-v1",
-        "download_complete": false,
-        "exists": false,
-        "actual_size": 0,
-        "sha256": "",
-        "size_verified": false,
-        "hash_verified": false,
-        "zip_integrity": false,
-        "verified": false
+        "download_complete": true,
+        "download_command_success": true,
+        "download_output": "",
+        "exists": true,
+        "actual_size": 19093966,
+        "sha256": "5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
+        "size_verified": true,
+        "hash_verified": true,
+        "hash_verification_basis": "release-digest",
+        "zip_integrity": true,
+        "bad_member": null,
+        "verified": true
       },
       "standalone-images.zip": {
         "name": "standalone-images.zip",
+        "phase": "DEFERRED",
         "release_found": false,
         "asset_id": null,
-        "path": ".phase3-corpus/standalone-images.zip",
         "expected_size": 0,
         "release_digest": "",
-        "tag": "image-db-corpus-v1",
         "download_complete": false,
-        "exists": false,
-        "actual_size": 0,
-        "sha256": "",
-        "size_verified": false,
-        "hash_verified": false,
-        "zip_integrity": false,
-        "verified": false
+        "verified": false,
+        "processed": false
       }
     },
-    "errors": [
-      "explicit release lookup failed: HTTP 404"
-    ]
+    "errors": []
+  },
+  "catalog_source_validation": {
+    "db_path": ".phase3-corpus/publish/publish_repository/beta/files/dados/atacado_historico.db",
+    "exists": true,
+    "products": 520,
+    "historical_records": 3116,
+    "products_expected": 520,
+    "historical_records_expected": 3116,
+    "pass": true
   },
   "corpus_inventory": {},
   "persistence": {},
@@ -111,10 +197,10 @@
   "performance": {},
   "memory": {
     "measurement": "approximate GitHub Actions CI memory evidence",
-    "baseline": "MemTotal:       16373452 kB\nMemAvailable:   15032260 kB\n",
+    "baseline": "MemTotal:       16373452 kB\nMemAvailable:   15050896 kB\n",
     "after_ingest": "",
     "ingest_peak_rss_kb": null,
-    "standalone_ingest_peak_rss_kb": null,
+    "second_ingest_peak_rss_kb": null,
     "audit_peak_rss_kb": null
   },
   "previous_human_sample": {
@@ -123,5 +209,5 @@
     "wrong_auto_accept": 0,
     "uncertain": 0
   },
-  "current_ci_review_sample": "generated in review/review-dataset.json and review-contact-sheet.png; human judgement remains separate"
+  "current_ci_review_sample": "generated only if review dataset gate passed; human judgement remains separate"
 }

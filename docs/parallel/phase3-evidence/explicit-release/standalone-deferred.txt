@@ -1,0 +1,1 @@
+Standalone validation intentionally deferred; no standalone asset is required or processed in Phase 3A.

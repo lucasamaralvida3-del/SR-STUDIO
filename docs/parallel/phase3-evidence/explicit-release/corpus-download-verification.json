@@ -1,6 +1,8 @@
 {
   "requested_tag": "image-db-corpus-v1",
-  "all_verified": false,
+  "phase": "3A",
+  "standalone_phase": "DEFERRED",
+  "all_phase3a_required_verified": false,
   "assets": {
     "Downloads(1)(1).zip": {
       "name": "Downloads(1)(1).zip",
@@ -16,6 +18,7 @@
       "sha256": "",
       "size_verified": false,
       "hash_verified": false,
+      "hash_verification_basis": "downloaded-sha256-recorded",
       "zip_integrity": false,
       "verified": false
     },
@@ -33,45 +36,42 @@
       "sha256": "",
       "size_verified": false,
       "hash_verified": false,
+      "hash_verification_basis": "downloaded-sha256-recorded",
       "zip_integrity": false,
       "verified": false
     },
     "publish_repository.zip": {
       "name": "publish_repository.zip",
-      "release_found": false,
-      "asset_id": null,
+      "release_found": true,
+      "asset_id": 519734424,
       "path": ".phase3-corpus/publish_repository.zip",
-      "expected_size": 0,
-      "release_digest": "",
+      "expected_size": 19093966,
+      "release_digest": "sha256:5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
       "tag": "image-db-corpus-v1",
-      "download_complete": false,
-      "exists": false,
-      "actual_size": 0,
-      "sha256": "",
-      "size_verified": false,
-      "hash_verified": false,
-      "zip_integrity": false,
-      "verified": false
+      "download_complete": true,
+      "download_command_success": true,
+      "download_output": "",
+      "exists": true,
+      "actual_size": 19093966,
+      "sha256": "5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
+      "size_verified": true,
+      "hash_verified": true,
+      "hash_verification_basis": "release-digest",
+      "zip_integrity": true,
+      "bad_member": null,
+      "verified": true
     },
     "standalone-images.zip": {
       "name": "standalone-images.zip",
+      "phase": "DEFERRED",
       "release_found": false,
       "asset_id": null,
-      "path": ".phase3-corpus/standalone-images.zip",
       "expected_size": 0,
       "release_digest": "",
-      "tag": "image-db-corpus-v1",
       "download_complete": false,
-      "exists": false,
-      "actual_size": 0,
-      "sha256": "",
-      "size_verified": false,
-      "hash_verified": false,
-      "zip_integrity": false,
-      "verified": false
+      "verified": false,
+      "processed": false
     }
   },
-  "errors": [
-    "explicit release lookup failed: HTTP 404"
-  ]
+  "errors": []
 }
