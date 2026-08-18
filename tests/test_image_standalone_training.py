@@ -108,6 +108,23 @@ def test_existing_canva_duplicate_keeps_original_scalar_source_and_adds_provenan
     assert kinds == {"canva", "standalone-library"}
 
 
+def test_standalone_exact_name_is_downgraded_when_image_conflicts_with_other_product(tmp_path):
+    source = _image(tmp_path / "TODDY 750G.png")
+    library = SafeImageLibrary(tmp_path / "bank")
+    library.learn_product_image(source, "TODDY 370G", confidence=.95, source_file="encarte.pptx")
+    trainer = StandaloneProductImageTrainer(library, ["TODDY 750G"])
+
+    report = trainer.train([StandaloneImageSource(str(source))])
+
+    assert report.accepted == 0
+    assert report.review == 1
+    assert report.matches[0].status == "review"
+    assert report.matches[0].reason.endswith("+library-conflict")
+    asset = library.all()[0]
+    assert asset.review_status == "pending"
+    assert asset.metadata["review_reason"] == "same_image_multiple_products"
+
+
 def test_manifest_loader_preserves_explicit_verification_and_provenance(tmp_path):
     manifest = tmp_path / "manifest.json"
     manifest.write_text(
