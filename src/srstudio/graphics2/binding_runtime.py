@@ -185,6 +185,7 @@ def _install_session_binding(import_module: Any) -> None:
                     node = self.page.node(node_id)
                     if node is None:
                         continue
+                    _reactivate_binding_node(node)
                     if role in _IMAGE_ROLES:
                         _bind_image(import_module, self, node, product)
                         continue
@@ -243,7 +244,13 @@ def _install_session_binding(import_module: Any) -> None:
         extras = {role: _unique(ids) for role, ids in extras.items() if ids}
         current_primary = dict(slot.node_by_role)
         current_extras = _normalized_extras(slot.metadata.get("extra_bindings"))
-        if current_primary == primary and current_extras == extras:
+        bound_ids = _unique([*primary.values(), *(item for ids in extras.values() for item in ids)])
+        detached = any(
+            bool(self.page.node(node_id).metadata.get("smart_slot_detached"))
+            for node_id in bound_ids
+            if self.page.node(node_id) is not None
+        )
+        if current_primary == primary and current_extras == extras and not detached:
             return False
 
         with self.transaction("Religar Smart Slot"):
@@ -255,7 +262,13 @@ def _install_session_binding(import_module: Any) -> None:
             for role, node_id in primary.items():
                 node = self.page.node(node_id)
                 if node is not None:
+                    _reactivate_binding_node(node)
                     _assign_binding_role(import_module, node, role)
+            for node_ids in extras.values():
+                for node_id in node_ids:
+                    node = self.page.node(node_id)
+                    if node is not None:
+                        _reactivate_binding_node(node)
 
         return True
 
@@ -377,6 +390,11 @@ def _bind_image(import_module: Any, session: Any, node: Any, product: dict[str, 
     node.visible = False
 
 
+def _reactivate_binding_node(node: Any) -> None:
+    node.metadata.pop("smart_slot_detached", None)
+    node.metadata.pop("detached_from_slot_id", None)
+
+
 def _assign_binding_role(import_module: Any, node: Any, role: str) -> None:
     try:
         node.binding_role = import_module.BindingRole(role)
@@ -399,6 +417,8 @@ def _binding_state(session: Any, slot: Any, bindings: dict[str, list[str]]) -> d
                 bool(node.visible),
                 deepcopy(node.metadata.get("bound_image_source")),
                 deepcopy(node.metadata.get("binding_template_text")),
+                bool(node.metadata.get("smart_slot_detached")),
+                str(node.metadata.get("detached_from_slot_id") or ""),
             )
     return {
         "product_id": str(slot.product_id or ""),
