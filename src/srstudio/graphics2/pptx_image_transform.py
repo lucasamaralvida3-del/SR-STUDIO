@@ -29,6 +29,7 @@ _ANGLE_UNIT = 60000.0
 _DEFAULT_SLIDE_WIDTH = 12192000.0
 _DEFAULT_SLIDE_HEIGHT = 6858000.0
 _SHEAR_TOLERANCE = 1e-7
+_CANONICAL_ZERO_TOLERANCE = 1e-12
 
 
 @dataclass(slots=True, frozen=True)
@@ -379,7 +380,7 @@ def _target_transform(
             "y": 0.0,
             "width": 0.0,
             "height": 0.0,
-            "rotation": float(contract.rotation),
+            "rotation": _canonical_zero(float(contract.rotation)),
             "flip_x": bool(contract.flip_x),
             "flip_y": bool(contract.flip_y),
             "apply_geometry": False,
@@ -409,11 +410,11 @@ def _target_transform(
     flip_x = False
     flip_y = determinant < 0.0
     return {
-        "x": center_x - width / 2.0,
-        "y": center_y - height / 2.0,
-        "width": width,
-        "height": height,
-        "rotation": rotation,
+        "x": _canonical_zero(center_x - width / 2.0),
+        "y": _canonical_zero(center_y - height / 2.0),
+        "width": _canonical_zero(width),
+        "height": _canonical_zero(height),
+        "rotation": _canonical_zero(rotation),
         "flip_x": flip_x,
         "flip_y": flip_y,
         "apply_geometry": True,
@@ -561,6 +562,13 @@ def _close(left: object, right: object) -> bool:
         return math.isclose(float(left), float(right), rel_tol=1e-9, abs_tol=1e-6)
     except (TypeError, ValueError):
         return False
+
+
+def _canonical_zero(value: float) -> float:
+    value = float(value)
+    if not math.isfinite(value):
+        return value
+    return 0.0 if abs(value) <= _CANONICAL_ZERO_TOLERANCE else value
 
 
 def _angle_equal(left: float, right: float) -> bool:
