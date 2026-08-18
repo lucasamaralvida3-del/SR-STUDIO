@@ -217,6 +217,7 @@ def launch_qt_quick_editor(
 
     class SceneBridge(QObject):
         sceneChanged = Signal()
+        selectionChanged = Signal()
         statusChanged = Signal()
         fileJobDone = Signal(bool, str, str, str)
         autosaveDone = Signal(bool, str, str)
@@ -263,12 +264,25 @@ def launch_qt_quick_editor(
         def busy(self) -> bool:
             return self._busy
 
+        def _selection_state(self) -> tuple[tuple[str, ...], str, str]:
+            return (
+                tuple(sorted(session.selection)),
+                str(session.anchor_id or ""),
+                str(session.document.active_page_id or ""),
+            )
+
+        def _emit_selection_changed_if_needed(self, before: tuple[tuple[str, ...], str, str]) -> None:
+            if self._selection_state() != before:
+                self.selectionChanged.emit()
+
         def _run(self, command: dict) -> None:
+            selection_before = self._selection_state()
             result = router.dispatch(command)
             self._status = result.message or ("Concluído" if result.ok else "Falha")
             if result.changed:
                 self._schedule_autosave()
             self.statusChanged.emit()
+            self._emit_selection_changed_if_needed(selection_before)
             self.sceneChanged.emit()
 
         def set_status(self, text: str) -> None:
@@ -450,6 +464,7 @@ def launch_qt_quick_editor(
 
         @Slot(str, result=str)
         def dispatch(self, payload: str) -> str:
+            selection_before = self._selection_state()
             result_raw = router.dispatch_json(payload)
             try:
                 result_data = json.loads(result_raw)
@@ -459,6 +474,7 @@ def launch_qt_quick_editor(
             except Exception:
                 self._status = "Comando processado"
             self.statusChanged.emit()
+            self._emit_selection_changed_if_needed(selection_before)
             self.sceneChanged.emit()
             return result_raw
 
