@@ -1,0 +1,214 @@
+name: Image DB Coverage Baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - g2/parallel-image-coverage
+    paths:
+      - '.github/workflows/image-db-coverage-baseline.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ARTIFACT_DIR: artifacts/image-db-coverage-baseline
+  CORPUS_DIR: .phase3-corpus
+  LIBRARY: artifacts/image-db-coverage-library
+  IMPORTS: artifacts/image-db-coverage-imports
+  PYTHON_VERSION: '3.11'
+  PHASE3A_RUN_ID: '32166973267'
+  EXPECTED_STANDALONE_SIZE: '48848012'
+  EXPECTED_STANDALONE_SHA256: '9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff'
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install project
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR" "$CORPUS_DIR" "$LIBRARY" "$IMPORTS"
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+          echo "$GITHUB_SHA" > "$ARTIFACT_DIR/tested-sha.txt"
+
+      - name: Image DB full suite
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_image_*.py --junitxml="$ARTIFACT_DIR/test-results.xml" | tee "$ARTIFACT_DIR/pytest.log"
+
+      - name: Restore approved Phase 3A logical index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p .phase3a-persisted
+          gh run download "$PHASE3A_RUN_ID" -n image-db-phase3a-report -D .phase3a-persisted
+          index=$(find .phase3a-persisted -type f -name index.json | head -1)
+          test -n "$index"
+          echo "PHASE3A_INDEX=$index" >> "$GITHUB_ENV"
+
+      - name: Resolve approved rich corpus and real catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/ci/image_db_phase3_corpus.py > "$ARTIFACT_DIR/corpus-resolver.json"
+          test "${RICH_CORPUS_AVAILABLE:-false}" = true
+          test "${CATALOG_AVAILABLE:-false}" = true
+          test -n "${PRODUCT_DB:-}"
+
+      - name: Resolve approved standalone corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/ci/image_db_phase3b.py inventory --artifact-dir "$ARTIFACT_DIR" --corpus-dir "$CORPUS_DIR"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          art=Path(os.environ['ARTIFACT_DIR'])
+          ver=json.loads((art/'standalone-asset-verification.json').read_text())
+          man=json.loads((art/'standalone-manifest.json').read_text())
+          m=man.get('metrics',{})
+          checks={
+            'found': ver.get('asset_found') is True,
+            'download': ver.get('download_complete') is True,
+            'zip': ver.get('zip_integrity') is True,
+            'verified': ver.get('verified') is True,
+            'size': int(ver.get('actual_size') or 0)==int(os.environ['EXPECTED_STANDALONE_SIZE']),
+            'sha': str(ver.get('sha256') or '').lower()==os.environ['EXPECTED_STANDALONE_SHA256'],
+            'valid160': int(m.get('valid_images') or -1)==160,
+            'corrupt0': int(m.get('corrupt_images',-1))==0,
+          }
+          (art/'standalone-gate.json').write_text(json.dumps({'checks':checks,'pass':all(checks.values())},indent=2))
+          raise SystemExit(0 if all(checks.values()) else 61)
+          PY
+          test "${STANDALONE_AVAILABLE:-false}" = true
+          test "${STANDALONE_CORPUS_VALIDATED:-false}" = true
+          test -n "${STANDALONE_MANIFEST:-}"
+
+      - name: Materialize approved physical Phase 3A bank
+        run: |
+          set -euo pipefail
+          python scripts/ci/image_db_phase3b_restore.py \
+            --index-source "$PHASE3A_INDEX" \
+            --library "$LIBRARY" \
+            --archive "$CORPUS_DIR/Downloads(1)(1).zip" \
+            --archive "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --output "$ARTIFACT_DIR/phase3a-physical-restore.json"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$LIBRARY" --output "$ARTIFACT_DIR/pre-standalone-snapshot.json"
+
+      - name: Apply approved standalone increment
+        run: |
+          set -euo pipefail
+          python -m srstudio.images.standalone_cli \
+            --library "$LIBRARY" \
+            --product-db "$PRODUCT_DB" \
+            --manifest "$STANDALONE_MANIFEST" \
+            --state "$IMPORTS/standalone-state.json" \
+            --report "$ARTIFACT_DIR/first-ingest.json"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$LIBRARY" --output "$ARTIFACT_DIR/after-first-snapshot.json"
+
+      - name: Second ingest idempotency
+        run: |
+          set -euo pipefail
+          python -m srstudio.images.standalone_cli \
+            --library "$LIBRARY" \
+            --product-db "$PRODUCT_DB" \
+            --manifest "$STANDALONE_MANIFEST" \
+            --state "$IMPORTS/standalone-state.json" \
+            --report "$ARTIFACT_DIR/second-ingest.json"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$LIBRARY" --output "$ARTIFACT_DIR/after-second-snapshot.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          art=Path(os.environ['ARTIFACT_DIR'])
+          a=json.loads((art/'after-first-snapshot.json').read_text())
+          b=json.loads((art/'after-second-snapshot.json').read_text())
+          r=json.loads((art/'second-ingest.json').read_text()).get('metrics',{})
+          checks={
+            'physical_unchanged': a['physical']==b['physical'],
+            'canonical_unchanged': a['canonical']==b['canonical'],
+            'logical_unchanged': a['logical_signature_sha256']==b['logical_signature_sha256'],
+            'processed_zero': int(r.get('processed',-1))==0,
+          }
+          (art/'idempotency.json').write_text(json.dumps({'checks':checks,'pass':all(checks.values())},indent=2))
+          raise SystemExit(0 if all(checks.values()) else 62)
+          PY
+
+      - name: Recovery
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_image_standalone_recovery.py --junitxml="$ARTIFACT_DIR/recovery.xml" | tee "$ARTIFACT_DIR/recovery.log"
+
+      - name: Coverage audit, Top Missing and lookup performance
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR/final"
+          python scripts/ci/image_db_phase3_analysis.py \
+            --library "$LIBRARY" \
+            --product-db "$PRODUCT_DB" \
+            --corpus-source "$CORPUS_DIR/Downloads(1)(1).zip" \
+            --corpus-source "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --artifact-dir "$ARTIFACT_DIR/final" \
+            --review-limit 100
+
+      - name: Exact approved baseline gate
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          art=Path(os.environ['ARTIFACT_DIR'])
+          snap=json.loads((art/'after-second-snapshot.json').read_text())
+          cov=json.loads((art/'final/coverage-catalog-520.json').read_text())
+          audit=json.loads((art/'final/library-audit.json').read_text()).get('metrics',{})
+          idem=json.loads((art/'idempotency.json').read_text())
+          checks={
+            'catalog_520': int(cov.get('catalog_products') or cov.get('catalog') or 0)==520,
+            'physical_1037': int(snap.get('physical',-1))==1037,
+            'canonical_1037': int(snap.get('canonical',-1))==1037,
+            'auto_2': int(cov.get('auto_approved',-1))==2,
+            'likely_42': int(cov.get('likely',-1))==42,
+            'review_7': int(cov.get('review_required',-1))==7,
+            'missing_469': int(cov.get('missing',-1))==469,
+            'coverage_51': int(cov.get('any_candidate',-1))==51,
+            'coverage_pct': float(cov.get('any_candidate_coverage_percent',-1))==9.8077,
+            'physical_audit_1037': int(audit.get('physical_images',-1))==1037,
+            'canonical_audit_1037': int(audit.get('canonical_assets',-1))==1037,
+            'missing_provenance_0': int(audit.get('missing_provenance',0))==0,
+            'negative_invariants_0': int(audit.get('negative_invariant_violations',0))==0,
+            'duplicate_logical_0': int(audit.get('duplicate_logical_associations',0))==0,
+            'idempotency': idem.get('pass') is True,
+          }
+          payload={'baseline_materialized':all(checks.values()),'source':'FRESH REBUILD','checks':checks,'snapshot':snap,'coverage':cov,'audit':audit}
+          (art/'baseline-gate.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2))
+          print(json.dumps(payload,ensure_ascii=False,indent=2))
+          raise SystemExit(0 if payload['baseline_materialized'] else 63)
+          PY
+
+      - name: Upload baseline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-db-coverage-baseline-${{ github.run_id }}
+          path: |
+            artifacts/image-db-coverage-baseline
+            artifacts/image-db-coverage-library/index.json
+            artifacts/image-db-coverage-imports/*.json
+          retention-days: 14
+          compression-level: 6
