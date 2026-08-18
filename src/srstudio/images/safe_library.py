@@ -4,7 +4,10 @@ import json
 import shutil
 from pathlib import Path
 
-from srstudio.images.library import ImageLibrary
+from PIL import Image
+
+from srstudio.images.library import ImageAsset, ImageLibrary
+from srstudio.images.visual_dedup import is_conservative_visual_duplicate
 
 
 class ImageLibraryCorruptionError(RuntimeError):
@@ -12,11 +15,13 @@ class ImageLibraryCorruptionError(RuntimeError):
 
 
 class SafeImageLibrary(ImageLibrary):
-    """ImageLibrary persistence that never converts corruption into an empty bank.
+    """ImageLibrary with fail-closed persistence and conservative visual dedupe.
 
-    The original library API is intentionally preserved. Only persistence is
-    hardened: existing JSON is validated before writes, a rolling logical backup
-    is made, the replacement is validated, then atomically installed.
+    The original library API is intentionally preserved. Persistence is hardened:
+    existing JSON is validated before writes, a rolling logical backup is made,
+    the replacement is validated, then atomically installed. Perceptual duplicate
+    checks also require compatible image geometry so a dHash collision cannot by
+    itself merge unrelated assets.
     """
 
     @property
@@ -63,3 +68,71 @@ class SafeImageLibrary(ImageLibrary):
             except OSError:
                 pass
             raise
+
+    @staticmethod
+    def _source_visual_signature(source: str | Path) -> tuple[str, tuple[int, int]] | None:
+        path = Path(source)
+        try:
+            with Image.open(path) as image:
+                return ImageLibrary._dhash(image), image.size
+        except (OSError, ValueError):
+            return None
+
+    @staticmethod
+    def _is_visual_duplicate(
+        fingerprint: str,
+        source_size: tuple[int, int],
+        asset: ImageAsset,
+        max_distance: int,
+    ) -> bool:
+        return bool(
+            asset.perceptual_hash
+            and is_conservative_visual_duplicate(
+                fingerprint,
+                asset.perceptual_hash,
+                source_size,
+                (asset.width, asset.height),
+                max_hamming_distance=max_distance,
+            )
+        )
+
+    def find_near_duplicate(
+        self,
+        source: str | Path,
+        product_key: str = "",
+        max_distance: int = ImageLibrary.VISUAL_DUPLICATE_DISTANCE,
+    ) -> ImageAsset | None:
+        signature = self._source_visual_signature(source)
+        if signature is None:
+            return None
+        fingerprint, source_size = signature
+        normalized_key = self.normalize_product_key(product_key)
+        for data in self._load().values():
+            asset = self._asset(data)
+            if normalized_key and asset.product_key and self.normalize_product_key(asset.product_key) != normalized_key:
+                continue
+            if self._is_visual_duplicate(fingerprint, source_size, asset, max_distance):
+                return asset
+        return None
+
+    def find_cross_product_visual_duplicate(
+        self,
+        source: str | Path,
+        product_key: str,
+        max_distance: int = ImageLibrary.VISUAL_DUPLICATE_DISTANCE,
+    ) -> ImageAsset | None:
+        signature = self._source_visual_signature(source)
+        if signature is None:
+            return None
+        fingerprint, source_size = signature
+        normalized_key = self.normalize_product_key(product_key)
+        if not normalized_key:
+            return None
+        for data in self._load().values():
+            asset = self._asset(data)
+            asset_key = self.normalize_product_key(asset.product_key or asset.product_name)
+            if not asset_key or asset_key == normalized_key:
+                continue
+            if self._is_visual_duplicate(fingerprint, source_size, asset, max_distance):
+                return asset
+        return None
