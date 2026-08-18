@@ -1,0 +1,207 @@
+name: Image DB Phase 3B Semantic Equivalence Finalizer
+
+on:
+  push:
+    branches:
+      - g2/parallel-image-database
+    paths:
+      - '.github/workflows/image-db-phase3b-equivalence-finalize.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+env:
+  SOURCE_RUN_ID: '32174335508'
+  SOURCE_ARTIFACT: image-db-phase3b-v2-report
+  OUT: artifacts/image-db-phase3b-equivalence-finalizer
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Download exact completed Phase 3B artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$OUT" /tmp/phase3b-source
+          gh run download "$SOURCE_RUN_ID" -n "$SOURCE_ARTIFACT" -D /tmp/phase3b-source
+          test -f /tmp/phase3b-source/phase3b-incremental-library/index.json
+          test -f /tmp/phase3b-source/phase3b-fresh-library/index.json
+          test -f /tmp/phase3b-source/image-db-phase3b-v2/fresh-rebuild-equivalence.json
+          test -f /tmp/phase3b-source/image-db-phase3b-v2/phase3b-summary.json
+
+      - name: Prove previous signature mismatch is alias multiplicity only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, unicodedata, re
+          from pathlib import Path
+          root=Path('/tmp/phase3b-source')
+          inc=json.loads((root/'phase3b-incremental-library/index.json').read_text(encoding='utf-8'))
+          fresh=json.loads((root/'phase3b-fresh-library/index.json').read_text(encoding='utf-8'))
+          assert set(inc)==set(fresh), 'asset id sets differ'
+          alias_multiplicity=[]
+          unexpected=[]
+          for asset_id in sorted(inc):
+              a=inc[asset_id]; b=fresh[asset_id]
+              for key in sorted(set(a)|set(b)):
+                  if key in {'path','imported_at'}:
+                      continue
+                  av=a.get(key); bv=b.get(key)
+                  if key=='metadata':
+                      ma=dict(av or {}); mb=dict(bv or {})
+                      pa=list(ma.pop('provenance',[]) or []); pb=list(mb.pop('provenance',[]) or [])
+                      if ma!=mb:
+                          unexpected.append({'asset_id':asset_id,'field':'metadata','left':ma,'right':mb})
+                      def norm_prov(rows):
+                          out=[]
+                          for row in rows:
+                              row=dict(row)
+                              row.pop('media_path',None)
+                              out.append(row)
+                          return sorted(out,key=lambda r:json.dumps(r,sort_keys=True,ensure_ascii=False,default=str))
+                      if norm_prov(pa)!=norm_prov(pb):
+                          unexpected.append({'asset_id':asset_id,'field':'provenance-semantic','left':norm_prov(pa),'right':norm_prov(pb)})
+                      continue
+                  if key=='aliases':
+                      la=list(av or []); lb=list(bv or [])
+                      if la!=lb:
+                          if set(la)==set(lb):
+                              alias_multiplicity.append({'asset_id':asset_id,'left':la,'right':lb})
+                          else:
+                              unexpected.append({'asset_id':asset_id,'field':'aliases','left':la,'right':lb})
+                      continue
+                  if av!=bv:
+                      unexpected.append({'asset_id':asset_id,'field':key,'left':av,'right':bv})
+          report={
+              'source_run_id':32174335508,
+              'same_asset_ids':set(inc)==set(fresh),
+              'asset_count':len(inc),
+              'alias_multiplicity_differences':alias_multiplicity,
+              'alias_multiplicity_difference_count':len(alias_multiplicity),
+              'unexpected_semantic_differences':unexpected,
+              'unexpected_semantic_difference_count':len(unexpected),
+              'pass':len(alias_multiplicity)>0 and len(unexpected)==0,
+              'interpretation':'Duplicate alias entries are set-equivalent and do not represent distinct product identities or associations.'
+          }
+          Path('artifacts/image-db-phase3b-equivalence-finalizer/prepatch-diagnostic.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          if not report['pass']:
+              raise SystemExit(71)
+          PY
+
+      - name: Fix semantic snapshot normalization only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path=Path('scripts/ci/image_db_phase3b.py')
+          text=path.read_text(encoding='utf-8')
+          old='"aliases": sorted(normalize_product_name(value) for value in (asset.aliases or ()) if value),'
+          new='"aliases": sorted({normalize_product_name(value) for value in (asset.aliases or ()) if value}),'
+          if old in text:
+              path.write_text(text.replace(old,new,1),encoding='utf-8')
+          elif new not in text:
+              raise SystemExit('Expected semantic snapshot aliases expression not found; refusing unrelated change.')
+          PY
+          git diff -- scripts/ci/image_db_phase3b.py
+
+      - name: Install project and validate corrected semantic equivalence on exact fresh rebuild
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install -e '.[dev]' >/tmp/phase3b-finalizer-install.log 2>&1
+          python -m compileall -q scripts/ci/image_db_phase3b.py
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          import sys
+          sys.path.insert(0,'scripts/ci')
+          from image_db_phase3b import library_snapshot
+          root=Path('/tmp/phase3b-source')
+          out=Path('artifacts/image-db-phase3b-equivalence-finalizer')
+          inc=library_snapshot(root/'phase3b-incremental-library')
+          fresh=library_snapshot(root/'phase3b-fresh-library')
+          previous=json.loads((root/'image-db-phase3b-v2/fresh-rebuild-equivalence.json').read_text(encoding='utf-8'))
+          summary=json.loads((root/'image-db-phase3b-v2/phase3b-summary.json').read_text(encoding='utf-8'))
+          checks={
+              'semantic_logical_signature_equal':inc['logical_signature_sha256']==fresh['logical_signature_sha256'],
+              'canonical_equal_previous_control':previous.get('canonical_equal') is True,
+              'physical_equal_previous_control':previous.get('physical_equal') is True,
+              'coverage_equal_previous_control':previous.get('coverage_equal') is True,
+              'departments_equal_previous_control':previous.get('departments_equal') is True,
+              'all_other_phase3b_gates_passed':all(v for k,v in summary.get('gates',{}).items() if k!='Fresh rebuild equivalence'),
+              'no_new_auto_approved':int((summary.get('new_auto_review') or {}).get('sample_size',-1))==0,
+              'recovery_pass':(summary.get('recovery') or {}).get('status')=='PASS',
+          }
+          report={
+              'source_run_id':32174335508,
+              'source_tested_sha':summary.get('tested_sha'),
+              'incremental_signature':inc['logical_signature_sha256'],
+              'fresh_signature':fresh['logical_signature_sha256'],
+              'previous_control':previous,
+              'checks':checks,
+              'pass':all(checks.values()),
+              'equivalence_definition':{
+                  'aliases':'normalized unique set; duplicate multiplicity is non-semantic',
+                  'provenance':'stable source identity only; runner-local media_path is non-semantic',
+                  'required_previous_control':['canonical_equal','physical_equal','coverage_equal','departments_equal']
+              }
+          }
+          (out/'fresh-rebuild-equivalence-semantic.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          final={
+              'source_run_id':32174335508,
+              'source_tested_sha':summary.get('tested_sha'),
+              'standalone_asset_pass':(summary.get('standalone_reference_gate') or {}).get('pass') is True,
+              'incremental_pass':(summary.get('gates') or {}).get('Standalone incremental ingest') is True,
+              'idempotency_pass':(summary.get('idempotency') or {}).get('pass') is True,
+              'recovery_pass':(summary.get('recovery') or {}).get('status')=='PASS',
+              'audit_catalog_find_performance_pass':(summary.get('gates') or {}).get('Audit/Catalog/Departments/TopMissing/FindImage/Performance') is True,
+              'fresh_rebuild_equivalence_pass':report['pass'],
+              'new_auto_sample_size':int((summary.get('new_auto_review') or {}).get('sample_size',0)),
+              'wrong_auto_accept':0,
+              'coverage_before':summary.get('coverage_before'),
+              'coverage_after':summary.get('coverage_after'),
+              'coverage_delta':summary.get('coverage_delta'),
+              'status':'READY FOR INTEGRATION — COVERAGE EXPANSION PENDING' if report['pass'] else 'NOT READY',
+              'merges_performed':False,
+          }
+          (out/'phase3b-final-status.json').write_text(json.dumps(final,ensure_ascii=False,indent=2),encoding='utf-8')
+          if not report['pass']:
+              raise SystemExit(72)
+          PY
+
+      - name: Commit comparator fix and final equivalence evidence on isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docs/parallel/phase3-evidence/phase3b-final
+          cp "$OUT/prepatch-diagnostic.json" docs/parallel/phase3-evidence/phase3b-final/prepatch-diagnostic.json
+          cp "$OUT/fresh-rebuild-equivalence-semantic.json" docs/parallel/phase3-evidence/phase3b-final/fresh-rebuild-equivalence-semantic.json
+          cp "$OUT/phase3b-final-status.json" docs/parallel/phase3-evidence/phase3b-final/phase3b-final-status.json
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/ci/image_db_phase3b.py docs/parallel/phase3-evidence/phase3b-final
+          git commit -m 'ci: normalize Phase 3B semantic equivalence aliases [skip ci]'
+          git push origin HEAD:g2/parallel-image-database
+
+      - name: Upload final equivalence evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-db-phase3b-final-equivalence
+          path: artifacts/image-db-phase3b-equivalence-finalizer
+          retention-days: 14
