@@ -23,23 +23,25 @@ Rectangle {
     property bool hasImageSelection: false
     property bool syncing: false
 
-    function activePage() {
-        if (!scene.pages || !scene.pages.length)
+    function activePage(sourceScene) {
+        var currentScene = sourceScene || scene
+        if (!currentScene.pages || !currentScene.pages.length)
             return null
-        for (var i = 0; i < scene.pages.length; ++i)
-            if (scene.pages[i].id === scene.active_page_id)
-                return scene.pages[i]
-        return scene.pages[0]
+        for (var i = 0; i < currentScene.pages.length; ++i)
+            if (currentScene.pages[i].id === currentScene.active_page_id)
+                return currentScene.pages[i]
+        return currentScene.pages[0]
     }
 
-    function selectedImage() {
-        var page = activePage()
-        if (!page || !scene.editor)
+    function selectedImage(sourceScene) {
+        var currentScene = sourceScene || scene
+        var page = activePage(currentScene)
+        if (!page || !currentScene.editor)
             return null
-        var id = String(scene.editor.anchor_id || "")
+        var id = String(currentScene.editor.anchor_id || "")
         var node = id && page.nodes ? page.nodes[id] : null
-        if (!node && scene.editor.selection && scene.editor.selection.length)
-            node = page.nodes[String(scene.editor.selection[0])] || null
+        if (!node && currentScene.editor.selection && currentScene.editor.selection.length)
+            node = page.nodes[String(currentScene.editor.selection[0])] || null
         if (!node && page.nodes) {
             for (var nodeId in page.nodes) {
                 if (page.nodes[nodeId] && page.nodes[nodeId].selected) {
@@ -87,8 +89,9 @@ Rectangle {
     function refresh() {
         syncing = true
         try {
-            scene = JSON.parse(sceneBridge.sceneJson)
-            var selected = selectedImage()
+            var parsedScene = JSON.parse(sceneBridge.sceneJson)
+            var selected = selectedImage(parsedScene)
+            scene = parsedScene
             imageNode = selected
             hasImageSelection = selected !== null && selected !== undefined
             if (!hasImageSelection)
