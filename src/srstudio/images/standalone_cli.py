@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sqlite3
 from dataclasses import asdict
 from pathlib import Path
 from typing import Iterable
 
 from srstudio.images.safe_library import SafeImageLibrary
+from srstudio.images.standalone_state import (
+    STANDALONE_STATE_VERSION,
+    StandaloneStateStore,
+    catalog_fingerprint,
+    standalone_source_fingerprint,
+)
 from srstudio.images.standalone_training import (
     StandaloneImageSource,
     StandaloneProductImageTrainer,
@@ -16,14 +23,12 @@ from srstudio.images.standalone_training import (
 
 
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
+_NAME_COLUMNS = ("display_name", "name", "product_name", "ultimo_nome", "descricao", "description")
+_IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def discover_images(sources: Iterable[str | Path]) -> tuple[list[StandaloneImageSource], list[str]]:
-    """Discover standalone raster assets without inventing product labels.
-
-    The filename is deliberately left as implicit evidence inside the trainer. A
-    numeric/opaque filename therefore remains unknown instead of being auto-linked.
-    """
+    """Discover standalone raster assets without inventing product labels."""
     rows: list[StandaloneImageSource] = []
     warnings: list[str] = []
     seen: set[str] = set()
@@ -50,20 +55,41 @@ def discover_images(sources: Iterable[str | Path]) -> tuple[list[StandaloneImage
     return rows, warnings
 
 
+def _quote_identifier(value: str) -> str:
+    if not _IDENTIFIER_RE.fullmatch(value):
+        raise ValueError(f"Unsafe SQLite identifier: {value!r}")
+    return f'"{value}"'
+
+
 def catalog_names_from_sqlite(path: str | Path) -> list[str]:
-    """Read product names from the existing product DB without mutating its schema."""
+    """Read names from an existing products table in strict read-only mode.
+
+    Supports both SR Studio schemas (`name`/`display_name`) and the real historical
+    atacado database (`ultimo_nome`). No schema mutation or temporary table is
+    performed.
+    """
     database = Path(path)
     if not database.is_file():
         raise FileNotFoundError(database)
     uri = f"file:{database.resolve().as_posix()}?mode=ro"
     with sqlite3.connect(uri, uri=True) as connection:
+        columns = [str(row[1]) for row in connection.execute("PRAGMA table_info(products)").fetchall()]
+        if not columns:
+            raise ValueError("products table not found")
+        lower_map = {column.lower(): column for column in columns}
+        selected = [lower_map[name] for name in _NAME_COLUMNS if name in lower_map]
+        if not selected:
+            raise ValueError("products table has no supported product-name column")
+        identifiers = [_quote_identifier(column) for column in selected]
+        expression = "COALESCE(" + ", ".join(identifiers) + ", '')"
         rows = connection.execute(
-            "SELECT name, display_name FROM products WHERE COALESCE(name, '') <> '' OR COALESCE(display_name, '') <> ''"
+            f"SELECT {expression} FROM products WHERE {expression} <> ''"
         ).fetchall()
+
     result: list[str] = []
     seen: set[str] = set()
-    for name, display_name in rows:
-        value = " ".join(str(display_name or name or "").split())
+    for (raw_value,) in rows:
+        value = " ".join(str(raw_value or "").split())
         if value and value not in seen:
             seen.add(value)
             result.append(value)
@@ -83,10 +109,92 @@ def merge_sources(
     return list(by_path.values())
 
 
-def report_payload(report, *, discovery_warnings: Iterable[str] = ()) -> dict:
+def run_incremental_standalone(
+    library,
+    sources: Iterable[StandaloneImageSource],
+    catalog: Iterable[str],
+    *,
+    state_path: str | Path,
+    force: bool = False,
+):
+    """Process only changed standalone source+mapping+catalog inputs.
+
+    A record is skipped only when its fingerprint is unchanged and, for imported
+    candidates, the referenced canonical image still exists. Thus a valid
+    library restore/prune cannot leave stale state silently hiding a missing asset.
+    """
+    source_rows = list(sources)
+    catalog_rows = list(catalog)
+    store = StandaloneStateStore(state_path)
+    state = store.load()
+    records = state.setdefault("records", {})
+    catalog_digest = catalog_fingerprint(catalog_rows)
+
+    pending: list[StandaloneImageSource] = []
+    fingerprints: dict[str, str] = {}
+    skipped = 0
+    library_ids: set[str] | None = None
+
+    for source in source_rows:
+        path = Path(source.path)
+        if not path.is_file():
+            pending.append(source)
+            continue
+        key = str(path.resolve())
+        fingerprint = standalone_source_fingerprint(source, catalog_digest)
+        fingerprints[key] = fingerprint
+        record = records.get(key)
+        if not force and isinstance(record, dict) and record.get("fingerprint") == fingerprint:
+            status = str(record.get("status") or "")
+            image_id = str(record.get("image_id") or "")
+            if status == "unknown":
+                skipped += 1
+                continue
+            if image_id:
+                if library_ids is None:
+                    library_ids = {str(asset.id) for asset in library.all()}
+                if image_id in library_ids:
+                    skipped += 1
+                    continue
+            # accepted/review records without a live canonical image are stale
+            # relative to the library and intentionally fall through.
+        pending.append(source)
+
+    report = StandaloneProductImageTrainer(library, catalog_rows).train(pending)
+    for match in report.matches:
+        path = Path(match.path)
+        if not path.is_file():
+            continue
+        key = str(path.resolve())
+        fingerprint = fingerprints.get(key)
+        if not fingerprint:
+            continue
+        records[key] = {
+            "fingerprint": fingerprint,
+            "status": match.status,
+            "reason": match.reason,
+            "product_name": match.product_name,
+            "image_id": match.image_id,
+        }
+
+    state["version"] = STANDALONE_STATE_VERSION
+    state["catalog_sha256"] = catalog_digest
+    store.save(state)
+    return report, skipped, len(source_rows)
+
+
+def report_payload(
+    report,
+    *,
+    discovery_warnings: Iterable[str] = (),
+    skipped: int = 0,
+    discovered_total: int | None = None,
+) -> dict:
     return {
         "metrics": {
-            "discovered": report.discovered,
+            "discovered": report.discovered if discovered_total is None else int(discovered_total),
+            "processed": report.discovered,
+            "skipped": int(skipped),
             "accepted": report.accepted,
             "review": report.review,
             "unknown": report.unknown,
@@ -129,13 +237,15 @@ def _resolve_manifest_rows(manifest_path: str | Path) -> list[StandaloneImageSou
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Ingere fotos de produto isoladas com matching conservador contra o catálogo."
+        description="Ingere fotos de produto isoladas com matching conservador e incremental contra o catálogo."
     )
     parser.add_argument("sources", nargs="*", help="Imagens ou diretórios de imagens")
     parser.add_argument("--library", required=True, help="Diretório persistente do banco de imagens")
-    parser.add_argument("--product-db", default=None, help="SQLite products.db existente, aberto somente para leitura")
+    parser.add_argument("--product-db", default=None, help="SQLite de produtos existente, aberto somente para leitura")
     parser.add_argument("--catalog-name", action="append", default=[], help="Nome adicional de produto do catálogo")
     parser.add_argument("--manifest", default=None, help="JSON com mappings explícitos/validados")
+    parser.add_argument("--state", default=None, help="Estado incremental; padrão <library>/standalone_state.json")
+    parser.add_argument("--force", action="store_true", help="Reprocessa todas as fontes standalone desta execução")
     parser.add_argument("--report", default=None, help="Grava relatório JSON")
     return parser
 
@@ -154,11 +264,24 @@ def main(argv: list[str] | None = None) -> int:
             warnings.append(f"Product database could not be read: {args.product_db}: {exc}")
 
     library = SafeImageLibrary(args.library)
-    report = StandaloneProductImageTrainer(library, catalog).train(sources)
-    payload = report_payload(report, discovery_warnings=warnings)
+    state_path = args.state or str(Path(args.library) / "standalone_state.json")
+    report, skipped, discovered_total = run_incremental_standalone(
+        library,
+        sources,
+        catalog,
+        state_path=state_path,
+        force=args.force,
+    )
+    output = report_payload(
+        report,
+        discovery_warnings=warnings,
+        skipped=skipped,
+        discovered_total=discovered_total,
+    )
+    output["state_path"] = str(state_path)
     if args.report:
-        payload["report_path"] = str(write_report(args.report, payload))
-    print(json.dumps(payload, ensure_ascii=False, indent=2))
+        output["report_path"] = str(write_report(args.report, output))
+    print(json.dumps(output, ensure_ascii=False, indent=2))
     return 0
 
 
