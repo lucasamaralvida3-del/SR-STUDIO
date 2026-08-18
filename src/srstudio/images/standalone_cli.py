@@ -24,6 +24,7 @@ from srstudio.images.standalone_training import (
 
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tif", ".tiff"}
 _NAME_COLUMNS = ("display_name", "name", "product_name", "ultimo_nome", "descricao", "description")
+_PRODUCT_TABLES = ("products", "produtos", "product", "catalog", "catalogo")
 _IDENTIFIER_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
@@ -62,29 +63,48 @@ def _quote_identifier(value: str) -> str:
 
 
 def catalog_names_from_sqlite(path: str | Path) -> list[str]:
-    """Read names from an existing products table in strict read-only mode.
+    """Read product names from a known catalog table in strict read-only mode.
 
-    Supports both SR Studio schemas (`name`/`display_name`) and the real historical
-    atacado database (`ultimo_nome`). Empty preferred columns fall through to the
-    next supported name column; no schema mutation or temporary table is performed.
+    Supports the SR Studio `products` schema and the real historical atacado
+    `produtos` schema, plus a small explicit allow-list of legacy catalog table
+    names. The selected table and columns are discovered from SQLite metadata,
+    quoted defensively, and never created or modified. Empty preferred name
+    columns fall through to the next supported column such as `ultimo_nome`.
     """
     database = Path(path)
     if not database.is_file():
         raise FileNotFoundError(database)
     uri = f"file:{database.resolve().as_posix()}?mode=ro"
     with sqlite3.connect(uri, uri=True) as connection:
-        columns = [str(row[1]) for row in connection.execute("PRAGMA table_info(products)").fetchall()]
+        table_rows = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
+        ).fetchall()
+        actual_tables = {str(row[0]).lower(): str(row[0]) for row in table_rows if row and row[0]}
+        table_name = next(
+            (actual_tables[candidate] for candidate in _PRODUCT_TABLES if candidate in actual_tables),
+            None,
+        )
+        if table_name is None:
+            raise ValueError(
+                "product catalog table not found; expected one of: " + ", ".join(_PRODUCT_TABLES)
+            )
+
+        quoted_table = _quote_identifier(table_name)
+        columns = [
+            str(row[1])
+            for row in connection.execute(f"PRAGMA table_info({quoted_table})").fetchall()
+        ]
         if not columns:
-            raise ValueError("products table not found")
+            raise ValueError(f"{table_name} table has no columns")
         lower_map = {column.lower(): column for column in columns}
         selected = [lower_map[name] for name in _NAME_COLUMNS if name in lower_map]
         if not selected:
-            raise ValueError("products table has no supported product-name column")
+            raise ValueError(f"{table_name} table has no supported product-name column")
         identifiers = [_quote_identifier(column) for column in selected]
         nullable = [f"NULLIF(TRIM({identifier}), '')" for identifier in identifiers]
         expression = "COALESCE(" + ", ".join(nullable) + ", '')"
         rows = connection.execute(
-            f"SELECT {expression} FROM products WHERE {expression} <> ''"
+            f"SELECT {expression} FROM {quoted_table} WHERE {expression} <> ''"
         ).fetchall()
 
     result: list[str] = []
