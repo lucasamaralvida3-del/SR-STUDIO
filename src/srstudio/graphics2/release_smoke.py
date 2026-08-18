@@ -58,7 +58,10 @@ def run_release_smoke(output_dir: str | Path) -> dict[str, object]:
         from PySide6.QtCore import QLibraryInfo
         from PySide6.QtGui import QGuiApplication
     except Exception as exc:
-        raise RuntimeError("Release smoke requer PySide6/Qt Quick.") from exc
+        raise RuntimeError(
+            "Release smoke não conseguiu carregar o runtime PySide6/Qt: "
+            f"{type(exc).__name__}: {exc}"
+        ) from exc
 
     root = Path(output_dir).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
