@@ -70,6 +70,24 @@ def test_prune_qt_build_artifacts_removes_only_objects_directories(tmp_path):
     assert (keep / "qmldir").read_text(encoding="utf-8") == "module QtQuick"
 
 
+def test_release_bundle_rejects_unused_webengine_payload(tmp_path):
+    module = _build_module()
+    bundle = tmp_path / module.HOST_NAME
+    runtime = bundle / "_internal" / "PySide6"
+    runtime.mkdir(parents=True)
+    (runtime / "Qt6Core.dll").write_bytes(b"core")
+
+    module.reject_unexpected_qt_payload(bundle)
+
+    (runtime / "Qt6WebEngineCore.dll").write_bytes(b"unused-webengine")
+    try:
+        module.reject_unexpected_qt_payload(bundle)
+    except RuntimeError as exc:
+        assert "Qt6WebEngineCore.dll" in str(exc)
+    else:
+        raise AssertionError("Qt WebEngine não utilizado não pode entrar no host G2")
+
+
 def test_build_entry_uses_hardened_graphics2_entrypoint():
     source = (ROOT / "build" / "graphics2_host_entry.py").read_text(encoding="utf-8")
     assert "from srstudio.graphics2.entrypoint import main" in source
