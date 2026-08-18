@@ -290,3 +290,21 @@ def test_qt_host_wires_periodic_shutdown_and_close_guard_contract():
     assert "base_saved_digest == persistence.saved_digest" in text
     assert "base_saved_digest=base_saved_digest" in text
     assert "Autosave anterior ao último save descartado" in text
+
+
+def test_qt_host_invalidates_stale_autosave_generation_on_edit_save_and_close_contract():
+    text = Path(qt_host.__file__).read_text(encoding="utf-8")
+
+    assert "autosaveDone = Signal(bool, str, str, str, int)" in text
+    assert "self._autosave_generation = 0" in text
+    assert "self._closing = False" in text
+    assert "def _invalidate_autosave_worker(self) -> int:" in text
+    assert "def _begin_close_protection(self) -> None:" in text
+    assert "if document_digest(session.document) != before_digest:" in text
+    assert "generation = self._invalidate_autosave_worker()" in text
+    assert "if generation == self._autosave_generation and not self._closing:" in text
+    assert "if generation != self._autosave_generation:" in text
+    assert "Autosave antigo descartado; protegendo o estado atual." in text
+    assert "Autosave descartado; alterações foram desfeitas até o último save." in text
+    assert "self._begin_close_protection()" in text
+    assert "bridge._begin_close_protection()" in text
