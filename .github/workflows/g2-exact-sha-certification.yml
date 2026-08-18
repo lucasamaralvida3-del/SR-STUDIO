@@ -65,7 +65,7 @@ jobs:
           payload = {
               "requested_sha": "$requested",
               "checked_out_sha": "$actual",
-              "sha_match": $match,
+              "sha_match": "$match" == "true",
           }
           with open("g2-exact-sha-preflight.json", "w", encoding="utf-8") as f:
               json.dump(payload, f, indent=2)
