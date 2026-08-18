@@ -5,10 +5,11 @@ import json
 import pytest
 
 from srstudio.graphics2.command_router import GraphicsCommandRouter
-from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Transform
+from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Transform
 from srstudio.graphics2.operations import GraphicsSession
 from srstudio.graphics2.package import load_package, save_package
 from srstudio.graphics2.preflight import assert_document_integrity
+from srstudio.graphics2.semantic_blocks import build_semantic_blocks
 
 
 def _page(index: int, *, nodes: int = 20) -> GraphicsPage:
@@ -47,6 +48,61 @@ def _document(page_count: int, *, nodes_per_page: int = 20) -> GraphicsDocument:
 
 def _canonical(document: GraphicsDocument) -> str:
     return json.dumps(document.to_dict(), ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+
+
+def _locked_text(name: str, text: str, x: float, y: float, width: float, height: float) -> GraphicsNode:
+    return GraphicsNode(
+        kind=NodeKind.TEXT,
+        name=name,
+        text=text,
+        locked=True,
+        transform=Transform(x=x, y=y, width=width, height=height),
+        style={"font_family": "Arial", "font_size": 24},
+        metadata={"source_name": name},
+    )
+
+
+def _product_card_document(product_count: int) -> tuple[GraphicsDocument, str]:
+    document = GraphicsDocument(name=f"QA ProductCards x{product_count}")
+    page = document.active_page
+    group = GraphicsNode(
+        kind=NodeKind.GROUP,
+        name="Group Product QA",
+        transform=Transform(x=40, y=40, width=320, height=260),
+        metadata={
+            "source": "pptx-group",
+            "source_name": "Group Product QA",
+            "pptx_group_generated": True,
+            "pptx_group_depth": 1,
+        },
+    )
+    page.add_node(group)
+    name = _locked_text("Product Name", "PRODUTO QA 00", 60, 55, 260, 45)
+    currency = _locked_text("Currency", "R$", 160, 205, 38, 42)
+    whole = _locked_text("Whole", "10", 198, 170, 90, 80)
+    cents = _locked_text("Cents", ",00", 288, 175, 48, 38)
+    unit = _locked_text("Unit", "UN", 288, 220, 48, 32)
+    image = GraphicsNode(
+        kind=NodeKind.IMAGE,
+        name="Picture 1",
+        locked=True,
+        transform=Transform(x=75, y=105, width=150, height=120),
+        metadata={"source_name": "Picture 1"},
+    )
+    for node in (name, image, currency, whole, cents, unit):
+        page.add_node(node, parent_id=group.id)
+
+    document.metadata["products"] = [
+        {
+            "id": f"qa-product-{index:02d}",
+            "display_name": f"PRODUTO QA {index:02d}",
+            "price": f"{10 + index},{index % 100:02d}",
+            "unit": "UN",
+            "image_path": f"/tmp/qa-product-{index:02d}.png",
+        }
+        for index in range(product_count)
+    ]
+    return document, name.id
 
 
 @pytest.mark.parametrize("page_count", [10, 25, 50])
@@ -100,3 +156,58 @@ def test_undo_redo_move_loop_returns_to_exact_geometry():
     final = router.session.page.node(node_id).transform
     assert (final.x, final.y) == pytest.approx(original_xy)
     assert_document_integrity(router.session.document)
+
+
+def test_thirty_one_product_cards_keep_bindings_isolated_and_roundtrip(tmp_path):
+    product_count = 31
+    document, original_name_id = _product_card_document(product_count)
+    build_semantic_blocks(document)
+    router = GraphicsCommandRouter(GraphicsSession(document))
+    page = router.session.page
+    assert len(page.slots) == 1
+    original_slot_id = next(iter(page.slots))
+
+    first_bind = router.dispatch(
+        {"name": "bind_product", "slot_id": original_slot_id, "product_id": "qa-product-00"}
+    )
+    assert first_bind.ok and first_bind.changed
+    slot_ids = [original_slot_id]
+
+    for index in range(1, product_count):
+        selected = router.dispatch(
+            {"name": "select", "node_id": original_name_id, "semantic": True, "semantic_scope": "card"}
+        )
+        assert selected.ok
+        duplicated = router.dispatch(
+            {"name": "duplicate", "dx": 360 * (index % 3), "dy": 280 * (index // 3)}
+        )
+        assert duplicated.ok and duplicated.changed
+        assert len(duplicated.payload["slot_ids"]) == 1
+        clone_slot_id = duplicated.payload["slot_ids"][0]
+        slot_ids.append(clone_slot_id)
+        bound = router.dispatch(
+            {"name": "bind_product", "slot_id": clone_slot_id, "product_id": f"qa-product-{index:02d}"}
+        )
+        assert bound.ok and bound.changed
+
+    page = router.session.page
+    assert len(slot_ids) == product_count
+    assert len(set(slot_ids)) == product_count
+    assert len(page.slots) == product_count
+    bound_name_ids: set[str] = set()
+    for index, slot_id in enumerate(slot_ids):
+        slot = page.slots[slot_id]
+        assert slot.product_id == f"qa-product-{index:02d}"
+        name_id = slot.node_by_role[BindingRole.NAME.value]
+        assert name_id not in bound_name_ids
+        bound_name_ids.add(name_id)
+        assert page.node(name_id).text == f"PRODUTO QA {index:02d}"
+
+    assert_document_integrity(router.session.document)
+    expected = _canonical(router.session.document)
+    path = tmp_path / "qa-product-cards-31.srscene"
+    save_package(router.session.document, path, embed_local_assets=True)
+    reopened = load_package(path, extract_assets_to=tmp_path / "product-assets")
+    assert_document_integrity(reopened)
+    assert _canonical(reopened) == expected
+    assert len(reopened.active_page.slots) == product_count
