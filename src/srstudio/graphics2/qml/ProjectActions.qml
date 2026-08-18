@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 
 Rectangle {
     id: panel
-    width: 790
+    width: 880
     height: 42
     anchors.left: parent ? parent.left : undefined
     anchors.top: parent ? parent.top : undefined
@@ -79,14 +79,14 @@ Rectangle {
             }
         }
         ToolButton {
-            text: "+"
+            text: "+ Página"
             enabled: !sceneBridge.busy
             ToolTip.text: "Adicionar uma nova página ao encarte"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch(JSON.stringify({"name": "add_page"}))
         }
         ToolButton {
-            text: "⧉"
+            text: "Duplicar pág."
             enabled: !sceneBridge.busy
             ToolTip.text: "Duplicar a página atual com identidades internas seguras"
             ToolTip.visible: hovered
