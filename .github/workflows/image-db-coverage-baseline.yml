@@ -222,12 +222,20 @@ jobs:
           set -euo pipefail
           python - <<'PY'
           import json, os
+          from datetime import datetime, timezone
           from pathlib import Path
+
           art=Path(os.environ['ARTIFACT_DIR'])
-          snap=json.loads((art/'after-second-snapshot.json').read_text())
-          cov=json.loads((art/'final/coverage-catalog-520.json').read_text())
-          audit=json.loads((art/'final/library-audit.json').read_text()).get('metrics',{})
-          idem=json.loads((art/'idempotency.json').read_text())
+          snap_path=art/'after-second-snapshot.json'
+          cov_path=art/'final/coverage-catalog-520.json'
+          audit_path=art/'final/library-audit.json'
+          idem_path=art/'idempotency.json'
+
+          snap=json.loads(snap_path.read_text())
+          cov=json.loads(cov_path.read_text())
+          audit=json.loads(audit_path.read_text()).get('metrics',{})
+          idem=json.loads(idem_path.read_text())
+
           checks={
             'catalog_520': int(cov.get('catalog_products') or cov.get('catalog') or 0)==520,
             'physical_1037': int(snap.get('physical',-1))==1037,
@@ -245,6 +253,121 @@ jobs:
             'duplicate_logical_0': int(audit.get('duplicate_logical_associations',0))==0,
             'idempotency': idem.get('pass') is True,
           }
+
+          actuals={
+            'catalog_520': int(cov.get('catalog_products') or cov.get('catalog') or 0),
+            'physical_1037': int(snap.get('physical',-1)),
+            'canonical_1037': int(snap.get('canonical',-1)),
+            'auto_2': int(cov.get('auto_approved',-1)),
+            'likely_42': int(cov.get('likely',-1)),
+            'review_7': int(cov.get('review_required',-1)),
+            'missing_469': int(cov.get('missing',-1)),
+            'coverage_51': int(cov.get('any_candidate',-1)),
+            'coverage_pct': float(cov.get('any_candidate_coverage_percent',-1)),
+            'physical_audit_1037': int(audit.get('physical_images',-1)),
+            'canonical_audit_1037': int(audit.get('canonical_assets',-1)),
+            'missing_provenance_0': int(audit.get('missing_provenance',0)),
+            'negative_invariants_0': int(audit.get('negative_invariant_violations',0)),
+            'duplicate_logical_0': int(audit.get('duplicate_logical_associations',0)),
+            'idempotency': idem.get('pass'),
+          }
+          expected={
+            'catalog_520': 520,
+            'physical_1037': 1037,
+            'canonical_1037': 1037,
+            'auto_2': 2,
+            'likely_42': 42,
+            'review_7': 7,
+            'missing_469': 469,
+            'coverage_51': 51,
+            'coverage_pct': 9.8077,
+            'physical_audit_1037': 1037,
+            'canonical_audit_1037': 1037,
+            'missing_provenance_0': 0,
+            'negative_invariants_0': 0,
+            'duplicate_logical_0': 0,
+            'idempotency': True,
+          }
+          sources={
+            'catalog_520': (str(cov_path), 'catalog_products || catalog'),
+            'physical_1037': (str(snap_path), 'physical'),
+            'canonical_1037': (str(snap_path), 'canonical'),
+            'auto_2': (str(cov_path), 'auto_approved'),
+            'likely_42': (str(cov_path), 'likely'),
+            'review_7': (str(cov_path), 'review_required'),
+            'missing_469': (str(cov_path), 'missing'),
+            'coverage_51': (str(cov_path), 'any_candidate'),
+            'coverage_pct': (str(cov_path), 'any_candidate_coverage_percent'),
+            'physical_audit_1037': (str(audit_path), 'metrics.physical_images'),
+            'canonical_audit_1037': (str(audit_path), 'metrics.canonical_assets'),
+            'missing_provenance_0': (str(audit_path), 'metrics.missing_provenance'),
+            'negative_invariants_0': (str(audit_path), 'metrics.negative_invariant_violations'),
+            'duplicate_logical_0': (str(audit_path), 'metrics.duplicate_logical_associations'),
+            'idempotency': (str(idem_path), 'pass'),
+          }
+
+          invariants=[]
+          for name in checks:
+            exp=expected[name]
+            act=actuals[name]
+            delta=None if isinstance(exp, bool) else act-exp
+            source_file, source_field=sources[name]
+            item={
+              'name': name,
+              'expected': exp,
+              'actual': act,
+              'delta': delta,
+              'passed': bool(checks[name]),
+              'source_file': source_file,
+              'source_field': source_field,
+            }
+            if name == 'coverage_pct':
+              item['absolute_delta']=abs(act-exp)
+              item['comparison']='=='
+              item['abs_tolerance']=None
+            invariants.append(item)
+            print(f"BASELINE_GATE {name} expected={json.dumps(exp)} actual={json.dumps(act)} delta={json.dumps(delta)} pass={str(bool(checks[name])).lower()} source_file={source_file} source_field={source_field}")
+
+          def provenance(path, producer_step, consumed_by_gate):
+            p=Path(path)
+            exists=p.exists()
+            stat=p.stat() if exists else None
+            return {
+              'path': str(p),
+              'exists': exists,
+              'size': stat.st_size if stat else None,
+              'mtime': datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat() if stat else None,
+              'producer_step': producer_step,
+              'consumed_by_gate': consumed_by_gate,
+            }
+
+          file_provenance=[
+            provenance(snap_path, 'Second ingest idempotency', True),
+            provenance(cov_path, 'Coverage audit, Top Missing and lookup performance', True),
+            provenance(audit_path, 'Coverage audit, Top Missing and lookup performance', True),
+            provenance(idem_path, 'Second ingest idempotency', True),
+            provenance(Path('.phase3-corpus/baseline.json'), None, False),
+            provenance(Path('coverage/coverage-summary.json'), None, False),
+            provenance(Path('post-standalone/audit-report.json'), None, False),
+            provenance(Path('post-standalone/idempotency.json'), None, False),
+          ]
+
+          sha_file=art/'sha-verification.json'
+          sha_payload=json.loads(sha_file.read_text()) if sha_file.exists() else {}
+          failed=[item['name'] for item in invariants if not item['passed']]
+          diagnostic={
+            'requested_sha': sha_payload.get('requested_sha', os.environ.get('REQUESTED_SHA')),
+            'checked_out_sha': sha_payload.get('checked_out_sha'),
+            'conditions_total': len(invariants),
+            'conditions_pass': sum(1 for item in invariants if item['passed']),
+            'conditions_fail': len(failed),
+            'failed_invariants': failed,
+            'invariants': invariants,
+            'file_provenance': file_provenance,
+          }
+          (art/'baseline-gate-diagnostic.json').write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          print('BASELINE_GATE_DIAGNOSTIC '+json.dumps(diagnostic, ensure_ascii=False))
+
           payload={'baseline_materialized':all(checks.values()),'source':'FRESH REBUILD','checks':checks,'snapshot':snap,'coverage':cov,'audit':audit}
           (art/'baseline-gate.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2))
           print(json.dumps(payload,ensure_ascii=False,indent=2))
