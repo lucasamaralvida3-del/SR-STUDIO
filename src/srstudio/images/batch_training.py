@@ -95,6 +95,9 @@ def _decision_payload(decision) -> dict:
 def _lookup_payload(result) -> dict:
     return {
         "confidence": result.confidence,
+        "match_type": result.match_type,
+        "quality_score": result.quality_score,
+        "provenance": list(result.provenance),
         "best_match": _candidate_payload(result.best_match),
         "alternatives": [_candidate_payload(item) for item in result.alternatives],
     }
@@ -115,6 +118,10 @@ def _candidate_payload(candidate) -> dict | None:
         "source_file": getattr(asset, "source_file", ""),
         "slide_index": getattr(asset, "slide_index", 0),
         "score": candidate.score,
+        "identity_score": candidate.identity_score,
+        "match_type": candidate.match_type,
+        "quality_score": candidate.quality_score,
+        "provenance": list(candidate.provenance),
         "reason": candidate.reason,
     }
 
