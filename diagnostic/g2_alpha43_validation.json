@@ -1,10 +1,10 @@
 {
   "alpha": "0.43.0-alpha",
-  "validated_sha": "32e4f35f399b3fefdd0a1539b8e5df3825c7311b",
-  "workflow_run_id": 32082611310,
+  "validated_sha": "aa5a3d5abedb433c64fbc34c7a9624b5f8bb1840",
+  "workflow_run_id": 32082927424,
   "workflow_run_attempt": 1,
   "ubuntu_g2": "success",
   "windows_qt_quick": "failure",
   "overall": "failure",
-  "recorded_at_utc": "2026-08-17T23:58:44.471731+00:00"
+  "recorded_at_utc": "2026-08-18T00:03:22.843613+00:00"
 }
