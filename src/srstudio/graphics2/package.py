@@ -207,7 +207,35 @@ def _write_assets(
             scene["assets"][asset_id]["source"] = stored
             scene["assets"][asset_id]["embedded"] = True
             scene["assets"][asset_id]["sha256"] = digest
+            _rebind_serialized_asset_nodes(scene, asset_id, stored)
         manifest["assets"][asset_id] = {"sha256": digest, "stored": stored}
+
+
+def _rebind_serialized_asset_nodes(scene: dict[str, Any], asset_id: str, stored: str) -> None:
+    """Mantém bindings de imagem portáteis dentro do pacote.
+
+    O documento em memória pode apontar para um cache extraído em
+    `~/.srstudio5/runtime-g2`. Esse caminho é transitório e específico da
+    máquina. Ao embutir o asset, o `scene.json` deve apontar para o membro ZIP,
+    nunca para o cache local.
+    """
+
+    for page in scene.get("pages") or []:
+        if not isinstance(page, dict):
+            continue
+        nodes = page.get("nodes")
+        if not isinstance(nodes, dict):
+            continue
+        for node in nodes.values():
+            if not isinstance(node, dict) or str(node.get("asset_id") or "") != str(asset_id):
+                continue
+            metadata = node.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+                node["metadata"] = metadata
+            metadata["bound_image_source"] = stored
+            metadata.pop("package_asset_extracted", None)
+            metadata.pop("graphics2_preview_original_source", None)
 
 
 def _write_fonts(
