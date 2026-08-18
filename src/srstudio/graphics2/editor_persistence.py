@@ -6,7 +6,8 @@ O host usa este módulo para responder sem heurística de UI:
 1. o documento mudou desde o último save confirmado?;
 2. o autosave já cobre exatamente o estado atual?;
 3. existe um recovery point mais novo que o projeto salvo em disco?;
-4. qual recovery pertence à última sessão que realmente ficou pendente?
+4. qual recovery pertence à última sessão que realmente ficou pendente?;
+5. qual foi o último projeto `.srscene` salvo/aberto para continuar o trabalho?
 """
 
 from dataclasses import dataclass
@@ -105,13 +106,7 @@ class RecoverySession:
 
 
 class EditorRecoveryJournal:
-    """Ponteiro atômico para a última sessão com mudanças ainda não salvas.
-
-    Recovery points antigos continuam disponíveis para diagnóstico, mas somente
-    este ponteiro pode fazer o Studio retomar automaticamente um projeto ao abrir
-    sem arquivo. Isso evita restaurar um autosave histórico já superado por um
-    save manual mais novo.
-    """
+    """Ponteiro atômico para a última sessão com mudanças ainda não salvas."""
 
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
@@ -128,9 +123,7 @@ class EditorRecoveryJournal:
             "source_path": str(source) if source else "",
         }
         with self._lock:
-            temp = self.path.with_suffix(".json.tmp")
-            temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
-            os.replace(temp, self.path)
+            _atomic_json(self.path, payload)
 
     def clear(self, document_id: str | None = None) -> None:
         with self._lock:
@@ -170,3 +163,63 @@ class EditorRecoveryJournal:
             except OSError:
                 continue
         return None
+
+
+@dataclass(slots=True, frozen=True)
+class RecentProject:
+    document_id: str
+    path: Path
+
+
+class EditorRecentProject:
+    """Ponteiro separado para o último `.srscene` salvo/aberto com sucesso.
+
+    Recovery e projeto recente têm semânticas diferentes: recovery ganha sempre
+    quando há alterações pendentes; se não houver recovery, o Studio pode abrir
+    o último projeto salvo para cumprir o fluxo diário "fechar → abrir → continuar".
+    """
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root)
+        self.root.mkdir(parents=True, exist_ok=True)
+        self.path = self.root / "last-project.json"
+        self._lock = RLock()
+
+    def mark(self, project_path: str | Path, *, document_id: str) -> None:
+        project = Path(project_path).resolve()
+        if project.suffix.lower() not in {".srscene", ".zip"}:
+            return
+        payload = {"document_id": str(document_id), "path": str(project)}
+        with self._lock:
+            _atomic_json(self.path, payload)
+
+    def current(self) -> RecentProject | None:
+        with self._lock:
+            try:
+                raw = json.loads(self.path.read_text(encoding="utf-8"))
+                if not isinstance(raw, dict):
+                    return None
+                document_id = str(raw.get("document_id") or "")
+                project_text = str(raw.get("path") or "")
+                if not document_id or not project_text:
+                    return None
+                project = Path(project_text)
+                if not project.is_file() or project.suffix.lower() not in {".srscene", ".zip"}:
+                    return None
+                return RecentProject(document_id=document_id, path=project)
+            except (OSError, ValueError, TypeError, json.JSONDecodeError):
+                return None
+
+    def clear(self, document_id: str | None = None) -> None:
+        with self._lock:
+            if document_id:
+                current = self.current()
+                if current is None or current.document_id != str(document_id):
+                    return
+            self.path.unlink(missing_ok=True)
+
+
+def _atomic_json(path: Path, payload: dict[str, object]) -> None:
+    temp = path.with_suffix(path.suffix + ".tmp")
+    temp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    os.replace(temp, path)
