@@ -55,7 +55,14 @@ def install_editor_commands(command_module: Any) -> None:
             )
         if name == "paste":
             return _paste_clipboard(self, command, command_module)
-        return original_dispatch(self, command)
+
+        result = original_dispatch(self, command)
+        if name == "reorder_page" and result.ok and result.changed:
+            # Reordenar outra página também a torna ativa no router histórico.
+            # A seleção antiga pertence à página anterior e não pode sobreviver
+            # como IDs órfãos para o próximo move/delete/atalho.
+            self.session.clear_selection()
+        return result
 
     router_type.dispatch = dispatch
     router_type._sr_editor_commands_installed = True
