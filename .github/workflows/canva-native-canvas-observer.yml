@@ -1,0 +1,58 @@
+name: Canva Native Canvas Import Observer
+
+on:
+  push:
+    branches:
+      - g2/import-canva-native-canvas
+    paths:
+      - '.github/workflows/canva-native-canvas-observer.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      TARGET_SHA: 60a38375673ef759d9cb2c06f791b7c3672ed695
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wait for validation and persist evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/canvas-observer docs/parallel/canva-native-canvas
+          run_id=''
+          for attempt in $(seq 1 80); do
+            row=$(gh run list --workflow canva-native-canvas-import.yml --branch g2/import-canva-native-canvas --commit "$TARGET_SHA" --limit 5 --json databaseId,status,conclusion,headSha,url,createdAt,updatedAt,workflowName --jq '.[0] // empty' || true)
+            if [ -n "$row" ]; then
+              printf '%s\n' "$row" > /tmp/canvas-observer/run-list.json
+              run_id=$(printf '%s\n' "$row" | jq -r '.databaseId')
+              status=$(printf '%s\n' "$row" | jq -r '.status')
+              echo "run=$run_id status=$status"
+              [ "$status" = completed ] && break
+            fi
+            sleep 10
+          done
+          [ -n "$run_id" ] || { echo 'validation run not found' >&2; exit 2; }
+          gh run view "$run_id" --json databaseId,status,conclusion,headSha,headBranch,event,url,createdAt,updatedAt,workflowName,jobs > /tmp/canvas-observer/run.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" > /tmp/canvas-observer/artifacts.json
+          gh run download "$run_id" -n canva-native-canvas-validation -D /tmp/canvas-observer/artifact || true
+          cp /tmp/canvas-observer/run.json docs/parallel/canva-native-canvas/run.json
+          cp /tmp/canvas-observer/artifacts.json docs/parallel/canva-native-canvas/artifacts.json
+          if [ -d /tmp/canvas-observer/artifact ]; then
+            find /tmp/canvas-observer/artifact -type f -maxdepth 3 -print
+            cp -r /tmp/canvas-observer/artifact/* docs/parallel/canva-native-canvas/ 2>/dev/null || true
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/parallel/canva-native-canvas
+          git commit -m 'test: persist Canva native canvas validation evidence [skip ci]' || exit 0
+          git push origin HEAD:g2/import-canva-native-canvas
