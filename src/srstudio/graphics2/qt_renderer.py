@@ -235,7 +235,7 @@ def _draw_text(painter, node: GraphicsNode, QtCore, QtGui, *, color_override: st
     logical_px = base_size * (96.0 / 72.0) if unit in {"pt", "point", "points"} else base_size
     font = QtGui.QFont(family)
     font.setPixelSize(max(1, round(logical_px)))
-    font.setBold(float(style.get("font_weight") or 400) >= 700)
+    _set_font_weight(font, style.get("font_weight"), QtGui)
     font.setItalic(bool(style.get("italic")))
     if style.get("letter_spacing") not in (None, ""):
         font.setLetterSpacing(QtGui.QFont.AbsoluteSpacing, float(style.get("letter_spacing") or 0))
@@ -264,6 +264,24 @@ def _draw_text(painter, node: GraphicsNode, QtCore, QtGui, *, color_override: st
             painter.restore()
         return
     painter.drawText(rect, flags, text)
+
+
+def _set_font_weight(font, value: object, QtGui) -> None:
+    """Preserva pesos tipográficos CSS/DrawingML em vez de colapsá-los em bold.
+
+    A SR Scene usa a escala CSS 100..900. ``QFont.setBold`` converte qualquer
+    peso >=700 para Bold (700), perdendo ExtraBold/Black — justamente comuns em
+    preços e títulos. Qt 6 expõe os mesmos degraus na enum ``QFont.Weight``.
+    """
+
+    try:
+        requested = float(400 if value in (None, "") else value)
+    except (TypeError, ValueError):
+        requested = 400.0
+    requested = _clamp(requested, 100.0, 900.0)
+    weights = tuple(range(100, 1000, 100))
+    resolved = min(weights, key=lambda candidate: (abs(candidate - requested), candidate))
+    font.setWeight(QtGui.QFont.Weight(resolved))
 
 
 def _explicit_multiline_layout(text: str, rect, style: dict, font, QtCore, QtGui):
