@@ -286,26 +286,47 @@ def _set_font_weight(font, value: object, QtGui) -> None:
     font.setWeight(QtGui.QFont.Weight(resolved))
 
 
+def _automatic_wrapped_lines(text: str, width: float, font, QtGui) -> list[tuple[str, float]]:
+    """Usa o line breaker do Qt Quick/QText para descobrir apenas as linhas.
+
+    O renderer continua responsável pelos baselines DrawingML. ``QTextLayout``
+    entra aqui somente porque ``QPainter.drawText(TextWordWrap)`` não expõe o
+    avanço vertical entre linhas. A mesma ``QFont`` já contém family, pixel size,
+    weight, italic e tracking, portanto o cálculo de wrap não duplica métricas.
+    """
+
+    layout = QtGui.QTextLayout(str(text or ""), font)
+    option = QtGui.QTextOption()
+    option.setWrapMode(QtGui.QTextOption.WrapMode.WordWrap)
+    layout.setTextOption(option)
+    result: list[tuple[str, float]] = []
+    layout.beginLayout()
+    try:
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(max(0.1, float(width)))
+            start = int(line.textStart())
+            length = int(line.textLength())
+            result.append((str(text or "")[start : start + length], float(line.naturalTextWidth())))
+    finally:
+        layout.endLayout()
+    return result
+
+
 def _explicit_multiline_layout(text: str, rect, style: dict, font, QtCore, QtGui):
-    """Calcula linhas explícitas com o baseline spacing DrawingML exato.
+    """Calcula baselines DrawingML para multiline explícito ou auto-wrap.
 
     ``a:lnSpc/a:spcPts`` define a distância vertical entre baselines, não um
-    fator genérico de fonte. O QPainter ``drawText(QRectF, ...)`` não expõe esse
-    controle. Para textos que já possuem quebras explícitas e cabem horizontalmente
-    na caixa, desenhamos cada linha no baseline calculado. Se uma linha precisar
-    de word-wrap, retornamos ``None`` e mantemos a rota nativa do Qt para não
-    inventar quebras diferentes do Office.
+    fator genérico de fonte. O QPainter ``drawText(QRectF, TextWordWrap, ...)``
+    não permite controlar esse avanço. O comportamento histórico de parágrafos
+    explícitos permanece intacto; para texto sem ``\n`` que realmente precise
+    de wrap, ``QTextLayout`` calcula as mesmas quebras Qt e este helper aplica o
+    ``line_spacing_px``/percentual da Scene sem alterar o conteúdo persistido.
     """
 
     normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
-    if "\n" not in normalized:
-        return None
-    lines = normalized.split("\n")
-    while len(lines) > 1 and lines[-1] == "":
-        lines.pop()
-    if len(lines) <= 1:
-        return None
-
     metrics = QtGui.QFontMetricsF(font)
     line_advance = 0.0
     if style.get("line_spacing_px") not in (None, ""):
@@ -323,9 +344,23 @@ def _explicit_multiline_layout(text: str, rect, style: dict, font, QtCore, QtGui
     if line_advance <= 0.0:
         return None
 
-    widths = [float(metrics.horizontalAdvance(line)) for line in lines]
-    if not bool(style.get("nowrap")) and any(width > rect.width() + 0.75 for width in widths):
-        return None
+    if "\n" in normalized:
+        lines = normalized.split("\n")
+        while len(lines) > 1 and lines[-1] == "":
+            lines.pop()
+        if len(lines) <= 1:
+            return None
+        widths = [float(metrics.horizontalAdvance(line)) for line in lines]
+        if not bool(style.get("nowrap")) and any(width > rect.width() + 0.75 for width in widths):
+            return None
+    else:
+        if bool(style.get("nowrap")):
+            return None
+        wrapped = _automatic_wrapped_lines(normalized, rect.width(), font, QtGui)
+        if len(wrapped) <= 1:
+            return None
+        lines = [line for line, _ in wrapped]
+        widths = [width for _, width in wrapped]
 
     ascent = float(metrics.ascent())
     descent = float(metrics.descent())
@@ -594,7 +629,7 @@ def _draw_rect(painter, node: GraphicsNode, QtCore, QtGui) -> None:
 def _draw_ellipse(painter, node: GraphicsNode, QtCore, QtGui) -> None:
     rect = QtCore.QRectF(node.transform.x, node.transform.y, node.transform.width, node.transform.height)
     painter.setPen(_pen(node.style, QtCore, QtGui))
-    painter.setBrush(_brush(node.style, QtCore, QtGui, rect=rect))
+    painter.setBrush(_brush(node.style, QtCore, QtGui))
     painter.drawEllipse(rect)
 
 
@@ -609,7 +644,7 @@ def _draw_path(painter, page: GraphicsPage, node: GraphicsNode, warnings: list[R
     custom = _custom_path(node.metadata.get("custom_path"), rect, QtGui)
     if custom is not None:
         painter.setPen(_pen(node.style, QtCore, QtGui))
-        painter.setBrush(_brush(node.style, QtCore, QtGui, rect=rect))
+        painter.setBrush(_brush(node.style, QtCore, QtGui))
         painter.drawPath(custom)
         return
     path_text = str(node.metadata.get("svg_path") or "").strip()
