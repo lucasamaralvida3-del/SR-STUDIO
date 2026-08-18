@@ -21,7 +21,7 @@ from hashlib import sha1
 from typing import Any, Callable
 
 from .commercial_price_runtime import apply_commercial_price_blocks
-from .model import GraphicsDocument, GraphicsPage, SmartSlot
+from .model import BindingRole, GraphicsDocument, GraphicsPage, SmartSlot
 from .semantic_named_slot_runtime import recover_explicit_named_slots
 from .semantic_price_runtime import install_complete_price_recovery_guard
 
@@ -219,9 +219,16 @@ def _slot_semantic_key(slot: SmartSlot) -> str:
     group_id = str(slot.metadata.get("source_group_id") or "").strip()
     if group_id:
         return f"group:{group_id}"
+    # ``retail_price`` é um alias derivado adicionado pela compatibilidade do
+    # semantic v8 depois que o builder promove um PriceBlock ``complete``. Ele
+    # pode existir no slot capturado e ainda não existir no slot recém-criado;
+    # portanto não participa da identidade estrutural usada para restaurar
+    # product_id/lock/snapshot através de rebuilds.
+    derived_aliases = {BindingRole.RETAIL_PRICE.value}
     bindings = "|".join(
         f"{str(role)}={str(node_id)}"
         for role, node_id in sorted(slot.node_by_role.items(), key=lambda item: str(item[0]))
+        if str(role) not in derived_aliases
     )
     if bindings:
         return f"nodes:{bindings}"
