@@ -23,6 +23,12 @@ SRC = ROOT / "src"
 ENTRY = ROOT / "build" / "graphics2_host_entry.py"
 DEFAULT_DIST = ROOT / "dist" / "graphics2-host"
 HOST_NAME = "SRGraphicsEngine2Host"
+QT_RUNTIME_MODULES = (
+    "PySide6.QtCore",
+    "PySide6.QtGui",
+    "PySide6.QtQml",
+    "PySide6.QtQuick",
+)
 QT_BUILD_ARTIFACT_PREFIXES = (
     "objects-Debug",
     "objects-RelWithDebInfo",
@@ -53,6 +59,10 @@ def pyinstaller_args(
     spec_root: Path,
     console: bool = False,
 ) -> list[str]:
+    # Deliberadamente NÃO usamos ``--collect-all PySide6``. Esse modo inclui
+    # módulos sem relação com o editor (por exemplo QtWebEngine) e fazia o host
+    # ultrapassar 700 MB. Os hooks oficiais do PyInstaller coletam plugins,
+    # bibliotecas e QML necessários a partir dos módulos Qt realmente usados.
     args = [
         str(ENTRY),
         "--noconfirm",
@@ -68,21 +78,19 @@ def pyinstaller_args(
         str(spec_root),
         "--paths",
         str(SRC),
-        "--collect-all",
-        "PySide6",
         "--collect-data",
         "srstudio",
         "--collect-submodules",
         "srstudio.graphics2",
-        "--hidden-import",
-        "PySide6.QtQuick",
-        "--hidden-import",
-        "PySide6.QtQml",
-        "--hidden-import",
-        "PySide6.QtPdf",
-        "--noupx",
-        "--console" if console else "--windowed",
     ]
+    for module in QT_RUNTIME_MODULES:
+        args.extend(["--hidden-import", module])
+    args.extend(
+        [
+            "--noupx",
+            "--console" if console else "--windowed",
+        ]
+    )
     icon = ROOT / "staging" / "logo_update" / "source" / "SR_Studio.ico"
     if icon.is_file():
         args.extend(["--icon", str(icon)])
