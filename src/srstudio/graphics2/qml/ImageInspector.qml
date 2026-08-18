@@ -18,18 +18,10 @@ Rectangle {
     border.color: "#CBD5E1"
     visible: hasImageSelection
 
-    property var scene: {
-        try {
-            return JSON.parse(sceneBridge.sceneJson)
-        } catch (error) {
-            return ({})
-        }
-    }
-    property var imageNode: selectedImage(scene)
-    readonly property bool hasImageSelection: imageNode !== null && imageNode !== undefined
+    property var scene: ({})
+    property var imageNode: null
+    property bool hasImageSelection: false
     property bool syncing: false
-
-    onImageNodeChanged: Qt.callLater(panel.refresh)
 
     function activePage(sourceScene) {
         var currentScene = sourceScene || scene
@@ -97,6 +89,11 @@ Rectangle {
     function refresh() {
         syncing = true
         try {
+            var parsedScene = JSON.parse(sceneBridge.sceneJson)
+            var selected = selectedImage(parsedScene)
+            scene = parsedScene
+            imageNode = selected
+            hasImageSelection = selected !== null && selected !== undefined
             if (!hasImageSelection)
                 return
             var fit = String(styleValue("fit", "contain"))
@@ -140,7 +137,13 @@ Rectangle {
         cropCommand(command)
     }
 
-    Component.onCompleted: refresh()
+    Component.onCompleted: {
+        sceneBridge.sceneChanged.connect(panel.refresh)
+        refresh()
+    }
+    Component.onDestruction: {
+        try { sceneBridge.sceneChanged.disconnect(panel.refresh) } catch (error) {}
+    }
 
     FileDialog {
         id: replaceImageDialog
