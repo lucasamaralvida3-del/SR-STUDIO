@@ -1,20 +1,25 @@
 from __future__ import annotations
 
-"""Commercial PriceBlock extension for G2 SmartSlots.
+"""Commercial PriceBlock and ProductCard field extension for G2 SmartSlots.
 
 The historical semantic builder has dedicated primary and Club/App PriceBlocks.
 Wholesale/Atacado is a distinct commercial value, not an app price, so this
 runtime adds a third PriceBlock whenever a SmartSlot explicitly exposes a
 ``wholesale_price`` binding, whether canonical or stored in ``extra_bindings``.
 
-This is post-processing over SR Scene nodes. It does not parse PPTX/Canva files
-and therefore stays on the Product System side of the parallel work boundary.
+It also keeps product fields that predate the historical ProductCard member set
+(``description`` and ``validity``) attached to the card after every semantic
+rebuild. This is post-processing over SR Scene nodes; it does not parse PPTX or
+Canva files.
 """
 
 from typing import Any
 
 from . import semantic_named_slot_runtime as named_runtime
 from .model import GraphicsDocument, NodeKind
+
+
+_AUXILIARY_PRODUCT_ROLES = ("quantity", "description", "product_description", "validity")
 
 
 def apply_commercial_price_blocks(semantic_module: Any, document: GraphicsDocument, report: Any) -> int:
@@ -29,7 +34,7 @@ def apply_commercial_price_blocks(semantic_module: Any, document: GraphicsDocume
             # enriched in place with the v3 commercial bindings when those
             # explicitly named nodes exist in the scene.
             _upgrade_saved_named_slot(page, slot)
-            _attach_named_fields_to_product_card(
+            _attach_auxiliary_product_fields(
                 semantic_module,
                 page,
                 raw_blocks,
@@ -176,7 +181,7 @@ def _bound_currency_ids(slot: Any) -> set[str]:
     return excluded
 
 
-def _attach_named_fields_to_product_card(
+def _attach_auxiliary_product_fields(
     semantic_module: Any,
     page: Any,
     raw_blocks: dict[str, Any],
@@ -187,12 +192,18 @@ def _attach_named_fields_to_product_card(
     if not isinstance(card, dict):
         return 0
 
+    extras = _normalized_extra_map(slot.metadata.get("extra_bindings"))
     members = [str(node_id) for node_id in card.get("members") or [] if str(node_id) in page.nodes]
     before = len(members)
-    quantity_id = str(slot.node_by_role.get("quantity") or "")
-    if quantity_id in page.nodes and quantity_id not in members:
-        members.append(quantity_id)
-        page.nodes[quantity_id].metadata["semantic_product_card_id"] = card_id
+    for role in _AUXILIARY_PRODUCT_ROLES:
+        node_ids = _valid_node_ids(
+            page,
+            [slot.node_by_role.get(role), *extras.get(role, [])],
+        )
+        for node_id in node_ids:
+            if node_id not in members:
+                members.append(node_id)
+            page.nodes[node_id].metadata["semantic_product_card_id"] = card_id
 
     if len(members) == before:
         return 0
