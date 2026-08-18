@@ -52,6 +52,18 @@ Rectangle {
         sequence: StandardKey.Save
         onActivated: sceneBridge.saveProject()
     }
+    Shortcut {
+        sequence: StandardKey.Copy
+        onActivated: sceneBridge.dispatch(JSON.stringify({"name": "copy"}))
+    }
+    Shortcut {
+        sequence: StandardKey.Cut
+        onActivated: sceneBridge.dispatch(JSON.stringify({"name": "cut"}))
+    }
+    Shortcut {
+        sequence: StandardKey.Paste
+        onActivated: sceneBridge.dispatch(JSON.stringify({"name": "paste"}))
+    }
 
     RowLayout {
         anchors.fill: parent
