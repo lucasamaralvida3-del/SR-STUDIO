@@ -22,13 +22,64 @@ from .model import GraphicsDocument
 
 
 def document_digest(document: GraphicsDocument) -> str:
+    """Digest semântico estável entre pacote e cache de runtime.
+
+    Extração de assets/fontes altera caminhos locais e flags de transporte para
+    que Qt/QML consiga abrir recursos do ZIP. Essas mutações não são edição do
+    projeto e não podem tornar o documento dirty nem invalidar a relação entre
+    um autosave e o save manual em que ele se baseou.
+    """
+
     raw = json.dumps(
-        document.to_dict(),
+        _persistence_payload(document),
         ensure_ascii=False,
         sort_keys=True,
         separators=(",", ":"),
     ).encode("utf-8")
     return sha256(raw).hexdigest()
+
+
+def _persistence_payload(document: GraphicsDocument) -> dict[str, object]:
+    payload = document.to_dict()
+
+    assets = payload.get("assets")
+    if isinstance(assets, dict):
+        for asset in assets.values():
+            if not isinstance(asset, dict):
+                continue
+            # Com hash de conteúdo, source/embedded são apenas a forma de
+            # transporte (arquivo original, membro ZIP ou cache extraído).
+            if str(asset.get("sha256") or ""):
+                asset["source"] = "<content-addressed>"
+                asset["embedded"] = False
+
+    pages = payload.get("pages")
+    if isinstance(pages, list):
+        for page in pages:
+            if not isinstance(page, dict):
+                continue
+            nodes = page.get("nodes")
+            if not isinstance(nodes, dict):
+                continue
+            for node in nodes.values():
+                if not isinstance(node, dict):
+                    continue
+                metadata = node.get("metadata")
+                if isinstance(metadata, dict):
+                    metadata.pop("bound_image_source", None)
+                    metadata.pop("package_asset_extracted", None)
+
+    metadata = payload.get("metadata")
+    if isinstance(metadata, dict):
+        fonts = metadata.get("embedded_fonts")
+        if isinstance(fonts, list):
+            for font in fonts:
+                if not isinstance(font, dict) or not str(font.get("sha256") or ""):
+                    continue
+                font.pop("extracted_path", None)
+                font.pop("embedded", None)
+
+    return payload
 
 
 @dataclass(slots=True)
@@ -83,7 +134,7 @@ def newer_recovery_point(
     document: GraphicsDocument,
     saved_path: str | Path | None,
 ) -> RecoveryPoint | None:
-    """Retorna recovery válido somente quando ele é posterior ao save conhecido."""
+    """Compatibilidade para journals antigos que ainda dependiam de mtime."""
 
     point = manager.latest(document.id)
     if point is None:
@@ -103,6 +154,9 @@ class RecoverySession:
     document_id: str
     recovery_path: Path
     source_path: Path | None = None
+    # None = journal legado sem esta informação; "" = autosave criado antes do
+    # primeiro save manual; hash = digest semântico do save-base confirmado.
+    base_saved_digest: str | None = None
 
 
 class EditorRecoveryJournal:
@@ -114,14 +168,23 @@ class EditorRecoveryJournal:
         self.path = self.root / "last-session.json"
         self._lock = RLock()
 
-    def mark(self, document_id: str, recovery_path: str | Path, *, source_path: str | Path | None = None) -> None:
+    def mark(
+        self,
+        document_id: str,
+        recovery_path: str | Path,
+        *,
+        source_path: str | Path | None = None,
+        base_saved_digest: str | None = None,
+    ) -> None:
         recovery = Path(recovery_path).resolve()
         source = Path(source_path).resolve() if source_path else None
-        payload = {
+        payload: dict[str, object] = {
             "document_id": str(document_id),
             "recovery_path": str(recovery),
             "source_path": str(source) if source else "",
         }
+        if base_saved_digest is not None:
+            payload["base_saved_digest"] = str(base_saved_digest)
         with self._lock:
             _atomic_json(self.path, payload)
 
@@ -148,7 +211,17 @@ class EditorRecoveryJournal:
                 if not recovery.is_file():
                     return None
                 source = Path(source_text) if source_text else None
-                return RecoverySession(document_id=document_id, recovery_path=recovery, source_path=source)
+                base_saved_digest = (
+                    str(raw.get("base_saved_digest") or "")
+                    if "base_saved_digest" in raw
+                    else None
+                )
+                return RecoverySession(
+                    document_id=document_id,
+                    recovery_path=recovery,
+                    source_path=source,
+                    base_saved_digest=base_saved_digest,
+                )
             except (OSError, ValueError, TypeError, json.JSONDecodeError):
                 return None
 
