@@ -15,11 +15,17 @@ from urllib.parse import unquote, urlparse
 import os
 import re
 
+from .editor_commands_runtime import install_editor_commands
 from .model import BindingRole, NodeKind
 from .package import register_local_asset
 
 
 def install_image_replace_command(command_module: Any) -> None:
+    # O ponto de instalação já é carregado pelo __init__ do Graphics2. Aproveitar
+    # esse hook evita duplicar monkey patches no Command Router e mantém os
+    # comandos exclusivos do editor isolados do renderer/importador.
+    install_editor_commands(command_module)
+
     router_type = command_module.GraphicsCommandRouter
     if bool(getattr(router_type, "_sr_image_replace_installed", False)):
         return
