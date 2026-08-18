@@ -94,13 +94,11 @@ def test_fidelity_region_flags_visual_group_contract_before_child_kind() -> None
     child = GraphicsNode(
         kind=NodeKind.TEXT,
         name="Filho",
-        parent_id=group.id,
         transform=Transform(width=200, height=60),
         style={"font_family": "Arial", "source_font_family": "Arial"},
     )
-    group.children.append(child.id)
     page.add_node(group)
-    page.add_node(child)
+    page.add_node(child, parent_id=group.id)
 
     assert classify_fidelity_region(_attributed(child), page) == "GROUP"
 
