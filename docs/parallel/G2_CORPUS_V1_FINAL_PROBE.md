@@ -1,0 +1,1 @@
+Validation-only probe for the reconciled G2 visual corpus v1 registry. DO NOT MERGE. Legacy Gerador de Cartazes remains out of scope.
