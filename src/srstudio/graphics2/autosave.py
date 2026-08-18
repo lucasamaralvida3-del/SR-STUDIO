@@ -20,12 +20,22 @@ class RecoveryPoint:
     size: int
 
 
+def default_autosave_root() -> Path:
+    """Diretório estável e exclusivo do autosave do editor G2."""
+
+    return Path.home() / ".srstudio5" / "autosave-g2"
+
+
 class AutosaveManager:
     """Autosave explícito, validado e recuperável; não cria threads ocultas.
 
     Cada geração é um pacote `.srscene` completo. Gerações corrompidas nunca
     contam para a retenção das cópias válidas e um RecoveryPoint só pode
     restaurar o mesmo documento que declarou ao ser descoberto.
+
+    Por padrão assets locais são embutidos. Um recovery point de produção não
+    pode depender de a imagem original continuar existindo no mesmo caminho
+    depois de um crash, troca de arquivo ou limpeza de downloads.
     """
 
     def __init__(self, root: str | Path, *, generations: int = 8) -> None:
@@ -34,13 +44,13 @@ class AutosaveManager:
         self.generations = max(2, int(generations))
         self._lock = RLock()
 
-    def save(self, document: GraphicsDocument) -> Path:
+    def save(self, document: GraphicsDocument, *, embed_local_assets: bool = True) -> Path:
         with self._lock:
             folder = self.root / _safe_id(document.id)
             folder.mkdir(parents=True, exist_ok=True)
             stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
             path = folder / f"{stamp}.srscene"
-            save_package(document, path, embed_local_assets=False)
+            save_package(document, path, embed_local_assets=bool(embed_local_assets))
             # Reabra antes de promover a geração a `latest`. Assim uma falha de
             # armazenamento/zip jamais substitui o ponteiro para um recovery
             # point conhecido como íntegro.
