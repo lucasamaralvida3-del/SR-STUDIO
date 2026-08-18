@@ -189,19 +189,30 @@ def _resume_pending_session(*, project_name: str = "") -> GraphicsLaunchContext 
         return None
 
     source = current.source_path if current.source_path and current.source_path.is_file() else None
+    project_source = source if source is not None and source.suffix.lower() in {".srscene", ".zip"} else None
+
+    # Uma primeira operação Save As pode completar no worker e gravar o
+    # `last-project.json` antes do callback Qt atualizar/limpar um journal que
+    # nasceu quando ainda não existia source `.srscene`. Use esse ponteiro
+    # durável como save-base candidato para não reabrir um autosave pré-save.
+    if project_source is None:
+        recent = EditorRecentProject(root).current()
+        if recent is not None and recent.document_id == current.document_id:
+            project_source = recent.path
+
     saved_digest = ""
-    if source is not None and source.suffix.lower() in {".srscene", ".zip"}:
+    if project_source is not None:
         try:
             from .package import load_package
 
-            saved_document = load_package(source)
+            saved_document = load_package(project_source)
         except (OSError, ValueError, KeyError):
-            source = None
+            project_source = None
         else:
             if saved_document.id != current.document_id:
                 # Um journal antigo/tamperado jamais pode transformar outro
                 # projeto no destino implícito de um save futuro.
-                source = None
+                project_source = None
             else:
                 saved_digest = document_digest(saved_document)
                 if current.base_saved_digest is not None:
@@ -209,19 +220,21 @@ def _resume_pending_session(*, project_name: str = "") -> GraphicsLaunchContext 
                         # O recovery foi criado contra outro save-base. O disco
                         # já avançou; reabrir esse recovery seria voltar no tempo.
                         journal.clear(current.document_id)
-                        return load_launch_context(source, project_name=project_name, resume_last=False)
+                        return load_launch_context(project_source, project_name=project_name, resume_last=False)
                 else:
                     try:
-                        source_mtime = source.stat().st_mtime
+                        source_mtime = project_source.stat().st_mtime
                     except OSError:
                         source_mtime = 0.0
                     if source_mtime and point.saved_at.timestamp() <= source_mtime:
                         # Compatibilidade com journals antigos sem digest-base.
                         journal.clear(current.document_id)
-                        return load_launch_context(source, project_name=project_name, resume_last=False)
+                        return load_launch_context(project_source, project_name=project_name, resume_last=False)
 
     cache_dir = _runtime_cache_dir(point.path)
     document = manager.recover(point, extract_assets_to=cache_dir / "recovery-assets")
+    if project_source is not None:
+        source = project_source
     if project_name:
         document.name = project_name
     gate = inspect_production_gate(document, require_visual_fidelity=False)
