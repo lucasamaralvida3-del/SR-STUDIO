@@ -5,9 +5,6 @@ import os
 import pytest
 
 
-pytestmark = pytest.mark.skipif(False, reason="diagnostic") if False else ()
-
-
 def _qt():
     pytest.importorskip("PySide6")
     if os.name != "nt":
