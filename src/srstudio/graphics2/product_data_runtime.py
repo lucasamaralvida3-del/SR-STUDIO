@@ -211,8 +211,7 @@ def _apply_product_to_slot(session: Any, page: Any, slot: Any, product: dict[str
             node = page.node(node_id)
             if node is None:
                 continue
-            node.metadata.pop("smart_slot_detached", None)
-            node.metadata.pop("detached_from_slot_id", None)
+            binding_runtime._reactivate_binding_node(node)
             if role in binding_runtime._IMAGE_ROLES:
                 binding_runtime._bind_image(import_bridge, session, node, product)
                 continue
@@ -244,6 +243,8 @@ def _slot_state(page: Any, slot: Any, bindings: dict[str, list[str]]) -> dict[st
                 bool(node.visible),
                 deepcopy(node.metadata.get("bound_image_source")),
                 deepcopy(node.metadata.get("binding_template_text")),
+                bool(node.metadata.get("smart_slot_detached")),
+                str(node.metadata.get("detached_from_slot_id") or ""),
             )
     return {
         "product_id": str(slot.product_id or ""),
