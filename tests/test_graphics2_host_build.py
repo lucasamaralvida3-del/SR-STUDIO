@@ -42,7 +42,9 @@ def test_pyinstaller_contract_is_onedir_windowed_no_upx_and_collects_only_requir
     assert args[args.index("--collect-submodules") + 1] == "srstudio.graphics2"
     for qt_module in module.QT_RUNTIME_MODULES:
         assert qt_module in args
-    assert "PySide6.QtWebEngineCore" not in args
+    for excluded in module.QT_EXCLUDED_MODULES:
+        pairs = list(zip(args, args[1:]))
+        assert ("--exclude-module", excluded) in pairs
     assert "PySide6.QtPdf" not in args
     assert module.HOST_NAME == "SRGraphicsEngine2Host"
 
@@ -70,7 +72,34 @@ def test_prune_qt_build_artifacts_removes_only_objects_directories(tmp_path):
     assert (keep / "qmldir").read_text(encoding="utf-8") == "module QtQuick"
 
 
-def test_release_bundle_rejects_unused_webengine_payload(tmp_path):
+def test_prune_unused_qt_components_removes_only_webengine_named_payload(tmp_path):
+    module = _build_module()
+    bundle = tmp_path / module.HOST_NAME
+    pyside = bundle / "_internal" / "PySide6"
+    qml_quick = pyside / "qml" / "QtQuick"
+    qml_webengine = pyside / "qml" / "QtWebEngine"
+    qml_quick.mkdir(parents=True)
+    qml_webengine.mkdir(parents=True)
+    (qml_quick / "qmldir").write_text("module QtQuick", encoding="utf-8")
+    (qml_webengine / "qmldir").write_text("module QtWebEngine", encoding="utf-8")
+    (pyside / "Qt6Core.dll").write_bytes(b"core")
+    (pyside / "Qt6WebEngineCore.dll").write_bytes(b"webengine")
+    resources = pyside / "resources"
+    resources.mkdir()
+    (resources / "qtwebengine_resources.pak").write_bytes(b"webengine-resource")
+
+    removed = module.prune_unused_qt_components(bundle)
+
+    assert removed
+    assert (pyside / "Qt6Core.dll").is_file()
+    assert (qml_quick / "qmldir").is_file()
+    assert not qml_webengine.exists()
+    assert not (pyside / "Qt6WebEngineCore.dll").exists()
+    assert not (resources / "qtwebengine_resources.pak").exists()
+    module.reject_unexpected_qt_payload(bundle)
+
+
+def test_release_bundle_rejects_webengine_payload_that_survives_prune(tmp_path):
     module = _build_module()
     bundle = tmp_path / module.HOST_NAME
     runtime = bundle / "_internal" / "PySide6"
