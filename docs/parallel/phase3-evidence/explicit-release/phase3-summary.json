@@ -4,8 +4,8 @@
   "standalone_available": false,
   "standalone_phase": "DEFERRED",
   "standalone_validation": "DEFERRED",
-  "tested_sha": "0409d702e8c3354b5287c6dd89f5305b45fb8723",
-  "run_id": "32164380448",
+  "tested_sha": "2f670afdcba5288f4293425e9ed42bc8efe6c1c1",
+  "run_id": "32165782528",
   "run_attempt": "1",
   "gates": {
     "Environment": true,
@@ -13,11 +13,11 @@
     "Corpus integrity": true,
     "Rich corpus available": true,
     "Catalog available": true,
-    "Corpus baseline": false,
-    "Ingest": false,
-    "Persistence / Reload": false,
-    "Second ingest": false,
-    "Idempotency": false,
+    "Corpus baseline": true,
+    "Ingest": true,
+    "Persistence / Reload": true,
+    "Second ingest": true,
+    "Idempotency": true,
     "Recovery": true,
     "Library audit": false,
     "Catalog 520": false,
@@ -237,41 +237,315 @@
     "pass": true
   },
   "corpus_inventory": {
-    "metrics": {
-      "files_found": 0,
-      "unique_files_exact": 0,
-      "logical_documents": 0,
-      "slides": 0,
-      "raw_image_refs": 0,
-      "media_file_occurrences": 0,
-      "unique_media_exact": 0,
-      "product_text_candidates": 0,
-      "unique_products": 0,
-      "exact_duplicate_file_groups": 0,
-      "logical_duplicate_groups": 0,
-      "near_duplicate_pairs": 0,
-      "geometry_rejected_dhash_pairs": 0,
-      "content_rejected_dhash_pairs": 0,
-      "text_only_files": 0,
-      "template_heavy_files": 0,
-      "mixed_files": 0
+    "measurement_semantics": {
+      "media_occurrences": "sum of physical ppt/media members across the 36 PPTX packages",
+      "embedded_unique": "global exact SHA-256 uniqueness across physical ppt/media members",
+      "note": "raw slide relationship/blip references are intentionally not used for the 2,324 baseline"
+    },
+    "measured": {
+      "pptx": 36,
+      "unique_pptx_exact": 36,
+      "slides": 566,
+      "media_occurrences": 2324,
+      "embedded_unique": 1910
     },
     "expected": {
-      "files_found": 36,
+      "pptx": 36,
       "slides": 566,
-      "unique_media_exact": 1910,
-      "raw_image_refs": 2324
+      "media_occurrences": 2324,
+      "embedded_unique": 1910
     },
     "checks": {
-      "files_found": false,
-      "slides": false,
-      "unique_media_exact": false,
-      "raw_image_refs": false
+      "pptx": true,
+      "slides": true,
+      "media_occurrences": true,
+      "embedded_unique": true
     },
-    "pass": false
+    "errors": [],
+    "files": [
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS DE CHURRASCO E AÇOUGUE NOVO.pptx",
+        "pptx_sha256": "0c55c5ad6c7300f28234a51be0c96ba54e3bee3a7b575211727dc66f7d25d3d9",
+        "slides": 27,
+        "media_occurrences": 98
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS AMBEV  COPA DO MUNDO NOVA.pptx",
+        "pptx_sha256": "1fb54f41a4933e4d5017a0eeaf22fff47ea279c609d49cb5d767925ca91d08fa",
+        "slides": 13,
+        "media_occurrences": 39
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS REL╢MPAGO NOVA.pptx",
+        "pptx_sha256": "cb22de89c5b72ecf59588ca0084148ae2bccfb968c99f3cf25f6e6c24f985caa",
+        "slides": 7,
+        "media_occurrences": 26
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS DA LIMPEZA NOVA.pptx",
+        "pptx_sha256": "9d3990e81637d2d8ceb71ffdf680a5ab3659697d74c882a9e2aebceb4bf1fba2",
+        "slides": 10,
+        "media_occurrences": 75
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS DA ECONOMIA NOVA.pptx",
+        "pptx_sha256": "30ca9b1934f0c69508794ad6dc5f4b2df82cd91ecf7e182cc08fb5a24925c22a",
+        "slides": 16,
+        "media_occurrences": 107
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS TERÇA VERDE NOVO.pptx",
+        "pptx_sha256": "6e186a90c5591da2801d9049d5357755ab323f8d76b373104cbf757b0bc9c920",
+        "slides": 14,
+        "media_occurrences": 78
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS QUARTA CAFÉ COM P╟O NOVO.pptx",
+        "pptx_sha256": "df20e5650711755cd9655b33eab2f72f0d7588f95c06bb34dca161dee2eae395",
+        "slides": 26,
+        "media_occurrences": 95
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS QUINTA FILÉ NOVO (1).pptx",
+        "pptx_sha256": "7c45cfa205c7e14af69e41c8d63b1c6a9d1a06df3cf9d0131ed612029884e536",
+        "slides": 23,
+        "media_occurrences": 84
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS BABY NOVA.pptx",
+        "pptx_sha256": "4b73d19991c53fb83e306ed21dbc882be6baece30ba5526573336d50248b1a22",
+        "slides": 6,
+        "media_occurrences": 48
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS CERVEJAS E BEBIDAS NOVA.pptx",
+        "pptx_sha256": "b5e8f228ad4a2d33b9e55cc8c9d8c4ac6ab24e98c6a766172f946ddae29848c7",
+        "slides": 27,
+        "media_occurrences": 74
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS ESPECIAIS NOVA.pptx",
+        "pptx_sha256": "19f2bf09b70b235364694533a8e89411ec4af2ca63f47cc6d678b5095f5b1b26",
+        "slides": 27,
+        "media_occurrences": 59
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS FIM DE SEMANA NOVA.pptx",
+        "pptx_sha256": "3813e544853e6a9f6c5a526f768cfae8b6b07ffc18b8050353015851f6800db4",
+        "slides": 43,
+        "media_occurrences": 208
+      },
+      {
+        "archive": "Downloads(1)(1).zip",
+        "member": "OFERTAS DO HORTIFRUTI NOVA.pptx",
+        "pptx_sha256": "cbc35c7de752226153b352e38abe069bf4d3b7553b10a2cc2a4bf6ade1d9f623",
+        "slides": 18,
+        "media_occurrences": 68
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "QUINTA FILÉ SANJU.pptx",
+        "pptx_sha256": "060439a26bd5833b724e9068f2340f263d514d2704dd425da4c7017599a6364c",
+        "slides": 22,
+        "media_occurrences": 84
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "QUARTA CAFÉ SANJU.pptx",
+        "pptx_sha256": "315cbecfabb17ce1ef39776ecdf3857815f169da91f7c89dc7dd177f1807b478",
+        "slides": 21,
+        "media_occurrences": 86
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "Cópia de Cópia de Cópia de Cópia de FIM DE SEMANA NOVO.pptx",
+        "pptx_sha256": "b2f8d8a02378301e12cbaa82b617bfff38b1feb84288e9d585a9f5f2df32dd36",
+        "slides": 14,
+        "media_occurrences": 99
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "SHAMPOO SI╖GE.pptx",
+        "pptx_sha256": "f47fe382d674aedf1f0d6720ab6af0f779ab2ae8e0a4b316ff206b1f2be7b019",
+        "slides": 4,
+        "media_occurrences": 20
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "MUSSARELA TRADICIONAL.pptx",
+        "pptx_sha256": "bb3e93e088d06c0033eb84d7445cd2b8dede1e0fdf56f260ebc6ea99f8d12a67",
+        "slides": 6,
+        "media_occurrences": 29
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "CHOCOLATE KIT KAT 41,5G.pptx",
+        "pptx_sha256": "103df3f72a3a11445f50825eabadfddfa7930cd7f559d68eed959e710dfb89cd",
+        "slides": 4,
+        "media_occurrences": 28
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "Cópia de Cópia de Cópia de -----.pptx",
+        "pptx_sha256": "0a709f42705d384f072d1312c38dc834a76f5b1d3dc9ce2de8f150a2c99d07ec",
+        "slides": 13,
+        "media_occurrences": 90
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "OFERTA PESCADOS.pptx",
+        "pptx_sha256": "78196b24bc42175d8d8c225c2e80234300c0e06612515e36f9f71462f535531c",
+        "slides": 4,
+        "media_occurrences": 35
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "_Post - Feed - Ver╞o Delicioso - 3d render -Sorvete.pptx",
+        "pptx_sha256": "420a47b756f0235efc13caa5274e33b77911b8b39c6311c02cdb5d21f6c6c61b",
+        "slides": 1,
+        "media_occurrences": 16
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "CARNE FIM DE SEMANA.pptx",
+        "pptx_sha256": "80a6f59dee0adc41965d2c107ecc55b3e9a653b9e7ac0a8a27b0dfa1bcc030c6",
+        "slides": 63,
+        "media_occurrences": 97
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "CERVEJA HEINEKEN GARRAFA 600ML.pptx",
+        "pptx_sha256": "d7f25a6fe23eebf4c80bc340f9b41aca3a4d455fca2e980f6b87d8c609fab67a",
+        "slides": 22,
+        "media_occurrences": 71
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "BATATA BEM BRASIL 2KG.pptx",
+        "pptx_sha256": "2df697fa23031b5eee1a91d385744ce5370820d5a9fd86fe1fbdb8d4a8ab627f",
+        "slides": 5,
+        "media_occurrences": 22
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "CERVEJA HEINEKEN CHOPP 5L.pptx",
+        "pptx_sha256": "5dbff16f79d49b12c21f800c48097ae8ba4f6b482f8d18f2b523c90f784f3577",
+        "slides": 5,
+        "media_occurrences": 33
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "Post para Instagram Dia do hambúrguer divertido amarelo  (210 x 297 mm).pptx",
+        "pptx_sha256": "f4788d166f2019ac4cd913ec219b33b10c1bfdd2ba504a1d68ef6bf10d7551e5",
+        "slides": 4,
+        "media_occurrences": 20
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "Cópia de Cópia de ECONOMIA SANJU (1).pptx",
+        "pptx_sha256": "54cf07aa20ee540bfff39bc526ddb7d99a0d2f872d510bf7b0903e4898808ba3",
+        "slides": 11,
+        "media_occurrences": 65
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "Cópia de Cópia de ECONOMIA SANJU.pptx",
+        "pptx_sha256": "ba709618130a6499e8a59c4a0189e6b6a0aa951146e518efd07a9453291b55b7",
+        "slides": 4,
+        "media_occurrences": 57
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "Cópia de TERÇA VERDE SANJU.pptx",
+        "pptx_sha256": "5c2c31c139ebadb5a6a8cb1524abe180c3a322cd189be0a4ab83f46b81b53a74",
+        "slides": 23,
+        "media_occurrences": 62
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "ECONOMIA SANJU.pptx",
+        "pptx_sha256": "5be02f62c9198d3a8c4b073ce73b633d755dd0d60d1dc9f7aee91b96bdc308b1",
+        "slides": 7,
+        "media_occurrences": 75
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "TERÇA VERDE SANJU.pptx",
+        "pptx_sha256": "6dc2a39dfde673de16f843444f780fcf0b629b8e2e5b0e25ca2e6a5e5086c2d1",
+        "slides": 24,
+        "media_occurrences": 67
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "HORTIFRUTI SANJU.pptx",
+        "pptx_sha256": "f8e46b4a462008db387bdeef7a02b263f7310cf247961d9f053c760099270e17",
+        "slides": 11,
+        "media_occurrences": 39
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "OFERTAS CARNES SANJU.pptx",
+        "pptx_sha256": "c4a764999b5b5b166f950bb960835e13aca3a89190ba280086faf358920b6fd4",
+        "slides": 22,
+        "media_occurrences": 57
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "Cópia de ECONOMIA SANJU.pptx",
+        "pptx_sha256": "593508dd8397add487eee24b33e9d2f023ec23aa71b887eb2fdf084c10356be9",
+        "slides": 14,
+        "media_occurrences": 65
+      },
+      {
+        "archive": "Downloads(2)(1).zip",
+        "member": "LIMPEZA SANJU.pptx",
+        "pptx_sha256": "2314e1239d61436f60d0ae2ede46c7b0e1deaa14d89c8e6836e62a9cbdb565f9",
+        "slides": 5,
+        "media_occurrences": 48
+      }
+    ],
+    "pass": true
   },
-  "persistence": {},
-  "idempotency": {},
+  "persistence": {
+    "status": "PASS",
+    "assets": 1036,
+    "physical_images": 1036,
+    "reload_seconds": 0.03447978500003046,
+    "duplicate_ids": false,
+    "missing_files": [],
+    "malformed_assets": [],
+    "missing_provenance_count": 0,
+    "variant_hashes": 146,
+    "index_exists": true
+  },
+  "idempotency": {
+    "before": {
+      "canonical_assets": 1036,
+      "physical_images": 1036,
+      "logical_signature_sha256": "d24a1c09d8fe25feee92acf3102316c26a1eb22e55d36d234dcaab99cac36784"
+    },
+    "after": {
+      "canonical_assets": 1036,
+      "physical_images": 1036,
+      "logical_signature_sha256": "d24a1c09d8fe25feee92acf3102316c26a1eb22e55d36d234dcaab99cac36784"
+    },
+    "canonical_count_unchanged": true,
+    "physical_count_unchanged": true,
+    "logical_signature_unchanged": true,
+    "pass": true
+  },
   "database": {},
   "coverage": {},
   "departments": {},
@@ -279,11 +553,11 @@
   "performance": {},
   "memory": {
     "measurement": "approximate GitHub Actions CI memory evidence",
-    "baseline": "MemTotal:       16373452 kB\nMemAvailable:   15376452 kB\n",
-    "after_ingest": "MemTotal:       16373452 kB\nMemAvailable:   15351384 kB\n",
-    "ingest_peak_rss_kb": 112144,
-    "second_ingest_peak_rss_kb": null,
-    "audit_peak_rss_kb": null
+    "baseline": "MemTotal:       16373452 kB\nMemAvailable:   14944516 kB\n",
+    "after_ingest": "MemTotal:       16373452 kB\nMemAvailable:   15360656 kB\n",
+    "ingest_peak_rss_kb": 112260,
+    "second_ingest_peak_rss_kb": 63736,
+    "audit_peak_rss_kb": 29480
   },
   "previous_human_sample": {
     "size": 30,

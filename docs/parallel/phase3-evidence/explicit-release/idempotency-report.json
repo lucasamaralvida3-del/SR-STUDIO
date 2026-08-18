@@ -1,0 +1,16 @@
+{
+  "before": {
+    "canonical_assets": 1036,
+    "physical_images": 1036,
+    "logical_signature_sha256": "d24a1c09d8fe25feee92acf3102316c26a1eb22e55d36d234dcaab99cac36784"
+  },
+  "after": {
+    "canonical_assets": 1036,
+    "physical_images": 1036,
+    "logical_signature_sha256": "d24a1c09d8fe25feee92acf3102316c26a1eb22e55d36d234dcaab99cac36784"
+  },
+  "canonical_count_unchanged": true,
+  "physical_count_unchanged": true,
+  "logical_signature_unchanged": true,
+  "pass": true
+}

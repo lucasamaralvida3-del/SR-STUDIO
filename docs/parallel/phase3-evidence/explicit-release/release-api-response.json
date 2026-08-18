@@ -71,7 +71,7 @@
         "state": "uploaded",
         "size": 249253663,
         "digest": "sha256:aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba",
-        "download_count": 0,
+        "download_count": 1,
         "created_at": "2026-08-18T16:49:25Z",
         "updated_at": "2026-08-18T16:49:43Z",
         "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/Downloads.1.1.zip"
@@ -107,7 +107,7 @@
         "state": "uploaded",
         "size": 344039590,
         "digest": "sha256:035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86",
-        "download_count": 0,
+        "download_count": 1,
         "created_at": "2026-08-18T16:48:59Z",
         "updated_at": "2026-08-18T16:49:18Z",
         "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/Downloads.2.1.zip"
@@ -143,7 +143,7 @@
         "state": "uploaded",
         "size": 19093966,
         "digest": "sha256:5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
-        "download_count": 0,
+        "download_count": 3,
         "created_at": "2026-08-18T17:03:00Z",
         "updated_at": "2026-08-18T17:03:03Z",
         "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/publish_repository.zip"
@@ -155,9 +155,9 @@
   },
   "selected_headers": {
     "Content-Type": "application/json; charset=utf-8",
-    "ETag": "\"e0dad840b5c13dd7e898815f5e7be4946176e7045dce8bd234df91d91e982dca\"",
+    "ETag": "\"5a14b9bd0a5bb9a65e333d13daebf4bae6f1f157ea572434a02923d7e114d7d5\"",
     "Last-Modified": "Tue, 18 Aug 2026 17:03:22 GMT",
-    "X-RateLimit-Remaining": "4967",
+    "X-RateLimit-Remaining": "4957",
     "X-RateLimit-Reset": "1787076212"
   }
 }
