@@ -21,7 +21,12 @@ PRIMARY_ASSETS = (
     "publish_repository.zip",
 )
 DEFERRED_ASSET = "standalone-images.zip"
-DISCOVER_ASSETS = PRIMARY_ASSETS + (DEFERRED_ASSET,)
+ASSET_ALIASES: dict[str, tuple[str, ...]] = {
+    "Downloads(1)(1).zip": ("Downloads(1)(1).zip", "Downloads.1.1.zip"),
+    "Downloads(2)(1).zip": ("Downloads(2)(1).zip", "Downloads.2.1.zip"),
+    "publish_repository.zip": ("publish_repository.zip",),
+    "standalone-images.zip": ("standalone-images.zip",),
+}
 
 
 def _request_json(url: str, token: str) -> tuple[int, Any, dict[str, str]]:
@@ -67,11 +72,11 @@ def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _download_with_gh(name: str, target_dir: Path, token: str) -> tuple[bool, str]:
+def _download_with_gh(asset_name: str, target_dir: Path, token: str) -> tuple[bool, str]:
     env = dict(os.environ)
     env["GH_TOKEN"] = token
     completed = subprocess.run(
-        ["gh", "release", "download", RELEASE_TAG, "-p", name, "-D", str(target_dir), "--clobber"],
+        ["gh", "release", "download", RELEASE_TAG, "-p", asset_name, "-D", str(target_dir), "--clobber"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
@@ -82,10 +87,13 @@ def _download_with_gh(name: str, target_dir: Path, token: str) -> tuple[bool, st
     return completed.returncode == 0, completed.stdout
 
 
-def _verify_zip(name: str, meta: dict[str, Any] | None, corpus_dir: Path, token: str) -> dict[str, Any]:
-    target = corpus_dir / name
+def _verify_zip(canonical_name: str, meta: dict[str, Any] | None, corpus_dir: Path, token: str) -> dict[str, Any]:
+    target = corpus_dir / canonical_name
+    release_asset_name = str((meta or {}).get("release_asset_name") or canonical_name)
+    downloaded_path = corpus_dir / release_asset_name
     row: dict[str, Any] = {
-        "name": name,
+        "name": canonical_name,
+        "release_asset_name": release_asset_name if meta else "",
         "release_found": meta is not None,
         "asset_id": (meta or {}).get("asset_id"),
         "path": str(target),
@@ -96,9 +104,14 @@ def _verify_zip(name: str, meta: dict[str, Any] | None, corpus_dir: Path, token:
     }
     if meta:
         try:
-            ok, output = _download_with_gh(name, corpus_dir, token)
+            ok, output = _download_with_gh(release_asset_name, corpus_dir, token)
             row["download_command_success"] = ok
             row["download_output"] = output[-4000:]
+            if ok and downloaded_path.is_file() and downloaded_path != target:
+                downloaded_path.replace(target)
+                row["renamed_to_canonical"] = True
+            else:
+                row["renamed_to_canonical"] = False
         except (OSError, subprocess.SubprocessError) as exc:
             row["download_command_success"] = False
             row["download_error"] = repr(exc)
@@ -202,9 +215,9 @@ def main() -> int:
     for asset in release.get("assets") or ():
         if not isinstance(asset, dict):
             continue
-        name = str(asset.get("name") or "")
+        actual_name = str(asset.get("name") or "")
         item = {
-            "name": name,
+            "name": actual_name,
             "asset_id": asset.get("id"),
             "size": int(asset.get("size") or 0),
             "digest": str(asset.get("digest") or ""),
@@ -214,16 +227,21 @@ def main() -> int:
             "browser_download_url": asset.get("browser_download_url"),
         }
         all_release_assets.append(item)
-        if name not in DISCOVER_ASSETS:
-            continue
-        found[name] = {
-            **item,
-            "tag": returned_tag,
-            "release_id": release.get("id"),
-            "release_name": release.get("name"),
-            "release_draft": bool(release.get("draft")),
-            "release_prerelease": bool(release.get("prerelease")),
-        }
+        for canonical_name, aliases in ASSET_ALIASES.items():
+            if actual_name not in aliases or canonical_name in found:
+                continue
+            found[canonical_name] = {
+                **item,
+                "canonical_name": canonical_name,
+                "release_asset_name": actual_name,
+                "matched_via_alias": actual_name != canonical_name,
+                "tag": returned_tag,
+                "release_id": release.get("id"),
+                "release_name": release.get("name"),
+                "release_draft": bool(release.get("draft")),
+                "release_prerelease": bool(release.get("prerelease")),
+            }
+            break
 
     release_payload = {
         "lookup_mode": "explicit-tag-only",
@@ -252,9 +270,9 @@ def main() -> int:
         row = _verify_zip(name, found.get(name), corpus_dir, token)
         verification[name] = row
         download_log.append(
-            f"[{name}] asset_id={row.get('asset_id')} found={row['release_found']} "
-            f"download_complete={row['download_complete']} size={row['actual_size']} sha256={row['sha256']} "
-            f"verified={row['verified']}\n{row.get('download_output', row.get('download_error', ''))}"
+            f"[{name}] release_asset={row.get('release_asset_name')} asset_id={row.get('asset_id')} "
+            f"found={row['release_found']} download_complete={row['download_complete']} size={row['actual_size']} "
+            f"sha256={row['sha256']} verified={row['verified']}\n{row.get('download_output', row.get('download_error', ''))}"
         )
 
     standalone_meta = found.get(DEFERRED_ASSET)
@@ -262,6 +280,7 @@ def main() -> int:
         "name": DEFERRED_ASSET,
         "phase": "DEFERRED",
         "release_found": standalone_meta is not None,
+        "release_asset_name": str((standalone_meta or {}).get("release_asset_name") or ""),
         "asset_id": (standalone_meta or {}).get("asset_id"),
         "expected_size": int((standalone_meta or {}).get("size") or 0),
         "release_digest": str((standalone_meta or {}).get("digest") or ""),
