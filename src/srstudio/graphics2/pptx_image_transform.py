@@ -17,14 +17,14 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 import math
-import re
 import zipfile
+
+from srstudio.importers.pptx.package_order import ordered_slide_paths
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
-_SLIDE_RE = re.compile(r"^ppt/slides/slide(\d+)\.xml$")
 _ANGLE_UNIT = 60000.0
 _DEFAULT_SLIDE_WIDTH = 12192000.0
 _DEFAULT_SLIDE_HEIGHT = 6858000.0
@@ -253,12 +253,7 @@ def _read_contracts(path: Path) -> tuple[list[PptxImageTransformContract], float
     contracts: list[PptxImageTransformContract] = []
     with zipfile.ZipFile(path) as archive:
         slide_width, slide_height = _presentation_size(archive)
-        slides: list[tuple[int, str]] = []
-        for name in archive.namelist():
-            match = _SLIDE_RE.match(name)
-            if match:
-                slides.append((int(match.group(1)), name))
-        for slide, name in sorted(slides):
+        for slide, name in enumerate(ordered_slide_paths(archive), start=1):
             root = ET.fromstring(archive.read(name))
             sp_tree = root.find(f".//{{{P_NS}}}spTree")
             if sp_tree is None:
