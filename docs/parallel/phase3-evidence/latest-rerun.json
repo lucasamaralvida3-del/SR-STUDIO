@@ -1,0 +1,51 @@
+{
+  "workflow": "Image DB Phase 3 Operational Validation",
+  "run_id": 32153423618,
+  "run_attempt": 2,
+  "job_id": 95768066319,
+  "tested_sha": "45e41b8755ef457868dd39d3227ebcb0e3460796",
+  "status": "completed",
+  "conclusion": "failure",
+  "phase3_status": "BLOCKED — CORPUS NOT AVAILABLE TO CI",
+  "runner": "ubuntu-24.04",
+  "python": "3.11.15",
+  "tests": {
+    "passed": 166,
+    "failed": 0,
+    "warnings": 195,
+    "elapsed_seconds": 3.99
+  },
+  "release_scan": {
+    "release_count_scanned": 73,
+    "required_assets": [
+      "Downloads(1)(1).zip",
+      "Downloads(2)(1).zip",
+      "publish_repository.zip",
+      "standalone-images.zip"
+    ],
+    "found": [],
+    "missing": [
+      "Downloads(1)(1).zip",
+      "Downloads(2)(1).zip",
+      "publish_repository.zip",
+      "standalone-images.zip"
+    ],
+    "api_errors": []
+  },
+  "availability": {
+    "CORPUS_INTEGRITY_PASS": false,
+    "RICH_CORPUS_AVAILABLE": false,
+    "CATALOG_AVAILABLE": false,
+    "STANDALONE_AVAILABLE": false
+  },
+  "recovery": "PASS",
+  "corpus_dependent_stages": "skipped because corpus gate failed before ingest",
+  "artifact": {
+    "name": "image-db-phase3-report",
+    "id": 9331080249,
+    "size_bytes": 14418,
+    "digest": "sha256:9b399d4852922b3ada030039b0ea82e7bb9d56636f92cb96d1161b0d1f214cb6",
+    "expires_at": "2026-09-01T15:26:35Z"
+  },
+  "merges_performed": false
+}
