@@ -1,0 +1,40 @@
+{
+  "name": "G2 Terça Verde Santa Juliana 11-08-2026 — baseline candidate",
+  "source": {
+    "name": "OFERTAS TERÇA VERDE NOVO.pptx",
+    "sha256": "6e186a90c5591da2801d9049d5357755ab323f8d76b373104cbf757b0bc9c920"
+  },
+  "status": "baseline_established_pending_png_reference",
+  "source_type": "Canva PPTX export",
+  "canva_document_id": "DAHMAeLZD3Q",
+  "notes": "Exclusivo do Studio G2. As referências recuperadas são exports oficiais Canva JPEG hashados; não são PNG e portanto ainda não satisfazem a regra atual de aprovação final do corpus. Não converter ou substituir silenciosamente.",
+  "cases": [
+    {
+      "name": "Terça Verde · grade Maçã/Laranja/Vagem/Coco/Beterraba/Limão",
+      "page": 4,
+      "slide": 5,
+      "file": "5.jpg",
+      "sha256": "ff3187e7490b6a51d5261bf08666263ed362e9a9f2bc1378e00ced48ddc015ff",
+      "width": 1080,
+      "height": 1350
+    },
+    {
+      "name": "Terça Verde · grade Banana/Chuchu/Brócolis/Alho/Batata/Abóbora",
+      "page": 5,
+      "slide": 6,
+      "file": "6.jpg",
+      "sha256": "fb2f8f687dfd053bb2393ed334c892415f6625b18ee37fca7b10106b50924082",
+      "width": 1080,
+      "height": 1350
+    },
+    {
+      "name": "Terça Verde · destaque Banana Nanica",
+      "page": 7,
+      "slide": 8,
+      "file": "8.jpg",
+      "sha256": "aeb446dae428d421c838039b97a4dbb488aa310e2206e39537220a3d78c98642",
+      "width": 1080,
+      "height": 1350
+    }
+  ]
+}
