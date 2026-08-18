@@ -104,9 +104,15 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/ci/image_db_phase3_corpus.py > "$ARTIFACT_DIR/corpus-resolver.json"
+
+      - name: Validate resolved corpus and catalog
+        run: |
+          set -euo pipefail
+          test "${CORPUS_INTEGRITY_PASS:-false}" = true
           test "${RICH_CORPUS_AVAILABLE:-false}" = true
           test "${CATALOG_AVAILABLE:-false}" = true
           test -n "${PRODUCT_DB:-}"
+          test -f "$PRODUCT_DB"
 
       - name: Resolve approved standalone corpus
         env:
