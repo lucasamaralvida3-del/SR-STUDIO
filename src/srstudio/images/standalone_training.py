@@ -1,0 +1,307 @@
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Iterable
+
+from srstudio.images.association import (
+    is_product_text_candidate,
+    measurement_signature,
+    normalize_product_name,
+    product_name_similarity,
+    product_names_compatible,
+)
+
+
+_GENERATED_SUFFIX_RE = re.compile(r"\s*[-_ ](?:COPY|COPIA|EDITADO|EDITED|FINAL|NOVO|NOVA|SEM FUNDO)\s*$", re.IGNORECASE)
+
+
+@dataclass(frozen=True, slots=True)
+class StandaloneImageSource:
+    path: str
+    label: str = ""
+    product_name: str = ""
+    verified: bool = False
+    provenance: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class StandaloneMatch:
+    path: str
+    product_name: str
+    normalized_name: str
+    confidence: float
+    status: str
+    reason: str
+    alternatives: tuple[str, ...] = ()
+    image_id: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class StandaloneTrainingReport:
+    discovered: int
+    accepted: int
+    review: int
+    unknown: int
+    imported: int
+    matches: tuple[StandaloneMatch, ...]
+    warnings: tuple[str, ...] = ()
+
+
+class StandaloneProductImageTrainer:
+    """Precision-first ingestion for product images that do not come from PPTX.
+
+    A filename/title is only a textual hint. It can produce a review candidate, but
+    it cannot auto-accept Product↔Image by itself. Automatic approval requires an
+    explicitly verified mapping or corroborating visual evidence from an already
+    accepted image for the same product.
+    """
+
+    def __init__(self, library, catalog_names: Iterable[str] = ()) -> None:
+        self.library = library
+        self.catalog = self._catalog(catalog_names)
+
+    def train(self, sources: Iterable[StandaloneImageSource]) -> StandaloneTrainingReport:
+        rows = list(sources)
+        matches: list[StandaloneMatch] = []
+        warnings: list[str] = []
+        accepted = review = unknown = imported = 0
+
+        for source in rows:
+            path = Path(source.path)
+            if not path.is_file():
+                warnings.append(f"Standalone image not found: {path}")
+                matches.append(StandaloneMatch(str(path), "", "", 0.0, "unknown", "missing-file"))
+                unknown += 1
+                continue
+
+            match = self.match(source)
+            if match.status == "unknown":
+                unknown += 1
+                matches.append(match)
+                continue
+
+            # A same-product accepted visual duplicate is independent evidence. It
+            # can promote a filename/catalog review candidate without trusting the
+            # filename alone. Geometry-safe perceptual matching is supplied by
+            # SafeImageLibrary in the production batch path.
+            prior_same = self.library.find_near_duplicate(path, match.product_name)
+            if (
+                match.status == "review"
+                and prior_same is not None
+                and getattr(prior_same, "review_status", "") == "accepted"
+                and self._same_product(prior_same, match.product_name)
+            ):
+                match = StandaloneMatch(
+                    path=match.path,
+                    product_name=match.product_name,
+                    normalized_name=match.normalized_name,
+                    confidence=max(0.95, match.confidence),
+                    status="accepted",
+                    reason=f"{match.reason}+accepted-visual-consensus",
+                    alternatives=match.alternatives,
+                )
+
+            confidence = match.confidence
+            if match.status != "accepted":
+                library_gate = float(getattr(self.library, "AUTO_ACCEPT_CONFIDENCE", 0.82))
+                confidence = min(confidence, max(0.0, library_gate - 0.001))
+
+            metadata = {
+                "standalone": True,
+                "association_status": match.status,
+                "association_confidence": match.confidence,
+                "match_reason": match.reason,
+                "source_label": source.label,
+                "verified_mapping": bool(source.verified),
+                "alternatives": list(match.alternatives),
+                "provenance": [
+                    {
+                        "source_kind": "standalone-library",
+                        "source_file": path.name,
+                        "source_path": str(path),
+                        **dict(source.provenance or {}),
+                    }
+                ],
+            }
+
+            # Preserve the scalar legacy `source` when this standalone file is a
+            # duplicate of an existing Canva/manual asset. Complete origin history
+            # lives in metadata.provenance; a later observation must not rewrite
+            # where the canonical image originally came from.
+            prior = prior_same
+            if prior is None:
+                prior = self.library.find_cross_product_visual_duplicate(path, match.product_name)
+            canonical_source = getattr(prior, "source", "") if prior is not None else ""
+
+            asset = self.library.learn_product_image(
+                path,
+                match.product_name,
+                confidence=confidence,
+                source_file=path.name,
+                metadata=metadata,
+            )
+            changes = {
+                "source": canonical_source or "standalone-library",
+                "metadata": metadata,
+                "confidence": match.confidence,
+            }
+            if match.status != "accepted":
+                changes["review_status"] = "pending"
+            asset = self.library.update_metadata(asset.id, **changes)
+            imported += 1
+
+            final_status = match.status
+            final_reason = match.reason
+            if match.status == "accepted" and getattr(asset, "review_status", "pending") != "accepted":
+                final_status = "review"
+                final_reason = f"{match.reason}+library-conflict"
+
+            if final_status == "accepted":
+                accepted += 1
+            else:
+                review += 1
+            matches.append(
+                StandaloneMatch(
+                    path=match.path,
+                    product_name=match.product_name,
+                    normalized_name=match.normalized_name,
+                    confidence=match.confidence,
+                    status=final_status,
+                    reason=final_reason,
+                    alternatives=match.alternatives,
+                    image_id=asset.id,
+                )
+            )
+
+        return StandaloneTrainingReport(
+            discovered=len(rows),
+            accepted=accepted,
+            review=review,
+            unknown=unknown,
+            imported=imported,
+            matches=tuple(matches),
+            warnings=tuple(warnings),
+        )
+
+    def match(self, source: StandaloneImageSource) -> StandaloneMatch:
+        path = Path(source.path)
+        explicit = " ".join(str(source.product_name or "").split())
+        explicit_label = " ".join(str(source.label or "").split())
+        filename_label = self._label_from_filename(path)
+        label = explicit_label or filename_label
+
+        if source.verified and explicit:
+            return StandaloneMatch(
+                str(path),
+                explicit,
+                normalize_product_name(explicit),
+                0.99,
+                "accepted",
+                "verified-manifest",
+            )
+
+        query = explicit or label
+        normalized_query = normalize_product_name(query)
+        if not normalized_query or not is_product_text_candidate(query):
+            return StandaloneMatch(str(path), "", normalized_query, 0.0, "unknown", "not-product-like")
+
+        if not self.catalog:
+            if explicit:
+                return StandaloneMatch(
+                    str(path), explicit, normalized_query, 0.78, "review", "explicit-without-catalog"
+                )
+            return StandaloneMatch(str(path), "", normalized_query, 0.0, "unknown", "catalog-required")
+
+        ranked: list[tuple[float, str, str]] = []
+        for normalized_catalog, display_name in self.catalog.items():
+            if not self._measurement_compatible(normalized_query, normalized_catalog):
+                continue
+            score = 1.0 if normalized_query == normalized_catalog else product_name_similarity(query, display_name)
+            if score >= 0.58:
+                ranked.append((score, display_name, normalized_catalog))
+        ranked.sort(key=lambda item: (item[0], len(item[2])), reverse=True)
+        if not ranked:
+            return StandaloneMatch(str(path), "", normalized_query, 0.0, "unknown", "no-catalog-match")
+
+        best_score, best_name, best_normalized = ranked[0]
+        alternatives = tuple(name for _, name, _ in ranked[1:4])
+        second_score = ranked[1][0] if len(ranked) > 1 else 0.0
+        margin = best_score - second_score
+
+        if normalized_query == best_normalized:
+            reason = "exact-catalog-explicit" if explicit else (
+                "exact-catalog-label" if explicit_label else "exact-catalog-filename"
+            )
+            confidence = 0.84 if explicit else 0.80
+            return StandaloneMatch(
+                str(path), best_name, best_normalized, confidence, "review", reason, alternatives
+            )
+
+        if best_score >= 0.94 and margin >= 0.08 and product_names_compatible(query, best_name):
+            return StandaloneMatch(
+                str(path), best_name, best_normalized, 0.79, "review", "strong-catalog-fuzzy", alternatives
+            )
+        if best_score >= 0.82 and margin >= 0.10:
+            return StandaloneMatch(
+                str(path), best_name, best_normalized, 0.72, "review", "catalog-fuzzy", alternatives
+            )
+        return StandaloneMatch(
+            str(path), best_name, best_normalized, min(0.69, best_score), "review", "ambiguous-catalog-match", alternatives
+        )
+
+    def _same_product(self, asset, product_name: str) -> bool:
+        target = normalize_product_name(product_name)
+        candidates = [
+            getattr(asset, "product_key", ""),
+            getattr(asset, "product_name", ""),
+            *(getattr(asset, "aliases", ()) or ()),
+        ]
+        return any(normalize_product_name(value) == target for value in candidates if value)
+
+    @staticmethod
+    def _catalog(names: Iterable[str]) -> dict[str, str]:
+        result: dict[str, str] = {}
+        for name in names:
+            display = " ".join(str(name or "").split())
+            normalized = normalize_product_name(display)
+            if display and normalized:
+                result.setdefault(normalized, display)
+        return result
+
+    @staticmethod
+    def _measurement_compatible(left: str, right: str) -> bool:
+        left_signature = measurement_signature(left)
+        right_signature = measurement_signature(right)
+        if left_signature and right_signature and left_signature != right_signature:
+            return False
+        return True
+
+    @staticmethod
+    def _label_from_filename(path: Path) -> str:
+        text = path.stem.replace("_", " ").replace("-", " ")
+        text = _GENERATED_SUFFIX_RE.sub("", text)
+        return " ".join(text.split())
+
+
+def load_manifest(path: str | Path) -> list[StandaloneImageSource]:
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    rows = payload.get("images", payload) if isinstance(payload, dict) else payload
+    if not isinstance(rows, list):
+        raise ValueError("Standalone image manifest must be a list or {'images': [...]} object")
+    result: list[StandaloneImageSource] = []
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("path"):
+            continue
+        result.append(
+            StandaloneImageSource(
+                path=str(row["path"]),
+                label=str(row.get("label", "")),
+                product_name=str(row.get("product_name", "")),
+                verified=bool(row.get("verified", False)),
+                provenance=dict(row.get("provenance", {}) or {}),
+            )
+        )
+    return result

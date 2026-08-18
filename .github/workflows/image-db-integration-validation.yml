@@ -1,0 +1,310 @@
+name: Image DB Integration Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - g2/integration-beta
+    paths:
+      - '.github/workflows/image-db-integration-validation.yml'
+      - 'scripts/ci/image_db_phase3*.py'
+      - 'src/srstudio/images/**'
+      - 'tests/test_image_*.py'
+      - 'tests/test_safe_image_library.py'
+      - 'tools/build_product_image_bank.py'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ARTIFACT_DIR: artifacts/image-db-integration
+  CORPUS_DIR: .phase3-corpus
+  INC_LIBRARY: artifacts/image-db-integration-library
+  INC_IMPORTS: artifacts/image-db-integration-imports
+  PYTHON_VERSION: '3.11'
+  PHASE3A_RUN_ID: '32166973267'
+  EXPECTED_STANDALONE_SIZE: '48848012'
+  EXPECTED_STANDALONE_SHA256: '9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff'
+
+jobs:
+  validate:
+    name: Validate integrated Image Database G2
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout integration HEAD
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR" "$CORPUS_DIR" "$INC_LIBRARY" "$INC_IMPORTS"
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+          python -m compileall -q src scripts/ci
+          {
+            echo "sha=$GITHUB_SHA"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "branch=$GITHUB_REF_NAME"
+            python --version
+          } > "$ARTIFACT_DIR/environment.txt"
+
+      - name: Image DB full suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_image_*.py tests/test_safe_image_library.py \
+            --junitxml="$ARTIFACT_DIR/image-db-tests.xml" 2>&1 | tee "$ARTIFACT_DIR/image-db-tests.log"
+
+      - name: Restore approved Phase 3A index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .phase3a-persisted artifacts/phase3a-persisted-index
+          gh run download "$PHASE3A_RUN_ID" -n image-db-phase3a-report -D .phase3a-persisted
+          index=$(find .phase3a-persisted -type f -name index.json | head -1)
+          test -n "$index"
+          cp "$index" artifacts/phase3a-persisted-index/index.json
+          echo "PHASE3A_INDEX=$index" >> "$GITHUB_ENV"
+          python scripts/ci/image_db_phase3b.py snapshot \
+            --library artifacts/phase3a-persisted-index \
+            --output "$ARTIFACT_DIR/phase3a-persisted-snapshot.json"
+
+      - name: Resolve validated rich corpus and catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci/image_db_phase3_corpus.py > "$ARTIFACT_DIR/corpus-resolver.json"
+          test "${RICH_CORPUS_AVAILABLE:-false}" = true
+          test "${CATALOG_AVAILABLE:-false}" = true
+          test -n "${PRODUCT_DB:-}"
+
+      - name: Resolve and validate standalone corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci/image_db_phase3b.py inventory \
+            --artifact-dir "$ARTIFACT_DIR" --corpus-dir "$CORPUS_DIR"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          art = Path(os.environ['ARTIFACT_DIR'])
+          ver = json.loads((art/'standalone-asset-verification.json').read_text(encoding='utf-8'))
+          manifest = json.loads((art/'standalone-manifest.json').read_text(encoding='utf-8'))
+          metrics = manifest['metrics']
+          checks = {
+              'available': os.environ.get('STANDALONE_AVAILABLE') == 'true',
+              'validated': os.environ.get('STANDALONE_CORPUS_VALIDATED') == 'true',
+              'verified': ver.get('verified') is True,
+              'size': int(ver.get('actual_size') or 0) == int(os.environ['EXPECTED_STANDALONE_SIZE']),
+              'sha256': str(ver.get('sha256') or '').lower() == os.environ['EXPECTED_STANDALONE_SHA256'],
+              'zip': ver.get('zip_integrity') is True,
+              'files': int(metrics.get('image_files') or -1) == 160,
+              'valid': int(metrics.get('valid_images') or -1) == 160,
+              'corrupt': int(metrics.get('corrupt_images') or -1) == 0,
+          }
+          (art/'standalone-integration-gate.json').write_text(
+              json.dumps({'checks': checks, 'pass': all(checks.values())}, indent=2), encoding='utf-8')
+          raise SystemExit(0 if all(checks.values()) else 61)
+          PY
+
+      - name: Materialize approved Phase 3A physical bank
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci/image_db_phase3b_restore.py \
+            --index-source "$PHASE3A_INDEX" \
+            --library "$INC_LIBRARY" \
+            --archive "$CORPUS_DIR/Downloads(1)(1).zip" \
+            --archive "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --output "$ARTIFACT_DIR/phase3a-physical-restore.json"
+          python scripts/ci/image_db_phase3b.py snapshot \
+            --library "$INC_LIBRARY" --output "$ARTIFACT_DIR/before-standalone.json"
+
+      - name: Incremental standalone ingest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m srstudio.images.standalone_cli \
+            --library "$INC_LIBRARY" --product-db "$PRODUCT_DB" --manifest "$STANDALONE_MANIFEST" \
+            --state "$INC_IMPORTS/standalone-state.json" --report "$ARTIFACT_DIR/standalone-ingest-report.json"
+          python scripts/ci/image_db_phase3b.py snapshot \
+            --library "$INC_LIBRARY" --output "$ARTIFACT_DIR/after-first-ingest.json"
+
+      - name: Second ingest idempotency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m srstudio.images.standalone_cli \
+            --library "$INC_LIBRARY" --product-db "$PRODUCT_DB" --manifest "$STANDALONE_MANIFEST" \
+            --state "$INC_IMPORTS/standalone-state.json" --report "$ARTIFACT_DIR/second-ingest-report.json"
+          python scripts/ci/image_db_phase3b.py snapshot \
+            --library "$INC_LIBRARY" --output "$ARTIFACT_DIR/after-second-ingest.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          art = Path(os.environ['ARTIFACT_DIR'])
+          first = json.loads((art/'after-first-ingest.json').read_text(encoding='utf-8'))
+          second = json.loads((art/'after-second-ingest.json').read_text(encoding='utf-8'))
+          report = json.loads((art/'second-ingest-report.json').read_text(encoding='utf-8'))
+          metrics = report.get('metrics', {})
+          selected = int(os.environ.get('STANDALONE_TRAINING_FILES', '-2'))
+          checks = {
+              'canonical': first['canonical'] == second['canonical'],
+              'physical': first['physical'] == second['physical'],
+              'signature': first['logical_signature_sha256'] == second['logical_signature_sha256'],
+              'processed_zero': int(metrics.get('processed', -1)) == 0,
+              'all_selected_skipped': int(metrics.get('skipped', -1)) == selected,
+          }
+          (art/'idempotency.json').write_text(json.dumps({'checks': checks, 'pass': all(checks.values())}, indent=2), encoding='utf-8')
+          raise SystemExit(0 if all(checks.values()) else 62)
+          PY
+
+      - name: Recovery
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_image_standalone_recovery.py \
+            --junitxml="$ARTIFACT_DIR/recovery.xml" 2>&1 | tee "$ARTIFACT_DIR/recovery.log"
+
+      - name: Audit catalog lookup and performance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR/after"
+          python scripts/ci/image_db_phase3_analysis.py \
+            --library "$INC_LIBRARY" --product-db "$PRODUCT_DB" \
+            --corpus-source "$CORPUS_DIR/Downloads(1)(1).zip" \
+            --corpus-source "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --artifact-dir "$ARTIFACT_DIR/after" --review-limit 100
+
+      - name: Integration smoke and invariants
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, shutil, tempfile
+          from collections import Counter
+          from pathlib import Path
+          from types import SimpleNamespace
+          from srstudio.images.association import normalize_product_name
+          from srstudio.images.lookup import ProductImageLookupService
+          from srstudio.images.safe_library import SafeImageLibrary
+          from scripts.ci.image_db_phase3b import library_snapshot, _canonical_sha
+
+          art = Path(os.environ['ARTIFACT_DIR'])
+          root = Path(os.environ['INC_LIBRARY'])
+          coverage = json.loads((art/'after/coverage-catalog-520.json').read_text(encoding='utf-8'))
+          audit = json.loads((art/'after/library-audit.json').read_text(encoding='utf-8'))
+          find_results = json.loads((art/'after/find-image-results.json').read_text(encoding='utf-8'))
+          idem = json.loads((art/'idempotency.json').read_text(encoding='utf-8'))
+          snap = library_snapshot(root)
+          lib = SafeImageLibrary(root)
+          assets = list(lib.all())
+
+          pairs = [
+              (normalize_product_name(a.product_name or a.product_key), _canonical_sha(a))
+              for a in assets
+          ]
+          duplicate_logical = sum(count - 1 for count in Counter(pairs).values() if count > 1)
+
+          exact = ProductImageLookupService(lib).find_image('TOMATE PERA')
+          missing = ProductImageLookupService(lib).find_image('ARROZ VASCONCELOS 5KG')
+
+          class TinyLibrary:
+              index_path = None
+              def __init__(self, items): self.items = items
+              def all(self, *, status='', kind=''):
+                  values = self.items
+                  if status: values = [item for item in values if item.review_status == status]
+                  return values
+          def asset(asset_id, name, confidence=.92):
+              return SimpleNamespace(
+                  id=asset_id, product_key=name, product_name=name, aliases=(), kind='product',
+                  review_status='accepted', preferred=False, confidence=confidence, usage_count=0,
+                  megapixels=1.0, mode='RGB', metadata={})
+
+          fuzzy = ProductImageLookupService(TinyLibrary([asset('m','ENERGETICO MONSTER 473ML')])).find_image('MONSTER 473ML')
+          sku = ProductImageLookupService(TinyLibrary([
+              asset('370','ACHOCOLATADO TODDY 370G'), asset('750','ACHOCOLATADO TODDY 750G', .99)
+          ])).find_image('TODDY 370G')
+
+          with tempfile.TemporaryDirectory() as temp:
+              copied = Path(temp)/'library'
+              shutil.copytree(root, copied)
+              before = library_snapshot(copied)
+              copied_lib = SafeImageLibrary(copied)
+              copied_lib._save(copied_lib._load())
+              reloaded = library_snapshot(copied)
+              save_reload_ok = (
+                  before['canonical'] == reloaded['canonical'] and
+                  before['logical_signature_sha256'] == reloaded['logical_signature_sha256']
+              )
+
+          metrics = audit.get('metrics', {})
+          checks = {
+              'load_index_1037': len(assets) == 1037,
+              'canonical_1037': snap['canonical'] == 1037,
+              'physical_1037': snap['physical'] == 1037,
+              'accepted_11': snap['accepted'] == 11,
+              'pending_1026': snap['pending'] == 1026,
+              'rejected_0': snap['rejected'] == 0,
+              'missing_provenance_0': snap['missing_provenance'] == 0 and int(metrics.get('missing_provenance', 0)) == 0,
+              'catalog_520': coverage.get('total') == 520,
+              'auto_2': coverage.get('auto_approved') == 2,
+              'likely_42': coverage.get('likely') == 42,
+              'review_7': coverage.get('review_required') == 7,
+              'missing_469': coverage.get('missing') == 469,
+              'coverage_51': coverage.get('any_candidate') == 51,
+              'coverage_9_8077': coverage.get('any_candidate_coverage_percent') == 9.8077,
+              'exact_lookup': exact.best_match is not None and exact.best_match.asset.product_name == 'TOMATE PERA',
+              'fuzzy_lookup': fuzzy.best_match is not None and fuzzy.best_match.asset.id == 'm',
+              'product_without_image': missing.best_match is None,
+              'sku_grammage_guard': sku.best_match is not None and sku.best_match.asset.id == '370' and all(x.asset.id != '750' for x in sku.alternatives),
+              'negative_invariant_violations_0': find_results.get('negative_invariant_violations') == [],
+              'duplicate_logical_associations_0': duplicate_logical == 0,
+              'idempotency': idem.get('pass') is True,
+              'save_reload': save_reload_ok,
+          }
+          payload = {
+              'checks': checks,
+              'pass': all(checks.values()),
+              'negative_invariant_violations': len(find_results.get('negative_invariant_violations') or []),
+              'duplicate_logical_associations': duplicate_logical,
+              'coverage': coverage,
+              'snapshot': {k:v for k,v in snap.items() if k != 'logical_rows'},
+          }
+          (art/'integration-smoke.json').write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8')
+          print(json.dumps(payload, ensure_ascii=False, indent=2))
+          raise SystemExit(0 if payload['pass'] else 63)
+          PY
+
+      - name: Upload integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-db-integration-report
+          path: |
+            artifacts/image-db-integration
+            artifacts/image-db-integration-library/index.json
+            artifacts/image-db-integration-imports/*.json
+          if-no-files-found: warn
+          retention-days: 14
