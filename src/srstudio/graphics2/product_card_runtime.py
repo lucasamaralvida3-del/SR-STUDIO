@@ -50,7 +50,6 @@ def install_product_card_runtime(session_type: Any, semantic_module: Any) -> Non
         y = float(y)
         page = self.page
 
-        nodes: dict[str, GraphicsNode] = {}
         primary: dict[str, str] = {}
         extra: dict[str, list[str]] = {}
 
@@ -79,8 +78,12 @@ def install_product_card_runtime(session_type: Any, semantic_module: Any) -> Non
                 ),
                 style={
                     "font_size": font_size,
-                    "font_weight": 700 if role in {"name", "price_complete", "app_price_complete", "wholesale_price"} else 400,
-                    "align": "center" if "price" in role or role in {"currency", "price_currency", "unit", "quantity"} else "left",
+                    "font_weight": 700
+                    if role in {"name", "price_complete", "app_price_complete", "wholesale_price"}
+                    else 400,
+                    "align": "center"
+                    if "price" in role or role in {"currency", "price_currency", "unit", "quantity"}
+                    else "left",
                 },
                 metadata={
                     "source": "g2-product-card",
@@ -89,11 +92,12 @@ def install_product_card_runtime(session_type: Any, semantic_module: Any) -> Non
                 },
             )
             page.add_node(node)
-            nodes[key] = node
             return node
 
         with self.transaction("Criar ProductCard"):
-            name_node = add_text("product_name", "name", name, 0.04, 0.04, 0.92, 0.14, font_size=26.0)
+            name_node = add_text(
+                "product_name", "name", name, 0.04, 0.04, 0.92, 0.14, font_size=26.0
+            )
             primary["name"] = name_node.id
 
             if include_description:
@@ -125,11 +129,14 @@ def install_product_card_runtime(session_type: Any, semantic_module: Any) -> Non
                     metadata={"source": "g2-product-card", "product_card_role": "image"},
                 )
                 page.add_node(image)
-                nodes["image"] = image
                 primary["image"] = image.id
 
-            currency = add_text("price_currency", "price_currency", "R$", 0.50, 0.36, 0.09, 0.10, font_size=16.0)
-            price = add_text("price", "price_complete", "0,00", 0.59, 0.31, 0.27, 0.17, font_size=34.0)
+            currency = add_text(
+                "price_currency", "price_currency", "R$", 0.50, 0.36, 0.09, 0.10, font_size=16.0
+            )
+            price = add_text(
+                "price", "price_complete", "0,00", 0.59, 0.31, 0.27, 0.17, font_size=34.0
+            )
             unit = add_text("unit", "unit", "/UN", 0.86, 0.41, 0.10, 0.08, font_size=13.0)
             primary["price_currency"] = currency.id
             primary["price_complete"] = price.id
@@ -230,7 +237,11 @@ def install_product_card_runtime(session_type: Any, semantic_module: Any) -> Non
             card_id = str(slot.metadata.get("semantic_product_card_id") or "")
 
         card = page.metadata.get("semantic_blocks", {}).get(card_id, {})
-        members = [node_id for node_id in card.get("members", []) if node_id in page.nodes] if isinstance(card, dict) else []
+        members = (
+            [node_id for node_id in card.get("members", []) if node_id in page.nodes]
+            if isinstance(card, dict)
+            else []
+        )
         self.selection = set(members or primary.values())
         self.anchor_id = name_node.id
 
@@ -257,14 +268,13 @@ def install_product_card_runtime(session_type: Any, semantic_module: Any) -> Non
                     node_id
                     for node_id in bound_ids
                     if node_id in self.page.nodes
-                    and not any(
-                        node_id in other.children
-                        for other in self.page.nodes.values()
-                    )
+                    and not any(node_id in other.children for other in self.page.nodes.values())
                 ]
                 for node_id in root_ids:
                     if node_id in self.page.nodes:
                         self.page.remove_node(node_id, recursive=True)
+            else:
+                _clear_unbound_binding_roles(self.page, bound_ids)
             _remove_slot_semantic_blocks(self.page, slot.id)
 
         self.selection.difference_update(bound_ids)
@@ -283,85 +293,91 @@ def install_product_card_commands(command_module: Any) -> None:
         return
 
     original_dispatch = router_type.dispatch
+    handled = {"create_product_card", "bind_product", "rebind_slot", "remove_smart_slot"}
 
     def dispatch(self: Any, command: dict[str, Any]):
         name = str(command.get("name") or "").strip().lower()
-
-        if name == "create_product_card":
-            created = self.session.create_product_card(
-                x=float(command.get("x", 80.0)),
-                y=float(command.get("y", 80.0)),
-                width=float(command.get("width", 420.0)),
-                height=float(command.get("height", 360.0)),
-                name=str(command.get("product_name") or command.get("name_value") or "Novo produto"),
-                include_image=bool(command.get("include_image", True)),
-                include_description=bool(command.get("include_description", True)),
-                include_quantity=bool(command.get("include_quantity", True)),
-                include_validity=bool(command.get("include_validity", False)),
-                include_app_price=bool(command.get("include_app_price", False)),
-                include_wholesale=bool(command.get("include_wholesale", False)),
-            )
-            return command_module.CommandResult(
-                True,
-                True,
-                "ProductCard criado.",
-                created.to_dict(),
-            )
-
-        if name == "bind_product":
-            slot_id = str(command.get("slot_id") or "")
-            slot = self.session.page.slots.get(slot_id)
-            if slot is None:
-                return command_module.CommandResult(False, False, "Smart Slot não encontrado.")
-            if slot.locked:
-                return command_module.CommandResult(False, False, "Smart Slot bloqueado.")
-
-            product = command.get("product")
-            if not isinstance(product, dict):
-                product_id = str(command.get("product_id") or "")
-                products = list(self.session.document.metadata.get("products") or [])
-                product = next(
-                    (
-                        item
-                        for item in products
-                        if isinstance(item, dict) and str(item.get("id") or "") == product_id
-                    ),
-                    None,
+        if name not in handled:
+            return original_dispatch(self, command)
+        try:
+            if name == "create_product_card":
+                created = self.session.create_product_card(
+                    x=float(command.get("x", 80.0)),
+                    y=float(command.get("y", 80.0)),
+                    width=float(command.get("width", 420.0)),
+                    height=float(command.get("height", 360.0)),
+                    name=str(command.get("product_name") or command.get("name_value") or "Novo produto"),
+                    include_image=bool(command.get("include_image", True)),
+                    include_description=bool(command.get("include_description", True)),
+                    include_quantity=bool(command.get("include_quantity", True)),
+                    include_validity=bool(command.get("include_validity", False)),
+                    include_app_price=bool(command.get("include_app_price", False)),
+                    include_wholesale=bool(command.get("include_wholesale", False)),
                 )
-            if not isinstance(product, dict):
-                return command_module.CommandResult(False, False, "Produto não encontrado.")
-
-            changed = bool(self.session.bind_product(slot_id, product))
-            return command_module.CommandResult(
-                True,
-                changed,
-                "Produto aplicado ao Smart Slot." if changed else "Smart Slot já está atualizado.",
-                {"slot_id": slot_id, "product_id": str(slot.product_id or "")},
-            )
-
-        if name == "rebind_slot":
-            slot_id = str(command.get("slot_id") or "")
-            bindings = command.get("bindings")
-            if not isinstance(bindings, dict):
-                return command_module.CommandResult(False, False, "bindings precisa ser um objeto.")
-            extras = command.get("extra_bindings")
-            if extras is not None and not isinstance(extras, dict):
-                return command_module.CommandResult(False, False, "extra_bindings precisa ser um objeto.")
-            changed = bool(
-                self.session.rebind_slot(
-                    slot_id,
-                    bindings,
-                    extra_bindings=extras,
+                return command_module.CommandResult(
+                    True,
+                    True,
+                    "ProductCard criado.",
+                    created.to_dict(),
                 )
-            )
-            return command_module.CommandResult(
-                True,
-                changed,
-                "Smart Slot religado." if changed else "Smart Slot sem alteração.",
-                {"slot_id": slot_id},
-            )
 
-        if name == "remove_smart_slot":
+            if name == "bind_product":
+                slot_id = str(command.get("slot_id") or "")
+                slot = self.session.page.slots.get(slot_id)
+                if slot is None:
+                    return command_module.CommandResult(False, False, "Smart Slot não encontrado.")
+                if slot.locked:
+                    return command_module.CommandResult(False, False, "Smart Slot bloqueado.")
+
+                product = command.get("product")
+                if not isinstance(product, dict):
+                    product_id = str(command.get("product_id") or "")
+                    products = list(self.session.document.metadata.get("products") or [])
+                    product = next(
+                        (
+                            item
+                            for item in products
+                            if isinstance(item, dict) and str(item.get("id") or "") == product_id
+                        ),
+                        None,
+                    )
+                if not isinstance(product, dict):
+                    return command_module.CommandResult(False, False, "Produto não encontrado.")
+
+                changed = bool(self.session.bind_product(slot_id, product))
+                return command_module.CommandResult(
+                    True,
+                    changed,
+                    "Produto aplicado ao Smart Slot."
+                    if changed
+                    else "Smart Slot já está atualizado.",
+                    {"slot_id": slot_id, "product_id": str(slot.product_id or "")},
+                )
+
+            if name == "rebind_slot":
+                slot_id = str(command.get("slot_id") or "")
+                bindings = command.get("bindings")
+                if not isinstance(bindings, dict):
+                    return command_module.CommandResult(False, False, "bindings precisa ser um objeto.")
+                extras = command.get("extra_bindings")
+                if extras is not None and not isinstance(extras, dict):
+                    return command_module.CommandResult(
+                        False, False, "extra_bindings precisa ser um objeto."
+                    )
+                changed = bool(
+                    self.session.rebind_slot(
+                        slot_id,
+                        bindings,
+                        extra_bindings=extras,
+                    )
+                )
+                return command_module.CommandResult(
+                    True,
+                    changed,
+                    "Smart Slot religado." if changed else "Smart Slot sem alteração.",
+                    {"slot_id": slot_id},
+                )
+
             slot_id = str(command.get("slot_id") or "")
             changed = bool(
                 self.session.remove_smart_slot(
@@ -375,8 +391,8 @@ def install_product_card_commands(command_module: Any) -> None:
                 "Smart Slot removido." if changed else "Smart Slot não removido.",
                 {"slot_id": slot_id},
             )
-
-        return original_dispatch(self, command)
+        except Exception as exc:
+            return command_module.CommandResult(False, False, f"{type(exc).__name__}: {exc}")
 
     router_type.dispatch = dispatch
     router_type._sr_product_card_commands_installed = True
@@ -402,8 +418,7 @@ def _attach_auxiliary_nodes(semantic_module: Any, page: Any, slot: Any) -> None:
     bounds = semantic_module._bounds_dict(page, members)
     card["bounds"] = bounds
     card["template_geometry"] = {
-        node_id: semantic_module._geometry(page.nodes[node_id], bounds)
-        for node_id in members
+        node_id: semantic_module._geometry(page.nodes[node_id], bounds) for node_id in members
     }
 
 
@@ -417,6 +432,16 @@ def _slot_node_ids(slot: Any) -> set[str]:
             elif isinstance(raw, (list, tuple, set)):
                 result.update(str(node_id) for node_id in raw if str(node_id))
     return result
+
+
+def _clear_unbound_binding_roles(page: Any, node_ids: set[str]) -> None:
+    still_bound: set[str] = set()
+    for other in page.slots.values():
+        still_bound.update(_slot_node_ids(other))
+    for node_id in node_ids - still_bound:
+        node = page.node(node_id)
+        if node is not None:
+            node.binding_role = None
 
 
 def _remove_slot_semantic_blocks(page: Any, slot_id: str) -> None:
