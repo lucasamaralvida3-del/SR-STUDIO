@@ -49,10 +49,14 @@ jobs:
         run: >-
           python -m ruff check
           src/srstudio/graphics2/editor_commands_runtime.py
+          src/srstudio/graphics2/editor_persistence.py
           src/srstudio/graphics2/autosave.py
           src/srstudio/graphics2/image_replace_runtime.py
+          src/srstudio/graphics2/qt_host.py
           tests/test_graphics2_editor_commands_runtime.py
           tests/test_graphics2_editor_multipage_qml.py
+          tests/test_graphics2_editor_persistence.py
+          tests/test_graphics2_editor_host_recovery.py
           tests/test_graphics2_autosave.py
 
       - name: Editor production contracts
@@ -64,6 +68,8 @@ jobs:
           python -m pytest -q -ra
           tests/test_graphics2_editor_commands_runtime.py
           tests/test_graphics2_editor_multipage_qml.py
+          tests/test_graphics2_editor_persistence.py
+          tests/test_graphics2_editor_host_recovery.py
           tests/test_graphics2_autosave.py
           tests/test_graphics2_page_duplicate.py
           tests/test_graphics2_command_router.py
