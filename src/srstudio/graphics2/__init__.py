@@ -107,8 +107,13 @@ install_import_editability_guard(_import_bridge)
 install_template_aware_binding_guard(_import_bridge)
 
 from . import command_router as _command_router
+from .editor_commands_runtime import install_editor_commands
 from .image_replace_runtime import install_image_replace_command
 
+# Comandos exclusivos do editor precisam ser instalados explicitamente. Eles não
+# podem depender de outro feature runtime (por exemplo, troca de imagem) estar
+# ativo para que multipágina permaneça íntegra.
+install_editor_commands(_command_router)
 install_image_replace_command(_command_router)
 
 from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_image_placeholders
