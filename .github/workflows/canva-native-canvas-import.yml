@@ -1,0 +1,191 @@
+name: Canva Native Canvas Import Validation
+
+on:
+  push:
+    branches:
+      - g2/import-canva-native-canvas
+    paths:
+      - '.github/workflows/canva-native-canvas-import.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Apply architectural importer patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          reader = Path('src/srstudio/importers/pptx/reader.py')
+          text = reader.read_text(encoding='utf-8')
+          old = 'from srstudio.importers.pptx.package_order import ordered_slide_paths\n'
+          new = (
+              'from srstudio.importers.pptx.canvas_size import resolve_canvas_size\n'
+              'from srstudio.importers.pptx.package_order import ordered_slide_paths\n'
+          )
+          if 'from srstudio.importers.pptx.canvas_size import resolve_canvas_size' not in text:
+              assert old in text
+              text = text.replace(old, new, 1)
+
+          old = (
+              '@dataclass(slots=True)\n'
+              'class PptxImportResult:\n'
+              '    slides: list[PptxSlide] = field(default_factory=list)\n'
+              '    warnings: list[str] = field(default_factory=list)\n'
+          )
+          new = old + '    metadata: dict = field(default_factory=dict)\n'
+          if '    metadata: dict = field(default_factory=dict)\n\n\nclass PptxImporter' not in text:
+              assert old in text
+              text = text.replace(old, new, 1)
+
+          old = '            slide_width, slide_height = self._presentation_size(zf)\n'
+          new = (
+              old
+              + '            result.metadata.update(\n'
+              + '                resolve_canvas_size(zf, slide_width, slide_height).to_metadata()\n'
+              + '            )\n'
+          )
+          if 'resolve_canvas_size(zf, slide_width, slide_height).to_metadata()' not in text:
+              assert old in text
+              text = text.replace(old, new, 1)
+          reader.write_text(text, encoding='utf-8')
+
+          pipeline = Path('src/srstudio/importers/pipeline.py')
+          text = pipeline.read_text(encoding='utf-8')
+          old = (
+              '        parsed = self.pptx_importer.import_file(path, media_dir=media_dir)\n'
+              '        summary = ImportSummary(str(path), warnings=list(parsed.warnings))\n'
+              '        learned_profiles: list[str] = []\n'
+          )
+          new = (
+              '        parsed = self.pptx_importer.import_file(path, media_dir=media_dir)\n'
+              '        summary = ImportSummary(str(path), warnings=list(parsed.warnings))\n'
+              '        canvas_metadata = dict(parsed.metadata or {})\n'
+              '        pptx_physical_page_size = dict(canvas_metadata.get("pptx_physical_page_size") or {})\n'
+              '        intended_canvas_size = canvas_metadata.get("intended_canvas_size")\n'
+              '        learned_profiles: list[str] = []\n'
+          )
+          if '        canvas_metadata = dict(parsed.metadata or {})\n' not in text:
+              assert old in text
+              text = text.replace(old, new, 1)
+
+          old = (
+              '            page.width = 1080.0\n'
+              '            page.height = 1080.0 * (slide.height / max(slide.width, 1))\n'
+          )
+          new = (
+              '            if isinstance(intended_canvas_size, dict) and intended_canvas_size.get("width") and intended_canvas_size.get("height"):\n'
+              '                page.width = float(intended_canvas_size["width"])\n'
+              '                page.height = float(intended_canvas_size["height"])\n'
+              '            else:\n'
+              '                page.width = 1080.0\n'
+              '                page.height = 1080.0 * (slide.height / max(slide.width, 1))\n'
+          )
+          if '                page.width = float(intended_canvas_size["width"])\n' not in text:
+              assert old in text
+              text = text.replace(old, new, 1)
+
+          old = '        project.settings["pptx_source"] = str(path)\n'
+          new = (
+              old
+              + '        project.settings["pptx_physical_page_size"] = pptx_physical_page_size\n'
+              + '        project.settings["intended_canvas_size"] = intended_canvas_size\n'
+              + '        project.settings["pptx_canvas_size_source"] = str(canvas_metadata.get("source_kind") or "office-generic")\n'
+              + '        project.settings["pptx_canvas_size_preset"] = canvas_metadata.get("preset")\n'
+              + '        project.settings["pptx_canvas_size_evidence"] = list(canvas_metadata.get("source_evidence") or ())\n'
+          )
+          if '        project.settings["pptx_physical_page_size"] = pptx_physical_page_size\n' not in text:
+              assert old in text
+              text = text.replace(old, new, 1)
+          pipeline.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Install project test dependencies
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+
+      - name: Run focused importer regression suite
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p artifacts/canva-native-canvas
+          python -m pytest -q \
+            tests/test_pptx_canvas_size.py \
+            tests/test_canva_visual_fidelity_v5.py \
+            tests/test_canva_rendering_v7.py \
+            tests/test_canva_encartes_v2.py \
+            tests/test_canva_slot_safety_v5.py \
+            tests/test_canva_smart_slot_bindings.py \
+            --junitxml=artifacts/canva-native-canvas/test-results.xml \
+            2>&1 | tee artifacts/canva-native-canvas/pytest.log
+
+      - name: Record validation evidence
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docs/parallel artifacts/canva-native-canvas
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          log = Path('artifacts/canva-native-canvas/pytest.log')
+          payload = {
+              'status': 'PASS' if log.is_file() and ' failed' not in log.read_text(encoding='utf-8', errors='replace') else 'CHECK_LOG',
+              'tested_sha_before_patch_commit': os.environ.get('GITHUB_SHA'),
+              'branch': os.environ.get('GITHUB_REF_NAME'),
+              'architecture': {
+                  'pptx_physical_page_size': 'preserved from presentation.xml in EMU/pt',
+                  'intended_canvas_size': 'separate optional pixel size; used only with safe source/preset evidence',
+                  'renderer_plus_one_px_hack': False,
+              },
+              'upstream_evidence': {
+                  'Canva 4:5 native': [1080, 1350],
+                  'Canva PPTX physical points': [810, 1012],
+                  'designs': ['DAHMLMj6EH8', 'DAHMAeLZD3Q', 'DAHMFY898gM'],
+              },
+              'pixel_gate': 'WAITING_FOR_LOSSLESS_PNGS',
+          }
+          Path('docs/parallel/CANVA_NATIVE_CANVAS_VALIDATION.json').write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          PY
+
+      - name: Commit validated importer change on isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/srstudio/importers/pptx/reader.py src/srstudio/importers/pipeline.py docs/parallel/CANVA_NATIVE_CANVAS_VALIDATION.json
+          git commit -m 'import: preserve Canva intended canvas separately [skip ci]'
+          git push origin HEAD:g2/import-canva-native-canvas
+
+      - name: Upload validation evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: canva-native-canvas-validation
+          path: artifacts/canva-native-canvas
+          if-no-files-found: warn
