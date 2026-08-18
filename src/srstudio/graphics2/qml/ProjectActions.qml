@@ -41,9 +41,20 @@ Rectangle {
         return scene.pages.length ? 0 : -1
     }
 
+    Timer {
+        id: autosaveDebounce
+        interval: 2500
+        repeat: false
+        onTriggered: sceneBridge.autosaveIfNeeded()
+    }
+
     Connections {
         target: sceneBridge
-        function onSceneChanged() { panel.refreshScene() }
+        function onSceneChanged() {
+            panel.refreshScene()
+            if (sceneBridge.dirty)
+                autosaveDebounce.restart()
+        }
         function onSaveAsRequested() { saveDialog.open() }
     }
 
