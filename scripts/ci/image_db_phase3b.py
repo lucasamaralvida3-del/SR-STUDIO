@@ -410,6 +410,7 @@ def library_snapshot(library_root: Path) -> dict[str, Any]:
                 "review_status": asset.review_status,
                 "confidence": round(float(asset.confidence or 0.0), 6),
                 "perceptual_hash": str(asset.perceptual_hash or ""),
+                # Fresh rebuild equivalence uses production normalization and set semantics only for aliases.
                 "aliases": sorted({
                     normalized
                     for value in (asset.aliases or ())
