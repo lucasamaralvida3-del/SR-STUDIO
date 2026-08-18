@@ -34,11 +34,40 @@ class SafeImageLibrary(ImageLibrary):
         return self.index_path.with_suffix(self.index_path.suffix + ".bak")
 
     def import_image(self, source: str | Path, *args, metadata: dict | None = None, **kwargs) -> ImageAsset:
-        full_sha256 = self._full_sha256(Path(source))
+        source_path = Path(source)
+        full_sha256 = self._full_sha256(source_path)
         merged_metadata = dict(metadata or {})
         merged_metadata.setdefault("sha256_full", full_sha256)
         merged_metadata.setdefault("sha256", full_sha256)
+
+        # Exact duplicates use the legacy 24-hex asset id. Merge provenance before
+        # delegating so repeated observations cannot erase earlier source records.
+        legacy_id = ImageLibrary._hash(source_path)
+        current_data = self._load().get(legacy_id)
+        if current_data:
+            current = self._asset(current_data)
+            merged_metadata = self._merge_provenance_metadata(
+                current.metadata,
+                merged_metadata,
+                canonical_sha256=self._canonical_sha256(current),
+            )
         return super().import_image(source, *args, metadata=merged_metadata, **kwargs)
+
+    def update_metadata(self, asset_id: str, **changes) -> ImageAsset:
+        if "metadata" not in changes:
+            return super().update_metadata(asset_id, **changes)
+
+        index = self._load()
+        if asset_id not in index:
+            raise KeyError(asset_id)
+        current = self._asset(index[asset_id])
+        incoming = dict(changes.get("metadata") or {})
+        changes["metadata"] = self._merge_provenance_metadata(
+            current.metadata,
+            incoming,
+            canonical_sha256=self._canonical_sha256(current),
+        )
+        return super().update_metadata(asset_id, **changes)
 
     def _load(self) -> dict:
         if not self.index_path.exists():
@@ -80,6 +109,75 @@ class SafeImageLibrary(ImageLibrary):
             except OSError:
                 pass
             raise
+
+    def _canonical_sha256(self, asset: ImageAsset) -> str:
+        metadata = dict(asset.metadata or {})
+        canonical = str(metadata.get("sha256_full") or metadata.get("sha256") or "").strip().lower()
+        if len(canonical) == 64:
+            return canonical
+        try:
+            return self._full_sha256(Path(asset.path))
+        except OSError:
+            return canonical
+
+    @classmethod
+    def _merge_provenance_metadata(
+        cls,
+        current: dict | None,
+        incoming: dict | None,
+        *,
+        canonical_sha256: str,
+    ) -> dict:
+        current = dict(current or {})
+        incoming = dict(incoming or {})
+        merged = {**current, **incoming}
+
+        incoming_sha = str(incoming.get("sha256_full") or incoming.get("sha256") or "").strip().lower()
+        variants = {
+            str(value).strip().lower()
+            for value in (
+                *(current.get("variant_sha256") or ()),
+                *(incoming.get("variant_sha256") or ()),
+            )
+            if str(value).strip()
+        }
+        if incoming_sha and canonical_sha256 and incoming_sha != canonical_sha256:
+            variants.add(incoming_sha)
+        if canonical_sha256:
+            merged["sha256"] = canonical_sha256
+            merged["sha256_full"] = canonical_sha256
+        if variants:
+            variants.discard(canonical_sha256)
+            merged["variant_sha256"] = sorted(variants)
+
+        provenance = cls._merge_provenance_lists(
+            current.get("provenance"),
+            incoming.get("provenance"),
+        )
+        if provenance:
+            merged["provenance"] = provenance
+        return merged
+
+    @staticmethod
+    def _merge_provenance_lists(*values) -> list[dict]:
+        result: list[dict] = []
+        seen: set[str] = set()
+        for value in values:
+            if isinstance(value, dict):
+                rows = [value]
+            elif isinstance(value, (list, tuple)):
+                rows = value
+            else:
+                rows = []
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                key = json.dumps(row, ensure_ascii=False, sort_keys=True, default=str)
+                if key in seen:
+                    continue
+                seen.add(key)
+                result.append(dict(row))
+        return result
 
     @staticmethod
     def _full_sha256(path: Path) -> str:
