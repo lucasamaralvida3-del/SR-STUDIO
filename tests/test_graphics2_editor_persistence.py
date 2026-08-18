@@ -197,6 +197,54 @@ def test_recovery_journal_can_record_pre_first_save_empty_base_digest(tmp_path):
     assert current.base_saved_digest == ""
 
 
+def test_recovery_journal_never_regresses_to_older_generation_for_same_document(tmp_path):
+    root = tmp_path / "autosave"
+    manager = AutosaveManager(root)
+    document = GraphicsDocument(name="Ordem de recovery")
+
+    document.metadata["revision"] = 1
+    older = manager.save(document)
+    document.metadata["revision"] = 2
+    newer = manager.save(document)
+
+    # Deixe a ordenação inequívoca mesmo em filesystems de baixa resolução.
+    os.utime(older, (100, 100))
+    os.utime(newer, (200, 200))
+
+    journal = EditorRecoveryJournal(root)
+    journal.mark(document.id, newer, base_saved_digest="")
+    # Simula callback tardio de um autosave mais antigo.
+    journal.mark(document.id, older, base_saved_digest="")
+
+    current = journal.current()
+    assert current is not None
+    assert current.recovery_path == newer.resolve()
+    point = journal.recovery_point(manager)
+    assert point is not None
+    assert point.path == newer.resolve()
+
+
+def test_recovery_journal_allows_new_document_session_to_replace_previous_pointer(tmp_path):
+    root = tmp_path / "autosave"
+    manager = AutosaveManager(root)
+    first = GraphicsDocument(name="Projeto A")
+    second = GraphicsDocument(name="Projeto B")
+    first_path = manager.save(first)
+    second_path = manager.save(second)
+
+    # A monotonicidade vale somente dentro do mesmo documento.
+    os.utime(first_path, (300, 300))
+    os.utime(second_path, (100, 100))
+    journal = EditorRecoveryJournal(root)
+    journal.mark(first.id, first_path, base_saved_digest="")
+    journal.mark(second.id, second_path, base_saved_digest="")
+
+    current = journal.current()
+    assert current is not None
+    assert current.document_id == second.id
+    assert current.recovery_path == second_path.resolve()
+
+
 def test_recovery_journal_does_not_resume_missing_or_unrelated_pointer(tmp_path):
     manager = AutosaveManager(tmp_path / "autosave")
     document = GraphicsDocument(name="Outro")
