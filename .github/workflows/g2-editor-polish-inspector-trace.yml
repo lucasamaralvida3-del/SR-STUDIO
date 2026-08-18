@@ -11,6 +11,7 @@ permissions:
 jobs:
   trace:
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
@@ -22,6 +23,12 @@ jobs:
         with:
           python-version: '3.11'
           cache: pip
+      - name: Install Linux Qt prerequisites
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
       - name: Install Qt test runtime
         shell: bash
         if: runner.os != 'Windows'
