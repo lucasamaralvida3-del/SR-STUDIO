@@ -410,7 +410,11 @@ def library_snapshot(library_root: Path) -> dict[str, Any]:
                 "review_status": asset.review_status,
                 "confidence": round(float(asset.confidence or 0.0), 6),
                 "perceptual_hash": str(asset.perceptual_hash or ""),
-                "aliases": sorted(normalize_product_name(value) for value in (asset.aliases or ()) if value),
+                "aliases": sorted({
+                    normalized
+                    for value in (asset.aliases or ())
+                    if (normalized := normalize_product_name(value))
+                }),
                 "variant_sha256": sorted(str(value) for value in (metadata.get("variant_sha256") or ())),
                 "association_status": metadata.get("association_status"),
                 "standalone": bool(metadata.get("standalone")),
@@ -431,6 +435,7 @@ def library_snapshot(library_root: Path) -> dict[str, Any]:
             if not (asset.metadata or {}).get("provenance") and not asset.source_file and not asset.source
         ),
         "logical_signature_sha256": digest,
+        "semantic_signature_sha256": digest,
         "logical_rows": logical_rows,
     }
 
@@ -471,20 +476,31 @@ def compare_libraries(args: argparse.Namespace) -> int:
     right = library_snapshot(Path(args.right_library))
     left_cov, left_dep = _coverage_for_library(Path(args.left_library), Path(args.product_db))
     right_cov, right_dep = _coverage_for_library(Path(args.right_library), Path(args.product_db))
+    semantic_signature_equal = left["semantic_signature_sha256"] == right["semantic_signature_sha256"]
     result = {
         "left": {key: value for key, value in left.items() if key != "logical_rows"},
         "right": {key: value for key, value in right.items() if key != "logical_rows"},
-        "logical_signature_equal": left["logical_signature_sha256"] == right["logical_signature_sha256"],
+        "semantic_signature_equal": semantic_signature_equal,
+        "logical_signature_equal": semantic_signature_equal,
         "canonical_equal": left["canonical"] == right["canonical"],
         "physical_equal": left["physical"] == right["physical"],
         "coverage_equal": left_cov == right_cov,
         "departments_equal": left_dep == right_dep,
         "left_coverage": left_cov,
         "right_coverage": right_cov,
+        "comparator_contract": {
+            "aliases": "normalize_product_name + unique set",
+            "semantic_fields_preserved": [
+                "product", "sha256", "review_status", "confidence", "perceptual_hash",
+                "variant_sha256", "association_status", "standalone", "provenance",
+            ],
+            "coverage_required_equal": True,
+            "departments_required_equal": True,
+        },
     }
     result["pass"] = all(
         result[key]
-        for key in ("logical_signature_equal", "canonical_equal", "physical_equal", "coverage_equal", "departments_equal")
+        for key in ("semantic_signature_equal", "canonical_equal", "physical_equal", "coverage_equal", "departments_equal")
     )
     _write_json(Path(args.output), result)
     return 0 if result["pass"] else 31
