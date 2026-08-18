@@ -1,18 +1,18 @@
 {
-  "index_load_seconds": 0.022193,
+  "index_load_seconds": 0.025893,
   "exact_lookup": {
-    "mean_ms": 0.045307,
-    "p50_ms": 0.021883,
-    "p95_ms": 0.200687,
-    "max_ms": 0.214968
+    "mean_ms": 0.054497,
+    "p50_ms": 0.025997,
+    "p95_ms": 0.231542,
+    "max_ms": 0.281936
   },
   "fuzzy_lookup": {
-    "mean_ms": 0.050037,
-    "p50_ms": 0.022168,
-    "p95_ms": 0.191033,
-    "max_ms": 0.204012
+    "mean_ms": 0.061658,
+    "p50_ms": 0.027592,
+    "p95_ms": 0.237776,
+    "max_ms": 0.310907
   },
-  "audit_seconds": 0.098717,
+  "audit_seconds": 0.112457,
   "canonical_assets": 1037,
   "exact_duplicate_observations": 1412,
   "near_duplicate_variants": 146,

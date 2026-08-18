@@ -1,6 +1,6 @@
-........................................................................ [ 43%]
-........................................................................ [ 86%]
-.......................                                                  [100%]
+........................................................................ [ 38%]
+........................................................................ [ 77%]
+..........................................                               [100%]
 =============================== warnings summary ===============================
 tests/test_image_bank_approval_gate.py: 18 warnings
 tests/test_image_bank_batch_review.py: 4 warnings
@@ -20,4 +20,4 @@ tests/test_image_corpus_inventory.py: 10 warnings
     pixels = list(gray.getdata())
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-167 passed, 195 warnings in 3.00s
+186 passed, 195 warnings in 3.86s

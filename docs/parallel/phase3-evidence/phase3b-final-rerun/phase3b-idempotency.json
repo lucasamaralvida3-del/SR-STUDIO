@@ -6,7 +6,8 @@
     "pending": 1026,
     "rejected": 0,
     "missing_provenance": 0,
-    "logical_signature_sha256": "31486bc363b325d8ce7f3f7ffa2e8ae96b907abd7208accd57586d59bb736191"
+    "logical_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0",
+    "semantic_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0"
   },
   "second": {
     "canonical": 1037,
@@ -15,7 +16,8 @@
     "pending": 1026,
     "rejected": 0,
     "missing_provenance": 0,
-    "logical_signature_sha256": "31486bc363b325d8ce7f3f7ffa2e8ae96b907abd7208accd57586d59bb736191"
+    "logical_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0",
+    "semantic_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0"
   },
   "second_metrics": {
     "discovered": 153,
