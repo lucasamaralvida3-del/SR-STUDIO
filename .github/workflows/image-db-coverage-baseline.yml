@@ -7,6 +7,11 @@ on:
       - g2/parallel-image-coverage
     paths:
       - '.github/workflows/image-db-coverage-baseline.yml'
+  pull_request:
+    branches:
+      - g2/integration-beta
+    paths:
+      - '.github/workflows/image-db-coverage-baseline.yml'
 
 permissions:
   contents: read
@@ -21,6 +26,7 @@ env:
   PHASE3A_RUN_ID: '32166973267'
   EXPECTED_STANDALONE_SIZE: '48848012'
   EXPECTED_STANDALONE_SHA256: '9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff'
+  REQUESTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   baseline:
@@ -29,8 +35,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ env.REQUESTED_SHA }}
           fetch-depth: 0
           lfs: true
+
+      - name: Verify exact requested SHA
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          requested_sha="$(printf '%s' "$REQUESTED_SHA" | tr '[:upper:]' '[:lower:]')"
+          checked_out_sha="$(git rev-parse HEAD | tr '[:upper:]' '[:lower:]')"
+          sha_match=false
+          if [ "$requested_sha" = "$checked_out_sha" ]; then
+            sha_match=true
+          fi
+          python - <<PY
+          import json
+          from pathlib import Path
+          payload = {
+              "requested_sha": "$requested_sha",
+              "checked_out_sha": "$checked_out_sha",
+              "sha_match": "$sha_match" == "true",
+          }
+          out = Path("$ARTIFACT_DIR") / "sha-verification.json"
+          out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(payload, indent=2))
+          PY
+          printf '%s\n' "$requested_sha" > "$ARTIFACT_DIR/requested-sha.txt"
+          printf '%s\n' "$checked_out_sha" > "$ARTIFACT_DIR/checked-out-sha.txt"
+          printf '%s\n' "$sha_match" > "$ARTIFACT_DIR/sha-match.txt"
+          if [ "$sha_match" != true ]; then
+            echo "FATAL: requested_sha != checked_out_sha" >&2
+            exit 64
+          fi
 
       - uses: actions/setup-python@v5
         with:
@@ -43,7 +80,7 @@ jobs:
           mkdir -p "$ARTIFACT_DIR" "$CORPUS_DIR" "$LIBRARY" "$IMPORTS"
           python -m pip install --upgrade pip
           python -m pip install -e '.[dev]'
-          echo "$GITHUB_SHA" > "$ARTIFACT_DIR/tested-sha.txt"
+          git rev-parse HEAD > "$ARTIFACT_DIR/tested-sha.txt"
 
       - name: Image DB full suite
         run: |
