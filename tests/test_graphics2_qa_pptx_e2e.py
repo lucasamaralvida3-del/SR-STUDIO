@@ -15,19 +15,14 @@ from srstudio.graphics2.preflight import assert_document_integrity
 from srstudio.graphics2.qt_renderer import render_pdf, render_png
 
 
-PPTX_NAMES = (
-    "ATACADO.pptx",
-    "CARTAZ_VENDA.pptx",
-    "CLUBE_EXCLUSIVO.pptx",
-    "SEGUNDA_DA_LIMPEZA.pptx",
-    "SEGUNDA_DA_LIMPEZA_2.pptx",
-    "SEGUNDA_DA_LIMPEZA_3.pptx",
-    "SEGUNDA_DA_LIMPEZA_4.pptx",
-)
-
-
 def _pptx_root() -> Path:
     return Path(srstudio.__file__).resolve().parent / "assets" / "poster_templates" / "legacy" / "models"
+
+
+def _pptx_corpus() -> tuple[Path, ...]:
+    corpus = tuple(sorted(_pptx_root().glob("*.pptx")))
+    assert len(corpus) >= 3, f"Corpus PPTX insuficiente para QA: {_pptx_root()}"
+    return corpus
 
 
 def _pptx_path(name: str) -> Path:
@@ -53,8 +48,7 @@ def _editable_node(router: GraphicsCommandRouter, kind: NodeKind):
 def _import_editable_pptx() -> tuple[Path, GraphicsCommandRouter]:
     service = GraphicsImportService()
     diagnostics: list[str] = []
-    for name in PPTX_NAMES:
-        path = _pptx_path(name)
+    for path in _pptx_corpus():
         result = service.import_file(path)
         document = result.document
         assert_document_integrity(document)
@@ -62,7 +56,7 @@ def _import_editable_pptx() -> tuple[Path, GraphicsCommandRouter]:
         _text_page, text_node = _editable_node(router, NodeKind.TEXT)
         _image_page, image_node = _editable_node(router, NodeKind.IMAGE)
         diagnostics.append(
-            f"{name}: pages={len(document.pages)} nodes={_node_count(document)} "
+            f"{path.name}: pages={len(document.pages)} nodes={_node_count(document)} "
             f"editable_text={bool(text_node)} editable_image={bool(image_node)}"
         )
         if text_node is not None and image_node is not None:
@@ -73,9 +67,15 @@ def _import_editable_pptx() -> tuple[Path, GraphicsCommandRouter]:
     )
 
 
-@pytest.mark.parametrize("name", ("ATACADO.pptx", "CARTAZ_VENDA.pptx", "SEGUNDA_DA_LIMPEZA.pptx"))
+@pytest.mark.parametrize(
+    "name",
+    (
+        "ATACADO.pptx",
+        "CARTAZ_VENDA.pptx",
+        "SEGUNDA_DA_LIMPEZA_1_PRECO.pptx",
+    ),
+)
 def test_real_pptx_imports_to_valid_sr_scene_without_empty_pages(name):
-    pytest.importorskip("pptx")
     result = GraphicsImportService().import_file(_pptx_path(name))
     document = result.document
 
@@ -91,7 +91,6 @@ def test_real_pptx_imports_to_valid_sr_scene_without_empty_pages(name):
 
 
 def test_real_pptx_import_edit_save_reopen_and_export_png_pdf(tmp_path):
-    pytest.importorskip("pptx")
     pytest.importorskip("PIL.Image")
     pytest.importorskip("PySide6")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -104,7 +103,6 @@ def test_real_pptx_import_edit_save_reopen_and_export_png_pdf(tmp_path):
     source_pptx, router = _import_editable_pptx()
     original_page_ids = [page.id for page in router.session.document.pages]
 
-    # Navegar todas as páginas importadas pelo mesmo Command Router usado pela UI.
     for page_id in original_page_ids:
         selected = router.dispatch({"name": "select_page", "page_id": page_id})
         assert selected.ok
@@ -131,7 +129,6 @@ def test_real_pptx_import_edit_save_reopen_and_export_png_pdf(tmp_path):
     replacement_asset_id = replaced.payload["asset_id"]
     assert router.session.page.node(image_node.id).asset_id == replacement_asset_id
 
-    # Save -> close/reopen deve preservar estrutura, texto, imagem e paginação importada.
     project = tmp_path / "pptx-flow.srscene"
     save_package(router.session.document, project, embed_local_assets=True)
     reopened = load_package(project, extract_assets_to=tmp_path / "reopened-assets")
