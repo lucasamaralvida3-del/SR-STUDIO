@@ -136,6 +136,36 @@ def test_current_schema_package_rejects_unknown_property_instead_of_silent_drop(
         load_package(path)
 
 
+def test_current_schema_package_allows_missing_optional_defaults_for_compatibility(tmp_path):
+    document = GraphicsDocument(name="Older 2.0")
+    scene = document.to_dict()
+    scene.pop("metadata")
+    page = scene["pages"][0]
+    page.pop("metadata")
+    page.pop("guides_x")
+    page.pop("guides_y")
+    scene_raw = json.dumps(scene, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    manifest = {
+        "format": PACKAGE_FORMAT,
+        "schema": document.schema,
+        "document_id": document.id,
+        "assets": {},
+        "fonts": [],
+        "scene_sha256": sha256(scene_raw).hexdigest(),
+    }
+    path = tmp_path / "older-current.srscene"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        archive.writestr("scene.json", scene_raw)
+        archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False).encode("utf-8"))
+
+    restored = load_package(path)
+
+    assert restored.id == document.id
+    assert restored.metadata == {}
+    assert restored.active_page.guides_x == []
+    assert restored.active_page.guides_y == []
+
+
 def test_legacy_schema_alias_keeps_compatibility_normalization(tmp_path):
     document = GraphicsDocument(name="Legacy alias")
     scene = document.to_dict()
