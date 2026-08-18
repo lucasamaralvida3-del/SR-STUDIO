@@ -51,7 +51,7 @@ def install_editor_commands(command_module: Any) -> None:
                     {"count": 0, "blocked": blocked},
                 )
             return command_module.CommandResult(True, False, "Nada selecionado.", {"count": 0, "blocked": 0})
-        if name in {"resize", "edit_text"}:
+        if name in {"resize", "resize_handle", "edit_text"}:
             node_id = str(command.get("node_id") or self.session.anchor_id or "")
             if node_id and self.session.page.node(node_id) is not None and self.session.effective_locked(node_id):
                 return command_module.CommandResult(
@@ -216,15 +216,17 @@ def _dispatch_editable_selection(
     original_anchor = session.anchor_id
     session.selection = editable
     session.anchor_id = original_anchor if original_anchor in editable else next(iter(editable), None)
+    post_selection: set[str] = set()
+    post_anchor: str | None = None
     try:
         result = original_dispatch(self, command)
         post_selection = {node_id for node_id in session.selection if node_id in session.page.nodes}
         post_anchor = session.anchor_id
     finally:
         blocked_remaining = {node_id for node_id in blocked_ids if node_id in session.page.nodes}
-        restored = post_selection | blocked_remaining if "post_selection" in locals() else blocked_remaining
+        restored = post_selection | blocked_remaining
         session.selection = restored
-        if "post_anchor" in locals() and post_anchor in restored:
+        if post_anchor in restored:
             session.anchor_id = post_anchor
         elif original_anchor in restored:
             session.anchor_id = original_anchor
