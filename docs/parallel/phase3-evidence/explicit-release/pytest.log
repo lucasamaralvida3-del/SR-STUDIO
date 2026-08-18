@@ -20,4 +20,4 @@ tests/test_image_corpus_inventory.py: 10 warnings
     pixels = list(gray.getdata())
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-166 passed, 195 warnings in 4.07s
+166 passed, 195 warnings in 3.68s

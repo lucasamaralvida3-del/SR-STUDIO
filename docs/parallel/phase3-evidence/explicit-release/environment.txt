@@ -1,18 +1,17 @@
 repository=lucasamaralvida3-del/SR-STUDIO
 ref=refs/heads/g2/parallel-image-database
-sha=a0bcd62fdff055751c7f1e900c439913ad29c561
-run_id=32164182108
+sha=7a18ca2586c1fbbe5584761054337785d9de5ac3
+run_id=32164046556
 run_attempt=1
 event=push
 runner_os=Linux
 runner_arch=X64
-timestamp_utc=2026-08-18T17:10:26Z
-standalone_phase=DEFERRED
+timestamp_utc=2026-08-18T17:09:02Z
 ## g2/parallel-image-database...origin/g2/parallel-image-database
 ?? artifacts/
-a0bcd62 ci: run Phase 3A with standalone validation deferred
 7a18ca2 ci: make Phase 3A standalone-deferred corpus gate
 f22cf4a image-db: persist explicit Release Phase 3 evidence [skip ci]
 0f5422e ci: observe explicit Release Phase 3 validation
 db92d89 ci: resolve Phase 3 corpus from explicit Release tag
+a399fe4 image-db: record latest Phase 3 rerun metadata [skip ci]
 Python 3.11.15
