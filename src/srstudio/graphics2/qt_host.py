@@ -338,6 +338,7 @@ def launch_qt_quick_editor(
             self._status = _startup_status(context, gate, requested_api)
             self._busy = False
             self._autosave_busy = False
+            self._autosave_base_saved_digest = ""
             self.fileJobDone.connect(self._finish_file_job)
             self.autosaveDone.connect(self._finish_autosave)
 
@@ -441,6 +442,7 @@ def launch_qt_quick_editor(
                 return
             if digest == persistence.saved_digest or digest == persistence.autosave_digest:
                 return
+            self._autosave_base_saved_digest = persistence.saved_digest
             self._autosave_busy = True
             self.statusChanged.emit()
 
@@ -455,7 +457,10 @@ def launch_qt_quick_editor(
 
         def _finish_autosave(self, ok: bool, target: str, digest: str, message: str) -> None:
             self._autosave_busy = False
-            if ok:
+            base_saved_digest = self._autosave_base_saved_digest
+            self._autosave_base_saved_digest = ""
+            refresh_recovery = False
+            if ok and base_saved_digest == persistence.saved_digest:
                 persistence.mark_autosaved(digest)
                 recovery_journal.mark(
                     session.document.id,
@@ -463,10 +468,22 @@ def launch_qt_quick_editor(
                     source_path=context.source,
                 )
                 self._status = message
+            elif ok:
+                # O autosave começou antes de um save manual que já avançou o
+                # estado confirmado. Nunca deixe o callback tardio recolocar um
+                # snapshot antigo no journal e sobrescrever a precedência do disco.
+                if persistence.is_dirty(session.document):
+                    refresh_recovery = True
+                    self._status = "Autosave anterior ao último save descartado; protegendo alterações atuais."
+                else:
+                    recovery_journal.clear(session.document.id)
+                    self._status = "Autosave anterior ao último save descartado; projeto salvo preservado."
             else:
                 self._status = f"Falha no autosave: {message}"
             self.statusChanged.emit()
             self.sceneChanged.emit()
+            if refresh_recovery:
+                self._start_autosave(force=True)
 
         def _save_to(self, target: Path) -> None:
             def task(snapshot: GraphicsDocument, output: Path) -> str:
