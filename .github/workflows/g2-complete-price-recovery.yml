@@ -1,0 +1,36 @@
+name: Apply G2 Complete Price Recovery
+
+on:
+  push:
+    branches:
+      - integration/sr-studio-next
+    paths:
+      - 'tools/apply_g2_complete_price_recovery.py'
+      - '.github/workflows/g2-complete-price-recovery.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/sr-studio-next
+          fetch-depth: 0
+      - name: Apply audited semantic patch
+        run: python tools/apply_g2_complete_price_recovery.py
+      - name: Static checks
+        run: |
+          git diff --check
+          python -m py_compile src/srstudio/graphics2/semantic_blocks.py src/srstudio/graphics2/import_bridge.py
+          grep -F 'price_amount_complete' src/srstudio/graphics2/semantic_blocks.py
+          grep -F 'price_amount_complete' src/srstudio/graphics2/import_bridge.py
+      - name: Commit product patch
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/srstudio/graphics2/semantic_blocks.py src/srstudio/graphics2/import_bridge.py
+          git commit -m 'fix: recover complete-price Canva product cards'
+          git push origin HEAD:integration/sr-studio-next
