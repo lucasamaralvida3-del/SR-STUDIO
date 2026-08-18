@@ -275,7 +275,12 @@ def install_product_card_runtime(session_type: Any, semantic_module: Any) -> Non
                         self.page.remove_node(node_id, recursive=True)
             else:
                 _clear_unbound_binding_roles(self.page, bound_ids)
-            _remove_slot_semantic_blocks(self.page, slot.id)
+                _mark_detached_nodes(self.page, bound_ids, slot.id)
+
+            # Reconstrói a camada semântica dentro da mesma transação para que
+            # relatório/blocks não fiquem apontando para o slot removido. Nodes
+            # detached são ignorados pela recuperação automática do guard.
+            semantic_module.build_semantic_blocks(self.document)
 
         self.selection.difference_update(bound_ids)
         if self.anchor_id in bound_ids:
@@ -444,22 +449,13 @@ def _clear_unbound_binding_roles(page: Any, node_ids: set[str]) -> None:
             node.binding_role = None
 
 
-def _remove_slot_semantic_blocks(page: Any, slot_id: str) -> None:
-    blocks = page.metadata.get("semantic_blocks")
-    if not isinstance(blocks, dict):
-        return
-    removed_ids = {
-        block_id
-        for block_id, raw in blocks.items()
-        if isinstance(raw, dict) and str(raw.get("slot_id") or "") == str(slot_id)
-    }
-    if not removed_ids:
-        return
-    for block_id in removed_ids:
-        blocks.pop(block_id, None)
-    for node in page.nodes.values():
-        for key in ("semantic_price_block_id", "semantic_product_card_id"):
-            if str(node.metadata.get(key) or "") in removed_ids:
-                node.metadata.pop(key, None)
-        if str(node.metadata.get("semantic_slot_id") or "") == str(slot_id):
-            node.metadata.pop("semantic_slot_id", None)
+def _mark_detached_nodes(page: Any, node_ids: set[str], slot_id: str) -> None:
+    still_bound: set[str] = set()
+    for other in page.slots.values():
+        still_bound.update(_slot_node_ids(other))
+    for node_id in node_ids - still_bound:
+        node = page.node(node_id)
+        if node is None:
+            continue
+        node.metadata["smart_slot_detached"] = True
+        node.metadata["detached_from_slot_id"] = str(slot_id)
