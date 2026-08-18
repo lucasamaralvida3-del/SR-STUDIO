@@ -6,16 +6,22 @@ on:
       - g2/parallel-qa-performance
     paths:
       - "src/srstudio/graphics2/**"
+      - "src/srstudio/importers/**"
+      - "src/srstudio/assets/poster_templates/legacy/models/*.pptx"
       - "tests/test_graphics2_*.py"
       - "tools/g2_qa_baseline.py"
+      - "tools/g2_qa_pptx_baseline.py"
       - ".github/workflows/g2-qa-performance.yml"
   pull_request:
     branches:
       - integration/sr-studio-next
     paths:
       - "src/srstudio/graphics2/**"
+      - "src/srstudio/importers/**"
+      - "src/srstudio/assets/poster_templates/legacy/models/*.pptx"
       - "tests/test_graphics2_*.py"
       - "tools/g2_qa_baseline.py"
+      - "tools/g2_qa_pptx_baseline.py"
       - ".github/workflows/g2-qa-performance.yml"
   workflow_dispatch:
 
@@ -55,11 +61,19 @@ jobs:
         run: >-
           python -m compileall -q
           src/srstudio/graphics2
+          src/srstudio/importers
           tools/g2_qa_baseline.py
+          tools/g2_qa_pptx_baseline.py
           tests/test_graphics2_qa_longrun.py
+          tests/test_graphics2_qa_pptx_e2e.py
 
       - name: Ruff QA additions
-        run: python -m ruff check tools/g2_qa_baseline.py tests/test_graphics2_qa_longrun.py
+        run: >-
+          python -m ruff check
+          tools/g2_qa_baseline.py
+          tools/g2_qa_pptx_baseline.py
+          tests/test_graphics2_qa_longrun.py
+          tests/test_graphics2_qa_pptx_e2e.py
 
       - name: Focused production-flow regressions
         id: focused
@@ -76,9 +90,10 @@ jobs:
             tests/test_graphics2_pdf_multipage.py \
             tests/test_graphics2_real_flyer_e2e.py \
             tests/test_graphics2_qa_longrun.py \
+            tests/test_graphics2_qa_pptx_e2e.py \
             --junitxml=artifacts/g2-qa-focused.xml
 
-      - name: Performance and RSS baseline
+      - name: Synthetic performance and RSS baseline
         id: baseline
         if: always()
         continue-on-error: true
@@ -88,6 +103,16 @@ jobs:
             --output artifacts/g2-qa-baseline.json \
             --pages 1,10,25 \
             | tee artifacts/g2-qa-baseline.log
+
+      - name: Real PPTX import performance baseline
+        id: pptx_baseline
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python tools/g2_qa_pptx_baseline.py \
+            --output artifacts/g2-qa-pptx-baseline.json \
+            | tee artifacts/g2-qa-pptx-baseline.log
 
       - name: Full Graphics2 regression suite
         id: full
@@ -100,6 +125,7 @@ jobs:
         env:
           FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
           BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          PPTX_BASELINE_OUTCOME: ${{ steps.pptx_baseline.outcome }}
           FULL_OUTCOME: ${{ steps.full.outcome }}
           RUN_ID: ${{ github.run_id }}
           RUN_ATTEMPT: ${{ github.run_attempt }}
@@ -118,6 +144,7 @@ jobs:
               "workflow_run_attempt": int(os.environ["RUN_ATTEMPT"]),
               "focused": os.environ["FOCUSED_OUTCOME"],
               "baseline": os.environ["BASELINE_OUTCOME"],
+              "pptx_baseline": os.environ["PPTX_BASELINE_OUTCOME"],
               "full_graphics2": os.environ["FULL_OUTCOME"],
               "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
           }
@@ -135,9 +162,14 @@ jobs:
           if [ -f artifacts/g2-qa-baseline.json ]; then
             cp artifacts/g2-qa-baseline.json docs/parallel/evidence/g2-qa-baseline.json
           fi
+          if [ -f artifacts/g2-qa-pptx-baseline.json ]; then
+            cp artifacts/g2-qa-pptx-baseline.json docs/parallel/evidence/g2-qa-pptx-baseline.json
+          fi
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/parallel/evidence/g2-qa-run.json docs/parallel/evidence/g2-qa-baseline.json || true
+          git add docs/parallel/evidence/g2-qa-run.json \
+            docs/parallel/evidence/g2-qa-baseline.json \
+            docs/parallel/evidence/g2-qa-pptx-baseline.json || true
           git commit -m "qa(g2): record latest performance evidence [skip ci]" || exit 0
           git push origin HEAD:g2/parallel-qa-performance
 
@@ -154,10 +186,12 @@ jobs:
         env:
           FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
           BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          PPTX_BASELINE_OUTCOME: ${{ steps.pptx_baseline.outcome }}
           FULL_OUTCOME: ${{ steps.full.outcome }}
         run: |
           test "$FOCUSED_OUTCOME" = "success"
           test "$BASELINE_OUTCOME" = "success"
+          test "$PPTX_BASELINE_OUTCOME" = "success"
           test "$FULL_OUTCOME" = "success"
 
   windows-qt-bootstrap-stress:
