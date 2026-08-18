@@ -59,9 +59,12 @@ class Importer:
 class CountingImporter:
     def __init__(self):
         self.calls = 0
+        self.calls_by_source = {}
 
     def import_file(self, source, media_dir=None):
         self.calls += 1
+        source_name = Path(source).name
+        self.calls_by_source[source_name] = self.calls_by_source.get(source_name, 0) + 1
         media_dir = Path(media_dir)
         media_dir.mkdir(parents=True, exist_ok=True)
         image_path = media_dir / "product.png"
@@ -236,4 +239,36 @@ def test_stale_precision_record_is_reprocessed_incrementally(tmp_path):
 
     assert importer.calls == 2
     assert report.metrics.files_processed == 1
+    assert report.metrics.files_skipped == 0
     assert any(PRECISION_TRAINER_VERSION in warning for warning in report.warnings)
+
+
+def test_one_stale_source_does_not_force_current_sources_in_same_batch(tmp_path):
+    stale = tmp_path / "stale.pptx"
+    current = tmp_path / "current.pptx"
+    stale.write_bytes(b"stale-pptx")
+    current.write_bytes(b"current-pptx")
+    importer = CountingImporter()
+    trainer = PrecisionProductImageCorpusTrainer(
+        Library(),
+        imports_root=tmp_path / "imports",
+        importer=importer,
+    )
+
+    first = trainer.train([stale, current])
+    assert first.metrics.files_processed == 2
+    assert importer.calls_by_source == {"stale.pptx": 1, "current.pptx": 1}
+
+    state = trainer.state.load()
+    for record in state["files"].values():
+        if Path(record["source_path"]).name == "stale.pptx":
+            record.pop("precision_trainer_version", None)
+    trainer.state.save(state)
+
+    second = trainer.train([stale, current])
+
+    assert importer.calls_by_source["stale.pptx"] == 2
+    assert importer.calls_by_source["current.pptx"] == 1
+    assert second.metrics.files_processed == 1
+    assert second.metrics.files_skipped == 1
+    assert any("without forcing unchanged sources" in warning for warning in second.warnings)
