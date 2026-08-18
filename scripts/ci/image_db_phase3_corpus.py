@@ -1,4 +1,4 @@
-# Phase 3 release-corpus validation trigger.
+# Phase 3 explicit Release-corpus validation.
 from __future__ import annotations
 
 import hashlib
@@ -7,11 +7,13 @@ import os
 import shutil
 import subprocess
 import urllib.error
+import urllib.parse
 import urllib.request
 import zipfile
 from pathlib import Path
 from typing import Any
 
+RELEASE_TAG = "image-db-corpus-v1"
 REQUIRED_ASSETS = (
     "Downloads(1)(1).zip",
     "Downloads(2)(1).zip",
@@ -21,7 +23,7 @@ REQUIRED_ASSETS = (
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp", ".bmp", ".gif", ".tif", ".tiff"}
 
 
-def _request_json(url: str, token: str) -> Any:
+def _request_json(url: str, token: str) -> tuple[int, Any, dict[str, str]]:
     request = urllib.request.Request(
         url,
         headers={
@@ -31,8 +33,16 @@ def _request_json(url: str, token: str) -> Any:
             "User-Agent": "srstudio-image-db-phase3-ci",
         },
     )
-    with urllib.request.urlopen(request, timeout=60) as response:
-        return json.load(response)
+    try:
+        with urllib.request.urlopen(request, timeout=60) as response:
+            return int(response.status), json.load(response), dict(response.headers.items())
+    except urllib.error.HTTPError as exc:
+        body = exc.read().decode("utf-8", errors="replace")
+        try:
+            parsed: Any = json.loads(body)
+        except ValueError:
+            parsed = {"raw_body": body}
+        return int(exc.code), parsed, dict(exc.headers.items())
 
 
 def _sha256(path: Path) -> str:
@@ -56,16 +66,16 @@ def _write_json(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
-def _download_with_gh(tag: str, name: str, target_dir: Path, token: str) -> tuple[bool, str]:
+def _download_with_gh(name: str, target_dir: Path, token: str) -> tuple[bool, str]:
     env = dict(os.environ)
     env["GH_TOKEN"] = token
     completed = subprocess.run(
-        ["gh", "release", "download", tag, "-p", name, "-D", str(target_dir), "--clobber"],
+        ["gh", "release", "download", RELEASE_TAG, "-p", name, "-D", str(target_dir), "--clobber"],
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
         env=env,
-        timeout=600,
+        timeout=900,
         check=False,
     )
     return completed.returncode == 0, completed.stdout
@@ -82,55 +92,84 @@ def main() -> int:
     corpus_dir.mkdir(parents=True, exist_ok=True)
 
     errors: list[str] = []
-    releases: list[dict[str, Any]] = []
+    release: dict[str, Any] = {}
+    api_status = 0
+    api_payload: Any = {}
+    api_headers: dict[str, str] = {}
+    endpoint = ""
+
     if not repository or not token:
         errors.append("GITHUB_REPOSITORY/GITHUB_TOKEN unavailable")
     else:
+        endpoint = (
+            f"https://api.github.com/repos/{repository}/releases/tags/"
+            f"{urllib.parse.quote(RELEASE_TAG, safe='')}"
+        )
         try:
-            page = 1
-            while True:
-                payload = _request_json(
-                    f"https://api.github.com/repos/{repository}/releases?per_page=100&page={page}",
-                    token,
-                )
-                if not isinstance(payload, list) or not payload:
-                    break
-                releases.extend(item for item in payload if isinstance(item, dict))
-                if len(payload) < 100:
-                    break
-                page += 1
-        except (urllib.error.URLError, urllib.error.HTTPError, TimeoutError, OSError, ValueError) as exc:
-            errors.append(f"release listing failed: {exc!r}")
+            api_status, api_payload, api_headers = _request_json(endpoint, token)
+            if api_status == 200 and isinstance(api_payload, dict):
+                release = api_payload
+            else:
+                errors.append(f"explicit release lookup failed: HTTP {api_status}")
+        except (urllib.error.URLError, TimeoutError, OSError, ValueError) as exc:
+            errors.append(f"explicit release lookup failed: {exc!r}")
 
+    _write_json(
+        artifact_dir / "release-api-response.json",
+        {
+            "requested_tag": RELEASE_TAG,
+            "endpoint": endpoint,
+            "http_status": api_status,
+            "response": api_payload,
+            "selected_headers": {
+                key: value
+                for key, value in api_headers.items()
+                if key.lower() in {"content-type", "etag", "last-modified", "x-ratelimit-remaining", "x-ratelimit-reset"}
+            },
+        },
+    )
+
+    returned_tag = str(release.get("tag_name") or "")
     found: dict[str, dict[str, Any]] = {}
-    for release in releases:
-        tag = str(release.get("tag_name") or "")
-        for asset in release.get("assets") or ():
-            if not isinstance(asset, dict):
-                continue
-            name = str(asset.get("name") or "")
-            if name not in REQUIRED_ASSETS or name in found:
-                continue
-            found[name] = {
-                "name": name,
-                "tag": tag,
-                "release_id": release.get("id"),
-                "release_draft": bool(release.get("draft")),
-                "release_prerelease": bool(release.get("prerelease")),
-                "asset_id": asset.get("id"),
-                "size": int(asset.get("size") or 0),
-                "digest": str(asset.get("digest") or ""),
-                "state": asset.get("state"),
-                "created_at": asset.get("created_at"),
-                "updated_at": asset.get("updated_at"),
-            }
+    if release and returned_tag != RELEASE_TAG:
+        errors.append(f"explicit release tag mismatch: expected={RELEASE_TAG!r} got={returned_tag!r}")
+    for asset in release.get("assets") or ():
+        if not isinstance(asset, dict):
+            continue
+        name = str(asset.get("name") or "")
+        if name not in REQUIRED_ASSETS:
+            continue
+        found[name] = {
+            "name": name,
+            "tag": returned_tag,
+            "release_id": release.get("id"),
+            "release_name": release.get("name"),
+            "release_draft": bool(release.get("draft")),
+            "release_prerelease": bool(release.get("prerelease")),
+            "asset_id": asset.get("id"),
+            "size": int(asset.get("size") or 0),
+            "digest": str(asset.get("digest") or ""),
+            "state": asset.get("state"),
+            "created_at": asset.get("created_at"),
+            "updated_at": asset.get("updated_at"),
+            "browser_download_url": asset.get("browser_download_url"),
+        }
 
     release_payload = {
+        "lookup_mode": "explicit-tag-only",
+        "requested_tag": RELEASE_TAG,
+        "api_http_status": api_status,
+        "release_found": bool(release),
+        "release_tag": returned_tag,
+        "release_id": release.get("id"),
+        "release_name": release.get("name"),
+        "release_draft": bool(release.get("draft")) if release else False,
+        "release_prerelease": bool(release.get("prerelease")) if release else False,
         "required": list(REQUIRED_ASSETS),
         "found": found,
         "missing": [name for name in REQUIRED_ASSETS if name not in found],
         "errors": errors,
-        "release_count_scanned": len(releases),
+        "release_count_scanned": 1 if release else 0,
     }
     _write_json(artifact_dir / "release-assets.json", release_payload)
 
@@ -142,20 +181,24 @@ def main() -> int:
         row: dict[str, Any] = {
             "name": name,
             "release_found": meta is not None,
+            "asset_id": (meta or {}).get("asset_id"),
             "path": str(target),
             "expected_size": int((meta or {}).get("size") or 0),
             "release_digest": str((meta or {}).get("digest") or ""),
-            "tag": str((meta or {}).get("tag") or ""),
-            "release_draft": bool((meta or {}).get("release_draft")),
+            "tag": RELEASE_TAG,
+            "download_complete": False,
         }
-        if meta and meta.get("tag"):
+        if meta:
             try:
-                ok, output = _download_with_gh(str(meta["tag"]), name, corpus_dir, token)
-                download_log.append(f"[{name}] tag={meta['tag']} success={ok}\n{output}")
+                ok, output = _download_with_gh(name, corpus_dir, token)
+                download_log.append(f"[{name}] tag={RELEASE_TAG} success={ok}\n{output}")
+                row["download_command_success"] = ok
                 if not ok:
                     row["download_error"] = output[-4000:]
             except (OSError, subprocess.SubprocessError) as exc:
+                row["download_command_success"] = False
                 row["download_error"] = repr(exc)
+
         row["exists"] = target.is_file()
         row["actual_size"] = target.stat().st_size if target.is_file() else 0
         row["sha256"] = _sha256(target) if target.is_file() else ""
@@ -174,12 +217,11 @@ def main() -> int:
                 row["zip_error"] = repr(exc)
         else:
             row["zip_integrity"] = False
+        row["download_complete"] = bool(row["exists"] and row["size_verified"] and row["zip_integrity"])
         row["verified"] = bool(
             row["release_found"]
-            and row["exists"]
-            and row["size_verified"]
+            and row["download_complete"]
             and row["hash_verified"]
-            and row["zip_integrity"]
         )
         verification[name] = row
 
@@ -187,7 +229,12 @@ def main() -> int:
     all_verified = all(verification[name]["verified"] for name in REQUIRED_ASSETS)
     _write_json(
         artifact_dir / "corpus-download-verification.json",
-        {"all_verified": all_verified, "assets": verification, "errors": errors},
+        {
+            "requested_tag": RELEASE_TAG,
+            "all_verified": all_verified,
+            "assets": verification,
+            "errors": errors,
+        },
     )
 
     zip1 = corpus_dir / "Downloads(1)(1).zip"
@@ -218,7 +265,9 @@ def main() -> int:
             with zipfile.ZipFile(standalone_zip) as archive:
                 archive.extractall(standalone_dir)
             standalone_count = sum(
-                1 for path in standalone_dir.rglob("*") if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
+                1
+                for path in standalone_dir.rglob("*")
+                if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS
             )
         except (OSError, zipfile.BadZipFile, RuntimeError) as exc:
             errors.append(f"standalone extract failed: {exc!r}")
@@ -242,6 +291,7 @@ def main() -> int:
     (artifact_dir / "standalone-count.txt").write_text(str(standalone_count), encoding="utf-8")
 
     availability = {
+        "requested_release_tag": RELEASE_TAG,
         "corpus_integrity_pass": all_verified,
         "rich_corpus_available": rich_available,
         "catalog_available": catalog_available,
