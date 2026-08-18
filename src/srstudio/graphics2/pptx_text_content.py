@@ -181,6 +181,12 @@ def _walk_shapes(
             continue
         if kind != "sp":
             continue
+        # Picture-filled shapes are single OOXML objects that materialize as an
+        # IMAGE plus a recovered TEXT sibling. They have their own explicit
+        # contract in pptx_compound_text; counting them here before that sibling
+        # exists would create a false missing-text failure in this report.
+        if child.find(".//a:blip", _NS) is not None:
+            continue
         tx_body = child.find("./p:txBody", _NS)
         if tx_body is None:
             continue
