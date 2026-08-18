@@ -8,7 +8,7 @@ physical OOXML page ratio exactly as it always did.  Graphics2 may layer an
 strong enough to identify a known Canva export profile.
 """
 
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
 import re
