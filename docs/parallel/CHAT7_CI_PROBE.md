@@ -5,3 +5,4 @@ Validation-only marker for the isolated `g2/parallel-release-engineering` releas
 - DO NOT MERGE.
 - No product or release behavior is changed by this marker.
 - The pull request exists only to expose GitHub Actions evidence to CHAT 7.
+- Probe revision: 2, after bridge-entrypoint and writable-diagnostics hardening.
