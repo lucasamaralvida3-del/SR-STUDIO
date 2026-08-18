@@ -23,7 +23,7 @@ def _build_module():
     return module
 
 
-def test_pyinstaller_contract_is_onedir_windowed_no_upx_and_collects_qt(tmp_path):
+def test_pyinstaller_contract_is_onedir_windowed_no_upx_and_collects_only_required_qt(tmp_path):
     module = _build_module()
     args = module.pyinstaller_args(
         dist_root=tmp_path / "dist",
@@ -35,12 +35,15 @@ def test_pyinstaller_contract_is_onedir_windowed_no_upx_and_collects_qt(tmp_path
     assert "--onedir" in args
     assert "--windowed" in args
     assert "--noupx" in args
-    assert "--collect-all" in args
-    assert args[args.index("--collect-all") + 1] == "PySide6"
+    assert "--collect-all" not in args
     assert "--collect-data" in args
     assert args[args.index("--collect-data") + 1] == "srstudio"
     assert "--collect-submodules" in args
     assert args[args.index("--collect-submodules") + 1] == "srstudio.graphics2"
+    for qt_module in module.QT_RUNTIME_MODULES:
+        assert qt_module in args
+    assert "PySide6.QtWebEngineCore" not in args
+    assert "PySide6.QtPdf" not in args
     assert module.HOST_NAME == "SRGraphicsEngine2Host"
 
 
