@@ -42,15 +42,37 @@ def test_verified_manifest_mapping_auto_accepts_with_standalone_provenance(tmp_p
     assert asset.metadata["provenance"][0]["library_file_id"] == "file-123"
 
 
-def test_exact_catalog_filename_can_auto_accept_without_filename_id_dependency(tmp_path):
+def test_exact_catalog_filename_is_review_not_auto_accept(tmp_path):
     source = _image(tmp_path / "MONSTER 473ML.png")
     library = SafeImageLibrary(tmp_path / "bank")
     trainer = StandaloneProductImageTrainer(library, ["MONSTER 473ML"])
 
     report = trainer.train([StandaloneImageSource(str(source))])
 
+    assert report.accepted == 0
+    assert report.review == 1
+    assert report.matches[0].reason == "exact-catalog-filename"
+    assert library.find_for_product("MONSTER 473ML")[0].review_status == "pending"
+
+
+def test_exact_filename_candidate_can_promote_with_accepted_visual_consensus(tmp_path):
+    original = _image(tmp_path / "seed.png")
+    candidate = tmp_path / "MONSTER 473ML.png"
+    candidate.write_bytes(original.read_bytes())
+    library = SafeImageLibrary(tmp_path / "bank")
+    library.learn_product_image(
+        original,
+        "MONSTER 473ML",
+        confidence=.95,
+        source_file="validated.pptx",
+    )
+    trainer = StandaloneProductImageTrainer(library, ["MONSTER 473ML"])
+
+    report = trainer.train([StandaloneImageSource(str(candidate))])
+
     assert report.accepted == 1
-    assert report.matches[0].reason == "exact-catalog-name"
+    assert report.review == 0
+    assert report.matches[0].reason == "exact-catalog-filename+accepted-visual-consensus"
     assert library.find_for_product("MONSTER 473ML")[0].review_status == "accepted"
 
 
@@ -102,19 +124,22 @@ def test_existing_canva_duplicate_keeps_original_scalar_source_and_adds_provenan
     report = trainer.train([StandaloneImageSource(str(source), provenance={"library_file_id": "standalone-1"})])
 
     assert report.accepted == 1
+    assert report.matches[0].reason.endswith("+accepted-visual-consensus")
     asset = library.find_for_product("CAFE VASCONCELOS 500G")[0]
     assert asset.source == "canva"
     kinds = {row["source_kind"] for row in asset.metadata["provenance"]}
     assert kinds == {"canva", "standalone-library"}
 
 
-def test_standalone_exact_name_is_downgraded_when_image_conflicts_with_other_product(tmp_path):
-    source = _image(tmp_path / "TODDY 750G.png")
+def test_verified_standalone_mapping_is_downgraded_when_image_conflicts_with_other_product(tmp_path):
+    source = _image(tmp_path / "opaque.png")
     library = SafeImageLibrary(tmp_path / "bank")
     library.learn_product_image(source, "TODDY 370G", confidence=.95, source_file="encarte.pptx")
     trainer = StandaloneProductImageTrainer(library, ["TODDY 750G"])
 
-    report = trainer.train([StandaloneImageSource(str(source))])
+    report = trainer.train(
+        [StandaloneImageSource(str(source), product_name="TODDY 750G", verified=True)]
+    )
 
     assert report.accepted == 0
     assert report.review == 1
