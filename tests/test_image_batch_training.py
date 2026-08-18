@@ -1,6 +1,7 @@
 import json
 
 from srstudio.images import batch_training
+from srstudio.images.corpus_inventory import CorpusInventoryMetrics, CorpusInventoryReport
 from srstudio.images.corpus_training import CorpusTrainingMetrics, CorpusTrainingReport
 
 
@@ -12,6 +13,21 @@ class FakeLibrary:
 
     def find_for_product(self, product_name):
         return []
+
+
+class FakeInventory:
+    def scan(self, sources):
+        return CorpusInventoryReport(
+            metrics=CorpusInventoryMetrics(
+                files_found=2,
+                unique_files_exact=2,
+                logical_documents=1,
+                unique_media_exact=4,
+                unique_products=7,
+            ),
+            files=[],
+            logical_duplicate_files=[["new.pptx", "old.pptx"]],
+        )
 
 
 class FakeTrainer:
@@ -43,8 +59,9 @@ class FakeTrainer:
         )
 
 
-def test_batch_training_uses_safe_contract_and_emits_rebuildable_report(tmp_path, monkeypatch):
+def test_batch_training_uses_inventory_and_safe_contract_and_emits_rebuildable_report(tmp_path, monkeypatch):
     library = FakeLibrary()
+    monkeypatch.setattr(batch_training, "PptxCorpusInventory", FakeInventory)
     monkeypatch.setattr(batch_training, "SafeImageLibrary", lambda root: library)
     monkeypatch.setattr(batch_training, "PrecisionProductImageCorpusTrainer", FakeTrainer)
 
@@ -56,12 +73,16 @@ def test_batch_training_uses_safe_contract_and_emits_rebuildable_report(tmp_path
     )
 
     assert FakeTrainer.last.calls == [(["new.pptx", "old.pptx"], True)]
+    assert result.inventory.metrics.logical_documents == 1
     assert result.report.metrics.files_processed == 1
     assert result.report.metrics.files_skipped == 1
     assert result.aliases.aliases_added == 0
 
     report_path = batch_training.write_report(tmp_path / "report.json", result)
     payload = json.loads(report_path.read_text(encoding="utf-8"))
+    assert payload["inventory"]["metrics"]["files_found"] == 2
+    assert payload["inventory"]["metrics"]["logical_documents"] == 1
+    assert payload["inventory"]["logical_duplicate_files"] == [["new.pptx", "old.pptx"]]
     assert payload["metrics"]["unique_products"] == 7
     assert payload["metrics"]["accepted"] == 3
     assert payload["processed_files"] == ["new.pptx"]
