@@ -36,6 +36,13 @@ class _RecoveredSlotState:
 def install_semantic_recovery_guard(semantic_module: Any) -> None:
     """Envolve ``build_semantic_blocks`` uma única vez com invariantes globais."""
 
+    # Slots criados pela API canônica podem usar BindingRole.RETAIL_PRICE em vez
+    # do alias de template `price_complete`. Ambos representam um preço completo
+    # e precisam gerar o mesmo PriceBlock primário.
+    aliases = getattr(semantic_module, "_PRICE_ROLE_ALIASES", None)
+    if isinstance(aliases, dict):
+        aliases.setdefault("retail_price", "complete")
+
     # O builder histórico resolve `_recover_unbound_price_blocks` pelo namespace
     # do módulo a cada chamada. Instalar primeiro a extensão de preço completo
     # mantém o caminho split legado intacto e o inclui dentro do mesmo guard de
