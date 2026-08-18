@@ -111,6 +111,11 @@ def _qgui_application():
     return QGuiApplication.instance() or QGuiApplication([])
 
 
+def _trend(samples: list[float | None]) -> float | None:
+    numeric = [sample for sample in samples if sample is not None]
+    return None if len(numeric) < 2 else numeric[-1] - numeric[0]
+
+
 def collect_baseline(*, output: Path, page_sizes: list[int], nodes_per_page: int) -> dict:
     startup_wall = time.perf_counter()
     startup_cpu = time.process_time()
@@ -118,7 +123,7 @@ def collect_baseline(*, output: Path, page_sizes: list[int], nodes_per_page: int
     startup_wall_s = time.perf_counter() - startup_wall
     startup_cpu_s = time.process_time() - startup_cpu
     report: dict = {
-        "schema": "srstudio/g2-qa-baseline/2",
+        "schema": "srstudio/g2-qa-baseline/3",
         "python": os.sys.version,
         "platform": os.sys.platform,
         "qt_qpa_platform": os.environ.get("QT_QPA_PLATFORM", ""),
@@ -185,14 +190,70 @@ def collect_baseline(*, output: Path, page_sizes: list[int], nodes_per_page: int
             if index in {4, 9, 19, 29}:
                 gc.collect()
                 rss_samples.append(_rss_mb())
-        numeric_rss = [sample for sample in rss_samples if sample is not None]
         report["longrun_save_load_30"] = {
             "median_iteration_s": statistics.median(iteration_times),
             "max_iteration_s": max(iteration_times),
             "median_iteration_cpu_s": statistics.median(iteration_cpu_times),
             "max_iteration_cpu_s": max(iteration_cpu_times),
             "rss_samples_mb": rss_samples,
-            "rss_growth_mb": None if len(numeric_rss) < 2 else numeric_rss[-1] - numeric_rss[0],
+            "rss_growth_mb": _trend(rss_samples),
+        }
+
+        render_png_rss: list[float | None] = [_rss_mb()]
+        render_png_times: list[float] = []
+        render_png_cpu: list[float] = []
+        render_png_path = temp / "longrun-render.png"
+        png_warnings = 0
+        for index in range(30):
+            wall_started = time.perf_counter()
+            cpu_started = time.process_time()
+            png_report = render_png(
+                longrun_document,
+                render_png_path,
+                page_index=0,
+                dpi=96,
+                target_width=1080,
+            )
+            render_png_cpu.append(time.process_time() - cpu_started)
+            render_png_times.append(time.perf_counter() - wall_started)
+            png_warnings = max(png_warnings, len(png_report.warnings))
+            if index in {4, 9, 19, 29}:
+                gc.collect()
+                render_png_rss.append(_rss_mb())
+        report["longrun_render_png_30"] = {
+            "median_iteration_s": statistics.median(render_png_times),
+            "max_iteration_s": max(render_png_times),
+            "median_iteration_cpu_s": statistics.median(render_png_cpu),
+            "max_iteration_cpu_s": max(render_png_cpu),
+            "rss_samples_mb": render_png_rss,
+            "rss_growth_mb": _trend(render_png_rss),
+            "max_warnings": png_warnings,
+        }
+
+        render_pdf_rss: list[float | None] = [_rss_mb()]
+        render_pdf_times: list[float] = []
+        render_pdf_cpu: list[float] = []
+        render_pdf_path = temp / "longrun-render.pdf"
+        pdf_warnings = 0
+        for index in range(10):
+            wall_started = time.perf_counter()
+            cpu_started = time.process_time()
+            pdf_report = render_pdf(longrun_document, render_pdf_path, dpi=96)
+            render_pdf_cpu.append(time.process_time() - cpu_started)
+            render_pdf_times.append(time.perf_counter() - wall_started)
+            pdf_warnings = max(pdf_warnings, len(pdf_report.warnings))
+            if index in {1, 4, 9}:
+                gc.collect()
+                render_pdf_rss.append(_rss_mb())
+        report["longrun_render_pdf_10"] = {
+            "pages_per_iteration": len(longrun_document.pages),
+            "median_iteration_s": statistics.median(render_pdf_times),
+            "max_iteration_s": max(render_pdf_times),
+            "median_iteration_cpu_s": statistics.median(render_pdf_cpu),
+            "max_iteration_cpu_s": max(render_pdf_cpu),
+            "rss_samples_mb": render_pdf_rss,
+            "rss_growth_mb": _trend(render_pdf_rss),
+            "max_warnings": pdf_warnings,
         }
 
     output.parent.mkdir(parents=True, exist_ok=True)
