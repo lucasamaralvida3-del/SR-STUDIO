@@ -12,7 +12,12 @@ import threading
 
 from .autosave import AutosaveManager, RecoveryPoint, default_autosave_root
 from .command_router import GraphicsCommandRouter
-from .editor_persistence import EditorPersistenceState, document_digest, newer_recovery_point
+from .editor_persistence import (
+    EditorPersistenceState,
+    EditorRecoveryJournal,
+    document_digest,
+    newer_recovery_point,
+)
 from .fonts import register_qt_document_fonts
 from .model import GraphicsDocument
 from .operations import GraphicsSession
@@ -57,7 +62,7 @@ def build_parser() -> ArgumentParser:
         "source",
         nargs="?",
         type=Path,
-        help="PPTX/XLSX suportado pelo importador ou pacote .srscene/.zip. Sem arquivo abre projeto vazio.",
+        help="PPTX/XLSX suportado pelo importador ou pacote .srscene/.zip. Sem arquivo retoma a sessão pendente.",
     )
     parser.add_argument(
         "--graphics-api",
@@ -67,6 +72,11 @@ def build_parser() -> ArgumentParser:
     )
     parser.add_argument("--project-name", default="", help="Nome opcional para o projeto importado.")
     parser.add_argument(
+        "--new-project",
+        action="store_true",
+        help="Ignora a última sessão pendente e abre um projeto vazio.",
+    )
+    parser.add_argument(
         "--probe-graphics-api",
         action="store_true",
         help="Inicializa uma janela mínima, informa o backend Qt Quick realmente resolvido e encerra.",
@@ -74,8 +84,17 @@ def build_parser() -> ArgumentParser:
     return parser
 
 
-def load_launch_context(source: str | Path | None, *, project_name: str = "") -> GraphicsLaunchContext:
+def load_launch_context(
+    source: str | Path | None,
+    *,
+    project_name: str = "",
+    resume_last: bool = True,
+) -> GraphicsLaunchContext:
     if source is None:
+        if resume_last:
+            resumed = _resume_pending_session(project_name=project_name)
+            if resumed is not None:
+                return resumed
         document = GraphicsDocument(name=project_name or "Novo Projeto SR — Graphics Engine 2")
         return GraphicsLaunchContext(document=document, gate=inspect_production_gate(document))
 
@@ -122,6 +141,43 @@ def load_launch_context(source: str | Path | None, *, project_name: str = "") ->
     )
 
 
+def _resume_pending_session(*, project_name: str = "") -> GraphicsLaunchContext | None:
+    root = default_autosave_root()
+    manager = AutosaveManager(root)
+    journal = EditorRecoveryJournal(root)
+    point = journal.recovery_point(manager)
+    current = journal.current()
+    if point is None or current is None:
+        return None
+
+    cache_dir = _runtime_cache_dir(point.path)
+    document = manager.recover(point, extract_assets_to=cache_dir / "recovery-assets")
+    source = current.source_path if current.source_path and current.source_path.is_file() else None
+    saved_digest = _saved_package_digest(source)
+    if project_name:
+        document.name = project_name
+    gate = inspect_production_gate(document, require_visual_fidelity=False)
+    return GraphicsLaunchContext(
+        document=document,
+        source=source,
+        cache_dir=cache_dir,
+        gate=gate,
+        saved_digest=saved_digest,
+        recovered_from=point,
+    )
+
+
+def _saved_package_digest(source: Path | None) -> str:
+    if source is None or source.suffix.lower() not in {".srscene", ".zip"} or not source.is_file():
+        return ""
+    try:
+        from .package import load_package
+
+        return document_digest(load_package(source))
+    except (OSError, ValueError, KeyError):
+        return ""
+
+
 def build_editor_diagnostics(
     document: GraphicsDocument,
     *,
@@ -149,12 +205,7 @@ def build_editor_diagnostics(
 
 
 def prepare_qml_payload(scene: dict[str, Any]) -> dict[str, Any]:
-    """Entrega o SR Scene ao QML sem reescrever contratos de texto.
-
-    O delegate de texto do GraphicsEditor separa diretamente ``nowrap`` de
-    auto-fit. Manter esta função como ponto explícito de preparação evita
-    mutações silenciosas no payload e preserva compatibilidade com os callers.
-    """
+    """Entrega o SR Scene ao QML sem reescrever contratos de texto."""
 
     return scene
 
@@ -214,7 +265,9 @@ def launch_qt_quick_editor(
     router = GraphicsCommandRouter(session)
     gate = context.gate or inspect_production_gate(session.document, require_visual_fidelity=False)
     preview_provider = create_live_scene_image_provider()
-    autosave_manager = AutosaveManager(default_autosave_root())
+    autosave_root = default_autosave_root()
+    autosave_manager = AutosaveManager(autosave_root)
+    recovery_journal = EditorRecoveryJournal(autosave_root)
     persistence = EditorPersistenceState(
         saved_digest=str(context.saved_digest or ""),
         autosave_digest=document_digest(session.document) if context.recovered_from is not None else "",
@@ -317,6 +370,8 @@ def launch_qt_quick_editor(
                 context.saved_digest = digest
                 context.recovered_from = None
                 persistence.mark_saved(digest, final)
+                if not persistence.is_dirty(session.document):
+                    recovery_journal.clear(session.document.id)
             self._status = message if ok else f"Falha: {message}"
             self.statusChanged.emit()
             self.sceneChanged.emit()
@@ -346,6 +401,11 @@ def launch_qt_quick_editor(
             self._autosave_busy = False
             if ok:
                 persistence.mark_autosaved(digest)
+                recovery_journal.mark(
+                    session.document.id,
+                    target,
+                    source_path=context.source,
+                )
                 self._status = message
             else:
                 self._status = f"Falha no autosave: {message}"
@@ -519,15 +579,23 @@ def launch_qt_quick_editor(
     autosave_timer.setInterval(AUTOSAVE_INTERVAL_MS)
     autosave_timer.timeout.connect(bridge.autosaveIfNeeded)
     autosave_timer.start()
+    QTimer.singleShot(5_000, bridge.autosaveIfNeeded)
 
     def protect_unsaved_on_quit() -> None:
         try:
             snapshot = _snapshot_document(session)
-            if not persistence.needs_autosave(snapshot):
+            if persistence.needs_autosave(snapshot):
+                digest = document_digest(snapshot)
+                recovery_path = autosave_manager.save(snapshot, embed_local_assets=True)
+                persistence.mark_autosaved(digest)
+                recovery_journal.mark(
+                    snapshot.id,
+                    recovery_path,
+                    source_path=context.source,
+                )
                 return
-            digest = document_digest(snapshot)
-            autosave_manager.save(snapshot, embed_local_assets=True)
-            persistence.mark_autosaved(digest)
+            if not persistence.is_dirty(snapshot):
+                recovery_journal.clear(snapshot.id)
         except Exception as exc:
             print(f"SR Graphics Engine 2: autosave de encerramento falhou: {exc}", file=sys.stderr)
 
@@ -677,7 +745,11 @@ def main(argv: list[str] | None = None) -> int:
             probe = probe_graphics_api(args.graphics_api)
             print(f"SR Graphics Engine 2 GPU: solicitado={probe.requested} | resolvido={probe.resolved}")
             return 0
-        context = load_launch_context(args.source, project_name=args.project_name)
+        context = load_launch_context(
+            args.source,
+            project_name=args.project_name,
+            resume_last=not args.new_project,
+        )
         return launch_qt_quick_editor(
             context.document,
             graphics_api=args.graphics_api,
