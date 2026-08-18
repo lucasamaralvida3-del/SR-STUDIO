@@ -68,6 +68,64 @@ def test_remove_page_rejects_unknown_page_without_mutating_document():
     assert [page.id for page in router.session.document.pages] == page_ids
 
 
+def test_reorder_page_clears_selection_when_it_switches_active_page():
+    router, page_ids = _router_with_three_pages()
+    session = router.session
+    session.document.active_page_id = page_ids[0]
+    selected = GraphicsNode(
+        kind=NodeKind.RECT,
+        name="Selecionado na página antiga",
+        transform=Transform(x=10, y=20, width=80, height=60),
+    )
+    session.page.add_node(selected)
+    session.select(selected.id)
+    assert session.selection == {selected.id}
+
+    result = router.dispatch(
+        {
+            "name": "reorder_page",
+            "page_id": page_ids[2],
+            "target_index": 0,
+        }
+    )
+
+    assert result.ok and result.changed
+    assert session.document.active_page_id == page_ids[2]
+    assert session.selection == set()
+    assert session.anchor_id is None
+
+    # Undo também precisa voltar à página/ordem anterior sem ressuscitar IDs da
+    # seleção pertencente à outra página.
+    undo = router.dispatch({"name": "undo"})
+    assert undo.ok and undo.changed
+    assert session.document.active_page_id == page_ids[0]
+    assert session.selection == set()
+
+
+def test_reorder_page_noop_preserves_selection_when_active_page_does_not_change():
+    router, page_ids = _router_with_three_pages()
+    session = router.session
+    session.document.active_page_id = page_ids[2]
+    selected = GraphicsNode(
+        kind=NodeKind.RECT,
+        transform=Transform(x=10, y=20, width=80, height=60),
+    )
+    session.page.add_node(selected)
+    session.select(selected.id)
+
+    result = router.dispatch(
+        {
+            "name": "reorder_page",
+            "page_id": page_ids[2],
+            "target_index": 2,
+        }
+    )
+
+    assert result.ok and not result.changed
+    assert session.selection == {selected.id}
+    assert session.anchor_id == selected.id
+
+
 def test_copy_paste_preserves_group_tree_across_pages_with_fresh_ids_and_undo():
     session = GraphicsSession(GraphicsDocument(name="Clipboard"))
     page = session.page
