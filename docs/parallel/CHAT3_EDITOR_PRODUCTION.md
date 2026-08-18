@@ -26,7 +26,8 @@ O foco deste chat foi remover caminhos reais de perda silenciosa e completar o c
 
 1. **Autosave conectado ao host Qt real**
    - O `AutosaveManager` já existia no backend, mas o `qt_host.py` não o usava.
-   - O host agora executa autosave periódico e um autosave inicial antecipado.
+   - O host agora executa autosave periódico a cada 45 s e um autosave inicial antecipado após 5 s.
+   - `ProjectActions.qml` agenda também autosave debounced 2,5 s após mudanças de cena enquanto o documento está dirty.
    - Existe fallback de autosave durante encerramento normal.
 
 2. **Recovery portátil**
@@ -42,7 +43,7 @@ O foco deste chat foi remover caminhos reais de perda silenciosa e completar o c
 4. **Retomar última sessão pendente**
    - Foi criado `EditorRecoveryJournal`, com ponteiro atômico `last-session.json` para a sessão que realmente ficou pendente.
    - Abrir o G2 sem source retoma somente esse recovery explícito, não um autosave histórico arbitrário.
-   - `--new-project` abre um projeto limpo sem apagar o backup pendente.
+   - `--new-project` abre um projeto limpo sem apagar o backup pendente naquele momento.
 
 5. **Save verificado**
    - O save da UI continua feito sobre snapshot para não bloquear a edição.
@@ -144,6 +145,9 @@ Commits funcionais e gates criados nesta branch, em ordem aproximada de evoluç�
 - `639957191b2f789407e9b9dea848541d940c3c60` — contrato QML de no-data-loss close
 - `5ad8120666728fec935e9b4d6ed6ceb214dc855a` — contrato do close guard no host
 - `aabb1030c70e212cb575ff47d1fdea977de5194e` — gate CI ampliado até round-trip/QML/host
+- `2612f09d4a0e3e104b7d2a0ff34acf17f656816a` — documentação consolidada do CHAT 3
+- `71adf97b287efc83da33af4d34cc7728d611bbea` — autosave debounced após mudanças de cena
+- `255e69de35fadf27162ca7c7d23f8744bb4aa215` — contrato do debounce de autosave
 
 Existiram commits intermediários de ajuste de testes/CI e desacoplamento de bootstrap; todos permanecem restritos à mesma branch.
 
@@ -160,6 +164,7 @@ Existiram commits intermediários de ajuste de testes/CI e desacoplamento de boo
 - `tests/test_graphics2_editor_multipage_qml.py`
   - lifecycle multipágina;
   - save/dirty/autosave;
+  - autosave debounced 2,5 s após mudanças de cena;
   - atalhos de clipboard;
   - close cancelado quando recovery falha.
 - `tests/test_graphics2_editor_persistence.py`
@@ -199,7 +204,7 @@ O baseline anterior documentado em `G2_CONTINUOUS_PROGRESS.md` informava suíte 
 
 ### P0 restante
 
-- **Janela de perda por hard kill/power loss entre mutação e autosave:** hoje existe autosave antecipado após 5 s, periódico a cada 45 s e proteção síncrona no fechamento normal. Um encerramento abrupto do processo/SO ainda pode perder alterações ocorridas depois do último recovery point. Próximo hardening recomendado no CHAT 3: autosave debounced após mutações reais (por exemplo 2–3 s após último comando alterador), mantendo o ticker como fallback.
+- **Risco residual de hard kill/power loss:** mudanças de cena dirty agora disparam um debounce de autosave de 2,5 s, além do autosave inicial de 5 s, ticker de 45 s e proteção síncrona no fechamento. Um encerramento abrupto do processo/SO dentro desse pequeno intervalo ainda pode perder as últimas alterações. Eliminar totalmente esse risco exigiria journal por mutação ou persistência síncrona a cada comando, com custo de desempenho que precisa ser medido antes de adotar.
 - Executar o gate completo num checkout/runner funcional e corrigir qualquer erro real de Qt/QML/Windows que só apareça em runtime.
 
 ### P1 restante
@@ -242,8 +247,8 @@ Nenhuma alteração estrutural de parsing/import foi feita. O CHAT 3 apenas cons
 
 ## Próximo ciclo recomendado para este mesmo CHAT 3
 
-1. autosave debounced após cada mutação real;
-2. comparação canônica do snapshot após save antes de limpar dirty;
-3. executar o workflow/pytest em runner funcional;
-4. teste E2E Qt real envolvendo edição + autosave + close/reopen, além do smoke atual;
-5. somente depois avançar para polimento P2/P3.
+1. executar o workflow/pytest em runner funcional;
+2. teste E2E Qt real envolvendo edição + autosave + close/reopen, além do smoke atual;
+3. comparação canônica completa do snapshot após save antes de limpar dirty;
+4. avaliar journal por mutação somente se o custo de I/O for aceitável;
+5. depois avançar para polimento P2/P3.
