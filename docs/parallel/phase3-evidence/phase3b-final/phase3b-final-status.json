@@ -1,0 +1,72 @@
+{
+  "source_run_id": 32174335508,
+  "source_tested_sha": "e7c0d814b6770ffeff179c534bb1deead9041437",
+  "standalone_asset_pass": true,
+  "files": 160,
+  "valid_images": 160,
+  "corrupt_images": 0,
+  "candidate_images": 153,
+  "decorative_rejected": 7,
+  "exact_duplicate_groups": 15,
+  "exact_duplicate_observations": 18,
+  "near_duplicate_groups": 7,
+  "near_duplicate_pairs": 13,
+  "database_before": {
+    "physical": 1036,
+    "canonical": 1036,
+    "exact_duplicate_observations": 1412,
+    "near_duplicate_variants": 146,
+    "auto_approved_assets": 11,
+    "likely_assets": 774,
+    "review_required_assets": 251,
+    "missing_provenance": 0
+  },
+  "database_after": {
+    "physical": 1037,
+    "canonical": 1037,
+    "exact_duplicate_observations": 1412,
+    "near_duplicate_variants": 146,
+    "auto_approved_assets": 11,
+    "likely_assets": 774,
+    "review_required_assets": 252,
+    "missing_provenance": 0
+  },
+  "new_canonical": 1,
+  "new_physical": 1,
+  "coverage_before": {
+    "auto_approved": 2,
+    "likely": 42,
+    "review_required": 7,
+    "missing": 469,
+    "any_coverage_percent": 9.8077,
+    "auto_coverage_percent": 0.3846
+  },
+  "coverage_after": {
+    "auto_approved": 2,
+    "likely": 42,
+    "review_required": 7,
+    "missing": 469,
+    "any_coverage_percent": 9.8077,
+    "auto_coverage_percent": 0.3846
+  },
+  "coverage_delta": {
+    "any_products": 0,
+    "auto_approved": 0,
+    "likely": 0,
+    "review_required": 0,
+    "missing": 0
+  },
+  "top_missing_exited": 0,
+  "new_auto_sample_size": 0,
+  "wrong_auto_accept": 0,
+  "incremental_pass": true,
+  "idempotency_pass": true,
+  "recovery_pass": true,
+  "audit_catalog_departments_topmissing_findimage_performance_pass": true,
+  "fresh_rebuild_equivalence_pass": true,
+  "p0": 0,
+  "p1": 0,
+  "coverage_expansion_pending": true,
+  "status": "READY FOR INTEGRATION — COVERAGE EXPANSION PENDING",
+  "merges_performed": false
+}
