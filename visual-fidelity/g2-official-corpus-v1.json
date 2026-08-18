@@ -2,11 +2,11 @@
   "schema": "srstudio/g2-official-visual-corpus-1",
   "product": "SR Studio de Encartes G2",
   "scope": "graphics2-only",
-  "status": "awaiting-official-references",
+  "status": "baseline_established_pending_png_reference",
   "baseline_policy": {
     "thresholds": null,
     "rule": "measure-first",
-    "notes": "No acceptance threshold is inherited from another product. Establish the first G2 distribution from official Canva/PowerPoint exports before proposing a gate."
+    "notes": "The 11-case distribution is a measured G2 baseline only. No acceptance threshold is inherited from another product."
   },
   "immutability": {
     "approved_cases_are_append_only": true,
@@ -20,88 +20,78 @@
     "ATACADO_LEGACY"
   ],
   "approved_cases": [],
+  "provisional_baseline_manifest": "g2-studio-corpus-v1.json",
+  "provisional_baseline_results": "g2-studio-corpus-v1-baseline.json",
+  "provisional_cases": 11,
   "candidates": [
     {
-      "candidate_id": "g2-quinta-file-selected-pages-2026-08-v1",
-      "source_pptx": "OFERTAS QUINTA FILÉ NOVO.pptx",
-      "source_pptx_sha256": "0353b8e2848eb6019c970ae6c83610ecb821d66d29a2f8faff80ee416b1f76f8",
+      "candidate_id": "quinta-file-2026-08-13",
+      "source_pptx": "OFERTAS QUINTA FILÉ NOVO (1).pptx",
+      "source_pptx_sha256": "7c45cfa205c7e14af69e41c8d63b1c6a9d1a06df3cf9d0131ed612029884e536",
       "source_type": "canva-pptx-export",
-      "slide_count": 3,
-      "slide_size_emu": [10287000, 12852400],
-      "slide_numbers": [1, 2, 3],
-      "coverage": [
-        "multipage",
-        "text",
-        "prices",
-        "images",
-        "groups",
-        "shapes",
-        "layers",
-        "fonts",
-        "multiple-layouts"
-      ],
-      "coverage_gaps": [
-        "crop",
-        "transparency",
-        "mask",
-        "productcards"
-      ],
-      "g2_import_audit": {
-        "functional_head": "d14dc5bed4bf4f7402f4668eb66a63823f48a35a",
-        "pages_imported": 3,
-        "import_time_ms_observed": 307.8,
-        "page_node_counts": [119, 76, 27],
-        "page_kind_counts": [
-          {"text": 58, "rect": 20, "group": 20, "image": 17, "line": 4},
-          {"text": 38, "image": 13, "rect": 11, "group": 11, "line": 3},
-          {"image": 11, "text": 8, "rect": 4, "group": 4}
-        ],
-        "fonts_observed": ["Anton", "High Cruiser"],
-        "notes": "Structural import only. This is not a visual score and does not replace an official reference export."
-      },
-      "provenance_evidence": {
-        "canva_ui_capture_only_not_reference": "CANVA.PNG",
-        "notes": "The Canva capture proves design/source lineage for the Quinta File layout but is explicitly forbidden as a visual baseline because it contains Canva UI chrome."
-      },
-      "reference_status": "missing-direct-export",
-      "promotion_requirements": [
-        "direct PNG export from the same Canva design or direct PowerPoint PNG export",
-        "one explicit PNG-to-slide mapping per approved page",
-        "SHA-256 for every reference PNG",
-        "width and height for every reference PNG",
-        "reference content independently verified against the selected slide"
-      ],
-      "notes": "This is a real G2 Encartes source candidate, not a legacy poster-generator fixture. It must not enter approved_cases until official direct exports are available."
+      "slide_numbers": [12, 13, 14, 15],
+      "reference_status": "provisional-jpeg-only",
+      "provisional_reference_count": 4,
+      "notes": "Exact historical G2 source recovered and hash-validated. Direct Canva JPEG references are immutable provisional evidence; direct PNG references are still required for official approval."
+    },
+    {
+      "candidate_id": "terca-verde-2026-08-11",
+      "source_pptx": "OFERTAS TERÇA VERDE NOVO.pptx",
+      "source_pptx_sha256": "6e186a90c5591da2801d9049d5357755ab323f8d76b373104cbf757b0bc9c920",
+      "source_type": "canva-pptx-export",
+      "slide_numbers": [5, 6, 8],
+      "reference_status": "provisional-jpeg-only",
+      "provisional_reference_count": 3,
+      "notes": "Direct Canva JPEG references recovered with provenance/hash evidence. Direct PNG references remain required for official approval."
+    },
+    {
+      "candidate_id": "quarta-cafe-2026-08-12",
+      "source_pptx": "OFERTAS QUARTA CAFÉ COM PÃO NOVO.pptx",
+      "source_pptx_sha256": "df20e5650711755cd9655b33eab2f72f0d7588f95c06bb34dca161dee2eae395",
+      "source_type": "canva-pptx-export",
+      "slide_numbers": [7, 8, 9, 10],
+      "reference_status": "provisional-jpeg-only",
+      "provisional_reference_count": 4,
+      "notes": "Direct Canva JPEG references recovered with provenance/hash evidence. Direct PNG references remain required for official approval."
     }
+  ],
+  "measured_coverage": [
+    "multipage",
+    "text",
+    "prices",
+    "images",
+    "crop",
+    "mask",
+    "groups",
+    "shapes",
+    "layers",
+    "fonts",
+    "multiple-layouts"
+  ],
+  "coverage_gaps": [
+    "direct-png-reference-conformance",
+    "productcards",
+    "dedicated-transparency-case"
   ],
   "rejected_reference_candidates": [
     {
       "file": "CANVA.PNG",
-      "reason": "Canva UI screenshot; provenance evidence only, never a baseline"
+      "reason": "Canva UI screenshot; provenance evidence only, never a visual baseline"
     },
     {
       "file": "CANVA(1).PNG",
-      "reason": "Duplicate Canva UI screenshot; provenance evidence only, never a baseline"
+      "reason": "Duplicate Canva UI screenshot; provenance evidence only, never a visual baseline"
     },
     {
       "file": "Capturar(20260814-104506).PNG",
       "reason": "Captured screen image; not a direct Canva/PowerPoint export"
-    },
-    {
-      "file": "7.jpg",
-      "reason": "Clean exported artwork but no source PPTX/slide pairing is proven; also not PNG under corpus v1 policy"
-    },
-    {
-      "file": "8(1).jpg",
-      "reason": "Clean exported artwork but no source PPTX/slide pairing is proven; also not PNG under corpus v1 policy"
-    },
-    {
-      "file": "9.jpg",
-      "reason": "Clean exported artwork but no source PPTX/slide pairing is proven; also not PNG under corpus v1 policy"
-    },
-    {
-      "file": "10.jpg",
-      "reason": "Clean exported artwork but no source PPTX/slide pairing is proven; also not PNG under corpus v1 policy"
     }
+  ],
+  "promotion_requirements": [
+    "direct PNG export from Canva or PowerPoint for each approved case",
+    "explicit PNG-to-slide mapping",
+    "SHA-256 for PPTX and PNG",
+    "reference width and height",
+    "new case/version instead of silent baseline replacement"
   ]
 }
