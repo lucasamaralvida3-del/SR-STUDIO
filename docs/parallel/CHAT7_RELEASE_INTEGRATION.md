@@ -12,6 +12,7 @@
 - Nesta execução remota, checkout/worktree local não ficou disponível porque o ambiente não resolve `github.com` por rede direta. O trabalho foi feito exclusivamente na branch remota isolada pelo conector GitHub.
 - Branches paralelas observadas: `g2/parallel-render-fidelity`, `g2/parallel-import-office`, `g2/parallel-editor-production`, `g2/parallel-product-system`, `g2/parallel-qa-performance`, `g2/parallel-export-output`, `g2/parallel-release-engineering`.
 - O `BASE_SHA` é o merge-base comum confirmado entre CHAT 1 e CHAT 2 no início desta missão e contém `AGENTS.md`, `docs/SR_STUDIO_NEXT_ARCHITECTURE.md` e `docs/G2_CONTINUOUS_PROGRESS.md`.
+- Última comparação desta rodada: branch CHAT 7 à frente do `BASE_SHA`, sem commits atrás e sem integração de código de outro CHAT.
 
 ## Ambiente e baseline
 
@@ -36,7 +37,7 @@ Dependências diretas observadas no caminho G2 revisado:
 
 Não foi feito upgrade grande de dependências.
 
-## Problemas encontrados
+## Problemas encontrados e corrigidos
 
 ### P1 — CI do host congelado não cobria a branch paralela
 
@@ -58,19 +59,34 @@ O build existente validava integridade do bundle e backend Qt, mas não exercita
 
 ### P1 evitado — diagnóstico não pode bloquear startup
 
-O primeiro wrapper poderia falhar se o diretório preferido de diagnóstico não fosse gravável. O caminho foi endurecido para tentar o diretório configurado/home e, em caso de erro, cair para a pasta temporária do sistema.
+O primeiro wrapper poderia falhar se o diretório preferido de diagnóstico não fosse gravável.
+
+**Ação:** tentar diretório configurado/home e, em caso de erro, cair para a pasta temporária do sistema; teste de regressão cobre o fallback.
+
+### P1 — descritor de componente podia representar release impossível
+
+`package_graphics2_component.py` aceitava `enabled=true` sem `url/source` e também `required=true` com `enabled=false`. O launcher precisa de uma origem resolvível para instalar/reparar o componente habilitado, e `required` em componente desabilitado é semanticamente inválido.
+
+**Ação:** o empacotador agora rejeita ambos os estados antes da criação do artefato; testes cobrem as duas combinações inválidas.
+
+### P1 — `keep_previous=False` podia destruir rollback antes da validação final
+
+Na instalação transacional, o runtime anterior podia ser apagado logo após o switch para o novo host e antes de `validate_runtime_host(..., full=False)` confirmar que a instalação final estava íntegra. Uma falha nessa etapa deixaria o rollback indisponível.
+
+**Ação:** `Graphics2Host.previous` permanece preservado até o novo runtime passar pela validação final. Somente depois do sucesso ele é descartado quando `keep_previous=False`. Teste de regressão força a falha final e confirma restauração do host anterior.
 
 ### Dependência externa — JPEG
 
 O baseline desta branch possui PNG/PDF no renderer G2. JPEG pertence ao CHAT 6 (`g2/parallel-export-output`). O CHAT 7 não implementou JPEG para não invadir propriedade de outro agente. A futura integração deve exigir evidência do CHAT 6 antes do RC.
 
-## Startup e paths
+## Startup, paths e versão
 
 - QML é localizado a partir de `Path(__file__).with_name("qml")`, não do CWD.
 - Cache runtime e autosave usam `Path.home()`/diretórios configuráveis, não o CWD.
 - O novo diretório de diagnóstico usa `~/.srstudio5/diagnostics-g2` ou `SR_STUDIO_G2_DIAGNOSTICS_ROOT`, com fallback para `%TEMP%/SRStudio/diagnostics-g2` (ou equivalente da plataforma).
 - O smoke de CI é definido para executar de um diretório diferente do checkout e detectar dependência acidental de working directory.
 - O host instalado continua validado por manifesto de runtime e versão do Engine antes de ser aceito pelo bridge.
+- `sr-graphics-engine-2 --version` e `-V` informam versão do pacote, versão do Engine e metadados de release sem abrir a UI.
 
 ## Logging / crash report
 
@@ -91,6 +107,12 @@ Desenvolvimento:
 ```bash
 python -m pip install -e '.[dev,graphics2]'
 sr-graphics-engine-2
+```
+
+Versão:
+
+```bash
+sr-graphics-engine-2 --version
 ```
 
 Diagnóstico GPU:
@@ -118,7 +140,27 @@ Smoke do executável congelado:
 SRGraphicsEngine2Host.exe --release-smoke --output-dir C:\temp\g2-release-smoke
 ```
 
-## Artefatos esperados do smoke
+## Gate de máquina limpa preparado
+
+O workflow `G2 Release Engineering` agora exige:
+
+1. ambiente Python novo no Linux;
+2. testes de contratos de release;
+3. smoke fora do checkout;
+4. ambiente Python novo no Windows;
+5. build PyInstaller onedir;
+6. catálogo SHA-256 completo do runtime;
+7. probe Qt congelado fora do checkout;
+8. save/load/PNG/PDF no executável congelado;
+9. criação do ZIP/descritor ainda desabilitado para CI;
+10. verificação de SHA-256 do ZIP;
+11. instalação canônica em `%LOCALAPPDATA%/SRStudio/App/Graphics2Host`;
+12. descoberta pelo `studio_bridge`;
+13. smoke do host já instalado;
+14. segunda instalação + criação de `.previous`;
+15. rollback e nova descoberta do runtime restaurado.
+
+## Artefatos esperados do gate
 
 - `release-smoke.srscene`
 - `release-smoke.png`
@@ -126,6 +168,9 @@ SRGraphicsEngine2Host.exe --release-smoke --output-dir C:\temp\g2-release-smoke
 - `release-smoke.json`
 - `graphics2-host-manifest.json`
 - `graphics2-host-runtime.json`
+- `graphics2-host-component.json`
+- `graphics2-host-component.zip`
+- `graphics2-host-install.json`
 - bundle `SRGraphicsEngine2Host/`
 
 ## Checklist Release Candidate
@@ -149,7 +194,7 @@ SRGraphicsEngine2Host.exe --release-smoke --output-dir C:\temp\g2-release-smoke
 | PDF | smoke estrutural; pipeline final pertence CHAT 6 | CHAT 7 + CHAT 6 |
 | PERFORMANCE | pendente | CHAT 5 |
 | CRASH | log + crash marker | CHAT 7 |
-| SAFETY | integridade SHA-256 + sem main/stable | CHAT 7 |
+| SAFETY | integridade SHA-256 + instalação staged + rollback | CHAT 7 |
 
 ## Validação executada nesta sessão
 
@@ -159,19 +204,22 @@ SRGraphicsEngine2Host.exe --release-smoke --output-dir C:\temp\g2-release-smoke
 - Busca por referências ao entrypoint antigo (`from srstudio.graphics2.qt_host import main` / `srstudio.graphics2.qt_host:main`) não encontrou referências residuais no índice disponível.
 - Checagem estática local dos novos módulos `entrypoint.py` e `release_smoke.py` via `python -m py_compile`: **PASS**.
 - O ambiente local deste chat não possui `PySide6` e não consegue resolver `github.com` por rede direta; portanto o host Qt não pôde ser executado localmente.
-- Workflow `G2 Release Engineering` foi criado para executar ambiente limpo Linux + build/smoke congelado Windows. O conector desta sessão não expôs um run de `push` associado aos commits (o método disponível lista runs de PR), portanto **não há evidência suficiente para marcar o frozen smoke como PASS nesta sessão**.
+- Workflow `G2 Release Engineering` foi criado para executar ambiente limpo Linux + build/smoke congelado/instalado Windows. O conector desta sessão não expôs um run de `push` associado aos commits (o método disponível lista runs de PR), portanto **não há evidência suficiente para marcar o frozen/installed smoke como PASS nesta sessão**.
 
-## Status Fase A ao encerrar esta rodada
+## Status Fase A desta rodada
 
 | Área | Resultado | Bloqueador/nota |
 |---|---|---|
-| Build scripts | PASS WITH KNOWN P2 | contrato auditado; execução completa depende do runner Windows |
+| Build scripts | PASS WITH KNOWN P2 | contratos auditados; execução completa depende do runner Windows |
 | Startup paths | PASS WITH KNOWN P2 | paths independentes de CWD revisados; execução Qt real pendente no runner |
+| Version info | PASS | `--version`/`-V` sem abertura da UI |
 | Dependencies | PASS | dependências diretas auditadas/declaradas; sem upgrade grande |
 | Logging | PASS | log rotativo + fallback de diretório |
 | Crash diagnostics | PASS | versão/timestamp/traceback/ação/módulo/projeto |
+| Component descriptor safety | PASS | estados de ativação impossíveis bloqueados |
+| Transactional install safety | PASS | rollback preservado até validação final |
 | Portable package smoke | PASS WITH KNOWN P2 | lógica criada e sintaxe validada; execução Qt real pendente |
-| Frozen Windows host | FAIL P1 (validation pending) | precisa de evidência real do workflow/runner antes de Beta utilizável |
+| Frozen/installed Windows host | FAIL P1 (validation pending) | precisa de evidência real do workflow/runner antes de Beta utilizável |
 | JPEG | FAIL P1 (external dependency) | propriedade do CHAT 6; não corrigido aqui |
 | Integration | NOT STARTED | Fase B proibida nesta rodada |
 
@@ -189,6 +237,14 @@ SRGraphicsEngine2Host.exe --release-smoke --output-dir C:\temp\g2-release-smoke
 - `0f4382e0ffe4a10d5061d8923530662f659d597d` — gate preparado para integração e versão dinâmica.
 - `9b0ff13efd4924335e8d85e8904daa1c26ae42a7` — fallback de diagnóstico para não bloquear startup.
 - `8c87bb833c481e8cf63cc7cd3647a0b7e4532261` — teste do fallback de diagnóstico.
+- `199e9d542109d5c087a6f539c0f9e62fdc0f1eaa` — evidência/documentação da primeira rodada.
+- `55931fda9ae470898fe05294353530b55a943d00` — validação semântica do descritor de componente.
+- `3a2512735c13d32763527b062ede3d97afdb23c5` — testes de descritor inválido.
+- `ca448f7f062f131fbe6d219aa63c0e7f1c2e1c88` — gate de ZIP/instalação/descoberta/smoke/rollback.
+- `ef46b0cbbd326e2fc7ae220afc3585b599a440a4` — preserva rollback até validação final.
+- `e8edbb9d8b46eb4c67cd39bcc5744e42961a928c` — regressão do rollback com falha final forçada.
+- `92c5b1d5cdaf2cb4ef4ef684289fffe7d46dd38e` — comando de versão sem startup Qt.
+- `d73bb1af1a554f055732e383b8fa2131048b09a7` — teste do comando de versão.
 
 ## Futura Fase B
 
