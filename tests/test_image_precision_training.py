@@ -272,3 +272,36 @@ def test_one_stale_source_does_not_force_current_sources_in_same_batch(tmp_path)
     assert second.metrics.files_processed == 1
     assert second.metrics.files_skipped == 1
     assert any("without forcing unchanged sources" in warning for warning in second.warnings)
+
+
+def test_multiple_stale_sources_are_upgraded_without_reprocessing_current_source(tmp_path):
+    stale_a = tmp_path / "stale-a.pptx"
+    stale_b = tmp_path / "stale-b.pptx"
+    current = tmp_path / "current.pptx"
+    stale_a.write_bytes(b"stale-a")
+    stale_b.write_bytes(b"stale-b")
+    current.write_bytes(b"current")
+    importer = CountingImporter()
+    trainer = PrecisionProductImageCorpusTrainer(
+        Library(),
+        imports_root=tmp_path / "imports",
+        importer=importer,
+    )
+
+    first = trainer.train([stale_a, stale_b, current])
+    assert first.metrics.files_processed == 3
+
+    state = trainer.state.load()
+    for record in state["files"].values():
+        if Path(record["source_path"]).name in {"stale-a.pptx", "stale-b.pptx"}:
+            record.pop("precision_trainer_version", None)
+    trainer.state.save(state)
+
+    second = trainer.train([stale_a, stale_b, current])
+
+    assert importer.calls_by_source["stale-a.pptx"] == 2
+    assert importer.calls_by_source["stale-b.pptx"] == 2
+    assert importer.calls_by_source["current.pptx"] == 1
+    assert second.metrics.files_processed == 2
+    assert second.metrics.files_skipped == 1
+    assert set(Path(path).name for path in second.processed_files) == {"stale-a.pptx", "stale-b.pptx"}
