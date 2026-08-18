@@ -27,11 +27,17 @@ jobs:
           python-version: '3.11'
           cache: pip
 
+      - name: Install Linux Qt runtime prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1
+          ldconfig -p | grep -F 'libEGL.so.1'
+
       - name: Install clean G2 development environment
         run: |
           python -m pip install -U pip
           python -m pip install -e '.[dev,graphics2]'
-          python -c "import PySide6, srstudio; print('PySide6', PySide6.__version__, 'SR Studio', srstudio.__version__)"
+          python -c "import PySide6, srstudio; from PySide6.QtCore import QLibraryInfo; from PySide6.QtGui import QGuiApplication; print('PySide6', PySide6.__version__, 'SR Studio', srstudio.__version__, 'Qt plugins', QLibraryInfo.path(QLibraryInfo.LibraryPath.PluginsPath))"
 
       - name: Run release engineering unit contracts
         run: |
