@@ -16,12 +16,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 125
     env:
-      TARGET_SHA: db92d890b568602adb507924864ae74cea316c06
+      TARGET_SHA: a0bcd62fdff055751c7f1e900c439913ad29c561
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Wait for exact Phase 3 run and persist evidence
+      - name: Wait for exact Phase 3A run and persist evidence
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -38,13 +38,13 @@ jobs:
               echo "Observed run $run_id status=$status target=$TARGET_SHA"
               if [ "$status" = completed ]; then break; fi
             else
-              echo "No exact Phase 3 run visible for $TARGET_SHA yet (attempt $attempt)"
+              echo "No exact Phase 3A run visible for $TARGET_SHA yet (attempt $attempt)"
             fi
             sleep 30
           done
-          if [ -z "$run_id" ]; then echo 'No exact Phase 3 run found.' >&2; exit 2; fi
+          if [ -z "$run_id" ]; then echo 'No exact Phase 3A run found.' >&2; exit 2; fi
           status=$(jq -r '.status' /tmp/phase3-explicit/run.json)
-          if [ "$status" != completed ]; then echo 'Phase 3 run did not complete before observer timeout.' >&2; exit 3; fi
+          if [ "$status" != completed ]; then echo 'Phase 3A run did not complete before observer timeout.' >&2; exit 3; fi
 
           gh run view "$run_id" --json databaseId,status,conclusion,headSha,headBranch,event,url,createdAt,updatedAt,workflowName,jobs > /tmp/phase3-explicit/run-view.json
           gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" > /tmp/phase3-explicit/artifacts.json
@@ -58,7 +58,7 @@ jobs:
           source=Path('/tmp/phase3-explicit/artifact')
           target=Path('docs/parallel/phase3-evidence/explicit-release')
           wanted={
-            'phase3-summary.json','release-api-response.json','release-assets.json','corpus-availability.json','corpus-download-verification.json','corpus-download.log','corpus-inventory-gate.json','ingest-report.json','standalone-ingest-report.json','standalone-ingest-gate.json','persistence-report.json','before-second.json','second-ingest-report.json','second-standalone-ingest-report.json','idempotency-report.json','recovery-report.json','library-audit.json','coverage-catalog-520.json','coverage-departments.json','structured-corpus-coverage.json','product-priority.json','top-missing-100.csv','find-image-results.json','performance.json','memory.json','operational-analysis-gates.json','review-files.txt','test-results.xml','pytest.log','environment.txt'
+            'phase3-summary.json','release-api-response.json','release-assets.json','corpus-availability.json','corpus-download-verification.json','corpus-download.log','catalog-source-validation.json','standalone-phase.json','standalone-deferred.txt','corpus-inventory-gate.json','ingest-report.json','persistence-report.json','before-second.json','second-ingest-report.json','idempotency-report.json','recovery-report.json','library-audit.json','coverage-catalog-520.json','coverage-departments.json','structured-corpus-coverage.json','product-priority.json','top-missing-100.csv','find-image-results.json','performance.json','memory.json','operational-analysis-gates.json','review-files.txt','test-results.xml','pytest.log','environment.txt'
           }
           copied=[]
           if source.exists():
@@ -81,7 +81,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add docs/parallel/phase3-evidence/explicit-release
-          git commit -m 'image-db: persist explicit Release Phase 3 evidence [skip ci]'
+          git commit -m 'image-db: persist Phase 3A explicit Release evidence [skip ci]'
           for attempt in 1 2 3 4 5; do
             if git push origin HEAD:g2/parallel-image-database; then exit 0; fi
             git pull --rebase origin g2/parallel-image-database
