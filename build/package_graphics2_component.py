@@ -52,6 +52,11 @@ def package_component(
     enabled: bool = False,
     required: bool = False,
 ) -> Graphics2HostComponent:
+    if required and not enabled:
+        raise ValueError("Componente Graphics2Host não pode ser required=true enquanto enabled=false.")
+    if enabled and not (str(url).strip() or str(source).strip()):
+        raise ValueError("Componente Graphics2Host habilitado precisa informar url ou source de distribuição.")
+
     root = Path(build_root).resolve()
     build_manifest_path = root / "graphics2-host-manifest.json"
     if not build_manifest_path.is_file():
