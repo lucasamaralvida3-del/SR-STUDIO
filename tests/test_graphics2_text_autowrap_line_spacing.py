@@ -138,6 +138,27 @@ def _font(QtGui, *, px: int = 24, tracking: float = 0.0):
     return font
 
 
+def _qt_wordwrap_lines(text: str, width: float, font, QtGui):
+    layout = QtGui.QTextLayout(text, font)
+    option = QtGui.QTextOption()
+    option.setWrapMode(QtGui.QTextOption.WrapMode.WordWrap)
+    layout.setTextOption(option)
+    lines = []
+    layout.beginLayout()
+    try:
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(width)
+            start = int(line.textStart())
+            length = int(line.textLength())
+            lines.append((text[start : start + length], float(line.naturalTextWidth())))
+    finally:
+        layout.endLayout()
+    return lines
+
+
 def test_auto_wrap_two_lines_uses_custom_baseline_advance():
     _, QtCore, QtGui = _qt()
     font = _font(QtGui, px=24)
@@ -156,14 +177,23 @@ def test_auto_wrap_two_lines_uses_custom_baseline_advance():
         QtCore,
         QtGui,
     )
+    reference = _qt_wordwrap_lines(text, width, font, QtGui)
 
     assert layout is not None
     assert len(layout) == 2
+    assert len(reference) == 2
     assert layout[1][2] - layout[0][2] == pytest.approx(line_spacing)
     assert "".join(line for line, _, _ in layout).strip() == text
-    for line, x, _ in layout:
-        line_width = QtGui.QFontMetricsF(font).horizontalAdvance(line)
-        assert x == pytest.approx(rect.left() + (rect.width() - line_width) * 0.5, abs=1.0)
+    assert [line for line, _, _ in layout] == [line for line, _ in reference]
+    for (line, x, _), (reference_text, natural_width) in zip(layout, reference):
+        assert line == reference_text
+        assert x == pytest.approx(rect.left() + (rect.width() - natural_width) * 0.5)
+
+    # QTextLine excludes trailing wrap-separator spaces from naturalTextWidth
+    # unless IncludeTrailingSpaces is requested. QFontMetricsF on the sliced
+    # string includes that space, so it is not the alignment oracle here.
+    assert reference[0][0].endswith(" ")
+    assert metrics.horizontalAdvance(reference[0][0]) > reference[0][1]
 
 
 def test_single_line_with_custom_spacing_keeps_native_single_line_path():
@@ -202,20 +232,36 @@ def test_explicit_multiline_behavior_is_preserved():
 
 
 def test_negative_tracking_participates_in_qtextlayout_wrap():
-    _, QtCore, QtGui = _qt()
+    _, _, QtGui = _qt()
     text = "CREME DE AMENDOIM BOM PRINCÍPIO 250G"
     plain = _font(QtGui, px=23, tracking=0.0)
     tracked = _font(QtGui, px=23, tracking=-0.66)
-    width = QtGui.QFontMetricsF(plain).horizontalAdvance(text) * 0.58
 
-    plain_lines = qt_renderer._automatic_wrapped_lines(text, width, plain, QtGui)
-    tracked_lines = qt_renderer._automatic_wrapped_lines(text, width, tracked, QtGui)
+    plain_full = _qt_wordwrap_lines(text, 10000.0, plain, QtGui)
+    tracked_full = _qt_wordwrap_lines(text, 10000.0, tracked, QtGui)
+    assert len(plain_full) == 1
+    assert len(tracked_full) == 1
+    assert tracked.letterSpacingType() == QtGui.QFont.AbsoluteSpacing
+    assert tracked.letterSpacing() < 0
+    assert tracked_full[0][1] < plain_full[0][1]
 
-    assert plain_lines
-    assert tracked_lines
+    # Prove that the effective Qt spacing participates in wrap decisions rather
+    # than requiring the getter to reproduce the requested decimal exactly.
+    responsive = None
+    lower = max(40, int(min(plain_full[0][1], tracked_full[0][1]) * 0.25))
+    upper = int(max(plain_full[0][1], tracked_full[0][1]))
+    for tenths in range(lower * 10, upper * 10 + 1):
+        width = tenths / 10.0
+        plain_lines = _qt_wordwrap_lines(text, width, plain, QtGui)
+        tracked_lines = _qt_wordwrap_lines(text, width, tracked, QtGui)
+        if [line for line, _ in plain_lines] != [line for line, _ in tracked_lines]:
+            responsive = (width, plain_lines, tracked_lines)
+            break
+
+    assert responsive is not None
+    _, plain_lines, tracked_lines = responsive
     assert "".join(line for line, _ in plain_lines).strip() == text
     assert "".join(line for line, _ in tracked_lines).strip() == text
-    assert tracked.letterSpacing() == pytest.approx(-0.66)
 
 
 def test_qfont_resolution_observation_for_corpus_families(capfd):
