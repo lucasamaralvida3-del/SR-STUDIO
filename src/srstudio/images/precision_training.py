@@ -60,16 +60,15 @@ class PrecisionProductImageCorpusTrainer(ProductImageCorpusTrainer):
         # skipped by the base trainer as usual.
         report = super().train(fresh_sources, force=False)
 
-        # Reprocess only stale records, one source at a time. Calling the base
-        # trainer with force=True on the whole batch would unnecessarily reprocess
-        # every unchanged source just because one record was created by an older
-        # precision policy.
+        # Reprocess only the stale subset, but do it in one pass. This keeps the
+        # precision-policy upgrade incremental while avoiding repeated consensus
+        # rebuilds/library learning when many old records are present.
         stale_processed = 0
         stale_processed_files: list[str] = []
         stale_warnings: list[str] = []
-        for source in stale_sources:
-            stale_report = super().train([source], force=True)
-            stale_processed += stale_report.metrics.files_processed
+        if stale_sources:
+            stale_report = super().train(stale_sources, force=True)
+            stale_processed = stale_report.metrics.files_processed
             stale_processed_files.extend(stale_report.processed_files)
             stale_warnings.extend(stale_report.warnings)
 
