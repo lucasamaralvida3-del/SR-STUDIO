@@ -133,7 +133,14 @@ class StandaloneProductImageTrainer:
                 changes["review_status"] = "pending"
             asset = self.library.update_metadata(asset.id, **changes)
             imported += 1
-            if match.status == "accepted":
+
+            final_status = match.status
+            final_reason = match.reason
+            if match.status == "accepted" and getattr(asset, "review_status", "pending") != "accepted":
+                final_status = "review"
+                final_reason = f"{match.reason}+library-conflict"
+
+            if final_status == "accepted":
                 accepted += 1
             else:
                 review += 1
@@ -143,8 +150,8 @@ class StandaloneProductImageTrainer:
                     product_name=match.product_name,
                     normalized_name=match.normalized_name,
                     confidence=match.confidence,
-                    status=match.status,
-                    reason=match.reason,
+                    status=final_status,
+                    reason=final_reason,
                     alternatives=match.alternatives,
                     image_id=asset.id,
                 )
