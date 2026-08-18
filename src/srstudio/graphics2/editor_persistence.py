@@ -186,6 +186,17 @@ class EditorRecoveryJournal:
         if base_saved_digest is not None:
             payload["base_saved_digest"] = str(base_saved_digest)
         with self._lock:
+            current = self.current()
+            if (
+                current is not None
+                and current.document_id == str(document_id)
+                and current.recovery_path.resolve() != recovery
+                and _recovery_generation_key(current.recovery_path) > _recovery_generation_key(recovery)
+            ):
+                # Saves/autosaves são serializados pelo AutosaveManager, mas
+                # threads diferentes ainda podem retomar após o I/O em ordem
+                # inversa. Nunca deixe um callback tardio regredir o journal.
+                return
             _atomic_json(self.path, payload)
 
     def clear(self, document_id: str | None = None) -> None:
@@ -290,6 +301,13 @@ class EditorRecentProject:
                 if current is None or current.document_id != str(document_id):
                     return
             self.path.unlink(missing_ok=True)
+
+
+def _recovery_generation_key(path: Path) -> tuple[int, str]:
+    try:
+        return path.stat().st_mtime_ns, path.name
+    except OSError:
+        return 0, path.name
 
 
 def _atomic_json(path: Path, payload: dict[str, object]) -> None:
