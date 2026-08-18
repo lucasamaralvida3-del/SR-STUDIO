@@ -4,8 +4,8 @@ from __future__ import annotations
 
 The historical semantic builder has dedicated primary and Club/App PriceBlocks.
 Wholesale/Atacado is a distinct commercial value, not an app price, so this
-runtime adds a third PriceBlock only when a SmartSlot explicitly exposes
-``wholesale_price`` bindings.
+runtime adds a third PriceBlock whenever a SmartSlot explicitly exposes a
+``wholesale_price`` binding, whether canonical or stored in ``extra_bindings``.
 
 This is post-processing over SR Scene nodes. It does not parse PPTX/Canva files
 and therefore stays on the Product System side of the parallel work boundary.
@@ -36,17 +36,26 @@ def apply_commercial_price_blocks(semantic_module: Any, document: GraphicsDocume
                 slot,
             )
 
-            extras = slot.metadata.get("extra_bindings")
-            if not isinstance(extras, dict):
-                continue
-
-            price_ids = _valid_node_ids(page, extras.get("wholesale_price"))
+            extras = _normalized_extra_map(slot.metadata.get("extra_bindings"))
+            price_ids = _valid_node_ids(
+                page,
+                [slot.node_by_role.get("wholesale_price"), *extras.get("wholesale_price", [])],
+            )
             if not price_ids:
                 continue
 
             roles: dict[str, list[str]] = {"complete": price_ids}
-            currency_ids = _valid_node_ids(page, extras.get("wholesale_price_currency"))
-            unit_ids = _valid_node_ids(page, extras.get("wholesale_unit"))
+            currency_ids = _valid_node_ids(
+                page,
+                [
+                    slot.node_by_role.get("wholesale_price_currency"),
+                    *extras.get("wholesale_price_currency", []),
+                ],
+            )
+            unit_ids = _valid_node_ids(
+                page,
+                [slot.node_by_role.get("wholesale_unit"), *extras.get("wholesale_unit", [])],
+            )
             if currency_ids:
                 roles["currency"] = currency_ids
             if unit_ids:
