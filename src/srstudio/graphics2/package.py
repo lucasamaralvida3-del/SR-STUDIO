@@ -84,6 +84,7 @@ def load_package(path: str | Path, *, extract_assets_to: str | Path | None = Non
             document = GraphicsDocument.from_dict(scene_data)
             _validate_manifest_identity(manifest, document)
             assert_document_integrity(document)
+            _validate_current_schema_roundtrip(scene_data, document)
             if extract_assets_to:
                 destination = Path(extract_assets_to)
                 destination.mkdir(parents=True, exist_ok=True)
@@ -140,6 +141,26 @@ def _validate_manifest_identity(manifest: dict[str, Any], document: GraphicsDocu
     document_id = str(manifest.get("document_id") or "")
     if document_id and document_id != document.id:
         raise ValueError("ID do documento no manifesto não corresponde ao scene.json")
+
+
+def _validate_current_schema_roundtrip(scene_data: dict[str, Any], document: GraphicsDocument) -> None:
+    """Recusa perda silenciosa de propriedades no schema canônico atual.
+
+    `load_package()` é usado por save verificado e autosave/recovery. Portanto,
+    aceitar um `scene.json` 2.0 que o modelo atual desserializa descartando ou
+    alterando algum campo transformaria um round-trip aparentemente válido em
+    perda silenciosa de projeto. Para o schema atual, a representação precisa
+    sobreviver exatamente à sequência dict -> model -> dict.
+
+    O alias histórico `srscene/2` continua fora desta checagem estrita para não
+    transformar normalizações deliberadas de compatibilidade em quebra retroativa.
+    """
+
+    if str(scene_data.get("schema") or "") != "srscene/2.0":
+        return
+    restored = document.to_dict()
+    if restored != scene_data:
+        raise ValueError("Round-trip canônico do SR Scene 2.0 perdeu ou alterou propriedades")
 
 
 def _write_assets(
