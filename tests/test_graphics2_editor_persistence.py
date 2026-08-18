@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from pathlib import Path
 import os
 
-from srstudio.graphics2.autosave import AutosaveManager
+from srstudio.graphics2.autosave import AutosaveManager, RecoveryPoint
 from srstudio.graphics2.editor_persistence import (
     EditorPersistenceState,
     document_digest,
@@ -70,16 +69,25 @@ def test_newer_recovery_point_only_wins_when_newer_than_saved_project(tmp_path):
     assert newer_recovery_point(manager, document, saved) is None
 
 
-def test_recovered_state_remains_dirty_against_manual_save():
+def test_recovered_state_remains_dirty_against_manual_save(tmp_path):
     document = GraphicsDocument(name="Recovered")
-    manager = AutosaveManager(Path.cwd() / ".pytest-editor-persistence-unused")
-    # Avoid filesystem recovery creation here: a non-None marker is enough to
-    # model that the in-memory document came from autosave rather than save.
-    state = EditorPersistenceState.for_document(document, already_saved=True)
-    state.saved_digest = "different-saved-revision"
-    state.autosave_digest = document_digest(document)
+    point_path = tmp_path / "recovery.srscene"
+    point_path.write_bytes(b"marker")
+    point = RecoveryPoint(
+        path=point_path,
+        document_id=document.id,
+        document_name=document.name,
+        saved_at=datetime.now(timezone.utc),
+        size=point_path.stat().st_size,
+    )
+
+    state = EditorPersistenceState.for_document(
+        document,
+        saved_path=tmp_path / "saved.srscene",
+        already_saved=True,
+        recovered_from=point,
+    )
 
     assert state.is_dirty(document)
     assert not state.needs_autosave(document)
-    # Keep the manager reference used so lint does not hide accidental API drift.
-    assert isinstance(manager, AutosaveManager)
+    assert state.recovered_from == point
