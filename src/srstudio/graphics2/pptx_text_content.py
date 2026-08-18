@@ -16,15 +16,15 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any, Iterable
 from xml.etree import ElementTree as ET
-import re
 import zipfile
+
+from srstudio.importers.pptx.package_order import ordered_slide_paths
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _NS = {"a": _A, "p": _P}
-_SLIDE_RE = re.compile(r"^ppt/slides/slide(\d+)\.xml$")
 
 
 @dataclass(slots=True, frozen=True)
@@ -160,12 +160,7 @@ def recover_pptx_text_content(
 def _read_contracts(path: Path) -> list[PptxTextContentContract]:
     contracts: list[PptxTextContentContract] = []
     with zipfile.ZipFile(path) as archive:
-        entries: list[tuple[int, str]] = []
-        for name in archive.namelist():
-            match = _SLIDE_RE.match(name)
-            if match:
-                entries.append((int(match.group(1)), name))
-        for slide, name in sorted(entries):
+        for slide, name in enumerate(ordered_slide_paths(archive), start=1):
             root = ET.fromstring(archive.read(name))
             sp_tree = root.find(".//p:spTree", _NS)
             if sp_tree is None:
