@@ -103,14 +103,15 @@ def collect(output: Path) -> dict:
         pages = len(document.pages)
         nodes = sum(len(page.nodes) for page in document.pages)
         assets = len(document.assets)
+        warnings = list(result.summary.warnings)
         timing["seconds_per_page"] = None if pages == 0 else timing["median_s"] / pages
         report["cases"][name] = {
             "file_bytes": path.stat().st_size,
             "pages": pages,
             "nodes": nodes,
             "assets": assets,
-            "warnings": list(result.warnings),
-            "warning_count": len(result.warnings),
+            "warnings": warnings,
+            "warning_count": len(warnings),
             "import": timing,
         }
         imported_documents[name] = document
