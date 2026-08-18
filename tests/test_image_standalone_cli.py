@@ -78,6 +78,29 @@ def test_catalog_names_supports_real_atacado_ultimo_nome_schema(tmp_path):
     assert names == ["ACHOCOLATADO EM PO TODDY 750G", "ACUCAR DELTA 5KG"]
 
 
+def test_catalog_names_supports_real_produtos_table_read_only(tmp_path):
+    database = tmp_path / "atacado_historico.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute(
+            "CREATE TABLE produtos(codigo TEXT, ultimo_nome TEXT, unidade_preferida TEXT, ignorado INTEGER)"
+        )
+        connection.executemany(
+            "INSERT INTO produtos(codigo, ultimo_nome, unidade_preferida, ignorado) VALUES(?, ?, ?, ?)",
+            [
+                ("32438", "ACHOCOLATADO EM PO TODDY 750G", "UN", 0),
+                ("111836", "ACUCAR DELTA 5KG", "UN", 0),
+            ],
+        )
+        connection.execute("CREATE TABLE itens_relatorio(id INTEGER PRIMARY KEY)")
+
+    before = database.read_bytes()
+    names = catalog_names_from_sqlite(database)
+    after = database.read_bytes()
+
+    assert names == ["ACHOCOLATADO EM PO TODDY 750G", "ACUCAR DELTA 5KG"]
+    assert after == before
+
+
 def test_catalog_names_supports_name_only_schema(tmp_path):
     database = tmp_path / "products.db"
     with sqlite3.connect(database) as connection:
