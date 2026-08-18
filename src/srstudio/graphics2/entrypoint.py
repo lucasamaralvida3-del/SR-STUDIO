@@ -48,8 +48,22 @@ def configure_logging(root: Path | None = None) -> tuple[logging.Logger, Path]:
     return logger, log_path
 
 
+def version_string() -> str:
+    release_label = str(getattr(srstudio, "__release_label__", "") or "").strip()
+    distribution = str(getattr(srstudio, "__distribution_version__", "") or "").strip()
+    details = [f"SR Studio {srstudio.__version__}", f"Graphics Engine 2 {ENGINE_VERSION}"]
+    if release_label:
+        details.append(release_label)
+    if distribution:
+        details.append(distribution)
+    return " | ".join(details)
+
+
 def main(argv: list[str] | None = None) -> int:
     raw = list(sys.argv[1:] if argv is None else argv)
+    if raw in (["--version"], ["-V"]):
+        print(version_string())
+        return 0
     if "--release-smoke" in raw:
         raw.remove("--release-smoke")
         from .release_smoke import main as smoke_main
