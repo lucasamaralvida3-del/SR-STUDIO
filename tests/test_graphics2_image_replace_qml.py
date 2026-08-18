@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 from pathlib import Path
 
 import pytest
@@ -14,6 +15,17 @@ from srstudio.graphics2.operations import GraphicsSession
 
 def _source() -> str:
     return (Path(qt_host.__file__).with_name("qml") / "ImageInspector.qml").read_text(encoding="utf-8")
+
+
+def _process_events_until(app, predicate, *, timeout_s: float = 1.0) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        app.processEvents()
+        if predicate():
+            return True
+        time.sleep(0.005)
+    app.processEvents()
+    return bool(predicate())
 
 
 def test_image_inspector_exposes_replace_file_dialog_without_removing_crop_controls():
@@ -76,9 +88,12 @@ def test_image_inspector_qml_loads_offscreen_with_selected_image():
     engine.rootContext().setContextProperty("sceneBridge", bridge)
     qml = Path(qt_host.__file__).with_name("qml") / "ImageInspector.qml"
     engine.load(QUrl.fromLocalFile(str(qml.resolve())))
-    app.processEvents()
 
-    assert engine.rootObjects(), "ImageInspector.qml não carregou no runtime Qt Quick real."
+    assert _process_events_until(app, lambda: bool(engine.rootObjects())), (
+        "ImageInspector.qml não carregou no runtime Qt Quick real."
+    )
     root = engine.rootObjects()[0]
-    assert root.property("visible") is True
+    assert _process_events_until(app, lambda: root.property("visible") is True), (
+        "ImageInspector.qml carregou, mas a seleção de imagem não tornou o painel visível."
+    )
     assert root.property("height") > 0
