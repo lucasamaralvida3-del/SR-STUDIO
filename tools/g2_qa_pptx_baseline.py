@@ -20,16 +20,6 @@ from srstudio.graphics2.qt_renderer import render_pdf, render_png
 
 T = TypeVar("T")
 
-PPTX_NAMES = (
-    "ATACADO.pptx",
-    "CARTAZ_VENDA.pptx",
-    "CLUBE_EXCLUSIVO.pptx",
-    "SEGUNDA_DA_LIMPEZA.pptx",
-    "SEGUNDA_DA_LIMPEZA_2.pptx",
-    "SEGUNDA_DA_LIMPEZA_3.pptx",
-    "SEGUNDA_DA_LIMPEZA_4.pptx",
-)
-
 
 def _rss_mb() -> float | None:
     status = Path("/proc/self/status")
@@ -45,6 +35,13 @@ def _rss_mb() -> float | None:
 
 def _pptx_root() -> Path:
     return Path(srstudio.__file__).resolve().parent / "assets" / "poster_templates" / "legacy" / "models"
+
+
+def _pptx_corpus(root: Path) -> tuple[Path, ...]:
+    corpus = tuple(sorted(root.glob("*.pptx")))
+    if len(corpus) < 3:
+        raise RuntimeError(f"Corpus PPTX insuficiente para baseline: {root} ({len(corpus)} arquivos)")
+    return corpus
 
 
 def _measure(call: Callable[[], T], *, repeats: int = 1) -> tuple[T, dict[str, float | int | None]]:
@@ -82,21 +79,19 @@ def _qgui_application():
 
 def collect(output: Path) -> dict:
     root = _pptx_root()
+    corpus = _pptx_corpus(root)
     report: dict = {
-        "schema": "srstudio/g2-qa-pptx-baseline/1",
+        "schema": "srstudio/g2-qa-pptx-baseline/2",
         "python": os.sys.version,
         "platform": os.sys.platform,
         "qt_qpa_platform": os.environ.get("QT_QPA_PLATFORM", ""),
         "root": str(root),
+        "corpus_count": len(corpus),
         "cases": {},
     }
     imported_documents: dict[str, object] = {}
 
-    for name in PPTX_NAMES:
-        path = root / name
-        if not path.is_file():
-            raise FileNotFoundError(f"Template PPTX esperado não encontrado: {path}")
-
+    for path in corpus:
         result, timing = _measure(lambda p=path: GraphicsImportService().import_file(p), repeats=2)
         document = result.document
         assert_document_integrity(document)
@@ -105,7 +100,7 @@ def collect(output: Path) -> dict:
         assets = len(document.assets)
         warnings = list(result.summary.warnings)
         timing["seconds_per_page"] = None if pages == 0 else timing["median_s"] / pages
-        report["cases"][name] = {
+        report["cases"][path.name] = {
             "file_bytes": path.stat().st_size,
             "pages": pages,
             "nodes": nodes,
@@ -114,10 +109,10 @@ def collect(output: Path) -> dict:
             "warning_count": len(warnings),
             "import": timing,
         }
-        imported_documents[name] = document
+        imported_documents[path.name] = document
 
     representative_name = max(
-        PPTX_NAMES,
+        imported_documents,
         key=lambda name: (
             report["cases"][name]["pages"],
             report["cases"][name]["nodes"],
