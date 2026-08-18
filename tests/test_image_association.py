@@ -38,6 +38,10 @@ def test_different_gramatures_are_not_aliases():
 def test_product_candidate_rejects_price_and_operational_text():
     assert is_product_text_candidate("CAFÉ VASCONCELOS 500G")
     assert is_product_text_candidate("MUSSARELA TRADICIONAL")
+    assert is_product_text_candidate("TODDY 370G")
+    assert is_product_text_candidate("MONSTER 473ML")
+    assert not is_product_text_candidate("PACOTE 500G")
+    assert not is_product_text_candidate("UNIDADE 500G")
     assert not is_product_text_candidate("R$ 18,99")
     assert not is_product_text_candidate("LIMITE DE 20UN POR CLIENTE")
     assert not is_product_text_candidate("QUINTA FILÉ")
