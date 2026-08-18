@@ -34,13 +34,31 @@
         "text",
         "prices",
         "images",
-        "crop",
         "groups",
         "shapes",
         "layers",
         "fonts",
         "multiple-layouts"
       ],
+      "coverage_gaps": [
+        "crop",
+        "transparency",
+        "mask",
+        "productcards"
+      ],
+      "g2_import_audit": {
+        "functional_head": "d14dc5bed4bf4f7402f4668eb66a63823f48a35a",
+        "pages_imported": 3,
+        "import_time_ms_observed": 307.8,
+        "page_node_counts": [119, 76, 27],
+        "page_kind_counts": [
+          {"text": 58, "rect": 20, "group": 20, "image": 17, "line": 4},
+          {"text": 38, "image": 13, "rect": 11, "group": 11, "line": 3},
+          {"image": 11, "text": 8, "rect": 4, "group": 4}
+        ],
+        "fonts_observed": ["Anton", "High Cruiser"],
+        "notes": "Structural import only. This is not a visual score and does not replace an official reference export."
+      },
       "provenance_evidence": {
         "canva_ui_capture_only_not_reference": "CANVA.PNG",
         "notes": "The Canva capture proves design/source lineage for the Quinta File layout but is explicitly forbidden as a visual baseline because it contains Canva UI chrome."
