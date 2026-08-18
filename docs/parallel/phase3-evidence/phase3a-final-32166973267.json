@@ -1,0 +1,161 @@
+{
+  "status": "PHASE 3A PASS — STANDALONE PENDING",
+  "workflow_run": 32166973267,
+  "tested_sha": "16ca336b46e9f37eb6a8e5595bc8b4822dfcab8f",
+  "release": {
+    "tag": "image-db-corpus-v1",
+    "release_found": true,
+    "release_id": 372506555,
+    "release_name": "Image DB Corpus v1",
+    "api_http_status": 200,
+    "lookup_mode": "explicit-tag-only"
+  },
+  "assets": {
+    "Downloads(1)(1).zip": {
+      "release_asset_name": "Downloads.1.1.zip",
+      "asset_id": 519720279,
+      "size": 249253663,
+      "sha256": "aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba",
+      "download_complete": true,
+      "verified": true
+    },
+    "Downloads(2)(1).zip": {
+      "release_asset_name": "Downloads.2.1.zip",
+      "asset_id": 519719841,
+      "size": 344039590,
+      "sha256": "035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86",
+      "download_complete": true,
+      "verified": true
+    },
+    "publish_repository.zip": {
+      "release_asset_name": "publish_repository.zip",
+      "asset_id": 519734424,
+      "size": 19093966,
+      "sha256": "5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
+      "download_complete": true,
+      "verified": true
+    },
+    "standalone-images.zip": {
+      "status": "DEFERRED",
+      "processed": false
+    }
+  },
+  "tests": {
+    "passed": 167,
+    "failed": 0,
+    "warnings": 195
+  },
+  "corpus": {
+    "pptx": 36,
+    "slides": 566,
+    "media_file_occurrences": 2324,
+    "embedded_unique_sha256": 1910,
+    "baseline_pass": true,
+    "structured_product_occurrences": 1615,
+    "structured_unique_products": 922
+  },
+  "catalog_source": {
+    "database": "atacado_historico.db",
+    "products": 520,
+    "historical_records": 3116,
+    "pass": true
+  },
+  "ingest": {
+    "pass": true,
+    "seconds_wall": 514,
+    "files_processed": 36,
+    "images_learned": 1182,
+    "accepted": 23,
+    "probable": 893,
+    "review": 266,
+    "decorative_excluded": 9
+  },
+  "database": {
+    "physical_images": 1036,
+    "canonical_images": 1036,
+    "exact_duplicate_observations": 1412,
+    "near_duplicate_variants": 146,
+    "visual_variant_hashes": 146,
+    "accepted_assets": 11,
+    "likely_assets": 774,
+    "review_required_assets": 251,
+    "rejected_assets": 0,
+    "decorative_assets_persisted": 0,
+    "orphan_images": 0,
+    "missing_provenance": 0,
+    "low_confidence_associations": 172,
+    "products_with_multiple_images": 136
+  },
+  "catalog_520_coverage": {
+    "auto_approved": 2,
+    "likely": 42,
+    "review_required": 7,
+    "missing": 469,
+    "any_candidate": 51,
+    "any_image_coverage_percent": 9.8077,
+    "auto_approved_coverage_percent": 0.3846
+  },
+  "departments": {
+    "bebidas": {"total":176,"auto_approved":1,"likely":8,"review_required":0,"missing":167},
+    "outros": {"total":158,"auto_approved":0,"likely":10,"review_required":2,"missing":146},
+    "hortifruti": {"total":77,"auto_approved":1,"likely":1,"review_required":1,"missing":74},
+    "mercearia": {"total":75,"auto_approved":0,"likely":22,"review_required":3,"missing":50},
+    "limpeza": {"total":22,"auto_approved":0,"likely":1,"review_required":1,"missing":20},
+    "acougue": {"total":6,"auto_approved":0,"likely":0,"review_required":0,"missing":6},
+    "frios": {"total":6,"auto_approved":0,"likely":0,"review_required":0,"missing":6},
+    "padaria": {"total":0,"auto_approved":0,"likely":0,"review_required":0,"missing":0},
+    "congelados": {"total":0,"auto_approved":0,"likely":0,"review_required":0,"missing":0}
+  },
+  "persistence": {
+    "pass": true,
+    "reload_seconds": 0.034762225,
+    "duplicate_ids": false,
+    "missing_files": 0,
+    "malformed_assets": 0,
+    "index_exists": true
+  },
+  "idempotency": {
+    "pass": true,
+    "canonical_before": 1036,
+    "canonical_after": 1036,
+    "physical_before": 1036,
+    "physical_after": 1036,
+    "logical_signature_unchanged": true,
+    "second_files_processed": 0,
+    "second_files_skipped": 36,
+    "second_images_learned": 0,
+    "second_incremental_seconds": 5
+  },
+  "recovery": "PASS",
+  "find_image": {
+    "pass": true,
+    "negative_invariant_violations": 0,
+    "note": "Identity-safety invariants passed. Several requested product queries correctly returned no best match because their current Phase 3A associations remain pending rather than accepted; TOMATE PERA returned an exact accepted match."
+  },
+  "performance": {
+    "index_load_seconds": 0.028297,
+    "exact_lookup_mean_ms": 0.057698,
+    "exact_lookup_p50_ms": 0.027677,
+    "exact_lookup_p95_ms": 0.253012,
+    "fuzzy_lookup_mean_ms": 0.064499,
+    "fuzzy_lookup_p50_ms": 0.027942,
+    "fuzzy_lookup_p95_ms": 0.243478,
+    "audit_seconds": 0.125125,
+    "ingest_seconds": 514,
+    "second_incremental_seconds": 5
+  },
+  "memory": {
+    "ingest_peak_rss_kb": 113184,
+    "second_ingest_peak_rss_kb": 62728,
+    "audit_peak_rss_kb": 257192
+  },
+  "review_dataset": {
+    "pass": true,
+    "groups": 100,
+    "contact_sheet_generated": true
+  },
+  "standalone_available": false,
+  "standalone_phase": "DEFERRED",
+  "standalone_validation": "DEFERRED",
+  "merges_performed": false
+}
