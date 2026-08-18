@@ -85,8 +85,9 @@ def test_undo_redo_move_loop_returns_to_exact_geometry():
     original = router.session.page.node(node_id).transform
     original_xy = (original.x, original.y)
 
-    assert router.dispatch({"name": "select", "node_id": node_id}).ok
     for _ in range(100):
+        selected = router.dispatch({"name": "select", "node_id": node_id})
+        assert selected.ok
         moved = router.dispatch({"name": "move", "dx": 3.0, "dy": -2.0, "snap": False})
         assert moved.ok and moved.changed
         undone = router.dispatch({"name": "undo"})
