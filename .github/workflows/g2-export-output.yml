@@ -96,14 +96,59 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: python -m pytest -q tests/test_graphics2_export_batch_transaction.py --junitxml=g2-export-batch.xml
 
-      - name: Print output contracts
-        id: test_print
+      - name: Print A4 landscape raster
+        id: print_a4
         if: ${{ always() && steps.install.outcome == 'success' && steps.compile.outcome == 'success' }}
         continue-on-error: true
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -q tests/test_graphics2_export_print_contract.py --junitxml=g2-export-print.xml
+        run: python -m pytest -q tests/test_graphics2_export_print_contract.py::test_a4_landscape_png_at_300_dpi_has_expected_pixel_dimensions --junitxml=g2-export-print-a4.xml
+
+      - name: Print point-unit raster
+        id: print_point
+        if: ${{ always() && steps.install.outcome == 'success' && steps.compile.outcome == 'success' }}
+        continue-on-error: true
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests/test_graphics2_export_print_contract.py::test_point_units_respect_dpi_contract --junitxml=g2-export-print-point.xml
+
+      - name: Print PDF physical size
+        id: print_pdf_size
+        if: ${{ always() && steps.install.outcome == 'success' && steps.compile.outcome == 'success' }}
+        continue-on-error: true
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests/test_graphics2_export_print_contract.py::test_pdf_dpi_does_not_change_a4_physical_page_size --junitxml=g2-export-print-pdf-size.xml
+
+      - name: Print PDF edge coverage
+        id: print_edges
+        if: ${{ always() && steps.install.outcome == 'success' && steps.compile.outcome == 'success' }}
+        continue-on-error: true
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests/test_graphics2_export_print_contract.py::test_pdf_background_reaches_page_edges_without_implicit_margin --junitxml=g2-export-print-edges.xml
+
+      - name: Print DPI validation
+        id: print_dpi
+        if: ${{ always() && steps.install.outcome == 'success' && steps.compile.outcome == 'success' }}
+        continue-on-error: true
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests/test_graphics2_export_print_contract.py::test_invalid_dpi_is_rejected_before_export --junitxml=g2-export-print-dpi.xml
+
+      - name: Print locked destination
+        id: print_lock
+        if: ${{ always() && steps.install.outcome == 'success' && steps.compile.outcome == 'success' }}
+        continue-on-error: true
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q tests/test_graphics2_export_print_contract.py::test_file_in_use_fails_cleanly_and_preserves_existing_output --junitxml=g2-export-print-lock.xml
 
       - name: Existing Qt renderer regression contracts
         id: test_legacy
@@ -123,7 +168,12 @@ jobs:
               steps.test_core.outcome == 'success' &&
               steps.test_roundtrip.outcome == 'success' &&
               steps.test_batch.outcome == 'success' &&
-              steps.test_print.outcome == 'success' &&
+              steps.print_a4.outcome == 'success' &&
+              steps.print_point.outcome == 'success' &&
+              steps.print_pdf_size.outcome == 'success' &&
+              steps.print_edges.outcome == 'success' &&
+              steps.print_dpi.outcome == 'success' &&
+              steps.print_lock.outcome == 'success' &&
               steps.test_legacy.outcome == 'success' }}
         continue-on-error: true
         shell: pwsh
@@ -149,11 +199,10 @@ jobs:
         run: |
           function Publish-Status([string]$context, [string]$outcome) {
             $state = if ($outcome -eq "success") { "success" } else { "failure" }
-            $description = "$context = $outcome"
             gh api --method POST "repos/${{ github.repository }}/statuses/${{ github.sha }}" `
               --raw-field state="$state" `
               --raw-field context="$context" `
-              --raw-field description="$description"
+              --raw-field description="$context = $outcome"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
@@ -163,7 +212,12 @@ jobs:
           Publish-Status "g2/export/test-core" "${{ steps.test_core.outcome }}"
           Publish-Status "g2/export/test-roundtrip" "${{ steps.test_roundtrip.outcome }}"
           Publish-Status "g2/export/test-batch" "${{ steps.test_batch.outcome }}"
-          Publish-Status "g2/export/test-print" "${{ steps.test_print.outcome }}"
+          Publish-Status "g2/export/print-a4" "${{ steps.print_a4.outcome }}"
+          Publish-Status "g2/export/print-point" "${{ steps.print_point.outcome }}"
+          Publish-Status "g2/export/print-pdf-size" "${{ steps.print_pdf_size.outcome }}"
+          Publish-Status "g2/export/print-edges" "${{ steps.print_edges.outcome }}"
+          Publish-Status "g2/export/print-dpi" "${{ steps.print_dpi.outcome }}"
+          Publish-Status "g2/export/print-lock" "${{ steps.print_lock.outcome }}"
           Publish-Status "g2/export/test-legacy" "${{ steps.test_legacy.outcome }}"
           Publish-Status "g2/export/benchmark" "${{ steps.benchmark.outcome }}"
 
@@ -173,7 +227,12 @@ jobs:
                 ("${{ steps.test_core.outcome }}" -eq "success") -and `
                 ("${{ steps.test_roundtrip.outcome }}" -eq "success") -and `
                 ("${{ steps.test_batch.outcome }}" -eq "success") -and `
-                ("${{ steps.test_print.outcome }}" -eq "success") -and `
+                ("${{ steps.print_a4.outcome }}" -eq "success") -and `
+                ("${{ steps.print_point.outcome }}" -eq "success") -and `
+                ("${{ steps.print_pdf_size.outcome }}" -eq "success") -and `
+                ("${{ steps.print_edges.outcome }}" -eq "success") -and `
+                ("${{ steps.print_dpi.outcome }}" -eq "success") -and `
+                ("${{ steps.print_lock.outcome }}" -eq "success") -and `
                 ("${{ steps.test_legacy.outcome }}" -eq "success") -and `
                 ("${{ steps.benchmark.outcome }}" -eq "success")
           $state = if ($ok) { "success" } else { "failure" }
@@ -199,7 +258,12 @@ jobs:
                 ("${{ steps.test_core.outcome }}" -eq "success") -and `
                 ("${{ steps.test_roundtrip.outcome }}" -eq "success") -and `
                 ("${{ steps.test_batch.outcome }}" -eq "success") -and `
-                ("${{ steps.test_print.outcome }}" -eq "success") -and `
+                ("${{ steps.print_a4.outcome }}" -eq "success") -and `
+                ("${{ steps.print_point.outcome }}" -eq "success") -and `
+                ("${{ steps.print_pdf_size.outcome }}" -eq "success") -and `
+                ("${{ steps.print_edges.outcome }}" -eq "success") -and `
+                ("${{ steps.print_dpi.outcome }}" -eq "success") -and `
+                ("${{ steps.print_lock.outcome }}" -eq "success") -and `
                 ("${{ steps.test_legacy.outcome }}" -eq "success") -and `
                 ("${{ steps.benchmark.outcome }}" -eq "success")
           if (-not $ok) { exit 1 }
