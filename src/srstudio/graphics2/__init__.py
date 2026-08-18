@@ -114,7 +114,11 @@ build_semantic_blocks = _semantic_blocks.build_semantic_blocks
 
 from . import import_bridge as _import_bridge
 from .binding_runtime import install_template_aware_binding_guard
+from .pptx_page_geometry_runtime import install_pptx_page_geometry_guard
 
+# G2-only page semantics are installed at the import bridge seam. The shared
+# PPTX importer keeps its physical-page behavior unchanged.
+install_pptx_page_geometry_guard(_import_bridge)
 install_template_aware_binding_guard(_import_bridge)
 
 from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_image_placeholders
