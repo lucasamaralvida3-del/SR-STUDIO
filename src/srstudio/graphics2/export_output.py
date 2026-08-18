@@ -33,6 +33,8 @@ _WINDOWS_RESERVED_NAMES = frozenset(
     {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in range(1, 10)), *(f"LPT{i}" for i in range(1, 10))}
 )
 _INVALID_FILENAME_RE = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+_MAX_RASTER_PIXELS = 100_000_000
+_MAX_RASTER_DIMENSION = 65_535
 
 
 class ExportValidationError(RuntimeError):
@@ -138,19 +140,25 @@ def export_pdf(
     """Export a single- or multi-page PDF and publish it atomically.
 
     Rendering happens in a sibling temporary file.  The destination is only
-    replaced after the complete PDF has a valid header/EOF marker and no fatal
-    asset warnings.  A failure on an intermediate page therefore cannot leave
-    a half-written destination masquerading as a successful export.
+    replaced after the complete PDF has the expected page count and physical
+    page sizes, a valid header/EOF marker and no fatal asset warnings.  A
+    failure on an intermediate page therefore cannot leave a half-written
+    destination masquerading as a successful export.
     """
 
     ensure_qt_gui_application()
     indices = _normalize_page_indices(document, page_indices)
+    expected_sizes_mm = [_renderer._page_size_mm(document.pages[index]) for index in indices]
     target = _prepare_target(output, ".pdf", overwrite=overwrite)
     temp = _temporary_sibling(target, ".pdf")
     try:
         report = _renderer.render_pdf(document, temp, dpi=_validated_dpi(dpi), page_indices=indices)
+        if int(report.pages) != len(indices):
+            raise ExportValidationError(
+                f"PDF incompleto: esperado {len(indices)} página(s), renderer informou {report.pages}."
+            )
         _raise_for_fatal_warnings(report.warnings, strict_assets=strict_assets)
-        _validate_pdf_file(temp)
+        _validate_pdf_file(temp, expected_pages=len(indices), expected_sizes_mm=expected_sizes_mm)
         _publish(temp, target, overwrite=overwrite)
         return _renderer.RenderReport(target, "pdf", len(indices), warnings=list(report.warnings))
     finally:
@@ -250,6 +258,7 @@ def _export_raster(
         target_width=target_width,
         target_height=target_height,
     )
+    _validate_raster_allocation(width, height)
 
     image = QtGui.QImage(width, height, QtGui.QImage.Format_ARGB32_Premultiplied)
     if raster_format == "png" and transparent:
@@ -326,7 +335,15 @@ def _validate_page_index(document: GraphicsDocument, page_index: int) -> int:
     return index
 
 
-def _raster_geometry(page_width: float, page_height: float, unit, *, dpi: int, target_width: int | None, target_height: int | None) -> tuple[int, int, float]:
+def _raster_geometry(
+    page_width: float,
+    page_height: float,
+    unit,
+    *,
+    dpi: int,
+    target_width: int | None,
+    target_height: int | None,
+) -> tuple[int, int, float]:
     if page_width <= 0 or page_height <= 0:
         raise ValueError("Página com dimensões inválidas para exportação.")
     width_value = _positive_dimension(target_width, "largura")
@@ -350,13 +367,28 @@ def _raster_geometry(page_width: float, page_height: float, unit, *, dpi: int, t
         scale = height_value / page_height
         return max(1, round(page_width * scale)), height_value, scale
 
-    # Reuse the renderer's canonical unit-to-DPI conversion.
-    class _PageProxy:
-        width = page_width
-        unit = unit
-
-    scale = _renderer._raster_scale(_PageProxy(), dpi=dpi, target_width=None)
+    unit_name = str(getattr(unit, "value", unit) or "px").lower()
+    if unit_name == "mm":
+        scale = dpi / 25.4
+    elif unit_name == "pt":
+        scale = dpi / 72.0
+    else:
+        scale = dpi / 96.0
     return max(1, round(page_width * scale)), max(1, round(page_height * scale)), scale
+
+
+def _validate_raster_allocation(width: int, height: int) -> None:
+    if width <= 0 or height <= 0:
+        raise ValueError("Dimensão raster inválida para exportação.")
+    if width > _MAX_RASTER_DIMENSION or height > _MAX_RASTER_DIMENSION:
+        raise ValueError(
+            f"Dimensão raster excede o limite seguro de {_MAX_RASTER_DIMENSION}px por eixo: {width}x{height}."
+        )
+    pixels = width * height
+    if pixels > _MAX_RASTER_PIXELS:
+        raise ValueError(
+            f"Saída raster grande demais para memória segura: {width}x{height} ({pixels:,} pixels)."
+        )
 
 
 def _positive_dimension(value: int | None, label: str) -> int | None:
@@ -445,7 +477,12 @@ def _validate_raster_file(path: Path, QtGui, *, width: int, height: int, expect_
         raise ExportValidationError("PNG solicitado com transparência foi salvo sem canal alpha.")
 
 
-def _validate_pdf_file(path: Path) -> None:
+def _validate_pdf_file(
+    path: Path,
+    *,
+    expected_pages: int | None = None,
+    expected_sizes_mm: list[tuple[float, float]] | None = None,
+) -> None:
     if not path.is_file() or path.stat().st_size < 32:
         raise ExportValidationError(f"PDF vazio ou ausente: {path}")
     with path.open("rb") as handle:
@@ -456,6 +493,29 @@ def _validate_pdf_file(path: Path) -> None:
         raise ExportValidationError("Arquivo gerado não possui cabeçalho PDF válido.")
     if b"%%EOF" not in tail:
         raise ExportValidationError("PDF gerado não possui marcador final; possível arquivo truncado.")
+
+    try:
+        from pypdf import PdfReader
+
+        pages = PdfReader(str(path), strict=False).pages
+    except Exception as exc:
+        raise ExportValidationError(f"PDF gerado não pôde ser reaberto para validação: {exc}") from exc
+
+    if expected_pages is not None and len(pages) != expected_pages:
+        raise ExportValidationError(
+            f"PDF perdeu páginas: esperado {expected_pages}, arquivo contém {len(pages)}."
+        )
+    if expected_sizes_mm is not None:
+        if len(expected_sizes_mm) != len(pages):
+            raise ExportValidationError("Não foi possível validar os tamanhos físicos de todas as páginas do PDF.")
+        for index, (pdf_page, expected) in enumerate(zip(pages, expected_sizes_mm), start=1):
+            width_mm = float(pdf_page.mediabox.width) * 25.4 / 72.0
+            height_mm = float(pdf_page.mediabox.height) * 25.4 / 72.0
+            if abs(width_mm - expected[0]) > 0.5 or abs(height_mm - expected[1]) > 0.5:
+                raise ExportValidationError(
+                    f"Tamanho físico divergente na página {index}: esperado "
+                    f"{expected[0]:.2f}x{expected[1]:.2f}mm, obtido {width_mm:.2f}x{height_mm:.2f}mm."
+                )
 
 
 def _raise_for_fatal_warnings(warnings: Iterable[_renderer.RenderWarning], *, strict_assets: bool) -> None:
