@@ -1,0 +1,75 @@
+name: G2 QA Performance
+
+on:
+  push:
+    branches:
+      - g2/parallel-qa-performance
+    paths:
+      - "src/srstudio/graphics2/**"
+      - "tests/test_graphics2_*.py"
+      - "tools/g2_qa_baseline.py"
+      - ".github/workflows/g2-qa-performance.yml"
+  workflow_dispatch:
+
+jobs:
+  qa-performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install G2 QA dependencies
+        run: python -m pip install -e ".[dev,graphics2]"
+
+      - name: Compile QA surface
+        run: >-
+          python -m compileall -q
+          src/srstudio/graphics2
+          tools/g2_qa_baseline.py
+          tests/test_graphics2_qa_longrun.py
+
+      - name: Ruff QA additions
+        run: python -m ruff check tools/g2_qa_baseline.py tests/test_graphics2_qa_longrun.py
+
+      - name: Focused production-flow regressions
+        run: |
+          mkdir -p artifacts
+          python -m pytest -q \
+            tests/test_graphics2_autosave.py \
+            tests/test_graphics2_bridge_roundtrip.py \
+            tests/test_graphics2_package_stress.py \
+            tests/test_graphics2_page_clone_ids.py \
+            tests/test_graphics2_project_actions.py \
+            tests/test_graphics2_product_card_duplicate.py \
+            tests/test_graphics2_pdf_multipage.py \
+            tests/test_graphics2_real_flyer_e2e.py \
+            tests/test_graphics2_qa_longrun.py \
+            --junitxml=artifacts/g2-qa-focused.xml
+
+      - name: Performance and RSS baseline
+        run: >-
+          python tools/g2_qa_baseline.py
+          --output artifacts/g2-qa-baseline.json
+          --pages 1,10,25
+          | tee artifacts/g2-qa-baseline.log
+
+      - name: Full Graphics2 regression suite
+        run: python -m pytest -q tests -k graphics2 --junitxml=artifacts/g2-qa-full.xml
+
+      - name: Upload QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g2-qa-performance-evidence
+          path: artifacts/
+          if-no-files-found: warn
