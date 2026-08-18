@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from zipfile import ZipFile
 
 from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, Transform
@@ -146,7 +147,7 @@ def test_recovers_rect_fill_outline_text_alpha_geometry_and_z_order(tmp_path):
     assert visual.style["stroke"] == "#40FF0000"
     assert visual.style["outline"] == "#40FF0000"
     assert visual.style["stroke_width"] == 2.0
-    assert visual.transform.to_dict() == owner.transform.to_dict()
+    assert asdict(visual.transform) == asdict(owner.transform)
     assert visual.z_index == 4
     assert owner.z_index == 5
     assert after.z_index == 6
