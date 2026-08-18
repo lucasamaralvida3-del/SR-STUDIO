@@ -13,6 +13,7 @@ _UNIT_RE = re.compile(r"\b(\d+(?:[.,]\d+)?)\s*(KG|G|GR|MG|ML|L|LT|UN|UND|CM|MM|M
 _PRICE_RE = re.compile(r"^\s*(?:R\$\s*)?\d{1,4}(?:[.,]\d{1,2})?\s*$", re.IGNORECASE)
 _SPACE_RE = re.compile(r"\s+")
 _NON_ALNUM_RE = re.compile(r"[^A-Z0-9.]+")
+_SOURCE_DIGEST_RE = re.compile(r"^[0-9a-fA-F]{24,64}$")
 
 _BLOCKED_PREFIXES = (
     "LIMITE",
@@ -98,12 +99,38 @@ class AssociationDecision:
     evidence: tuple[AssociationEvidence, ...] = ()
 
 
+def evidence_source_identity(row: AssociationEvidence) -> str:
+    """Return a content-aware source identity for cross-document consensus.
+
+    Corpus extraction stores media under ``.../media/<source-sha-prefix>/...``.
+    That digest is a stronger source identity than a basename: copies of the same
+    PPTX must not boost consensus, while different documents with the same filename
+    must count independently. Explicit provenance metadata wins when available.
+    """
+    metadata = row.metadata or {}
+    explicit = str(metadata.get("source_document_id") or metadata.get("source_sha256") or "").strip()
+    if explicit:
+        return explicit.lower()
+
+    parts = [part for part in re.split(r"[\\/]+", row.media_path or "") if part]
+    for part in reversed(parts[:-1]):
+        if _SOURCE_DIGEST_RE.fullmatch(part):
+            return part.lower()
+    return row.source_file
+
+
+def _distinct_evidence_source_count(rows: Iterable[AssociationEvidence]) -> int:
+    identities = {identity for row in rows if (identity := evidence_source_identity(row))}
+    return len(identities)
+
+
 class ProductImageAssociationEngine:
     """Resolve noisy spatial observations into precision-first product/image decisions.
 
     Exact SHA-256 identity is the grouping key. Cross-document agreement boosts
-    confidence, while the same image being paired with many unrelated products is
-    treated as evidence that the asset is decorative/template material.
+    confidence using content-aware source identity, while the same image being
+    paired with many unrelated products is treated as evidence that the asset is
+    decorative/template material.
     """
 
     def __init__(
@@ -134,7 +161,7 @@ class ProductImageAssociationEngine:
             by_name.items(),
             key=lambda item: (
                 sum(max(0.0, min(1.0, row.confidence)) for row in item[1]),
-                len({row.source_file for row in item[1]}),
+                _distinct_evidence_source_count(item[1]),
                 len(item[1]),
             ),
             reverse=True,
@@ -144,7 +171,7 @@ class ProductImageAssociationEngine:
         top_weight = sum(max(0.0, min(1.0, r.confidence)) for r in top_rows)
         consensus = top_weight / max(total_weight, 1e-9)
         avg_confidence = top_weight / max(len(top_rows), 1)
-        distinct_sources = len({row.source_file for row in top_rows})
+        distinct_sources = _distinct_evidence_source_count(top_rows)
         distinct_products = len(ranked)
 
         if len(rows) >= 5 and distinct_products >= 4 and consensus < 0.55:
@@ -176,7 +203,7 @@ class ProductImageAssociationEngine:
                 product_name=Counter(row.product_name for row in alt_rows).most_common(1)[0][0],
                 normalized_name=alt_name,
                 source_count=len(alt_rows),
-                distinct_source_count=len({row.source_file for row in alt_rows}),
+                distinct_source_count=_distinct_evidence_source_count(alt_rows),
                 weight=round(sum(max(0.0, min(1.0, row.confidence)) for row in alt_rows), 6),
             )
             for alt_name, alt_rows in ranked[1:4]
