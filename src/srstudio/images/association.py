@@ -173,8 +173,17 @@ class ProductImageAssociationEngine:
         avg_confidence = top_weight / max(len(top_rows), 1)
         distinct_sources = _distinct_evidence_source_count(top_rows)
         distinct_products = len(ranked)
+        template_observations = sum(bool((row.metadata or {}).get("template_asset")) for row in rows)
+        template_ratio = template_observations / max(1, len(rows))
 
-        if len(rows) >= 5 and distinct_products >= 4 and consensus < 0.55:
+        recurring_template_conflict = (
+            len(rows) >= 3
+            and template_ratio >= 0.75
+            and distinct_products >= 3
+            and consensus < 0.65
+        )
+        broad_product_conflict = len(rows) >= 5 and distinct_products >= 4 and consensus < 0.55
+        if recurring_template_conflict or broad_product_conflict:
             status = "decorative"
             final_confidence = min(0.49, consensus)
         else:
