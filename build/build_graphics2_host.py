@@ -29,10 +29,10 @@ QT_RUNTIME_MODULES = (
     "PySide6.QtQml",
     "PySide6.QtQuick",
 )
-FORBIDDEN_QT_RUNTIME_FILES = (
-    "Qt6WebEngineCore.dll",
-    "Qt6WebEngineQuick.dll",
-    "Qt6WebEngineWidgets.dll",
+QT_EXCLUDED_MODULES = (
+    "PySide6.QtWebEngineCore",
+    "PySide6.QtWebEngineQuick",
+    "PySide6.QtWebEngineWidgets",
 )
 QT_BUILD_ARTIFACT_PREFIXES = (
     "objects-Debug",
@@ -66,8 +66,9 @@ def pyinstaller_args(
 ) -> list[str]:
     # Deliberadamente NÃO usamos ``--collect-all PySide6``. Esse modo inclui
     # módulos sem relação com o editor (por exemplo QtWebEngine) e fazia o host
-    # ultrapassar 700 MB. Os hooks oficiais do PyInstaller coletam plugins,
-    # bibliotecas e QML necessários a partir dos módulos Qt realmente usados.
+    # ultrapassar 700 MB. Os hooks oficiais do PyInstaller ainda podem copiar
+    # plugins/QML WebEngine através de QtQml; essa sobra é removida após COLLECT
+    # e antes da geração do catálogo SHA-256, com smoke real do editor como gate.
     args = [
         str(ENTRY),
         "--noconfirm",
@@ -90,6 +91,8 @@ def pyinstaller_args(
     ]
     for module in QT_RUNTIME_MODULES:
         args.extend(["--hidden-import", module])
+    for module in QT_EXCLUDED_MODULES:
+        args.extend(["--exclude-module", module])
     args.extend(
         [
             "--noupx",
@@ -103,7 +106,7 @@ def pyinstaller_args(
 
 
 def prune_qt_build_artifacts(bundle_dir: str | Path) -> tuple[Path, ...]:
-    """Remove artefatos de build do Qt que não pertencem ao runtime distribuível."""
+    """Remove artefatos de compilação Qt que não pertencem ao runtime."""
 
     root = Path(bundle_dir).resolve()
     if not root.is_dir():
@@ -127,21 +130,72 @@ def prune_qt_build_artifacts(bundle_dir: str | Path) -> tuple[Path, ...]:
     return tuple(removed)
 
 
-def reject_unexpected_qt_payload(bundle_dir: str | Path) -> None:
-    """Impede que módulos Qt pesados e não usados voltem ao host por acidente."""
+def prune_unused_qt_components(bundle_dir: str | Path) -> tuple[Path, ...]:
+    """Remove somente o componente Qt WebEngine, que o editor G2 não importa.
+
+    ``hook-PySide6.QtQml`` pode copiar a árvore QML completa e puxar WebEngine
+    indiretamente. A poda acontece depois do COLLECT e antes do manifesto de
+    runtime. O release smoke subsequente carrega o ``GraphicsEditor.qml`` real;
+    portanto uma dependência QML necessária removida aqui quebra o gate.
+    """
 
     root = Path(bundle_dir).resolve()
     if not root.is_dir():
         raise NotADirectoryError(root)
-    forbidden = {name.casefold() for name in FORBIDDEN_QT_RUNTIME_FILES}
+
+    marker = "webengine"
+    removed: list[Path] = []
+
+    # Remova diretórios inteiros primeiro (por exemplo qml/QtWebEngine), do mais
+    # profundo para o mais raso. Isso evita deixar plugins/resources órfãos.
+    directories = sorted(
+        (
+            path
+            for path in root.rglob("*")
+            if path.is_dir() and marker in path.relative_to(root).as_posix().casefold()
+        ),
+        key=lambda path: len(path.parts),
+        reverse=True,
+    )
+    for path in directories:
+        if not path.exists():
+            continue
+        shutil.rmtree(path)
+        removed.append(path)
+
+    # Em seguida remova executáveis, DLLs, PAKs, traduções e wrappers Python
+    # cujo próprio caminho identifica explicitamente WebEngine.
+    files = sorted(
+        (
+            path
+            for path in root.rglob("*")
+            if path.is_file() and marker in path.relative_to(root).as_posix().casefold()
+        ),
+        key=lambda path: path.as_posix().casefold(),
+    )
+    for path in files:
+        if not path.exists():
+            continue
+        path.unlink()
+        removed.append(path)
+
+    return tuple(removed)
+
+
+def reject_unexpected_qt_payload(bundle_dir: str | Path) -> None:
+    """Falha se qualquer payload WebEngine sobreviver à poda do host G2."""
+
+    root = Path(bundle_dir).resolve()
+    if not root.is_dir():
+        raise NotADirectoryError(root)
     found = sorted(
         path.relative_to(root).as_posix()
         for path in root.rglob("*")
-        if path.is_file() and path.name.casefold() in forbidden
+        if "webengine" in path.relative_to(root).as_posix().casefold()
     )
     if found:
         raise RuntimeError(
-            "Payload Qt não utilizado entrou no Graphics2Host: " + ", ".join(found)
+            "Payload Qt WebEngine não utilizado permaneceu no Graphics2Host: " + ", ".join(found[:20])
         )
 
 
@@ -194,15 +248,16 @@ def build(
     if not executable.is_file():
         raise RuntimeError(f"PyInstaller não gerou o executável esperado: {executable}")
 
-    removed = prune_qt_build_artifacts(bundle)
-    if removed:
-        print(f"Qt build artifacts removidos: {len(removed)}")
-        for path in removed:
-            print(f"  - {path.relative_to(bundle)}")
+    build_artifacts = prune_qt_build_artifacts(bundle)
+    if build_artifacts:
+        print(f"Qt build artifacts removidos: {len(build_artifacts)}")
+    unused_components = prune_unused_qt_components(bundle)
+    if unused_components:
+        print(f"Qt WebEngine não utilizado removido: {len(unused_components)} item(ns)")
     reject_unexpected_qt_payload(bundle)
 
     # O manifesto de runtime vive dentro do próprio bundle e cataloga todas as
-    # DLLs/plugins/QML. O manifesto de build externo referencia esse catálogo.
+    # DLLs/plugins/QML APÓS a poda. O manifesto externo referencia esse catálogo.
     runtime_manifest_path = write_runtime_manifest(
         bundle,
         engine_version=ENGINE_VERSION,
@@ -228,6 +283,7 @@ def build(
     print(f"Graphics Engine 2 host: {executable}")
     print(f"Manifest: {manifest_path}")
     print(f"Runtime integrity: {runtime_manifest_path}")
+    print(f"Bundle: {manifest.files} arquivo(s) · {manifest.bytes} bytes")
     return manifest
 
 
