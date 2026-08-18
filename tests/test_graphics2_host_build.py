@@ -67,15 +67,17 @@ def test_prune_qt_build_artifacts_removes_only_objects_directories(tmp_path):
     assert (keep / "qmldir").read_text(encoding="utf-8") == "module QtQuick"
 
 
-def test_build_entry_uses_graphics2_qt_host_directly():
+def test_build_entry_uses_hardened_graphics2_entrypoint():
     source = (ROOT / "build" / "graphics2_host_entry.py").read_text(encoding="utf-8")
-    assert "from srstudio.graphics2.qt_host import main" in source
+    assert "from srstudio.graphics2.entrypoint import main" in source
     assert "raise SystemExit(main())" in source
 
 
-def test_pyproject_has_dedicated_graphics2_build_extra():
+def test_pyproject_has_dedicated_graphics2_build_extra_and_release_entrypoints():
     source = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'graphics2-build = ["PySide6>=6.8,<7", "PyInstaller>=6.21,<7"]' in source
+    assert 'sr-graphics-engine-2 = "srstudio.graphics2.entrypoint:main"' in source
+    assert 'sr-graphics2-release-smoke = "srstudio.graphics2.release_smoke:main"' in source
 
 
 def test_bridge_discovers_explicit_packaged_host(tmp_path, monkeypatch):
