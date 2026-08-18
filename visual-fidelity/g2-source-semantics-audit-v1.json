@@ -1,0 +1,122 @@
+{
+  "schema": "srstudio/g2-source-semantics-audit-1",
+  "scope": "NOVO STUDIO DE ENCARTES G2 ONLY",
+  "functional_head": "d14dc5bed4bf4f7402f4668eb66a63823f48a35a",
+  "documents": [
+    {
+      "source_pptx": "OFERTAS QUINTA FILÉ NOVO (1).pptx",
+      "sha256": "7c45cfa205c7e14af69e41c8d63b1c6a9d1a06df3cf9d0131ed612029884e536",
+      "slides": [12, 13, 14, 15]
+    },
+    {
+      "source_pptx": "OFERTAS TERÇA VERDE NOVO.pptx",
+      "sha256": "6e186a90c5591da2801d9049d5357755ab323f8d76b373104cbf757b0bc9c920",
+      "slides": [5, 6, 8]
+    },
+    {
+      "source_pptx": "OFERTAS QUARTA CAFÉ COM PÃO NOVO.pptx",
+      "sha256": "df20e5650711755cd9655b33eab2f72f0d7588f95c06bb34dca161dee2eae395",
+      "slides": [7, 8, 9, 10]
+    }
+  ],
+  "page_geometry": {
+    "all_three_pptx_emu": [10287000, 12852400],
+    "all_three_pptx_points": [810.0, 1012.0],
+    "exact_4_5_height_at_810pt": 1012.5,
+    "pptx_vs_exact_4_5_height_points": -0.5,
+    "pptx_vs_exact_4_5_height_emu": -6350,
+    "g2_scene_width": 1080.0,
+    "g2_scene_height": 1349.3333333333333,
+    "target_1080_raw_height": 1349.3333333333333,
+    "target_1080_rounded_height": 1349,
+    "canva_reference_1080_height": 1350,
+    "target_1229_raw_height": 1535.4913580246914,
+    "target_1229_rounded_height": 1535,
+    "canva_reference_1229_height": 1536,
+    "root_cause": "Canva PPTX sldSz is 810x1012 pt while the direct raster references use a 4:5 canvas. UnifiedImportPipeline._pptx preserves the PPTX aspect ratio when normalizing width to 1080; render_png then rounds the already-short scene height. The one-pixel delta exists before QImage creation.",
+    "primary_g2_location": "src/srstudio/importers/pipeline.py::UnifiedImportPipeline._pptx",
+    "downstream_location": "src/srstudio/graphics2/qt_renderer.py::render_png",
+    "excluded_causes": [
+      "floor instead of round",
+      "DPI on target_width path",
+      "Qt QSize",
+      "QImage allocation",
+      "devicePixelRatio"
+    ]
+  },
+  "selected_slides_aggregate": {
+    "pages": 11,
+    "top_level_shapes": 751,
+    "groups": 146,
+    "image_filled_shapes": 184,
+    "image_filled_shapes_with_custom_geometry": 184,
+    "nonzero_fill_rect_contracts": 46,
+    "nonzero_src_rect_contracts": 0,
+    "explicit_alpha_nodes_detected": 0
+  },
+  "layers_evidence": [
+    {
+      "case": "quinta-2026-08-13-s12",
+      "reference_size": [1229, 1536],
+      "source_top_level_shapes": 105,
+      "source_groups": 21,
+      "critical_source_stack": [
+        {"z": 0, "name": "Freeform 2", "bbox_reference_px": [-8, -8, 1250, 833]},
+        {"z": 1, "name": "Freeform 3", "bbox_reference_px": [-17, -8, 1256, 875]},
+        {"z": 2, "name": "Freeform 4", "bbox_reference_px": [-10, 919, 1250, 833]},
+        {"z": 3, "name": "Freeform 5", "bbox_reference_px": [-12, 896, 1255, 670]},
+        {"z": 4, "name": "Freeform 6", "bbox_reference_px": [-27, -19, 1270, 1585]},
+        {"z": 5, "name": "Freeform 7", "bbox_reference_px": [276, -175, 983, 975]}
+      ],
+      "notes": "The first six source objects materially overlap. Freeform 6 exceeds the entire reference canvas, so any stacking/group-composition semantic difference affects a large contiguous area. G2 reconstructs group parentage but production rendering orders all non-GROUP nodes globally by (z_index,id), rather than painting isolated group stacks. Pixel-level mismatch coordinates require the persisted diff artifacts; this entry records the exact source regions at risk without claiming unobserved pixels."
+    },
+    {
+      "case": "quarta-cafe-2026-08-12-s07",
+      "reference_size": [1080, 1350],
+      "source_top_level_shapes": 104,
+      "source_groups": 21,
+      "critical_source_stack": [
+        {"z": 0, "name": "Freeform 2", "bbox_reference_px": [-119, -3, 1303, 728]},
+        {"z": 1, "name": "Freeform 3", "bbox_reference_px": [-3, -7, 1087, 768]},
+        {"z": 16, "name": "Freeform 36", "bbox_reference_px": [-99, 815, 1303, 728]},
+        {"z": 17, "name": "Freeform 37", "bbox_reference_px": [-15, 793, 1100, 541]}
+      ]
+    }
+  ],
+  "crop_evidence": [
+    {
+      "case": "quinta-2026-08-13-s12",
+      "shape": "Freeform 3",
+      "fill_rect_ooxml": {"l": -30959, "t": 0, "r": -30437, "b": 0},
+      "fill_rect_fraction": {"l": -0.30959, "t": 0.0, "r": -0.30437, "b": 0.0}
+    },
+    {
+      "case": "quarta-cafe-2026-08-12-s07",
+      "shape": "Freeform 37",
+      "fill_rect_ooxml": {"l": -68783, "t": -220507, "r": -67383, "b": 0},
+      "fill_rect_fraction": {"l": -0.68783, "t": -2.20507, "r": -0.67383, "b": 0.0},
+      "notes": "The image is expanded far beyond the shape before clipping; this is stretch/fillRect semantics, not srcRect source cropping."
+    },
+    {
+      "case": "quarta-cafe-2026-08-12-s10",
+      "shape": "Freeform 18",
+      "fill_rect_ooxml": {"l": -33026, "t": -62077, "r": -35360, "b": -37174},
+      "fill_rect_fraction": {"l": -0.33026, "t": -0.62077, "r": -0.3536, "b": -0.37174}
+    }
+  ],
+  "mask_evidence": {
+    "image_filled_custom_geometry_shapes": 184,
+    "total_image_filled_shapes": 184,
+    "ratio": 1.0,
+    "source_examples": ["Freeform 2", "Freeform 3", "Freeform 4", "Freeform 5", "Freeform 6"],
+    "import_semantics": "shape_geometry_metadata preserves only a conservative geometry label/radius approximation for custGeom. UnifiedImportPipeline._pptx_element does not carry custom geometry into image nodes. qt_renderer._draw_image only applies non-rectangular clipping when node.metadata.clip_path exists. No correction is applied in this audit.",
+    "interpretation": "This is a concrete systemic candidate for the measured MASK contribution: Canva picture-filled custom freeforms can lose their exact mask path and fall back to the rectangular image target/fillRect clip."
+  },
+  "official_png": {
+    "found": 0,
+    "required": 11,
+    "hash_validation": "PENDING_NO_DIRECT_PNG",
+    "search_notes": "Library/conversation PNG candidates were screenshots, UI captures, generated images or unrelated assets. Downloads(1)(1).zip and Downloads(2)(1).zip contain PPTX sources but no standalone PNG/JPEG exports. No JPEG was converted to PNG."
+  },
+  "acceptance_thresholds": null
+}
