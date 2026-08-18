@@ -3,9 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import srstudio
+import srstudio.graphics2.entrypoint as entrypoint_module
 from srstudio.diagnostics.crash_guard import CrashGuard
 from srstudio.graphics2 import ENGINE_VERSION
-from srstudio.graphics2.entrypoint import diagnostics_root, main, version_string
+from srstudio.graphics2.entrypoint import _writable_directory, diagnostics_root, main, version_string
 from srstudio.graphics2.release_smoke import build_smoke_document
 
 
@@ -62,13 +63,31 @@ def test_diagnostics_root_is_independent_from_working_directory(tmp_path, monkey
     assert resolved != Path.cwd()
 
 
+def test_writable_directory_removes_probe_file(tmp_path):
+    root = _writable_directory(tmp_path / "diagnostics")
+
+    assert root.is_dir()
+    assert list(root.glob(".srstudio-write-probe-*")) == []
+
+
 def test_diagnostics_root_falls_back_when_preferred_path_is_not_writable(tmp_path, monkeypatch):
-    blocked = tmp_path / "blocked-diagnostics"
-    blocked.write_text("not-a-directory", encoding="utf-8")
-    monkeypatch.setenv("SR_STUDIO_G2_DIAGNOSTICS_ROOT", str(blocked))
+    preferred = tmp_path / "preferred"
+    fallback = tmp_path / "fallback"
+    monkeypatch.setenv("SR_STUDIO_G2_DIAGNOSTICS_ROOT", str(preferred))
+    calls: list[Path] = []
+
+    def fake_writable(candidate: Path) -> Path:
+        calls.append(candidate)
+        if candidate == preferred:
+            raise PermissionError("preferred diagnostics path is read-only")
+        fallback.mkdir(parents=True, exist_ok=True)
+        return fallback
+
+    monkeypatch.setattr(entrypoint_module, "_writable_directory", fake_writable)
+    monkeypatch.setattr(entrypoint_module.tempfile, "gettempdir", lambda: str(tmp_path))
 
     resolved = diagnostics_root()
 
-    assert resolved != blocked
-    assert resolved.is_dir()
-    assert resolved.name == "diagnostics-g2"
+    assert resolved == fallback
+    assert calls[0] == preferred
+    assert len(calls) == 2
