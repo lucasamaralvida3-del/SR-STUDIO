@@ -384,7 +384,7 @@ def launch_qt_quick_editor(
         statusChanged = Signal()
         saveAsRequested = Signal()
         fileJobDone = Signal(bool, str, str, str, str)
-        autosaveDone = Signal(bool, str, str, str)
+        autosaveDone = Signal(bool, str, str, str, int)
 
         def __init__(self) -> None:
             super().__init__()
@@ -392,6 +392,8 @@ def launch_qt_quick_editor(
             self._busy = False
             self._autosave_busy = False
             self._autosave_base_saved_digest = ""
+            self._autosave_generation = 0
+            self._closing = False
             self.fileJobDone.connect(self._finish_file_job)
             self.autosaveDone.connect(self._finish_autosave)
 
@@ -427,8 +429,19 @@ def launch_qt_quick_editor(
         def autosaveBusy(self) -> bool:
             return self._autosave_busy
 
+        def _invalidate_autosave_worker(self) -> int:
+            self._autosave_generation += 1
+            return self._autosave_generation
+
+        def _begin_close_protection(self) -> None:
+            self._closing = True
+            self._invalidate_autosave_worker()
+
         def _run(self, command: dict) -> None:
+            before_digest = document_digest(session.document)
             result = router.dispatch(command)
+            if document_digest(session.document) != before_digest:
+                self._invalidate_autosave_worker()
             self._status = result.message or ("Concluído" if result.ok else "Falha")
             self.statusChanged.emit()
             self.sceneChanged.emit()
@@ -467,6 +480,7 @@ def launch_qt_quick_editor(
             self._busy = False
             refresh_recovery = False
             if ok and kind == "save":
+                self._invalidate_autosave_worker()
                 final = Path(target).resolve()
                 context.source = final
                 context.saved_digest = digest
@@ -485,7 +499,7 @@ def launch_qt_quick_editor(
                 self._start_autosave(force=True)
 
         def _start_autosave(self, *, force: bool = False) -> None:
-            if self._autosave_busy or self._busy:
+            if self._closing or self._autosave_busy or self._busy:
                 return
             snapshot = _snapshot_document(session)
             digest = document_digest(snapshot)
@@ -495,6 +509,7 @@ def launch_qt_quick_editor(
                 return
             base_saved_digest = persistence.saved_digest
             source_path_at_start = context.source
+            generation = self._invalidate_autosave_worker()
             self._autosave_base_saved_digest = base_saved_digest
             self._autosave_busy = True
             self.statusChanged.emit()
@@ -502,36 +517,55 @@ def launch_qt_quick_editor(
             def worker() -> None:
                 try:
                     path = autosave_manager.save(snapshot, embed_local_assets=True)
-                    # Grave o journal no worker, antes do callback Qt. Assim um
-                    # hard kill depois do ZIP íntegro, mas antes da UI processar
-                    # o signal, ainda deixa uma sessão recuperável. O digest-base
-                    # permite invalidar este ponteiro se um save concorrente avançou.
-                    recovery_journal.mark(
-                        snapshot.id,
-                        path,
-                        source_path=source_path_at_start,
-                        base_saved_digest=base_saved_digest,
-                    )
-                    self.autosaveDone.emit(True, str(path), digest, f"Autosave protegido · {path.name}")
+                    # Grave o journal no worker, antes do callback Qt, mas só se
+                    # nenhuma edição/save/fechamento invalidou esta geração.
+                    # Isso mantém hard-kill recoverable sem deixar uma thread
+                    # antiga recriar recovery que o usuário já desfez ou salvou.
+                    if generation == self._autosave_generation and not self._closing:
+                        recovery_journal.mark(
+                            snapshot.id,
+                            path,
+                            source_path=source_path_at_start,
+                            base_saved_digest=base_saved_digest,
+                        )
+                    self.autosaveDone.emit(True, str(path), digest, f"Autosave protegido · {path.name}", generation)
                 except Exception as exc:
-                    self.autosaveDone.emit(False, "", digest, f"{type(exc).__name__}: {exc}")
+                    self.autosaveDone.emit(False, "", digest, f"{type(exc).__name__}: {exc}", generation)
 
             threading.Thread(target=worker, name="sr-graphics2-autosave", daemon=True).start()
 
-        def _finish_autosave(self, ok: bool, target: str, digest: str, message: str) -> None:
+        def _finish_autosave(self, ok: bool, target: str, digest: str, message: str, generation: int) -> None:
             self._autosave_busy = False
             base_saved_digest = self._autosave_base_saved_digest
             self._autosave_base_saved_digest = ""
             refresh_recovery = False
-            if ok and base_saved_digest == persistence.saved_digest:
-                persistence.mark_autosaved(digest)
-                self._status = message
+            current_digest = document_digest(session.document)
+            if generation != self._autosave_generation:
+                # A cena mudou, houve save manual ou fechamento enquanto o
+                # snapshot estava sendo escrito. O ZIP pode permanecer como
+                # geração histórica, mas nunca vira o recovery oficial.
+                if not self._closing and current_digest != persistence.saved_digest:
+                    refresh_recovery = True
+                    self._status = "Autosave antigo descartado; protegendo o estado atual."
+                elif current_digest == persistence.saved_digest:
+                    recovery_journal.clear(session.document.id)
+                    self._status = "Autosave antigo descartado; estado salvo preservado."
+            elif ok and base_saved_digest == persistence.saved_digest:
+                if current_digest == persistence.saved_digest:
+                    recovery_journal.clear(session.document.id)
+                    persistence.mark_autosaved(current_digest)
+                    self._status = "Autosave descartado; alterações foram desfeitas até o último save."
+                else:
+                    persistence.mark_autosaved(digest)
+                    self._status = message
+                    if current_digest != digest:
+                        refresh_recovery = True
             elif ok:
                 # O autosave começou antes de um save manual que já avançou o
                 # estado confirmado. Nunca deixe o callback tardio recolocar um
                 # snapshot antigo no journal e sobrescrever a precedência do disco.
                 recovery_journal.clear(session.document.id)
-                if persistence.is_dirty(session.document):
+                if current_digest != persistence.saved_digest:
                     refresh_recovery = True
                     self._status = "Autosave anterior ao último save descartado; protegendo alterações atuais."
                 else:
@@ -597,7 +631,10 @@ def launch_qt_quick_editor(
 
         @Slot(str, result=str)
         def dispatch(self, payload: str) -> str:
+            before_digest = document_digest(session.document)
             result_raw = router.dispatch_json(payload)
+            if document_digest(session.document) != before_digest:
+                self._invalidate_autosave_worker()
             try:
                 self._status = str(json.loads(result_raw).get("message") or "")
             except Exception:
@@ -626,6 +663,7 @@ def launch_qt_quick_editor(
 
         @Slot(result=bool)
         def protectBeforeClose(self) -> bool:
+            self._begin_close_protection()
             try:
                 snapshot = _snapshot_document(session)
                 if not persistence.is_dirty(snapshot):
@@ -645,8 +683,10 @@ def launch_qt_quick_editor(
                 self.sceneChanged.emit()
                 return True
             except Exception as exc:
+                self._closing = False
                 self._status = f"Não foi possível proteger o projeto; fechamento cancelado: {exc}"
                 self.statusChanged.emit()
+                self._start_autosave(force=True)
                 return False
 
         @Slot(str)
@@ -741,6 +781,7 @@ def launch_qt_quick_editor(
     QTimer.singleShot(5_000, bridge.autosaveIfNeeded)
 
     def protect_unsaved_on_quit() -> None:
+        bridge._begin_close_protection()
         try:
             snapshot = _snapshot_document(session)
             if persistence.needs_autosave(snapshot):
