@@ -67,6 +67,7 @@ def test_inventory_reads_product_text_and_shape_fill_image(tmp_path):
     assert item.media[0].width == 320
     assert item.media[0].height == 480
     assert len(item.media[0].sha256) == 64
+    assert item.media[0].rgb_signature
 
 
 def test_inventory_groups_exact_duplicate_files(tmp_path):
@@ -141,9 +142,38 @@ def test_dhash_collision_with_incompatible_geometry_is_reported_but_rejected_for
     assert report.metrics.unique_media_exact == 2
     assert report.metrics.near_duplicate_pairs == 1
     assert report.metrics.geometry_rejected_dhash_pairs == 1
+    assert report.metrics.content_rejected_dhash_pairs == 0
     pair = report.near_duplicate_pairs[0]
     assert pair["dhash_distance"] == 0
     assert pair["geometry_compatible"] is False
+    assert pair["duplicate_compatible"] is False
+    assert pair["rejection_reason"] == "geometry"
+
+
+def test_same_geometry_dhash_collision_is_rejected_by_rgb_content(tmp_path):
+    white = _png_bytes((300, 300), (255, 255, 255))
+    black = _png_bytes((300, 300), (0, 0, 0))
+    source = _pptx(
+        tmp_path / "content-collision.pptx",
+        [
+            ("MONSTER 473ML", "white.png"),
+            ("DETERGENTE YPE 500ML", "black.png"),
+        ],
+        {"white.png": white, "black.png": black},
+    )
+
+    report = PptxCorpusInventory().scan([source])
+
+    assert report.metrics.unique_media_exact == 2
+    assert report.metrics.near_duplicate_pairs == 1
+    assert report.metrics.geometry_rejected_dhash_pairs == 0
+    assert report.metrics.content_rejected_dhash_pairs == 1
+    pair = report.near_duplicate_pairs[0]
+    assert pair["dhash_distance"] == 0
+    assert pair["geometry_compatible"] is True
+    assert pair["content_compatible"] is False
+    assert pair["duplicate_compatible"] is False
+    assert pair["rejection_reason"] == "content"
 
 
 def test_missing_inventory_source_is_non_destructive_warning(tmp_path):
