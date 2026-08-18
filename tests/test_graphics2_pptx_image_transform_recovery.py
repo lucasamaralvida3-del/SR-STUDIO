@@ -6,6 +6,12 @@ from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, T
 from srstudio.graphics2.pptx_image_transform import recover_pptx_image_transforms
 
 
+PRESENTATION = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  <p:sldSz cx="100" cy="100"/>
+</p:presentation>
+"""
+
 SLIDE = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
        xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -44,9 +50,28 @@ GROUPED = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 </p:sld>
 """
 
+SHEARED = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:sld xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+       xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
+       xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <p:cSld><p:spTree>
+    <p:grpSp>
+      <p:nvGrpSpPr><p:cNvPr id="30" name="Wide Group"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>
+      <p:grpSpPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="200" cy="100"/><a:chOff x="0" y="0"/><a:chExt cx="100" cy="100"/></a:xfrm></p:grpSpPr>
+      <p:pic>
+        <p:nvPicPr><p:cNvPr id="31" name="Sheared Image"/><p:cNvPicPr/><p:nvPr/></p:nvPicPr>
+        <p:blipFill><a:blip r:embed="rId31"/></p:blipFill>
+        <p:spPr><a:xfrm rot="2700000"><a:off x="0" y="0"/><a:ext cx="50" cy="50"/></a:xfrm></p:spPr>
+      </p:pic>
+    </p:grpSp>
+  </p:spTree></p:cSld>
+</p:sld>
+"""
+
 
 def _pptx(path, xml=SLIDE):
     with ZipFile(path, "w") as archive:
+        archive.writestr("ppt/presentation.xml", PRESENTATION)
         archive.writestr("ppt/slides/slide1.xml", xml)
     return path
 
@@ -103,16 +128,49 @@ def test_equivalent_rotation_modulo_360_is_not_reported_as_correction(tmp_path):
     assert document.active_page.node("freeform3").transform.rotation == -180.0
 
 
-def test_transformed_group_is_deferred_instead_of_falsely_marked_exact(tmp_path):
+def test_rotated_group_is_composed_into_absolute_scene_transform(tmp_path):
     document = GraphicsDocument(name="group transform")
+    document.active_page.width = 100
+    document.active_page.height = 100
     document.active_page.add_node(_image("grouped", "Grouped Image"))
 
     report = recover_pptx_image_transforms(_pptx(tmp_path / "grouped.pptx", GROUPED), document)
+    grouped = document.active_page.node("grouped")
 
     assert report.source_contracts == 1
+    assert report.non_identity_contracts == 1
+    assert report.mapped_contracts == 1
+    assert report.exact_contracts == 1
+    assert report.exact_non_identity_contracts == 1
+    assert report.composed_group_contracts == 1
+    assert report.deferred_group_contracts == 0
+    assert report.coverage == 1.0
+    assert grouped.transform.x == 50.0
+    assert grouped.transform.y == 0.0
+    assert grouped.transform.width == 50.0
+    assert grouped.transform.height == 50.0
+    assert grouped.transform.rotation == 90.0
+    assert grouped.style["flip_x"] is False
+    assert grouped.style["flip_y"] is False
+    assert grouped.metadata["pptx_image_transform"]["group_composed"] is True
+
+
+def test_anisotropic_group_plus_child_rotation_defers_unrepresentable_shear(tmp_path):
+    document = GraphicsDocument(name="group shear")
+    document.active_page.width = 100
+    document.active_page.height = 100
+    document.active_page.add_node(_image("sheared", "Sheared Image", rotation=45.0))
+
+    report = recover_pptx_image_transforms(_pptx(tmp_path / "sheared.pptx", SHEARED), document)
+
+    assert report.source_contracts == 1
+    assert report.non_identity_contracts == 1
     assert report.mapped_contracts == 1
     assert report.exact_contracts == 0
+    assert report.composed_group_contracts == 0
     assert report.deferred_group_contracts == 1
     assert report.coverage == 0.0
-    assert any(issue.code == "PPTX_IMAGE_TRANSFORM_GROUP_COMPOSITION_DEFERRED" for issue in report.issues)
-    assert document.active_page.node("grouped").transform.rotation == 0.0
+    assert any(issue.code == "PPTX_IMAGE_TRANSFORM_GROUP_SHEAR_DEFERRED" for issue in report.issues)
+    # Não aproximar silenciosamente: mantém a Scene recebida do importador e
+    # registra a limitação para futura Transform afim geral.
+    assert document.active_page.node("sheared").transform.rotation == 45.0

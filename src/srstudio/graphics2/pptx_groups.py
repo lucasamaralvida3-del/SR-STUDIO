@@ -11,10 +11,12 @@ sem alterar x/y/w/h/rotação dos elementos importados.
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
-import re
 import zipfile
 
+from srstudio.importers.pptx.package_order import ordered_slide_paths
+
 from .model import GraphicsDocument, GraphicsNode, NodeKind, Rect, Transform
+from .pptx_group_transform import recover_pptx_group_member_transforms
 
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
@@ -41,12 +43,10 @@ def rebuild_pptx_groups(source: str | Path, document: GraphicsDocument) -> PptxG
     report = PptxGroupReport()
     if path.suffix.lower() != ".pptx" or not path.is_file():
         return report
+    _recover_member_transforms(path, document)
     try:
         with zipfile.ZipFile(path) as archive:
-            slides = sorted(
-                (name for name in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)),
-                key=_slide_number,
-            )
+            slides = ordered_slide_paths(archive)
             for page_index, slide_path in enumerate(slides):
                 if page_index >= len(document.pages):
                     break
@@ -61,6 +61,22 @@ def rebuild_pptx_groups(source: str | Path, document: GraphicsDocument) -> PptxG
         report.warnings.append(f"Não foi possível reconstruir grupos PPTX: {exc}")
     document.metadata["pptx_groups"] = report.to_dict()
     return report
+
+
+def _recover_member_transforms(path: Path, document: GraphicsDocument) -> None:
+    try:
+        recover_pptx_group_member_transforms(path, document)
+    except Exception as exc:
+        document.metadata["pptx_group_member_transform_recovery"] = {
+            "source_members": 0,
+            "mapped_members": 0,
+            "exact_members": 0,
+            "corrected_members": 0,
+            "deferred_shear_members": 0,
+            "coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
 
 
 def _rebuild_page_groups(page, root: ET.Element, report: PptxGroupReport) -> None:
@@ -114,13 +130,14 @@ def _build_group(
         name = _shape_name(child)
         node = _take_node(by_name, name, used)
         if node is None:
-            # graphicFrame e formas sem fill/text podem não existir no SR Scene.
-            # Só contabilizamos nomes reais para orientar diagnóstico.
             if name:
                 report.unmatched_members += 1
             continue
         used.add(node.id)
         child_ids.append(node.id)
+        for companion in _compound_companions(by_name, name, node.id, used):
+            used.add(companion.id)
+            child_ids.append(companion.id)
 
     if not child_ids:
         return None
@@ -158,7 +175,35 @@ def _take_node(by_name: dict[str, list[GraphicsNode]], name: str, used: set[str]
     if not name:
         return None
     candidates = by_name.get(name) or []
+    primary = next(
+        (
+            node
+            for node in candidates
+            if node.id not in used
+            and node.kind is not NodeKind.GROUP
+            and not node.metadata.get("pptx_compound_owner_id")
+        ),
+        None,
+    )
+    if primary is not None:
+        return primary
     return next((node for node in candidates if node.id not in used and node.kind is not NodeKind.GROUP), None)
+
+
+def _compound_companions(
+    by_name: dict[str, list[GraphicsNode]],
+    name: str,
+    owner_id: str,
+    used: set[str],
+) -> list[GraphicsNode]:
+    if not name or not owner_id:
+        return []
+    return [
+        node
+        for node in by_name.get(name) or []
+        if node.id not in used
+        and str(node.metadata.get("pptx_compound_owner_id") or "") == owner_id
+    ]
 
 
 def _reparent(page, node_id: str, parent_id: str) -> bool:
@@ -195,8 +240,6 @@ def _clear_generated_groups(page) -> None:
         node.children = [child for child in node.children if child not in generated]
     for node_id in generated:
         page.nodes.pop(node_id, None)
-    # Qualquer grupo gerado aninhado já foi removido; raízes são reconstruídas
-    # a partir da relação pai para tornar a operação idempotente.
     page.roots = [node.id for node in page.nodes.values() if not node.parent_id]
 
 
@@ -226,8 +269,3 @@ def _shape_name(node: ET.Element) -> str:
 
 def _tag(node: ET.Element) -> str:
     return node.tag.rsplit("}", 1)[-1]
-
-
-def _slide_number(path: str) -> int:
-    match = re.search(r"slide(\d+)\.xml$", path)
-    return int(match.group(1)) if match else 0
