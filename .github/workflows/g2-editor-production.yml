@@ -57,6 +57,7 @@ jobs:
           tests/test_graphics2_editor_persistence.py
           tests/test_graphics2_editor_host_recovery.py
           tests/test_graphics2_editor_roundtrip.py
+          tests/test_graphics2_editor_production_e2e.py
           tests/test_graphics2_autosave.py
 
       - name: Editor production contracts
@@ -71,6 +72,7 @@ jobs:
           tests/test_graphics2_editor_persistence.py
           tests/test_graphics2_editor_host_recovery.py
           tests/test_graphics2_editor_roundtrip.py
+          tests/test_graphics2_editor_production_e2e.py
           tests/test_graphics2_autosave.py
           tests/test_graphics2_page_duplicate.py
           tests/test_graphics2_command_router.py
