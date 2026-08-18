@@ -6,7 +6,7 @@
 - **Branch:** `g2/parallel-import-office`
 - **Base lógica:** `integration/sr-studio-next`
 - O checkout/worktree local do repositório não foi disponibilizado nesta sessão. Para não tocar no worktree principal nem improvisar sobre `main/stable`, a branch paralela foi criada diretamente do `BASE_SHA` pelo conector GitHub e todo o trabalho ficou restrito a ela.
-- Comparação ao encerrar este ciclo antes deste documento: **19 commits à frente, 0 atrás** do `BASE_SHA`.
+- Comparação imediatamente antes desta atualização documental: **25 commits à frente, 0 atrás** do `BASE_SHA`. Este documento adiciona mais um commit sobre o mesmo histórico linear.
 - Nenhum merge das branches paralelas foi executado.
 - `docs/G2_CONTINUOUS_PROGRESS.md` não foi alterado.
 
@@ -54,6 +54,8 @@ O mapeamento é conservador: só altera a Scene quando existe um único node `TE
 
 A recuperação de texto é acionada pelo passe de spacing, mas falhas são isoladas: um XML atípico na recuperação de caracteres não desativa a recuperação de letter/line spacing.
 
+Shapes que usam simultaneamente picture fill + texto foram retirados deste relatório genérico e possuem contrato próprio descrito no ciclo 4, evitando falso `PPTX_TEXT_CONTENT_SHAPE_MISSING` antes da materialização do overlay.
+
 **Classificação:** importer wrong data, não renderer.
 
 ### 3. MULTI-SLIDE / LAYERS / IMPORT — ordem lógica da apresentação
@@ -71,7 +73,7 @@ A recuperação de texto é acionada pelo passe de spacing, mas falhas são isol
 - `src/srstudio/graphics2/pptx_fidelity.py`
 - `tests/test_pptx_presentation_order.py`
 
-**Correção:** `ordered_slide_paths()` centraliza a resolução da ordem lógica por relationships. Todos os passes acima passaram a usar a mesma sequência de páginas.
+**Correção:** `ordered_slide_paths()` centraliza a resolução da ordem lógica por relationships. Todos os passes que materializam dados na SR Scene acima passaram a usar a mesma sequência de páginas.
 
 Fallbacks determinísticos:
 - se `presentation.xml`/relationships estiver ausente ou inválido, preserva a ordem numérica histórica;
@@ -85,6 +87,32 @@ A fixture de regressão cria deliberadamente `slide1.xml` e `slide2.xml` em orde
 - preservação determinística de parts órfãos.
 
 **Classificação:** importer wrong data. Era capaz de contaminar TEXT, IMAGE, GROUP, CROP, MASK, SHAPE e LAYERS porque os passes de enriquecimento podiam consultar o slide físico errado.
+
+### 4. IMAGE + TEXT / SHAPE — picture fill com texto no mesmo objeto
+
+**Causa:** um `p:sp` pode declarar simultaneamente `a:blip` e `p:txBody`. O leitor preservava ambos no `PptxElement`, mas `_pptx_element()` precisa escolher um único tipo e, quando havia imagem, convertia o objeto para `image`; `element.text` era então descartado antes da SR Scene 2.
+
+**Arquivos:**
+- `src/srstudio/graphics2/pptx_compound_text.py` (novo)
+- `src/srstudio/graphics2/pptx_fill_rect.py`
+- `src/srstudio/graphics2/pptx_text_content.py`
+- `src/srstudio/graphics2/pptx_groups.py`
+- `tests/test_graphics2_pptx_compound_text.py`
+
+**Correção:**
+- novo passe exclusivo G2 identifica shapes com `blip + txBody`;
+- depois da recuperação da geometria/rotação da imagem, materializa um node `TEXT` irmão imediatamente acima do `IMAGE`;
+- preserva texto OOXML, font family, font size, bold/italic, cor RGB, alinhamento horizontal/vertical, insets, autofit, letter spacing e line spacing;
+- copia a `Transform` final da imagem, evitando divergência entre overlay e picture fill;
+- abre um slot de z-order imediatamente acima da imagem e desloca os nodes posteriores, preservando a ordem relativa;
+- grava `pptx_compound_owner_id` para manter relação estrutural entre as duas materializações;
+- é idempotente: uma segunda passagem não duplica o texto;
+- o reconstrutor de grupos reconhece o companion e reparenteia IMAGE + TEXT juntos quando o `p:sp` composto está em um grupo/nested group;
+- o relatório TEXT genérico ignora estes shapes para que o contrato não seja contado duas vezes antes do overlay existir.
+
+**Comportamento esperado:** um objeto Canva/PowerPoint que visualmente é “imagem de fundo do shape + texto por cima” chega à SR Scene como dois nodes renderizáveis, relacionados, adjacentes no z-order e com a mesma geometria final, sem perda de nenhuma metade do objeto Office.
+
+**Classificação:** importer wrong data, não renderer e não ProductCards.
 
 ## CROP / IMAGE — verificação sem mudança desnecessária
 
@@ -118,10 +146,21 @@ Por isso não foi introduzido hack de crop nesta missão. O contrato bruto chega
   - fidelity/alignment;
   - fallback numérico;
   - slide part órfão.
+- `tests/test_graphics2_pptx_compound_text.py`
+  - picture fill + texto preservados simultaneamente;
+  - whitespace/parágrafo vazio do texto composto;
+  - font family/size/bold/cor;
+  - insets/alinhamento/autofit/letter spacing/line spacing;
+  - mesma Transform final da imagem;
+  - z-order adjacente sem colisão;
+  - idempotência;
+  - exclusão correta do relatório TEXT comum;
+  - orquestração automática via passe de `fillRect` após image transform;
+  - reparenting conjunto de imagem + texto dentro de grupos.
 
 ### Estado de execução
 
-O worktree local não está montado nesta sessão, portanto **pytest não foi executado localmente**. O commit mais recente consultado não possui checks publicados pelo GitHub (`statuses: []`). Os testes acima foram adicionados como regressões determinísticas e os arquivos alterados foram revisados estaticamente, mas não devem ser considerados “green” até execução no worktree/CI de integração.
+O worktree local não está montado nesta sessão, portanto **pytest não foi executado localmente**. O último commit consultado antes deste ciclo não possuía checks publicados pelo GitHub (`statuses: []`). Os testes acima foram adicionados como regressões determinísticas e os arquivos alterados foram revisados estaticamente, mas não devem ser considerados “green” até execução no worktree/CI de integração.
 
 ## Commits desta missão
 
@@ -144,6 +183,12 @@ O worktree local não está montado nesta sessão, portanto **pytest não foi ex
 17. `b5c4cbc3721b6eb410c9f7a13e3f449b2787f6ea` — `fix(import): rebuild groups in presentation order`
 18. `4aea9b35d04237c1006201ff98471a1b4d05eac2` — `fix(import): enrich PPTX pages in presentation order`
 19. `5f9519faf7e8c49c56f4a07cc79523a58ce04485` — `test(import): validate G2 contracts on reordered slides`
+20. `883b54af860e98c80dc687ec44735ced1cffbe98` — `docs(import): record parallel Office import mission`
+21. `1b522ed5897506109b6b2e36508b0bfc8e97796d` — `fix(import): recover text from picture-filled PPTX shapes`
+22. `f7290098e3886c78173f0a8cda6ea4159fba3f34` — `fix(import): restore text on picture-filled shapes`
+23. `7d9fe422e09152ca9749bf377b6b5ae7514ca4c9` — `fix(import): separate compound text recovery contracts`
+24. `0a2448fd0b3049631cf523fa5bf64c4a441be675` — `fix(import): keep compound shape text inside groups`
+25. `e87054acdf43f2768abb1339249e2267a8844ef2` — `test(import): cover picture-fill shapes with text`
 
 ## Dependências / handoff para integração
 
@@ -156,10 +201,20 @@ O worktree local não está montado nesta sessão, portanto **pytest não foi ex
 - **Esperado:** representar a matriz afim completa sem alterar a geometria visual.
 - **Correção sugerida:** avaliar suporte explícito a matriz 2D/shear no contrato canônico da SR Scene e depois no renderer/editor. Não foi feita refatoração nessa área nesta branch.
 
+### Questão diagnóstica para integração — scanner estrutural
+
+- **Causa:** `src/srstudio/graphics2/pptx_structure.py::inspect_pptx_structure()` ainda enumera `slideN.xml` pela numeração física do part e grava esse número nos contratos de spacing.
+- **Impacto:** os dados efetivamente importados na SR Scene já seguem `p:sldIdLst`, mas o `PptxMappingAudit` pode produzir falso negativo de letter/line spacing em um deck cujo part order foi reordenado.
+- **Exemplo:** `presentation.xml` apresenta `slide2.xml` antes de `slide1.xml`; Scene/passes colocam slide2 na página 1, porém o scanner ainda pode registrar o contrato como `slide=2`.
+- **Esperado:** scanner/auditor usar o mesmo `ordered_slide_paths()` que o importador.
+- **Correção sugerida:** migrar `inspect_pptx_structure()` para `ordered_slide_paths()` ou normalizar seus contratos antes do `audit_document`. Não foi aplicado workaround no importer porque isso esconderia uma inconsistência do próprio scanner em vez de corrigir a fonte diagnóstica.
+- **Classificação:** diagnóstico/audit; não é dado errado na SR Scene e não foi atribuído ao renderer.
+
 ### Para integração desta branch
 
 1. materializar/reutilizar o worktree `../SR-STUDIO-g2-import-office` se disponível no ambiente de integração;
-2. rodar primeiro os testes focados de PPTX import/text/transform/presentation order;
+2. rodar primeiro os testes focados de PPTX import/text/transform/presentation order/compound text;
 3. depois rodar a suíte Graphics2/PPTX existente e Golden Masters pertinentes;
 4. em falha visual, inspecionar primeiro a Scene gerada e os reports `pptx_*_recovery` antes de atribuir o problema ao renderer;
-5. não fazer merge desta branch diretamente com outras paralelas sem revisão de conflitos nos passes PPTX compartilhados.
+5. validar especificamente decks reordenados e Canva com picture-filled text shapes em fixtures reais;
+6. não fazer merge desta branch diretamente com outras paralelas sem revisão de conflitos nos passes PPTX compartilhados.
