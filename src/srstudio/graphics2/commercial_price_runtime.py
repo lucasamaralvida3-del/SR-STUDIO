@@ -29,7 +29,7 @@ def apply_commercial_price_blocks(semantic_module: Any, document: GraphicsDocume
             # enriched in place with the v3 commercial bindings when those
             # explicitly named nodes exist in the scene.
             _upgrade_saved_named_slot(page, slot)
-            report.protected_product_nodes += _attach_named_fields_to_product_card(
+            _attach_named_fields_to_product_card(
                 semantic_module,
                 page,
                 raw_blocks,
