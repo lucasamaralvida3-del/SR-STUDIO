@@ -2,12 +2,20 @@ from __future__ import annotations
 
 from argparse import Namespace
 from copy import deepcopy
+import importlib.util
 from pathlib import Path
+import sys
 from types import SimpleNamespace
 
 import pytest
 
-from scripts.ci import image_db_phase3b as phase3b
+
+_SCRIPT_PATH = Path(__file__).resolve().parents[1] / "scripts" / "ci" / "image_db_phase3b.py"
+_SPEC = importlib.util.spec_from_file_location("srstudio_image_db_phase3b_ci", _SCRIPT_PATH)
+assert _SPEC is not None and _SPEC.loader is not None
+phase3b = importlib.util.module_from_spec(_SPEC)
+sys.modules[_SPEC.name] = phase3b
+_SPEC.loader.exec_module(phase3b)
 
 
 BASE_COVERAGE = {
