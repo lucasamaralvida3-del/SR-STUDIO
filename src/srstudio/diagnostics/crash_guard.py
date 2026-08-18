@@ -18,6 +18,8 @@ class CrashReport:
     traceback: str
     version: str = ""
     project_path: str = ""
+    action: str = ""
+    module: str = ""
     safe_mode_recommended: bool = True
 
 
@@ -31,11 +33,23 @@ class CrashGuard:
         self.marker = self.directory / "last_crash.json"
         self._previous = None
 
-    def install(self, project_path_provider: Callable[[], str] | None = None) -> None:
+    def install(
+        self,
+        project_path_provider: Callable[[], str] | None = None,
+        action_provider: Callable[[], str] | None = None,
+        module_provider: Callable[[], str] | None = None,
+    ) -> None:
         self._previous = sys.excepthook
 
         def hook(exc_type, exc, tb) -> None:
-            self.capture(exc_type, exc, tb, project_path_provider() if project_path_provider else "")
+            self.capture(
+                exc_type,
+                exc,
+                tb,
+                project_path_provider() if project_path_provider else "",
+                action=action_provider() if action_provider else "",
+                module=module_provider() if module_provider else "",
+            )
             if self._previous:
                 self._previous(exc_type, exc, tb)
 
@@ -52,6 +66,9 @@ class CrashGuard:
         exc: BaseException,
         tb: TracebackType | None,
         project_path: str = "",
+        *,
+        action: str = "",
+        module: str = "",
     ) -> CrashReport:
         report = CrashReport(
             timestamp=datetime.now(timezone.utc).isoformat(),
@@ -60,6 +77,8 @@ class CrashGuard:
             traceback="".join(traceback.format_exception(exc_type, exc, tb)),
             version=self.version,
             project_path=project_path,
+            action=action,
+            module=module,
         )
         self.marker.write_text(json.dumps(asdict(report), ensure_ascii=False, indent=2), encoding="utf-8")
         return report
