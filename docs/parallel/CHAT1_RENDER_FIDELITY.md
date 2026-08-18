@@ -74,7 +74,7 @@ Maiores regiões/nós históricos incluem aproximadamente:
 
 ### Patch
 
-- `ce42388edf3081cf9ffd88dde5244d9eb6a1b780` — `fix(graphics2): preserve renderer font weight`
+- `ce42388edf3081cf9ffd88dde5244d9eb6a1b780` — `fix(graphics2): preserve renderer font weight`.
 - `_set_font_weight()` preserva a escala CSS/DrawingML 100..900 via `QFont.Weight`.
 - regressão dedicada cobre 100, 200, ..., 900 e clamps/default.
 
@@ -94,7 +94,7 @@ O import bridge ainda reduz a origem PPTX a `font_weight = 700 if bold else 400`
 
 ### Patches
 
-- `c482507de5263aa4a80c30cd0b50a6d1fb0f2ec6` — `feat(graphics2): measure reference render performance`
+- `c482507de5263aa4a80c30cd0b50a6d1fb0f2ec6` — `feat(graphics2): measure reference render performance`.
 - `1f1d19aea27f3b8384a4993573c85621a04b8963` — regressão do resumo de timing.
 
 `reference_suite.py` agora persiste, sem alterar thresholds:
@@ -108,8 +108,8 @@ O import bridge ainda reduz a origem PPTX a `font_weight = 700 if bold else 400`
 
 ### Patches
 
-- `56c7b5a464d17ab4b7d036466d56411c1603f017` — `feat(graphics2): classify fidelity impact by render category`
-- `58ff83804cb89604da00830441a479f5cf175afc` — integração no Reference Suite;
+- `56c7b5a464d17ab4b7d036466d56411c1603f017` — `feat(graphics2): classify fidelity impact by render category`.
+- `58ff83804cb89604da00830441a479f5cf175afc` — integração no Reference Suite.
 - testes em `tests/test_graphics2_fidelity_impact.py` e `tests/test_graphics2_reference_suite.py`.
 
 Cada caso passa a gerar `*-impact.json` com:
@@ -137,7 +137,7 @@ Regras conservadoras:
 
 ### Patches
 
-- `37a3fe250df39ad38395f46536c66429000bc668` — `feat(graphics2): aggregate fidelity causes across corpus`;
+- `37a3fe250df39ad38395f46536c66429000bc668` — `feat(graphics2): aggregate fidelity causes across corpus`.
 - `9a5d4dfeceacc3b0348b3d25b9a4e75bc0a1f079` — `test(graphics2): cover systemic fidelity aggregation`.
 
 Novo módulo `src/srstudio/graphics2/fidelity_corpus.py` agrega múltiplos relatórios de impacto e responde automaticamente quais causas são sistêmicas nos Golden Masters. O relatório inclui:
@@ -151,6 +151,88 @@ Novo módulo `src/srstudio/graphics2/fidelity_corpus.py` agrega múltiplos relat
 - `systemic_categories` para causas presentes em pelo menos dois casos e com share relevante do gap.
 
 Isso elimina a necessidade de analisar manualmente os oito `impact.json` após a próxima execução real do corpus.
+
+## Ciclo 5 — GROUP/alpha: herança de opacidade no QPainter
+
+### Causa
+
+O preview QML multiplica a opacidade efetiva por todos os grupos ancestrais. O renderer pulava nodes `GROUP` e usava apenas `node.opacity`, então um filho em grupo semitransparente saía mais opaco no PNG/PDF que no preview.
+
+### Patches
+
+- `f01588e1f92c1ce64f24648b3bc4e258b7c75766` — `fix(graphics2): inherit group opacity in renderer`.
+- `282e6186b9a89622cafa508bdf0b402d888d8d81` — `test(graphics2): cover inherited group opacity`.
+
+### Implementação
+
+- `_effective_opacity(page, node)` multiplica `node.opacity` pela cadeia de ancestrais;
+- valores são clampados 0..1;
+- ciclos de parent_id são protegidos por `seen`;
+- zero encerra cedo;
+- `_render_node()` aplica a opacidade efetiva antes de shape/text/image/shadow.
+
+### Regressão pixel-level
+
+Fixture: grupo 50% dentro de grupo 50%, filho preto 100% sobre fundo branco.
+
+- opacidade efetiva esperada: 25%;
+- pixel exportado esperado: aproximadamente RGB 191;
+- o teste verifica cálculo e PNG real.
+
+### Gates
+
+No commit com a regressão (`282e6186...`):
+
+- SR Studio 5 Quality — PASS;
+- SR Graphics Engine 2 CI — PASS;
+- G2 Alpha 43 Validation — PASS.
+
+Impacto no corpus histórico: P2. A telemetria anterior não aponta GROUP como causa dominante dos oito Golden Masters, mas o bug era sistêmico e agora está resolvido no renderer.
+
+## Ciclo 6 — alpha/transparência: `transparent=True` preserva canal alpha
+
+### Causa
+
+`render_png()` fazia duas operações contraditórias:
+
+1. inicializava o `QImage` com `Qt.transparent` quando `transparent=True`;
+2. chamava `_render_page(..., paint_background=transparent)`, o que repintava imediatamente o fundo da página e destruía a transparência solicitada.
+
+### Patches
+
+- `4abf366b95dca4816dcbddc1dfad087216b07a4d` — `fix(graphics2): preserve transparent PNG background`.
+- `36b28e541a4e2c77c4970643922781a2a49c4b56` — `test(graphics2): cover transparent PNG export`.
+
+### Implementação/teste
+
+- o PNG continua inicializando o QImage com background opaco ou transparente conforme a flag;
+- `_render_page()` não repinta o background no caminho PNG, porque o QImage já foi inicializado corretamente;
+- o caminho PDF continua chamando `_render_page(..., paint_background=True)`;
+- regressão verifica `alpha == 0` em export transparente e RGB/alpha do background em export opaco.
+
+### Gates do HEAD de código
+
+HEAD de código: `36b28e541a4e2c77c4970643922781a2a49c4b56`.
+
+- G2 Alpha 43 Validation `32087536343` — PASS;
+  - Ubuntu G2: PASS;
+  - Windows Qt Quick: PASS.
+- SR Studio 5 Quality `32087536348` — PASS;
+  - compile: PASS;
+  - Ruff correctness gate: PASS;
+  - testes: PASS.
+- SR Graphics Engine 2 CI `32087536329` — PASS;
+  - compile Python: PASS;
+  - runtime lint gate: PASS;
+  - Visual Fidelity and Production Gate: PASS;
+  - Fidelity Lab/Triage/Golden Master/Reference Suite/PPTX/Graphics Host CLI smokes: PASS;
+  - Graphics Engine 2 tests: PASS;
+  - full SR Studio regression suite: PASS;
+  - Windows Qt Quick runtime/backend probe: PASS;
+  - Visual Fidelity/Production Gate no Windows: PASS;
+  - Graphics Engine 2 tests no Windows: PASS.
+
+Impacto no corpus Golden Master opaco: não altera os oito scores históricos. Impacto funcional: corrige export PNG transparente, P2 no escopo desta missão.
 
 ## Auditoria OOXML dos oito PPTX fonte — P1 sistêmico
 
@@ -207,44 +289,38 @@ Portanto:
 - validar primeiro em CARTAZ_VENDA;
 - só executar os outros sete após ganho sem regressão.
 
-## GROUP/alpha — divergência renderer↔preview confirmada, P2 no corpus atual
-
-`GraphicsEditor.qml` calcula opacidade efetiva multiplicando ancestrais. O QPainter atualmente usa somente `node.opacity` e pula nodes GROUP durante desenho. Um filho dentro de group com opacity != 1 pode renderizar com alpha incorreto.
-
-Não foi priorizado antes de TEXT/WORDART porque a telemetria do corpus histórico registra IMAGE em apenas 4,86% do diff classificado, nenhum sinal novo de perda de shape/z-order e apenas dois grupos reconstruídos, ambos sem membros não associados. Corrigir genericamente continua recomendado depois do P1 tipográfico ou quando um Golden Master apontar GROUP como região dominante.
-
 ## Dependências dos outros chats
 
 ### CHAT 2 — importação PPTX/Canva
 
 1. **Peso de fonte colapsado**
-   - arquivo: `src/srstudio/graphics2/import_bridge.py`
-   - função: `_style_from_element()`
-   - causa: `font_weight` vira apenas 400/700 a partir de `bold`.
-   - reprodução: fonte/run 800 ou 900 chega à SR Scene como 700.
-   - correção sugerida: transportar peso efetivo do run/theme para a Scene.
+   - arquivo: `src/srstudio/graphics2/import_bridge.py`;
+   - função: `_style_from_element()`;
+   - causa: `font_weight` vira apenas 400/700 a partir de `bold`;
+   - reprodução: fonte/run 800 ou 900 chega à SR Scene como 700;
+   - correção sugerida: transportar peso efetivo do run/theme para a Scene;
    - impacto: limita diretamente o patch de FONT do CHAT 1.
 
 2. **Escala física da página não chega à Scene**
-   - arquivos: `src/srstudio/importers/pipeline.py`, `src/srstudio/graphics2/import_bridge.py`.
-   - funções: `_pptx_element()`, `_convert_visual_page()`.
-   - causa: x/y/w/h são normalizados para 1080 px; `font_size_pt` permanece absoluto; `GraphicsPage.metadata` não registra `sldSz` nem scale-from-source.
-   - reprodução: os oito fontes têm fatores físicos diferentes, aproximadamente 1,50x, 1,9048x e 1,9132x.
-   - correção sugerida: transportar `source_slide_width_emu`, `source_slide_height_emu`, escala lógica e/ou materializar `font_size` em pixels lógicos a partir da mesma transformação da geometria.
+   - arquivos: `src/srstudio/importers/pipeline.py`, `src/srstudio/graphics2/import_bridge.py`;
+   - funções: `_pptx_element()`, `_convert_visual_page()`;
+   - causa: x/y/w/h são normalizados para 1080 px; `font_size_pt` permanece absoluto; `GraphicsPage.metadata` não registra `sldSz` nem scale-from-source;
+   - reprodução: os oito fontes têm fatores físicos diferentes, aproximadamente 1,50x, 1,9048x e 1,9132x;
+   - correção sugerida: transportar `source_slide_width_emu`, `source_slide_height_emu`, escala lógica e/ou materializar `font_size` em pixels lógicos a partir da mesma transformação da geometria;
    - impacto estimado: P1, pois WORDART+TEXT somam 94,20% do diff atribuído.
 
 3. **WordArt não identificado semanticamente para o renderer**
-   - arquivos suspeitos: `src/srstudio/importers/pipeline.py`, `src/srstudio/graphics2/pptx_fidelity.py`, `src/srstudio/graphics2/import_bridge.py`.
-   - causa: OOXML real tem `fromWordArt=1` + `prstTxWarp=textPlain`, mas esses contratos não aparecem no style/metadata consumido por `qt_renderer._draw_text()`.
-   - reprodução: 12/14 textos no CARTAZ, 10/12 nos CLUBE/SEGUNDA 1 preço, 13/15 nos SEGUNDA 2 preços e 1.395/1.767 no fonte ATACADO são WordArt.
-   - correção sugerida: preservar flag WordArt, preset warp, transform, runs, defaults herdados e vínculo com outline/fill.
+   - arquivos suspeitos: `src/srstudio/importers/pipeline.py`, `src/srstudio/graphics2/pptx_fidelity.py`, `src/srstudio/graphics2/import_bridge.py`;
+   - causa: OOXML real tem `fromWordArt=1` + `prstTxWarp=textPlain`, mas esses contratos não aparecem no style/metadata consumido por `qt_renderer._draw_text()`;
+   - reprodução: 12/14 textos no CARTAZ, 10/12 nos CLUBE/SEGUNDA 1 preço, 13/15 nos SEGUNDA 2 preços e 1.395/1.767 no fonte ATACADO são WordArt;
+   - correção sugerida: preservar flag WordArt, preset warp, transform, runs, defaults herdados e vínculo com outline/fill;
    - impacto: P1, especialmente ATACADO e CLUBE.
 
 4. **Outline tipográfico por run não é transportado**
-   - arquivos suspeitos: `src/srstudio/importers/pipeline.py`, `src/srstudio/graphics2/pptx_fidelity.py`, `src/srstudio/graphics2/import_bridge.py`.
-   - causa: `a:rPr/a:ln`, inclusive `w="9525"`, não chega ao style/metadata que o renderer usa.
-   - reprodução: todos os WordArts auditados nos oito fontes possuem outline.
-   - correção sugerida: preservar stroke color/alpha/width/join por run, sem convertê-lo em glyph-path prematuramente.
+   - arquivos suspeitos: `src/srstudio/importers/pipeline.py`, `src/srstudio/graphics2/pptx_fidelity.py`, `src/srstudio/graphics2/import_bridge.py`;
+   - causa: `a:rPr/a:ln`, inclusive `w="9525"`, não chega ao style/metadata que o renderer usa;
+   - reprodução: todos os WordArts auditados nos oito fontes possuem outline;
+   - correção sugerida: preservar stroke color/alpha/width/join por run, sem convertê-lo em glyph-path prematuramente;
    - impacto: P2 isolado; repetição sistêmica e pré-requisito para paridade final.
 
 ### CHAT 3 — QML/editor
@@ -255,25 +331,6 @@ Não foi priorizado antes de TEXT/WORDART porque a telemetria do corpus históri
 - correção sugerida: usar peso numérico Qt equivalente;
 - impacto: preview/export podem divergir em peso quando CHAT 2 começar a preservar 800/900.
 
-## CI do último HEAD de código
-
-HEAD de código validado: `9a5d4dfeceacc3b0348b3d25b9a4e75bc0a1f079`.
-
-- SR Studio 5 Quality — PASS (`32086861948`)
-- SR Graphics Engine 2 CI — PASS (`32086862041`)
-  - compile: PASS;
-  - runtime lint gate: PASS;
-  - Visual Fidelity/Production Gate: PASS;
-  - Fidelity Lab/Triage/Golden Master/Reference Suite CLI smokes: PASS;
-  - Graphics Engine 2 tests: PASS;
-  - full SR Studio regression suite: PASS;
-  - Windows Qt Quick job: PASS.
-- G2 Alpha 43 Validation — PASS (`32086862089`)
-  - Ubuntu G2: PASS;
-  - Windows Qt: PASS.
-
-Antes deste commit exclusivamente documental, o branch estava 14 commits à frente do BASE_SHA e 0 atrás. Nenhum merge em `main` ou `stable` foi feito.
-
 ## Score antes/depois desta sessão
 
 Não foi inventado delta de Golden Master.
@@ -282,6 +339,19 @@ Os artefatos históricos existentes foram suficientes para recuperar scores, per
 
 Além disso, o primeiro patch de FONT preserva 800/900 no renderer, mas o bridge atual entrega somente 400/700 para o corpus PPTX. Logo, atribuir qualquer aumento de score real a esse patch sem o handoff do CHAT 2 seria incorreto.
 
+Os ciclos GROUP e transparência corrigem bugs reais e estão cobertos por pixels/gates, porém não justificam alegar aumento nos oito scores históricos: GROUP não era dominante na atribuição do corpus e os Golden Masters são opacos.
+
+## Estado final deste bloco
+
+- último HEAD de código validado: `36b28e541a4e2c77c4970643922781a2a49c4b56`;
+- todos os três workflows principais: PASS;
+- PR #26 permanece draft e não mergeado;
+- nenhum merge em `main`/`stable`;
+- nenhum threshold reduzido;
+- nenhum baseline trocado;
+- nenhum grande patch em importador/QML de outro chat;
+- P1 dominante permanece bloqueado pelo contrato PPTX/WordArt/escala que precisa ser preservado pelo CHAT 2.
+
 ## Próximo ciclo recomendado
 
 1. CHAT 2 preservar escala física, WordArt, runs, peso real e outline no SR Scene.
@@ -289,4 +359,4 @@ Além disso, o primeiro patch de FONT preserva 800/900 no renderer, mas o bridge
 3. Usar CARTAZ_VENDA como A/B inicial; o patch só avança se superar 93,579777% sem piorar pixel pass, changed area ou TEXT loss.
 4. Medir com o Reference Suite novo: score + `render_ms` + região + categoria + perda estimada.
 5. Somente após CARTAZ_VENDA melhorar, rerodar os outros sete e usar `fidelity_corpus.py` para ordenar causas sistêmicas restantes.
-6. Corrigir ancestor GROUP opacity como P2 isolado com regressão pixel-level após o P1 de WordArt/BOX_LAYOUT.
+6. Não revisitar GROUP opacity nem PNG transparency a menos que um novo regression test falhe; ambos estão fechados e verdes.
