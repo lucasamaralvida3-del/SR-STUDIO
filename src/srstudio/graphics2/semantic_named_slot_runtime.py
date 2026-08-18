@@ -340,7 +340,9 @@ def _explicit_product_image(
 
 
 def _slot_id(page: GraphicsPage, product: GraphicsNode) -> str:
-    digest = sha1(f"{page.id}|{product.id}|named-slot-v3".encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
+    # Preserve o sal v2 para que templates já salvos mantenham a mesma
+    # identidade de SmartSlot. A versão 3 é de capacidades/metadados, não de ID.
+    digest = sha1(f"{page.id}|{product.id}|named-slot-v2".encode("utf-8"), usedforsecurity=False).hexdigest()[:16]
     return f"slot:named:{digest}"
 
 
