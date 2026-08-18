@@ -8,6 +8,7 @@ on:
     paths:
       - '.github/workflows/image-db-phase3.yml'
       - 'scripts/ci/image_db_phase3_corpus.py'
+      - 'scripts/ci/image_db_phase3_inventory_gate.py'
       - 'scripts/ci/image_db_phase3_analysis.py'
       - 'src/srstudio/images/**'
       - 'tests/test_image_*.py'
@@ -199,22 +200,14 @@ jobs:
           echo "$ingest_rc" > "$ARTIFACT_DIR/ingest-exit-code.txt"
           grep -E '^(MemTotal|MemAvailable):' /proc/meminfo > "$ARTIFACT_DIR/memory-after-ingest.txt"
 
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          art = Path(os.environ['ARTIFACT_DIR'])
-          try:
-              data = json.loads((art/'ingest-report.json').read_text(encoding='utf-8'))
-              metrics = data.get('inventory', {}).get('metrics', {})
-          except Exception:
-              metrics = {}
-          expected = {'files_found':36, 'slides':566, 'unique_media_exact':1910, 'raw_image_refs':2324}
-          checks = {key: int(metrics.get(key, -1)) == value for key, value in expected.items()}
-          report = {'metrics':metrics, 'expected':expected, 'checks':checks, 'pass':all(checks.values())}
-          (art/'corpus-inventory-gate.json').write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
-          raise SystemExit(0 if report['pass'] else 11)
-          PY
+          python scripts/ci/image_db_phase3_inventory_gate.py \
+            --output "$ARTIFACT_DIR/corpus-inventory-gate.json" \
+            "$CORPUS_DIR/Downloads(1)(1).zip" \
+            "$CORPUS_DIR/Downloads(2)(1).zip" \
+            > "$ARTIFACT_DIR/corpus-inventory-gate.stdout.txt" \
+            2> "$ARTIFACT_DIR/corpus-inventory-gate.stderr.txt"
           baseline_rc=$?
+
           if [ "$ingest_rc" -eq 0 ]; then echo 'RICH_INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'RICH_INGEST_PASS=false' >> "$GITHUB_ENV"; fi
           if [ "$baseline_rc" -eq 0 ]; then echo 'CORPUS_BASELINE_PASS=true' >> "$GITHUB_ENV"; else echo 'CORPUS_BASELINE_PASS=false' >> "$GITHUB_ENV"; fi
           if [ "$ingest_rc" -eq 0 ] && [ "$baseline_rc" -eq 0 ]; then echo 'INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'INGEST_PASS=false' >> "$GITHUB_ENV"; fi
@@ -417,11 +410,11 @@ jobs:
               f.write(f"**SHA:** `{report['tested_sha']}`  \n**Run:** `{report['run_id']}` attempt `{report['run_attempt']}`  \n**Status:** **{status}**  \n**Standalone:** **DEFERRED**\n\n")
               f.write('| Gate | Result |\n|---|---|\n')
               for name,value in gates.items(): f.write(f"| {name} | {'PASS' if value else 'FAIL'} |\n")
-              inv=report['corpus_inventory'].get('metrics',{}); cov=report['coverage']; db=report['database']; perf=report['performance']; cat=report['catalog_source_validation']
+              inv=report['corpus_inventory'].get('measured',{}); cov=report['coverage']; db=report['database']; perf=report['performance']; cat=report['catalog_source_validation']
               if cat:
                   f.write(f"\n## Source catalog\n- products: {cat.get('products')} / 520\n- historical records: {cat.get('historical_records')} / 3116\n")
               if inv:
-                  f.write(f"\n## Corpus\n- PPTX: {inv.get('files_found')}\n- slides: {inv.get('slides')}\n- embedded unique: {inv.get('unique_media_exact')}\n- media occurrences: {inv.get('raw_image_refs')}\n- standalone: DEFERRED\n")
+                  f.write(f"\n## Corpus\n- PPTX: {inv.get('pptx')}\n- slides: {inv.get('slides')}\n- embedded unique: {inv.get('embedded_unique')}\n- media occurrences: {inv.get('media_occurrences')}\n- standalone: DEFERRED\n")
               if db:
                   f.write(f"\n## Database\n- physical: {db.get('physical_images')}\n- canonical: {db.get('canonical_assets')}\n- exact duplicates: {db.get('exact_duplicate_observations')}\n- near/variant hashes: {db.get('near_duplicate_variants')}\n- decorative: {db.get('decorative')}\n- accepted: {db.get('accepted')}\n- likely: {db.get('likely')}\n- review-required: {db.get('review_required')}\n- rejected: {db.get('rejected')}\n- orphan: {db.get('without_product')}\n- missing provenance: {db.get('missing_provenance')}\n")
               if cov:
