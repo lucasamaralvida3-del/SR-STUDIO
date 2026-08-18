@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 125
     env:
-      TARGET_SHA: a0bcd62fdff055751c7f1e900c439913ad29c561
+      TARGET_SHA: 7a18ca2586c1fbbe5584761054337785d9de5ac3
     steps:
       - uses: actions/checkout@v4
         with:
@@ -64,8 +64,7 @@ jobs:
           if source.exists():
               for name in sorted(wanted):
                   path=next(source.rglob(name),None)
-                  if path and path.is_file():
-                      shutil.copy2(path,target/name); copied.append(name)
+                  if path and path.is_file(): shutil.copy2(path,target/name); copied.append(name)
               review=next((p for p in source.rglob('review') if p.is_dir()),None)
               if review:
                   dst=target/'review'
