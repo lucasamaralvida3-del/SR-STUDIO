@@ -94,6 +94,7 @@ def install_headless_renderer_guard(renderer_module: Any) -> None:
     # também usa ensure_qt_gui_application e os helpers privados do renderer.
     from . import export_output as output
     from .export_batch import export_raster_batch as transactional_export_raster_batch
+    from .pdf_output_renderer import render_pdf as full_bleed_pdf_renderer
 
     headless_png = getattr(renderer_module, "_sr_headless_png_renderer", renderer_module.render_png)
     headless_pdf = getattr(renderer_module, "_sr_headless_pdf_renderer", renderer_module.render_pdf)
@@ -102,6 +103,10 @@ def install_headless_renderer_guard(renderer_module: Any) -> None:
         render_png=headless_png,
         render_pdf=headless_pdf,
     )
+    # PDF uses the same scene renderer, but QPdfWriter page-device semantics
+    # belong to the output layer. The adapter removes implicit margins and
+    # paints the physical page background before applying the scene transform.
+    output._renderer.render_pdf = full_bleed_pdf_renderer
     output.export_raster_batch = transactional_export_raster_batch
 
     # Compatibilidade: chamadas existentes do host continuam usando os nomes
