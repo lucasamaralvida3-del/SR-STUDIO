@@ -1,3 +1,4 @@
+# Phase 3 release-corpus validation trigger.
 from __future__ import annotations
 
 import hashlib
