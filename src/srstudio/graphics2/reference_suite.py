@@ -23,6 +23,7 @@ from PIL import Image
 from .fidelity import FidelityPolicy, compare_images
 from .fidelity_attribution import attribute_fidelity_regions
 from .fidelity_diagnostics import store_fidelity_triage
+from .fidelity_impact import summarize_fidelity_impact
 from .fidelity_triage import analyze_fidelity_regions, write_triage_report
 
 
@@ -214,10 +215,21 @@ def run_reference_suite(args: Namespace) -> int:
             json.dumps(attribution.to_dict(), ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
+        impact = summarize_fidelity_impact(
+            attribution,
+            imported.document.pages[case.page],
+            score=float(result.metrics.score),
+        )
+        impact_path = output / "triage" / f"slide-{case.page + 1:03d}-{slug}-impact.json"
+        impact_path.write_text(
+            json.dumps(impact.to_dict(), ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
         portable_triage = {
             "available": True,
             "spatial": triage.to_dict(),
             "attribution": attribution.to_dict(),
+            "impact": impact.to_dict(),
         }
         results.append(result)
         render_reports.append(report)
@@ -235,6 +247,8 @@ def run_reference_suite(args: Namespace) -> int:
                 "triage_report": str(triage_path),
                 "attribution": attribution.to_dict(),
                 "attribution_report": str(attribution_path),
+                "impact": impact.to_dict(),
+                "impact_report": str(impact_path),
             }
         )
 
@@ -315,10 +329,11 @@ def run_reference_suite(args: Namespace) -> int:
                 f"{first['width']}×{first['height']}"
             )
         suspect_note = _top_suspect_note(case_payload.get("attribution") or {})
+        impact_note = _top_impact_note(case_payload.get("impact") or {})
         print(
             f"  {'PASS' if result.passed else 'FAIL'} slide {case.page + 1}: "
             f"{case.name} · {result.metrics.percent:.4f}% · render {case_payload['render_ms']:.1f} ms"
-            f"{region_note}{suspect_note}"
+            f"{region_note}{suspect_note}{impact_note}"
         )
     print(f"  Relatório: {report_path}")
     return 0 if gate.ready and aggregate["passed"] else 1
@@ -335,6 +350,18 @@ def _top_suspect_note(attribution: dict[str, Any]) -> str:
     role = str(suspect.get("binding_role") or suspect.get("kind") or "node")
     name = str(suspect.get("name") or suspect.get("node_id") or "sem nome")
     return f" · provável {role}: {name}"
+
+
+def _top_impact_note(impact: dict[str, Any]) -> str:
+    categories = list(impact.get("categories") or [])
+    if not categories:
+        return ""
+    top = categories[0]
+    category = str(top.get("category") or "RENDER")
+    priority = str(top.get("priority") or "P3")
+    points = float(top.get("estimated_percentage_points") or 0.0)
+    share = float(top.get("impact_share") or 0.0) * 100.0
+    return f" · impacto {category}/{priority}: ~{points:.2f} pp ({share:.1f}% do diff medido)"
 
 
 def _render_performance(timings_ms: list[float]) -> dict[str, float]:
