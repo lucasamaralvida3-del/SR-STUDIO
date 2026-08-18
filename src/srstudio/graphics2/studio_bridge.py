@@ -399,7 +399,7 @@ def _host_command() -> list[str]:
         return [str(packaged)]
     if bool(getattr(sys, "frozen", False)):
         return []
-    return [sys.executable, "-m", "srstudio.graphics2.qt_host"]
+    return [sys.executable, "-m", "srstudio.graphics2.entrypoint"]
 
 
 def _uses_current_python(command: list[str]) -> bool:
@@ -410,7 +410,7 @@ def _uses_current_python(command: list[str]) -> bool:
         candidate = Path(command[0]).resolve()
     except OSError:
         return False
-    return candidate == current and command[1:3] == ["-m", "srstudio.graphics2.qt_host"]
+    return candidate == current and command[1:3] == ["-m", "srstudio.graphics2.entrypoint"]
 
 
 def _safe_name(value: str) -> str:
