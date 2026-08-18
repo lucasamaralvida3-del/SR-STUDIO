@@ -50,6 +50,10 @@ _PRODUCT_TERMS = {
     "MANTEIGA", "IOGURTE", "BEBIDA", "CHOCOLATE", "BOMBOM", "MASSA", "MOLHO", "EXTRATO", "BANHA", "TORRESMO",
     "CHIKENITOS", "SALAMITOS",
 }
+_GENERIC_MEASURE_TOKENS = {
+    "PACOTE", "PCT", "UNIDADE", "UNIDADES", "UN", "UND", "PESO", "VOLUME", "GRAMAS", "QUILO", "QUILOS",
+    "LITRO", "LITROS", "CAIXA", "CX", "FARDO", "FD", "CADA", "TOTAL", "VALOR", "PRECO",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,13 +104,6 @@ class AssociationDecision:
 
 
 def evidence_source_identity(row: AssociationEvidence) -> str:
-    """Return a content-aware source identity for cross-document consensus.
-
-    Corpus extraction stores media under ``.../media/<source-sha-prefix>/...``.
-    That digest is a stronger source identity than a basename: copies of the same
-    PPTX must not boost consensus, while different documents with the same filename
-    must count independently. Explicit provenance metadata wins when available.
-    """
     metadata = row.metadata or {}
     explicit = str(metadata.get("source_document_id") or metadata.get("source_sha256") or "").strip()
     if explicit:
@@ -125,14 +122,6 @@ def _distinct_evidence_source_count(rows: Iterable[AssociationEvidence]) -> int:
 
 
 class ProductImageAssociationEngine:
-    """Resolve noisy spatial observations into precision-first product/image decisions.
-
-    Exact SHA-256 identity is the grouping key. Cross-document agreement boosts
-    confidence using content-aware source identity, while the same image being
-    paired with many unrelated products is treated as evidence that the asset is
-    decorative/template material.
-    """
-
     def __init__(
         self,
         *,
@@ -264,12 +253,21 @@ def is_product_text_candidate(value: str) -> bool:
         return False
     if any(fragment in normalized for fragment in ("LIMITE DE", "POR CLIENTE", "COMPRANDO", "MAXIMO DE")):
         return False
+
     alpha_tokens = re.findall(r"[A-Z]{2,}", normalized)
-    if len(alpha_tokens) < 2:
-        return False
     has_unit = bool(re.search(r"\b\d+(?:\.\d+)?(?:KG|G|MG|ML|L|UN|CM|MM|M)\b", normalized))
     has_product_term = any(term in normalized for term in _PRODUCT_TERMS)
-    return has_unit or has_product_term
+
+    if has_product_term and len(alpha_tokens) >= 2:
+        return True
+    if has_unit:
+        meaningful = [
+            token
+            for token in alpha_tokens
+            if len(token) >= 3 and token not in _GENERIC_MEASURE_TOKENS
+        ]
+        return bool(meaningful)
+    return False
 
 
 def product_name_similarity(left: str, right: str) -> float:
@@ -292,7 +290,6 @@ def measurement_signature(value: str) -> tuple[str, ...]:
 
 
 def product_names_compatible(left: str, right: str) -> bool:
-    """Conservative alias compatibility; never erase SKU-defining quantities."""
     a = normalize_product_name(left)
     b = normalize_product_name(right)
     if a == b:
