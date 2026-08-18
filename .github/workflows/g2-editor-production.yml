@@ -7,6 +7,7 @@ on:
     paths:
       - "src/srstudio/graphics2/**"
       - "tests/test_graphics2*.py"
+      - "pyproject.toml"
       - "docs/parallel/CHAT3_EDITOR_PRODUCTION.md"
       - ".github/workflows/g2-editor-production.yml"
   workflow_dispatch:
@@ -50,11 +51,13 @@ jobs:
           python -m ruff check
           src/srstudio/graphics2/editor_commands_runtime.py
           src/srstudio/graphics2/editor_persistence.py
+          src/srstudio/graphics2/editor_entrypoint.py
           src/srstudio/graphics2/autosave.py
           src/srstudio/graphics2/qt_host.py
           tests/test_graphics2_editor_commands_runtime.py
           tests/test_graphics2_editor_multipage_qml.py
           tests/test_graphics2_editor_persistence.py
+          tests/test_graphics2_editor_entrypoint.py
           tests/test_graphics2_editor_host_recovery.py
           tests/test_graphics2_editor_roundtrip.py
           tests/test_graphics2_editor_production_e2e.py
@@ -70,6 +73,7 @@ jobs:
           tests/test_graphics2_editor_commands_runtime.py
           tests/test_graphics2_editor_multipage_qml.py
           tests/test_graphics2_editor_persistence.py
+          tests/test_graphics2_editor_entrypoint.py
           tests/test_graphics2_editor_host_recovery.py
           tests/test_graphics2_editor_roundtrip.py
           tests/test_graphics2_editor_production_e2e.py
