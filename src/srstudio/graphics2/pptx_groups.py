@@ -119,6 +119,12 @@ def _build_group(
             continue
         used.add(node.id)
         child_ids.append(node.id)
+        # Um p:sp com picture fill + texto é um único membro OOXML, porém vira
+        # IMAGE + TEXT irmão na SR Scene para não perder nenhum dos dois
+        # contratos. O overlay deve acompanhar seu owner ao reconstruir grupos.
+        for companion in _compound_companions(by_name, name, node.id, used):
+            used.add(companion.id)
+            child_ids.append(companion.id)
 
     if not child_ids:
         return None
@@ -156,7 +162,37 @@ def _take_node(by_name: dict[str, list[GraphicsNode]], name: str, used: set[str]
     if not name:
         return None
     candidates = by_name.get(name) or []
+    # Compound-text overlays share source_name with their IMAGE owner; nunca
+    # devem ser consumidos no lugar do objeto OOXML principal.
+    primary = next(
+        (
+            node
+            for node in candidates
+            if node.id not in used
+            and node.kind is not NodeKind.GROUP
+            and not node.metadata.get("pptx_compound_owner_id")
+        ),
+        None,
+    )
+    if primary is not None:
+        return primary
     return next((node for node in candidates if node.id not in used and node.kind is not NodeKind.GROUP), None)
+
+
+def _compound_companions(
+    by_name: dict[str, list[GraphicsNode]],
+    name: str,
+    owner_id: str,
+    used: set[str],
+) -> list[GraphicsNode]:
+    if not name or not owner_id:
+        return []
+    return [
+        node
+        for node in by_name.get(name) or []
+        if node.id not in used
+        and str(node.metadata.get("pptx_compound_owner_id") or "") == owner_id
+    ]
 
 
 def _reparent(page, node_id: str, parent_id: str) -> bool:
