@@ -18,21 +18,18 @@ Rectangle {
     border.color: "#CBD5E1"
     visible: hasImageSelection
 
-    property var scene: ({})
-    property var imageNode: null
-    property bool hasImageSelection: false
-    readonly property bool bridgeHasImageSelection: {
+    property var scene: {
         try {
-            var parsedScene = JSON.parse(sceneBridge.sceneJson)
-            return selectedImage(parsedScene) !== null
+            return JSON.parse(sceneBridge.sceneJson)
         } catch (error) {
-            return false
+            return ({})
         }
     }
-    property string observedSceneJson: sceneBridge.sceneJson
+    property var imageNode: selectedImage(scene)
+    readonly property bool hasImageSelection: imageNode !== null && imageNode !== undefined
     property bool syncing: false
 
-    onObservedSceneJsonChanged: Qt.callLater(panel.refresh)
+    onImageNodeChanged: Qt.callLater(panel.refresh)
 
     function activePage(sourceScene) {
         var currentScene = sourceScene || scene
@@ -100,11 +97,6 @@ Rectangle {
     function refresh() {
         syncing = true
         try {
-            var parsedScene = JSON.parse(sceneBridge.sceneJson)
-            var selected = selectedImage(parsedScene)
-            scene = parsedScene
-            imageNode = selected
-            hasImageSelection = selected !== null && selected !== undefined
             if (!hasImageSelection)
                 return
             var fit = String(styleValue("fit", "contain"))
