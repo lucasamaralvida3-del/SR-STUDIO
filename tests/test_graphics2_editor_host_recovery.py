@@ -121,6 +121,34 @@ def test_no_source_resumes_only_explicit_last_pending_session(tmp_path, monkeypa
     assert context.source is None
 
 
+def test_first_save_worker_recent_pointer_beats_pre_save_pending_recovery(tmp_path, monkeypatch):
+    autosave_root = tmp_path / "autosave"
+    monkeypatch.setattr(qt_host, "default_autosave_root", lambda: autosave_root)
+    manager = AutosaveManager(autosave_root)
+    journal = EditorRecoveryJournal(autosave_root)
+    recent = EditorRecentProject(autosave_root)
+
+    document = GraphicsDocument(name="Primeiro Save As")
+    pre_save = GraphicsDocument.from_dict(document.to_dict())
+    pre_save.metadata["revision"] = "autosave-before-save-as"
+    recovery_path = manager.save(pre_save)
+    # Simula autosave iniciado quando ainda não existia `.srscene`.
+    journal.mark(document.id, recovery_path, base_saved_digest="")
+
+    saved = GraphicsDocument.from_dict(document.to_dict())
+    saved.metadata["revision"] = "save-as-completed-in-worker"
+    project = save_package(saved, tmp_path / "primeiro-save.srscene")
+    # O worker de save já grava este ponteiro antes do callback Qt.
+    recent.mark(project, document_id=document.id)
+
+    context = qt_host.load_launch_context(None)
+
+    assert context.recovered_from is None
+    assert context.source == project.resolve()
+    assert context.document.metadata["revision"] == "save-as-completed-in-worker"
+    assert journal.current() is None
+
+
 def test_pending_journal_never_rewinds_behind_newer_manual_save(tmp_path, monkeypatch):
     autosave_root = tmp_path / "autosave"
     monkeypatch.setattr(qt_host, "default_autosave_root", lambda: autosave_root)
@@ -252,6 +280,7 @@ def test_qt_host_wires_periodic_shutdown_and_close_guard_contract():
     assert "EditorRecoveryJournal" in text
     assert "EditorRecentProject" in text
     assert "_journal_recovery_for_saved_project" in text
+    assert "recent.document_id == current.document_id" in text
     assert 'qml_dir / "PageInspector.qml"' in text
     assert "verified = load_package(final)" in text
     assert "recent_project.mark(final, document_id=snapshot.id)" in text
