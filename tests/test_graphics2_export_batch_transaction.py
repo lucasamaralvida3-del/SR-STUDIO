@@ -100,7 +100,7 @@ def test_publish_failure_rolls_back_pages_already_published(monkeypatch, tmp_pat
     from srstudio.graphics2 import export_batch
 
     document = _document(3)
-    real_replace = export_batch.os.replace
+    real_replace = export_batch._atomic_replace
     injected = {"done": False}
 
     def flaky_replace(source, target):
@@ -112,7 +112,7 @@ def test_publish_failure_rolls_back_pages_already_published(monkeypatch, tmp_pat
             raise PermissionError("simulated locked destination")
         return real_replace(source, target)
 
-    monkeypatch.setattr(export_batch.os, "replace", flaky_replace)
+    monkeypatch.setattr(export_batch, "_atomic_replace", flaky_replace)
 
     with pytest.raises(OSError, match="Não foi possível publicar página do batch"):
         export_raster_batch(document, tmp_path, raster_format="png", target_width=100)
