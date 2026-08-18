@@ -1,6 +1,6 @@
 import hashlib
 
-from PIL import Image
+from PIL import Image, ImageDraw
 
 from srstudio.images.safe_library import SafeImageLibrary
 from srstudio.images.visual_dedup import (
@@ -47,6 +47,46 @@ def test_safe_library_preserves_complete_sha256_without_breaking_legacy_id(tmp_p
     assert len(asset.id) == 24
     assert asset.metadata["sha256"] == expected
     assert asset.metadata["sha256_full"] == expected
+
+
+def test_near_duplicate_keeps_canonical_sha_and_merges_provenance(tmp_path):
+    library = SafeImageLibrary(tmp_path / "bank")
+    png = tmp_path / "product.png"
+    jpg = tmp_path / "product.jpg"
+    image = Image.new("RGB", (400, 600), "white")
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((70, 40, 330, 560), fill=(210, 25, 30))
+    draw.rectangle((90, 140, 310, 240), fill=(250, 220, 20))
+    draw.rectangle((120, 320, 280, 500), fill=(245, 245, 245))
+    image.save(png)
+    image.save(jpg, quality=82)
+    png_sha = hashlib.sha256(png.read_bytes()).hexdigest()
+    jpg_sha = hashlib.sha256(jpg.read_bytes()).hexdigest()
+
+    first = library.learn_product_image(
+        png,
+        "CAFE VASCONCELOS 500G",
+        confidence=.95,
+        metadata={"provenance": [{"source_file": "encarte-a.pptx", "source_slide": 1}]},
+    )
+    second = library.learn_product_image(
+        jpg,
+        "CAFE VASCONCELOS 500G",
+        confidence=.94,
+        metadata={
+            "sha256": jpg_sha,
+            "provenance": [{"source_file": "encarte-b.pptx", "source_slide": 4}],
+        },
+    )
+
+    assert second.id == first.id
+    assert second.metadata["sha256"] == png_sha
+    assert second.metadata["sha256_full"] == png_sha
+    assert jpg_sha in second.metadata["variant_sha256"]
+    assert {row["source_file"] for row in second.metadata["provenance"]} == {
+        "encarte-a.pptx",
+        "encarte-b.pptx",
+    }
 
 
 def test_safe_library_does_not_merge_realistic_dhash_collision_shape(tmp_path):
