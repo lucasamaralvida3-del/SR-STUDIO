@@ -473,6 +473,9 @@ def _binding_text(role: str, product: dict[str, Any], *, template_text: str = ""
     if role == "price_complete":
         whole, cents = _price_parts(product.get("price"))
         return f"R$ {whole}{cents}" if whole else ""
+    if role == "price_amount_complete":
+        whole, cents = _price_parts(product.get("price"))
+        return f"{whole}{cents}" if whole else ""
     if role in {"unit", BindingRole.UNIT.value}:
         return _template_unit_text(product.get("unit"), template_text)
     if role in {"limit", BindingRole.LIMIT.value}:

@@ -62,6 +62,7 @@ _PRODUCT_ROLE_NAMES = {
 _CURRENCY_RE = re.compile(r"^R\s*\$$", re.IGNORECASE)
 _REAIS_RE = re.compile(r"^\d{1,3}$")
 _CENTS_RE = re.compile(r"^[,.]\d{1,2}$")
+_COMPLETE_AMOUNT_RE = re.compile(r"^\d{1,3}(?:[,.]\d{2})$")
 _UNIT_RE = re.compile(r"^/?(?:KG|UN|UND|G|L|ML|LT|CX|PCT|PC|BDJ)$", re.IGNORECASE)
 _ALPHA_RE = re.compile(r"[A-Za-zÀ-ÖØ-öø-ÿ]")
 _DATE_RE = re.compile(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b")
@@ -189,10 +190,10 @@ def build_semantic_blocks(document: GraphicsDocument) -> SemanticBlockReport:
                 report.recovered_spatial_product_cards += 1
 
         page.metadata["semantic_blocks"] = page_blocks
-        page.metadata["semantic_blocks_version"] = 7
+        page.metadata["semantic_blocks_version"] = 8
 
     document.metadata["semantic_blocks"] = report.to_dict()
-    document.metadata["semantic_blocks_version"] = 7
+    document.metadata["semantic_blocks_version"] = 8
     return report
 
 
@@ -612,6 +613,9 @@ def _best_spatial_image_node(
         for node in nodes
         if node.kind in {NodeKind.IMAGE, NodeKind.BACKGROUND}
         and (node.transform.width * node.transform.height) / page_area < 0.60
+        # Logos/selos de rodapé não são imagem de produto. A imagem pode ficar
+        # bem acima do preço, mas seu centro não deve estar abaixo do PriceBlock.
+        and (node.transform.y + node.transform.height / 2.0) <= pb.bottom
     ]
     if not candidates:
         return None
@@ -669,7 +673,6 @@ def _promote_recovered_card_to_slot(
         "reais": BindingRole.PRICE_REAIS.value,
         "cents": BindingRole.PRICE_CENTS.value,
         "unit": BindingRole.UNIT.value,
-        "complete": BindingRole.RETAIL_PRICE.value,
     }
     for canonical, node_ids in price_block.roles.items():
         binding = canonical_to_binding.get(canonical)
@@ -693,24 +696,29 @@ def _promote_recovered_card_to_slot(
     confidence = float(card.metadata.get("confidence") or 0.0)
     if confidence <= 0:
         confidence = 0.92 if name_node is not None and image_node is not None else 0.86
+    metadata = {
+        # Mantemos o mesmo contrato do CanvaBindingService; o flag separado
+        # identifica que o slot foi inferido e pode ser reconstruído.
+        "source": "canva-smart-slot",
+        "semantic_recovered": True,
+        "recovered_from_pptx_group": bool(group_id),
+        "recovered_spatial": not bool(group_id),
+        "semantic_product_card_id": card.id,
+        "semantic_price_block_ids": [price_block.id],
+        "source_group_id": group_id,
+        "product_snapshot": {},
+    }
+    complete_ids = [str(node_id) for node_id in price_block.roles.get("complete", []) if str(node_id) in page.nodes]
+    if complete_ids:
+        metadata["extra_bindings"] = {"price_amount_complete": complete_ids}
+
     slot = SmartSlot(
         id=slot_id,
         name=_clean_text(name_node.text) if name_node is not None else f"Produto recuperado {len(page.slots) + 1}",
         page_id=page.id,
         node_by_role=node_by_role,
         confidence=max(0.0, min(1.0, confidence)),
-        metadata={
-            # Mantemos o mesmo contrato do CanvaBindingService; o flag separado
-            # identifica que o slot foi inferido e pode ser reconstruído.
-            "source": "canva-smart-slot",
-            "semantic_recovered": True,
-            "recovered_from_pptx_group": bool(group_id),
-            "recovered_spatial": not bool(group_id),
-            "semantic_product_card_id": card.id,
-            "semantic_price_block_ids": [price_block.id],
-            "source_group_id": group_id,
-            "product_snapshot": {},
-        },
+        metadata=metadata,
     )
     page.slots[slot.id] = slot
     card.slot_id = slot.id
@@ -794,7 +802,41 @@ def _recover_unbound_price_blocks(page: GraphicsPage) -> list[SemanticBlock]:
     integers = [node for node in text_nodes if node.id not in reserved and _REAIS_RE.fullmatch(_clean_text(node.text))]
     cents = [node for node in text_nodes if node.id not in reserved and _CENTS_RE.fullmatch(_clean_text(node.text))]
     units = [node for node in text_nodes if node.id not in reserved and _UNIT_RE.fullmatch(_clean_text(node.text))]
+    complete_amounts = [
+        node for node in text_nodes
+        if node.id not in reserved and _COMPLETE_AMOUNT_RE.fullmatch(_clean_text(node.text))
+    ]
     recovered: list[SemanticBlock] = []
+
+    # Preços completos exportados pelo Canva (ex.: R$ + 32,77 em uma única
+    # caixa) são uma assinatura distinta dos preços divididos. Exigimos moeda
+    # local explícita e relação espacial conservadora; datas/números isolados
+    # nunca entram nesta passagem. Processar de cima para baixo faz o primeiro
+    # preço visual ganhar o contexto quando um template possui dois valores sem
+    # rótulo explícito de Clube/app.
+    complete_amounts.sort(key=lambda node: (node.transform.y, node.transform.x, node.id))
+    for amount in complete_amounts:
+        if amount.id in reserved:
+            continue
+        currency = _nearest_complete_currency(amount, currencies, reserved)
+        if currency is None:
+            continue
+        roles = {
+            "currency": [currency.id],
+            "complete": [amount.id],
+        }
+        stable = _stable_node_key(amount)
+        block = _make_price_block(
+            page,
+            f"priceblock:recovered:{stable}",
+            "",
+            roles,
+            source="spatial-recovery-complete",
+            recovered=True,
+        )
+        block.metadata["complete_binding_role"] = "price_amount_complete"
+        recovered.append(block)
+        reserved.update({currency.id, amount.id})
 
     # Começar pelos números maiores reduz risco de casar um valor pequeno de
     # outro card quando cards estão próximos na grade.
@@ -829,6 +871,36 @@ def _recover_unbound_price_blocks(page: GraphicsPage) -> list[SemanticBlock]:
         recovered.append(block)
         reserved.update(members)
     return recovered
+
+
+def _nearest_complete_currency(
+    amount: GraphicsNode,
+    currencies: list[GraphicsNode],
+    reserved: set[str],
+) -> GraphicsNode | None:
+    at = amount.transform
+    ax = at.x + at.width / 2.0
+    ay = at.y + at.height / 2.0
+    scale_x = max(at.width, 1.0)
+    scale_y = max(at.height, 1.0)
+    best: tuple[float, GraphicsNode] | None = None
+    for node in currencies:
+        if node.id in reserved:
+            continue
+        t = node.transform
+        nx = t.x + t.width / 2.0
+        ny = t.y + t.height / 2.0
+        dx = (nx - ax) / scale_x
+        dy = (ny - ay) / scale_y
+        # A moeda do template fica à esquerda e, no máximo, levemente abaixo
+        # do centro do valor. Isso rejeita o preço antigo "DE:" do Atacado,
+        # cujo R$ pertence ao preço promocional posterior.
+        if dx > 0.10 or dx < -0.78 or dy < -1.45 or dy > 0.15:
+            continue
+        score = hypot(dx, dy)
+        if best is None or score < best[0]:
+            best = (score, node)
+    return best[1] if best is not None else None
 
 
 def _nearest_price_token(
