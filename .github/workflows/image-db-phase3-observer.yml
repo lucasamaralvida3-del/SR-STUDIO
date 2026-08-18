@@ -1,0 +1,134 @@
+name: Image DB Phase 3 Exact Run Observer
+
+on:
+  push:
+    branches:
+      - g2/parallel-image-database
+    paths:
+      - '.github/workflows/image-db-phase3-observer.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 125
+    env:
+      TARGET_SHA: 5f3800fd7698e69d752c0df7c829d6b33d97dd2d
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wait for exact Phase 3 run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/phase3-observer docs/parallel/phase3-evidence
+          run_id=''
+          for attempt in $(seq 1 240); do
+            row=$(gh run list \
+              --workflow image-db-phase3.yml \
+              --branch g2/parallel-image-database \
+              --commit "$TARGET_SHA" \
+              --limit 5 \
+              --json databaseId,status,conclusion,headSha,url,createdAt,updatedAt,workflowName \
+              --jq '.[0] // empty' || true)
+            if [ -n "$row" ]; then
+              printf '%s\n' "$row" > /tmp/phase3-observer/run.json
+              run_id=$(printf '%s\n' "$row" | jq -r '.databaseId')
+              status=$(printf '%s\n' "$row" | jq -r '.status')
+              echo "Observed run $run_id status=$status target=$TARGET_SHA"
+              if [ "$status" = 'completed' ]; then
+                break
+              fi
+            else
+              echo "No validation run visible yet for $TARGET_SHA (attempt $attempt)"
+            fi
+            sleep 30
+          done
+          if [ -z "$run_id" ]; then
+            echo 'No exact validation run was found.' >&2
+            exit 2
+          fi
+          status=$(jq -r '.status' /tmp/phase3-observer/run.json)
+          if [ "$status" != 'completed' ]; then
+            echo "Validation run $run_id did not complete before observer timeout." >&2
+            exit 3
+          fi
+
+          gh run view "$run_id" --json databaseId,status,conclusion,headSha,headBranch,event,url,createdAt,updatedAt,workflowName,jobs \
+            > /tmp/phase3-observer/run-view.json
+          gh run download "$run_id" -n image-db-phase3-report -D /tmp/phase3-observer/artifact || true
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" > /tmp/phase3-observer/artifacts.json
+
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+
+          target = Path('docs/parallel/phase3-evidence')
+          root = Path('/tmp/phase3-observer')
+          run = json.loads((root/'run-view.json').read_text(encoding='utf-8'))
+          artifacts = json.loads((root/'artifacts.json').read_text(encoding='utf-8'))
+          evidence = root/'artifact'
+          wanted = [
+              'phase3-summary.json',
+              'corpus-availability.json',
+              'corpus-download-verification.json',
+              'release-assets.json',
+              'corpus-inventory-gate.json',
+              'ingest-report.json',
+              'standalone-ingest-report.json',
+              'persistence-report.json',
+              'idempotency-report.json',
+              'recovery-report.json',
+              'library-audit.json',
+              'coverage-catalog-520.json',
+              'coverage-departments.json',
+              'find-image-results.json',
+              'performance.json',
+              'memory.json',
+              'operational-analysis-gates.json',
+              'top-missing-100.csv',
+              'review-files.txt',
+              'environment.txt',
+              'tests-gate.txt',
+          ]
+          copied = []
+          for name in wanted:
+              source = next(evidence.rglob(name), None) if evidence.exists() else None
+              if source and source.is_file():
+                  destination = target/name
+                  destination.parent.mkdir(parents=True, exist_ok=True)
+                  shutil.copy2(source, destination)
+                  copied.append(name)
+          payload = {
+              'target_sha': os.environ['TARGET_SHA'],
+              'run': run,
+              'artifacts': artifacts.get('artifacts', []),
+              'copied_evidence': copied,
+          }
+          Path('docs/parallel/CHAT8_PHASE3_OBSERVER.json').write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2), encoding='utf-8'
+          )
+          PY
+
+      - name: Persist exact run evidence on isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/parallel/CHAT8_PHASE3_OBSERVER.json docs/parallel/phase3-evidence
+          git commit -m 'image-db: persist exact Phase 3 run evidence [skip ci]'
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:g2/parallel-image-database; then
+              exit 0
+            fi
+            git pull --rebase origin g2/parallel-image-database
+          done
+          exit 1
