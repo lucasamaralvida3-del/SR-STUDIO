@@ -18,8 +18,9 @@ from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
 import math
-import re
 import zipfile
+
+from srstudio.importers.pptx.package_order import ordered_slide_paths
 
 from .image_fill import has_drawingml_fill_rect, normalize_fill_rect
 from .model import GraphicsDocument, GraphicsNode, NodeKind
@@ -28,7 +29,6 @@ from .pptx_image_transform import recover_pptx_image_transforms
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
-_SLIDE_RE = re.compile(r"^ppt/slides/slide(\d+)\.xml$")
 _KEYS = ("l", "t", "r", "b")
 
 
@@ -195,6 +195,7 @@ def _recover_image_transform_contracts(path: Path, document: GraphicsDocument) -
             "exact_contracts": 0,
             "exact_non_identity_contracts": 0,
             "corrected_contracts": 0,
+            "composed_group_contracts": 0,
             "deferred_group_contracts": 0,
             "coverage": 0.0,
             "non_identity_coverage": 0.0,
@@ -206,12 +207,7 @@ def _recover_image_transform_contracts(path: Path, document: GraphicsDocument) -
 def _read_contracts(path: Path) -> list[PptxFillRectContract]:
     contracts: list[PptxFillRectContract] = []
     with zipfile.ZipFile(path) as archive:
-        entries: list[tuple[int, str]] = []
-        for name in archive.namelist():
-            match = _SLIDE_RE.match(name)
-            if match:
-                entries.append((int(match.group(1)), name))
-        for slide, name in sorted(entries):
+        for slide, name in enumerate(ordered_slide_paths(archive), start=1):
             root = ET.fromstring(archive.read(name))
             for shape in root.findall(f".//{{{P_NS}}}sp"):
                 if shape.find(f".//{{{A_NS}}}blip") is None:
