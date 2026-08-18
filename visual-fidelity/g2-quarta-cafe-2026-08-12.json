@@ -1,0 +1,49 @@
+{
+  "name": "G2 Quarta Café com Pão Santa Juliana 12-08-2026 — baseline candidate",
+  "source": {
+    "name": "OFERTAS QUARTA CAFÉ COM PÃO NOVO.pptx",
+    "sha256": "df20e5650711755cd9655b33eab2f72f0d7588f95c06bb34dca161dee2eae395"
+  },
+  "status": "baseline_established_pending_png_reference",
+  "source_type": "Canva PPTX export",
+  "canva_document_id": "DAHMFY898gM",
+  "notes": "Exclusivo do Studio G2. As referências recuperadas são exports oficiais Canva JPEG com XMP CreatorTool=Canva (Renderer), doc id coincidente e títulos de páginas correspondentes. Ainda não satisfazem a regra atual de PNG direto. Não converter ou substituir silenciosamente.",
+  "cases": [
+    {
+      "name": "Quarta Café · grade Café/Padaria",
+      "page": 6,
+      "slide": 7,
+      "file": "7.jpg",
+      "sha256": "5624fc40a6c91eb087b554300364bab836144bc032cb2d6ec25b61274588a446",
+      "width": 1080,
+      "height": 1350
+    },
+    {
+      "name": "Quarta Café · grade Leite/Toddy/Bebidas lácteas/Nutella",
+      "page": 7,
+      "slide": 8,
+      "file": "8(1).jpg",
+      "sha256": "d12ddb1e045bfcb14b83ed72f62e49b7d84d2e20cba517afe2448285c00e98af",
+      "width": 1080,
+      "height": 1350
+    },
+    {
+      "name": "Quarta Café · grade Manteiga/Cappuccino/Goiabada/Bebidas",
+      "page": 8,
+      "slide": 9,
+      "file": "9.jpg",
+      "sha256": "afa7a149b1d5c3f9e0a17b0677daa896e90688dd28e40427361273a5124cbd65",
+      "width": 1080,
+      "height": 1350
+    },
+    {
+      "name": "Quarta Café · destaque Pão Francês",
+      "page": 9,
+      "slide": 10,
+      "file": "10.jpg",
+      "sha256": "d70d984e34a4765688b56b59ac601f9c7e9ed5a318b6e83ea6cdf7ef50ac608b",
+      "width": 1080,
+      "height": 1350
+    }
+  ]
+}
