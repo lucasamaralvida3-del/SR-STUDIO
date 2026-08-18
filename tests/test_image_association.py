@@ -40,6 +40,8 @@ def test_product_candidate_rejects_price_and_operational_text():
     assert is_product_text_candidate("MUSSARELA TRADICIONAL")
     assert is_product_text_candidate("TODDY 370G")
     assert is_product_text_candidate("MONSTER 473ML")
+    assert is_product_text_candidate("MAIONESE HELLMANNS 500G")
+    assert is_product_text_candidate("TAPIOCA AMAFIL 500G")
     assert not is_product_text_candidate("PACOTE 500G")
     assert not is_product_text_candidate("UNIDADE 500G")
     assert not is_product_text_candidate("R$ 18,99")
@@ -58,6 +60,31 @@ def test_cross_document_consensus_boosts_same_product():
     assert result.distinct_source_count == 3
     assert result.source_count == 3
     assert result.consensus_ratio == 1.0
+    assert result.status == "accepted"
+
+
+def test_single_source_high_confidence_cannot_auto_accept():
+    engine = ProductImageAssociationEngine()
+    result = engine.resolve([
+        ev(
+            "MONSTER 473ML",
+            confidence=.99,
+            source="single-page.pptx",
+            metadata={"source_document_id": "single-document"},
+        )
+    ])[0]
+    assert result.distinct_source_count == 1
+    assert result.confidence >= .90
+    assert result.status == "probable"
+
+
+def test_two_independent_documents_can_auto_accept_same_product_image():
+    engine = ProductImageAssociationEngine()
+    result = engine.resolve([
+        ev("MONSTER 473ML", confidence=.94, source="week-1.pptx", metadata={"source_document_id": "week-1"}),
+        ev("MONSTER 473ML", confidence=.95, source="week-2.pptx", metadata={"source_document_id": "week-2"}),
+    ])[0]
+    assert result.distinct_source_count == 2
     assert result.status == "accepted"
 
 
@@ -92,6 +119,7 @@ def test_consensus_does_not_double_count_renamed_exact_file_copies():
     result = engine.resolve(rows)[0]
     assert result.source_count == 3
     assert result.distinct_source_count == 1
+    assert result.status != "accepted"
 
 
 def test_explicit_document_identity_overrides_media_path_and_basename():
@@ -159,13 +187,37 @@ def test_conflicting_product_names_are_not_silently_accepted():
 
 
 def test_spatial_score_rewards_horizontal_overlap_and_same_group():
-    base, _ = spatial_pair_score(
+    base, signals = spatial_pair_score(
         (100, 100, 300, 300), (120, 430, 260, 50), slide_width=1000, slide_height=1000
     )
     grouped, _ = spatial_pair_score(
         (100, 100, 300, 300), (120, 430, 260, 50), slide_width=1000, slide_height=1000, same_group=True
     )
+    assert signals["horizontal_overlap"] > .8
+    assert signals["vertical_nearness"] > .6
     assert grouped > base
+
+
+def test_grid_pairing_prefers_same_column_adjacent_row_boundary():
+    # Regression for real SR/Canva flyer grids: the product text is stacked
+    # directly above/below its own photo while another product can have a
+    # center that is deceptively close in the neighboring grid row/column.
+    slide_width = 10800000
+    slide_height = 10800000
+    name = (3420000, 2140000, 2050000, 390000)
+    correct_image = (3520000, 2560000, 1750000, 1880000)
+    wrong_neighbor = (6150000, 1520000, 1700000, 1880000)
+
+    correct, correct_signals = spatial_pair_score(
+        correct_image, name, slide_width=slide_width, slide_height=slide_height, product_likelihood=.9
+    )
+    wrong, wrong_signals = spatial_pair_score(
+        wrong_neighbor, name, slide_width=slide_width, slide_height=slide_height, product_likelihood=.9
+    )
+
+    assert correct_signals["x_alignment"] > wrong_signals["x_alignment"]
+    assert correct_signals["vertical_nearness"] > wrong_signals["vertical_nearness"]
+    assert correct > wrong
 
 
 def test_template_reuse_is_conservative():
