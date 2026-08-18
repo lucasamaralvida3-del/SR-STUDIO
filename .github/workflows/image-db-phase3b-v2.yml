@@ -186,7 +186,7 @@ jobs:
             'verified': ver.get('verified') is True,
             'image_files_160': int(metrics.get('image_files') or -1)==160,
             'valid_images_160': int(metrics.get('valid_images') or -1)==160,
-            'corrupt_images_zero': int(metrics.get('corrupt_images') or -1)==0,
+            'corrupt_images_zero': int(metrics.get('corrupt_images', -1))==0,
           }
           report={'expected_size':expected_size,'expected_sha256':expected_sha,'verification':ver,'manifest_metrics':metrics,'checks':checks,'pass':all(checks.values())}
           (art/'standalone-reference-gate.json').write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8')
