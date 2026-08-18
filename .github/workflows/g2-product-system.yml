@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - g2/parallel-product-system
+      - g2/integration-beta
     paths:
       - "src/srstudio/graphics2/**"
       - "tests/test_graphics2_core.py"
