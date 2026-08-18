@@ -53,3 +53,12 @@ def test_project_actions_blocks_close_when_recovery_cannot_be_written():
     assert "function onClosing(close)" in source
     assert "sceneBridge.protectBeforeClose()" in source
     assert "close.accepted = false" in source
+
+
+def test_project_actions_debounces_autosave_after_scene_changes():
+    source = _QML.read_text(encoding="utf-8")
+
+    assert "id: autosaveDebounce" in source
+    assert "interval: 2500" in source
+    assert "autosaveDebounce.restart()" in source
+    assert "sceneBridge.autosaveIfNeeded()" in source
