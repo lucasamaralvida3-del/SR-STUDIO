@@ -1,8 +1,8 @@
 {
   "status": "READY FOR INTEGRATION — COVERAGE EXPANSION PENDING",
   "automated_pass": true,
-  "tested_sha": "fe10326431a7d4e45e057d48ec3a2ee8d1137614",
-  "run_id": "32178496031",
+  "tested_sha": "f7cb9808a381d309549652bec2fa1f62851c2e30",
+  "run_id": "32179479149",
   "gates": {
     "Environment": true,
     "Tests": true,
@@ -543,23 +543,23 @@
   "performance": {
     "standalone_ingest_seconds": 1,
     "second_ingest_seconds": 0,
-    "index_load_seconds": 0.025893,
+    "index_load_seconds": 0.018786,
     "exact_lookup": {
-      "mean_ms": 0.054497,
-      "p50_ms": 0.025997,
-      "p95_ms": 0.231542,
-      "max_ms": 0.281936
+      "mean_ms": 0.037396,
+      "p50_ms": 0.018302,
+      "p95_ms": 0.166042,
+      "max_ms": 0.20344
     },
     "fuzzy_lookup": {
-      "mean_ms": 0.061658,
-      "p50_ms": 0.027592,
-      "p95_ms": 0.237776,
-      "max_ms": 0.310907
+      "mean_ms": 0.041138,
+      "p50_ms": 0.018298,
+      "p95_ms": 0.1578,
+      "max_ms": 0.168847
     },
-    "audit_seconds": 0.112457,
-    "standalone_ingest_peak_rss_kb": 80100,
-    "second_ingest_peak_rss_kb": 40356,
-    "audit_peak_rss_kb": 258864,
+    "audit_seconds": 0.081033,
+    "standalone_ingest_peak_rss_kb": 80984,
+    "second_ingest_peak_rss_kb": 40412,
+    "audit_peak_rss_kb": 258944,
     "phase3a_ingest_reference_seconds": 514,
     "phase3a_index_load_reference_seconds": 0.028297,
     "phase3a_audit_reference_seconds": 0.125125
@@ -629,6 +629,6 @@
     },
     "pass": true
   },
-  "fresh_rebuild_seconds": 509,
+  "fresh_rebuild_seconds": 434,
   "merges_performed": false
 }
