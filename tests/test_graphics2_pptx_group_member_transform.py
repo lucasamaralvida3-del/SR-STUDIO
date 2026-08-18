@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 from zipfile import ZipFile
 
 from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, NodeKind, Transform
@@ -114,7 +115,7 @@ def test_anisotropic_group_plus_rotated_text_defers_shear_without_mutation(tmp_p
     document = GraphicsDocument(name="sheared text")
     document.active_page.width = document.active_page.height = 100
     node = _node(NodeKind.TEXT, "Sheared Text", rotation=45.0)
-    before = node.transform.to_dict()
+    before = asdict(node.transform)
     document.active_page.add_node(node)
 
     report = recover_pptx_group_member_transforms(source, document)
@@ -125,7 +126,7 @@ def test_anisotropic_group_plus_rotated_text_defers_shear_without_mutation(tmp_p
     assert report.corrected_members == 0
     assert report.deferred_shear_members == 1
     assert report.coverage == 0.0
-    assert node.transform.to_dict() == before
+    assert asdict(node.transform) == before
     assert any(issue.code == "PPTX_GROUP_MEMBER_SHEAR_DEFERRED" for issue in report.issues)
 
 
