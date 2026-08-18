@@ -9,6 +9,7 @@ import pytest
 
 from srstudio.graphics2.reference_suite import (
     _render_performance,
+    _top_impact_note,
     _top_suspect_note,
     load_reference_manifest,
     verify_reference_case,
@@ -114,6 +115,22 @@ def test_reference_suite_formats_top_scene_suspect_for_console() -> None:
     assert _top_suspect_note({}) == ""
 
 
+def test_reference_suite_formats_top_impact_category_for_console() -> None:
+    impact = {
+        "categories": [
+            {
+                "category": "TEXT",
+                "priority": "P1",
+                "estimated_percentage_points": 6.375,
+                "impact_share": 0.72,
+            }
+        ]
+    }
+
+    assert _top_impact_note(impact) == " · impacto TEXT/P1: ~6.38 pp (72.0% do diff medido)"
+    assert _top_impact_note({}) == ""
+
+
 def test_reference_suite_summarizes_render_timings_without_threshold_coupling() -> None:
     summary = _render_performance([12.5, 25.0, 17.5])
 
@@ -134,7 +151,9 @@ def test_reference_suite_summarizes_render_timings_without_threshold_coupling() 
 def test_reference_suite_source_persists_scene_aware_worst_case() -> None:
     source = (Path(__file__).parents[1] / "src" / "srstudio" / "graphics2" / "reference_suite.py").read_text(encoding="utf-8")
     assert "attribute_fidelity_regions" in source
+    assert "summarize_fidelity_impact" in source
     assert '"attribution_report"' in source
+    assert '"impact_report"' in source
     assert "store_fidelity_triage" in source
     assert '"visual_fidelity_worst_case"' in source
     assert '"pptx_effect_mapping"' in source
