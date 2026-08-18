@@ -74,7 +74,7 @@ def test_graphics_import_service_restores_exact_ooxml_text_before_mapping_audit(
     node = next(node for node in result.document.active_page.nodes.values() if node.name == "Texto Canva")
     recovery = result.document.metadata["pptx_text_content_recovery"]
 
-    assert node.content == " OFERTA \n\nR$ 9,99"
+    assert node.text == " OFERTA \n\nR$ 9,99"
     assert node.metadata["pptx_text_content_previous"] == "OFERTA\nR$ 9,99"
     assert node.metadata["pptx_shape_id"] == "42"
     assert recovery["source_contracts"] == 1
