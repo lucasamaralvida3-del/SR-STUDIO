@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import srstudio
 from srstudio.diagnostics.crash_guard import CrashGuard
-from srstudio.graphics2.entrypoint import diagnostics_root
+from srstudio.graphics2 import ENGINE_VERSION
+from srstudio.graphics2.entrypoint import diagnostics_root, main, version_string
 from srstudio.graphics2.release_smoke import build_smoke_document
 
 
@@ -15,6 +17,14 @@ def test_release_smoke_document_is_small_portable_scene():
     assert document.active_page.width == 640
     assert document.active_page.height == 480
     assert len(document.active_page.nodes) == 2
+
+
+def test_release_version_is_available_without_starting_qt(capsys):
+    assert main(["--version"]) == 0
+    output = capsys.readouterr().out.strip()
+    assert srstudio.__version__ in output
+    assert ENGINE_VERSION in output
+    assert version_string() == output
 
 
 def test_crash_guard_records_release_context(tmp_path):
