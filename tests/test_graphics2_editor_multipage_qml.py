@@ -27,6 +27,21 @@ def test_project_actions_exposes_complete_multipage_lifecycle():
 def test_project_actions_keeps_save_and_export_actions_available():
     source = _QML.read_text(encoding="utf-8")
 
+    assert "sceneBridge.saveProject()" in source
     assert "sceneBridge.saveSceneAs" in source
+    assert "sceneBridge.dirty" in source
+    assert "sceneBridge.autosaveBusy" in source
+    assert "StandardKey.Save" in source
     assert "sceneBridge.exportPdf" in source
     assert "sceneBridge.exportPng" in source
+
+
+def test_project_actions_exposes_standard_clipboard_shortcuts():
+    source = _QML.read_text(encoding="utf-8")
+
+    assert "StandardKey.Copy" in source
+    assert "StandardKey.Cut" in source
+    assert "StandardKey.Paste" in source
+    assert '"name": "copy"' in source
+    assert '"name": "cut"' in source
+    assert '"name": "paste"' in source
