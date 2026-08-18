@@ -5,6 +5,7 @@ from logging.handlers import RotatingFileHandler
 import os
 from pathlib import Path
 import sys
+import tempfile
 
 import srstudio
 from srstudio.diagnostics.crash_guard import CrashGuard
@@ -17,9 +18,16 @@ LOGGER_NAME = "srstudio.graphics2"
 
 def diagnostics_root() -> Path:
     configured = str(os.environ.get("SR_STUDIO_G2_DIAGNOSTICS_ROOT") or "").strip()
-    root = Path(configured).expanduser() if configured else Path.home() / ".srstudio5" / "diagnostics-g2"
-    root.mkdir(parents=True, exist_ok=True)
-    return root
+    preferred = Path(configured).expanduser() if configured else Path.home() / ".srstudio5" / "diagnostics-g2"
+    fallback = Path(tempfile.gettempdir()) / "SRStudio" / "diagnostics-g2"
+    last_error: OSError | None = None
+    for candidate in (preferred, fallback):
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            return candidate
+        except OSError as exc:
+            last_error = exc
+    raise OSError(f"Não foi possível criar diretório de diagnóstico G2: {last_error}")
 
 
 def configure_logging(root: Path | None = None) -> tuple[logging.Logger, Path]:
