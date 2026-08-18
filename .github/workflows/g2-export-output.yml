@@ -10,6 +10,7 @@ on:
       - "src/srstudio/graphics2/qt_renderer.py"
       - "tests/test_graphics2_export_output.py"
       - "tests/test_graphics2_qt_renderer.py"
+      - "tests/benchmark_graphics2_export_output.py"
       - ".github/workflows/g2-export-output.yml"
   workflow_dispatch:
 
@@ -46,7 +47,7 @@ jobs:
           python -m pip install -e ".[dev,graphics2]"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Compile, lint and test export contracts
+      - name: Compile, lint, test and benchmark export contracts
         id: checks
         if: steps.install.outcome == 'success'
         continue-on-error: true
@@ -54,19 +55,23 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          python -m compileall -q src/srstudio/graphics2/export_output.py src/srstudio/graphics2/qt_render_runtime.py src/srstudio/graphics2/qt_renderer.py
+          python -m compileall -q src/srstudio/graphics2/export_output.py src/srstudio/graphics2/qt_render_runtime.py src/srstudio/graphics2/qt_renderer.py tests/benchmark_graphics2_export_output.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m ruff check src/srstudio/graphics2/export_output.py src/srstudio/graphics2/qt_render_runtime.py tests/test_graphics2_export_output.py
+          python -m ruff check src/srstudio/graphics2/export_output.py src/srstudio/graphics2/qt_render_runtime.py tests/test_graphics2_export_output.py tests/benchmark_graphics2_export_output.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest -q tests/test_graphics2_export_output.py tests/test_graphics2_qt_renderer.py --junitxml=g2-export-output.xml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python tests/benchmark_graphics2_export_output.py --output g2-export-benchmark.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Upload export test report
+      - name: Upload export reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: g2-export-output-report
-          path: g2-export-output.xml
+          path: |
+            g2-export-output.xml
+            g2-export-benchmark.json
           if-no-files-found: ignore
 
       - name: Publish observable commit gate
@@ -77,7 +82,13 @@ jobs:
         run: |
           $ok = ("${{ steps.install.outcome }}" -eq "success") -and ("${{ steps.checks.outcome }}" -eq "success")
           $state = if ($ok) { "success" } else { "failure" }
-          $description = if ($ok) { "G2 export contracts passed on Windows/PySide6" } else { "G2 export contracts failed; inspect workflow" }
+          if ($ok -and (Test-Path "g2-export-benchmark.json")) {
+            $bench = Get-Content "g2-export-benchmark.json" -Raw | ConvertFrom-Json
+            $description = "PASS PNG10 $($bench.png_batch_total_ms)ms ($($bench.png_batch_per_page_ms)ms/p) PDF10 $($bench.pdf_total_ms)ms RSS+$($bench.png_batch_peak_rss_delta_mb)MB"
+          } else {
+            $description = "FAIL G2 export contracts; inspect workflow artifact/log"
+          }
+          if ($description.Length -gt 140) { $description = $description.Substring(0, 140) }
           gh api --method POST "repos/${{ github.repository }}/statuses/${{ github.sha }}" `
             --raw-field state="$state" `
             --raw-field context="g2/export-output" `
