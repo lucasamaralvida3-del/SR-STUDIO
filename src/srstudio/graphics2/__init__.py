@@ -86,6 +86,21 @@ from .semantic_blocks import (
     semantic_member_ids,
     semantic_owner,
 )
+
+# CHAT 4 was developed on top of these runtime guards. They are explicit here
+# because the official integration base does not include the older 89c package
+# bootstrap that used to install them implicitly.
+from . import semantic_blocks as _semantic_blocks
+from .semantic_runtime import install_semantic_recovery_guard
+
+install_semantic_recovery_guard(_semantic_blocks)
+build_semantic_blocks = _semantic_blocks.build_semantic_blocks
+
+from . import import_bridge as _import_bridge
+from .binding_runtime import install_template_aware_binding_guard
+
+install_template_aware_binding_guard(_import_bridge)
+
 from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_image_placeholders
 from .semantic_recovery import recover_canva_semantic_cards
 from .studio_bridge import (
@@ -99,10 +114,7 @@ from .studio_bridge import (
 )
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
-# CHAT 4 runtime extensions are installed against the current official session
-# and command-router classes instead of importing the older 89c package surface.
 from . import command_router as _command_router
-from . import semantic_blocks as _semantic_blocks
 from .command_router import GraphicsCommandRouter
 from .product_card_runtime import (
     ProductCardCreation,
