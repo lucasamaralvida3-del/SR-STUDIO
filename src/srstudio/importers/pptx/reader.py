@@ -3,13 +3,13 @@ from __future__ import annotations
 import hashlib
 import math
 import posixpath
-import re
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from srstudio.assets.font_fallbacks import preferred_windows_display_family
+from srstudio.importers.pptx.package_order import ordered_slide_paths
 from srstudio.importers.pptx.shape_geometry import shape_geometry_metadata
 
 
@@ -83,10 +83,7 @@ class PptxImporter:
         with zipfile.ZipFile(source) as zf:
             slide_width, slide_height = self._presentation_size(zf)
             media_map = self._extract_media(zf, target_media) if target_media else {}
-            slides = sorted(
-                (name for name in zf.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)),
-                key=self._slide_number,
-            )
+            slides = ordered_slide_paths(zf)
             for idx, slide_path in enumerate(slides, start=1):
                 try:
                     result.slides.append(
@@ -494,8 +491,3 @@ class PptxImporter:
     def _name(node: ET.Element) -> str:
         nv = node.find(f".//{{{P_NS}}}cNvPr")
         return nv.get("name", "") if nv is not None else ""
-
-    @staticmethod
-    def _slide_number(path: str) -> int:
-        match = re.search(r"slide(\d+)\.xml$", path)
-        return int(match.group(1)) if match else 0
