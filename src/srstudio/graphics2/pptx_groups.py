@@ -17,6 +17,7 @@ from srstudio.importers.pptx.package_order import ordered_slide_paths
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind, Rect, Transform
 from .pptx_group_transform import recover_pptx_group_member_transforms
+from .pptx_shape_visual import recover_pptx_shape_visuals
 
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
@@ -43,6 +44,9 @@ def rebuild_pptx_groups(source: str | Path, document: GraphicsDocument) -> PptxG
     report = PptxGroupReport()
     if path.suffix.lower() != ".pptx" or not path.is_file():
         return report
+    # Companions visuais precisam existir antes de montarmos o índice por nome;
+    # assim owner TEXT + backplate visual entram juntos no grupo reconstruído.
+    _recover_shape_visuals(path, document)
     _recover_member_transforms(path, document)
     try:
         with zipfile.ZipFile(path) as archive:
@@ -61,6 +65,25 @@ def rebuild_pptx_groups(source: str | Path, document: GraphicsDocument) -> PptxG
         report.warnings.append(f"Não foi possível reconstruir grupos PPTX: {exc}")
     document.metadata["pptx_groups"] = report.to_dict()
     return report
+
+
+def _recover_shape_visuals(path: Path, document: GraphicsDocument) -> None:
+    try:
+        recover_pptx_shape_visuals(path, document)
+    except Exception as exc:
+        document.metadata["pptx_shape_visual_recovery"] = {
+            "text_shapes": 0,
+            "text_colors_corrected": 0,
+            "compound_text_colors_corrected": 0,
+            "visual_shapes": 0,
+            "visuals_recovered": 0,
+            "existing_visuals": 0,
+            "pure_shape_colors_corrected": 0,
+            "deferred_geometry": 0,
+            "visual_coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
 
 
 def _recover_member_transforms(path: Path, document: GraphicsDocument) -> None:
