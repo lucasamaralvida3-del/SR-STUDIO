@@ -49,8 +49,9 @@ def apply_evidence_aliases(
 
         for asset in library.find_for_product(decision.product_name):
             metadata = dict(getattr(asset, "metadata", {}) or {})
-            full_sha = str(metadata.get("sha256", ""))
-            if full_sha and full_sha != decision.image_sha256:
+            full_sha = str(metadata.get("sha256_full") or metadata.get("sha256") or "")
+            variant_sha = {str(value) for value in (metadata.get("variant_sha256") or ()) if value}
+            if full_sha and full_sha != decision.image_sha256 and decision.image_sha256 not in variant_sha:
                 continue
             before = set(getattr(asset, "aliases", ()) or ())
             merged = before | set(aliases)
