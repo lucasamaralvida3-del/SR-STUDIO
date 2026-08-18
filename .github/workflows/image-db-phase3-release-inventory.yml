@@ -1,0 +1,51 @@
+name: Image DB Phase 3 Release Inventory
+
+on:
+  push:
+    branches:
+      - g2/parallel-image-database
+    paths:
+      - '.github/workflows/image-db-phase3-release-inventory.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Inventory all visible releases and assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docs/parallel/phase3-evidence
+          gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate --slurp > /tmp/releases-pages.json
+          jq '[.[][] | {id,tag_name,name,draft,prerelease,created_at,published_at,assets:[.assets[]? | {id,name,size,digest,state,created_at,updated_at}]}]' \
+            /tmp/releases-pages.json > docs/parallel/phase3-evidence/release-inventory.json
+          gh release list --limit 200 --json tagName,name,isDraft,isPrerelease,createdAt,publishedAt \
+            > docs/parallel/phase3-evidence/release-list-gh.json
+          jq '[.[] | . as $r | .assets[]? | {tag:$r.tag_name,draft:$r.draft,release_name:$r.name,name,size,digest,state}]' \
+            docs/parallel/phase3-evidence/release-inventory.json \
+            > docs/parallel/phase3-evidence/release-assets-flat.json
+          jq '[.[] | select((.name|ascii_downcase|contains("download")) or (.name|ascii_downcase|contains("standalone")) or (.name|ascii_downcase|contains("publish")) or (.name|ascii_downcase|contains("phase3")))]' \
+            docs/parallel/phase3-evidence/release-assets-flat.json \
+            > docs/parallel/phase3-evidence/release-assets-relevant.json
+      - name: Persist inventory on isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/parallel/phase3-evidence/release-*.json
+          git commit -m 'image-db: persist Release asset inventory [skip ci]'
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:g2/parallel-image-database; then exit 0; fi
+            git pull --rebase origin g2/parallel-image-database
+          done
+          exit 1
