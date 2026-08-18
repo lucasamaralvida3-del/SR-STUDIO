@@ -13,7 +13,7 @@ from typing import Callable, TypeVar
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from srstudio.graphics2.model import GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Transform
-from srstudio.graphics2.package import load_package, save_package
+from srstudio.graphics2.package import load_package, register_local_asset, save_package
 from srstudio.graphics2.preflight import assert_document_integrity
 from srstudio.graphics2.qt_renderer import render_pdf, render_png
 
@@ -72,6 +72,69 @@ def _document(page_count: int, *, nodes_per_page: int = 20) -> GraphicsDocument:
     )
 
 
+def _image_heavy_document(root: Path, *, page_count: int = 4, images_per_page: int = 10) -> GraphicsDocument:
+    from PIL import Image, ImageDraw
+
+    pages = [GraphicsPage(name=f"Image Heavy {index + 1}", width=1080, height=1350) for index in range(page_count)]
+    document = GraphicsDocument(
+        name=f"QA image-heavy {page_count * images_per_page} imagens",
+        pages=pages,
+        active_page_id=pages[0].id,
+        metadata={
+            "qa_image_heavy": True,
+            "pages": page_count,
+            "images_per_page": images_per_page,
+        },
+    )
+    source_dir = root / "image-heavy-sources"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    total = page_count * images_per_page
+    for index in range(total):
+        path = source_dir / f"asset-{index:02d}.png"
+        base = ((index * 47) % 256, (index * 83) % 256, (index * 131) % 256)
+        image = Image.new("RGB", (256, 256), base)
+        draw = ImageDraw.Draw(image)
+        for band in range(0, 256, 32):
+            accent = (
+                (base[0] + band + index * 3) % 256,
+                (base[1] + band * 2 + index * 5) % 256,
+                (base[2] + band * 3 + index * 7) % 256,
+            )
+            draw.rectangle((band, 0, min(255, band + 15), 255), fill=accent)
+        image.save(path, format="PNG")
+        asset = register_local_asset(document, path, mime="image/png")
+        asset.width = 256
+        asset.height = 256
+
+        page = pages[index // images_per_page]
+        local_index = index % images_per_page
+        column = local_index % 5
+        row = local_index // 5
+        page.add_node(
+            GraphicsNode(
+                kind=NodeKind.IMAGE,
+                name=f"Imagem {index + 1}",
+                asset_id=asset.id,
+                transform=Transform(
+                    x=30 + column * 205,
+                    y=80 + row * 350,
+                    width=180,
+                    height=280,
+                ),
+                style={
+                    "fit": "cover",
+                    "focus_x": 0.35 + (index % 4) * 0.1,
+                    "focus_y": 0.4 + (index % 3) * 0.1,
+                    "zoom": 1.0 + (index % 5) * 0.05,
+                    "flip_x": bool(index % 7 == 0),
+                },
+                z_index=local_index,
+            )
+        )
+    assert_document_integrity(document)
+    return document
+
+
 def _measure(call: Callable[[], T], *, repeats: int = 1) -> tuple[T, dict[str, float | int | None]]:
     durations: list[float] = []
     cpu_durations: list[float] = []
@@ -123,7 +186,7 @@ def collect_baseline(*, output: Path, page_sizes: list[int], nodes_per_page: int
     startup_wall_s = time.perf_counter() - startup_wall
     startup_cpu_s = time.process_time() - startup_cpu
     report: dict = {
-        "schema": "srstudio/g2-qa-baseline/3",
+        "schema": "srstudio/g2-qa-baseline/4",
         "python": os.sys.version,
         "platform": os.sys.platform,
         "qt_qpa_platform": os.environ.get("QT_QPA_PLATFORM", ""),
@@ -255,6 +318,88 @@ def collect_baseline(*, output: Path, page_sizes: list[int], nodes_per_page: int
             "rss_growth_mb": _trend(render_pdf_rss),
             "max_warnings": pdf_warnings,
         }
+
+        image_document = _image_heavy_document(temp)
+        image_case: dict = {
+            "pages": len(image_document.pages),
+            "assets": len(image_document.assets),
+            "image_nodes": sum(
+                1
+                for page in image_document.pages
+                for node in page.nodes.values()
+                if node.kind is NodeKind.IMAGE
+            ),
+            "source_image_size_px": [256, 256],
+        }
+        image_project = temp / "image-heavy.srscene"
+        _, image_case["save"] = _measure(
+            lambda: save_package(image_document, image_project, embed_local_assets=True),
+            repeats=3,
+        )
+        image_reopened, image_case["load"] = _measure(
+            lambda: load_package(image_project, extract_assets_to=temp / "image-heavy-extracted"),
+            repeats=3,
+        )
+        assert_document_integrity(image_reopened)
+        image_case["project_bytes"] = image_project.stat().st_size
+
+        image_png_rss: list[float | None] = [_rss_mb()]
+        image_png_times: list[float] = []
+        image_png_cpu: list[float] = []
+        image_png_warnings = 0
+        image_png_path = temp / "image-heavy.png"
+        for index in range(20):
+            wall_started = time.perf_counter()
+            cpu_started = time.process_time()
+            image_png_report = render_png(
+                image_reopened,
+                image_png_path,
+                page_index=0,
+                dpi=96,
+                target_width=1080,
+            )
+            image_png_cpu.append(time.process_time() - cpu_started)
+            image_png_times.append(time.perf_counter() - wall_started)
+            image_png_warnings = max(image_png_warnings, len(image_png_report.warnings))
+            if index in {1, 4, 9, 19}:
+                gc.collect()
+                image_png_rss.append(_rss_mb())
+        image_case["render_png_20"] = {
+            "median_iteration_s": statistics.median(image_png_times),
+            "max_iteration_s": max(image_png_times),
+            "median_iteration_cpu_s": statistics.median(image_png_cpu),
+            "max_iteration_cpu_s": max(image_png_cpu),
+            "rss_samples_mb": image_png_rss,
+            "rss_growth_mb": _trend(image_png_rss),
+            "max_warnings": image_png_warnings,
+        }
+
+        image_pdf_rss: list[float | None] = [_rss_mb()]
+        image_pdf_times: list[float] = []
+        image_pdf_cpu: list[float] = []
+        image_pdf_warnings = 0
+        image_pdf_path = temp / "image-heavy.pdf"
+        for index in range(10):
+            wall_started = time.perf_counter()
+            cpu_started = time.process_time()
+            image_pdf_report = render_pdf(image_reopened, image_pdf_path, dpi=96)
+            image_pdf_cpu.append(time.process_time() - cpu_started)
+            image_pdf_times.append(time.perf_counter() - wall_started)
+            image_pdf_warnings = max(image_pdf_warnings, len(image_pdf_report.warnings))
+            if index in {1, 4, 9}:
+                gc.collect()
+                image_pdf_rss.append(_rss_mb())
+        image_case["render_pdf_10"] = {
+            "pages_per_iteration": len(image_reopened.pages),
+            "median_iteration_s": statistics.median(image_pdf_times),
+            "max_iteration_s": max(image_pdf_times),
+            "median_iteration_cpu_s": statistics.median(image_pdf_cpu),
+            "max_iteration_cpu_s": max(image_pdf_cpu),
+            "rss_samples_mb": image_pdf_rss,
+            "rss_growth_mb": _trend(image_pdf_rss),
+            "max_warnings": image_pdf_warnings,
+        }
+        report["image_heavy_40"] = image_case
 
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
