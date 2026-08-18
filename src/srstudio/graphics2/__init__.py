@@ -99,9 +99,25 @@ from .studio_bridge import (
 )
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
+# CHAT 4 runtime extensions are installed against the current official session
+# and command-router classes instead of importing the older 89c package surface.
+from . import command_router as _command_router
+from . import semantic_blocks as _semantic_blocks
+from .command_router import GraphicsCommandRouter
+from .product_card_runtime import (
+    ProductCardCreation,
+    install_product_card_commands,
+    install_product_card_runtime,
+)
+from .product_data_runtime import ProductUpdateResult, install_product_data_runtime
+
 ENGINE_NAME = "SR Graphics Engine"
 ENGINE_VERSION = "2.0.0-alpha.43"
 SCHEMA_VERSION = "srscene/2.0"
+
+install_product_card_runtime(GraphicsSession, _semantic_blocks)
+install_product_card_commands(_command_router)
+install_product_data_runtime(GraphicsSession, _command_router)
 
 __all__ = [
     "AssetRef",
@@ -124,6 +140,7 @@ __all__ = [
     "FidelityTriageReport",
     "FillDestination",
     "FitMode",
+    "GraphicsCommandRouter",
     "GraphicsDocument",
     "GraphicsNode",
     "GraphicsPage",
@@ -155,6 +172,8 @@ __all__ = [
     "PptxSpacingRecoveryReport",
     "PptxStructureReport",
     "PreflightIssue",
+    "ProductCardCreation",
+    "ProductUpdateResult",
     "ProductionGateIssue",
     "ProductionGateReport",
     "Rect",
