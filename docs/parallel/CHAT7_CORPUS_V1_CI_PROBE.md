@@ -1,0 +1,1 @@
+Validation-only marker for the G2 official visual corpus v1 contract. DO NOT MERGE. Legacy Gerador de Cartazes is out of scope.
