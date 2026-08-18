@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from pathlib import Path
 from typing import Any, Iterable
 
 from srstudio.images.association import AssociationEvidence, normalize_product_name, spatial_pair_score
@@ -10,6 +11,7 @@ from srstudio.images.corpus_training import (
     ProductImageCorpusTrainer,
     _ImageCandidate,
     _PRICE_TEXT_RE,
+    sha256_file,
 )
 
 
@@ -30,17 +32,27 @@ class PrecisionProductImageCorpusTrainer(ProductImageCorpusTrainer):
     not get to vote twice. This deliberately prefers precision over recall.
     """
 
-    def train(self, sources: Iterable[str], *, force: bool = False) -> CorpusTrainingReport:
-        state_before = self.state.load()
-        precision_upgrade = state_before.get("precision_trainer_version") != PRECISION_TRAINER_VERSION
-        report = super().train(sources, force=force or precision_upgrade)
+    def train(self, sources: Iterable[str | Path], *, force: bool = False) -> CorpusTrainingReport:
+        source_items = list(sources)
+        stale_sources: list[str] = []
+        if not force:
+            state_before = self.state.load()
+            records = state_before.get("files", {}) if isinstance(state_before, dict) else {}
+            discovery_warnings: list[str] = []
+            for source in self.discover_sources(source_items, warnings=discovery_warnings):
+                try:
+                    digest = sha256_file(source)
+                except OSError:
+                    continue
+                record = records.get(digest) if isinstance(records, dict) else None
+                if isinstance(record, dict) and record.get("precision_trainer_version") != PRECISION_TRAINER_VERSION:
+                    stale_sources.append(str(source))
 
-        state_after = self.state.load()
-        state_after["precision_trainer_version"] = PRECISION_TRAINER_VERSION
-        self.state.save(state_after)
-        if precision_upgrade and state_before.get("files"):
+        report = super().train(source_items, force=force or bool(stale_sources))
+        if stale_sources:
             report.warnings.append(
-                f"Precision trainer upgraded to {PRECISION_TRAINER_VERSION}; active corpus was reprocessed."
+                f"Precision trainer upgraded to {PRECISION_TRAINER_VERSION}; reprocessed "
+                f"{len(stale_sources)} stale source(s) in this batch."
             )
         return report
 
@@ -60,28 +72,21 @@ class PrecisionProductImageCorpusTrainer(ProductImageCorpusTrainer):
 
     @staticmethod
     def _logical_document_fingerprint(record: dict) -> str:
-        evidence_layout = []
+        # Product/image pairs are more stable across Canva/PowerPoint export copies
+        # than package-level bytes or relationship IDs. Bboxes are intentionally
+        # excluded so harmless export rounding cannot manufacture a new source.
+        evidence_pairs = []
         for item in record.get("evidence", []):
             if not isinstance(item, dict):
                 continue
-            evidence_layout.append(
-                {
-                    "product": normalize_product_name(str(item.get("product_name", ""))),
-                    "image_sha256": str(item.get("image_sha256", "")),
-                    "slide": int(item.get("source_slide", 0) or 0),
-                    "image_bbox": [int(value) for value in item.get("image_bbox", (0, 0, 0, 0))],
-                    "name_bbox": [int(value) for value in item.get("name_bbox", (0, 0, 0, 0))],
-                }
+            evidence_pairs.append(
+                (
+                    int(item.get("source_slide", 0) or 0),
+                    normalize_product_name(str(item.get("product_name", ""))),
+                    str(item.get("image_sha256", "")),
+                )
             )
-        evidence_layout.sort(
-            key=lambda item: (
-                item["slide"],
-                item["image_sha256"],
-                item["product"],
-                item["image_bbox"],
-                item["name_bbox"],
-            )
-        )
+        evidence_pairs.sort()
         payload = {
             "slides": int(record.get("slides", 0) or 0),
             "raw_image_refs": int(record.get("raw_image_refs", 0) or 0),
@@ -91,7 +96,7 @@ class PrecisionProductImageCorpusTrainer(ProductImageCorpusTrainer):
                 for value in record.get("product_names", [])
                 if normalize_product_name(str(value))
             ),
-            "evidence_layout": evidence_layout,
+            "evidence_pairs": evidence_pairs,
         }
         encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         return hashlib.sha256(encoded).hexdigest()
