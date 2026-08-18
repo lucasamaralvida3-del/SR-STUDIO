@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      TARGET_SHA: 3115a38b0d688d5b1118c9734583ceb1f11fd534
+      TARGET_SHA: 16ca336b46e9f37eb6a8e5595bc8b4822dfcab8f
     steps:
       - uses: actions/checkout@v4
         with:
@@ -39,7 +39,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add docs/parallel/phase3-evidence/phase3a-current/status-snapshot.json
-          git commit -m 'image-db: snapshot corrected Phase 3A run status [skip ci]'
+          git commit -m 'image-db: snapshot SQLite-fixed Phase 3A run status [skip ci]'
           for attempt in 1 2 3 4 5; do
             if git push origin HEAD:g2/parallel-image-database; then exit 0; fi
             git pull --rebase origin g2/parallel-image-database
