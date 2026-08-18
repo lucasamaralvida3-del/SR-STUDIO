@@ -33,6 +33,39 @@ def install_editor_commands(command_module: Any) -> None:
         name = str(command.get("name") or "").strip().lower()
         if name == "remove_page":
             return _remove_page(self, command, command_module)
+        if name == "delete":
+            count, blocked = _delete_selection_preserving_locks(self.session)
+            if count:
+                suffix = f" · {blocked} protegido(s) por bloqueio." if blocked else ""
+                return command_module.CommandResult(
+                    True,
+                    True,
+                    f"{count} elemento(s) excluído(s).{suffix}",
+                    {"count": count, "blocked": blocked},
+                )
+            if blocked:
+                return command_module.CommandResult(
+                    True,
+                    False,
+                    "Seleção protegida por bloqueio; nada foi excluído.",
+                    {"count": 0, "blocked": blocked},
+                )
+            return command_module.CommandResult(True, False, "Nada selecionado.", {"count": 0, "blocked": 0})
+        if name in {"resize", "edit_text"}:
+            node_id = str(command.get("node_id") or self.session.anchor_id or "")
+            if node_id and self.session.page.node(node_id) is not None and self.session.effective_locked(node_id):
+                return command_module.CommandResult(
+                    True,
+                    False,
+                    "Elemento bloqueado; alteração ignorada.",
+                    {"node_id": node_id},
+                )
+        if name == "opacity":
+            return _dispatch_editable_selection(self, command, command_module, original_dispatch, "Opacidade")
+        if name == "layer":
+            return _dispatch_editable_selection(self, command, command_module, original_dispatch, "Camada")
+        if name == "ungroup":
+            return _dispatch_editable_selection(self, command, command_module, original_dispatch, "Desagrupar")
         if name in {"copy", "cut"}:
             payload, error = _copy_selection(self)
             if error:
@@ -46,13 +79,23 @@ def install_editor_commands(command_module: Any) -> None:
                     f"{len(payload['roots'])} elemento(s) copiado(s).",
                     {"count": len(payload["roots"])},
                 )
-            count = self.session.delete_selected()
-            return command_module.CommandResult(
-                True,
-                count > 0,
-                f"{count} elemento(s) recortado(s)." if count else "Nada para recortar.",
-                {"count": count},
-            )
+            count, blocked = _delete_selection_preserving_locks(self.session)
+            if count:
+                suffix = f" · {blocked} protegido(s) por bloqueio." if blocked else ""
+                return command_module.CommandResult(
+                    True,
+                    True,
+                    f"{count} elemento(s) recortado(s).{suffix}",
+                    {"count": count, "blocked": blocked},
+                )
+            if blocked:
+                return command_module.CommandResult(
+                    True,
+                    False,
+                    "Elemento(s) bloqueado(s) foram copiados para o clipboard, mas não removidos.",
+                    {"count": 0, "blocked": blocked},
+                )
+            return command_module.CommandResult(True, False, "Nada para recortar.", {"count": 0, "blocked": 0})
         if name == "paste":
             return _paste_clipboard(self, command, command_module)
 
@@ -100,6 +143,87 @@ def _remove_page(self: Any, command: dict[str, Any], command_module: Any):
             "page_count": len(document.pages),
         },
     )
+
+
+def _delete_selection_preserving_locks(session: Any) -> tuple[int, int]:
+    page = session.page
+    selected = {node_id for node_id in session.selection if node_id in page.nodes}
+    if not selected:
+        return 0, 0
+
+    roots: list[str] = []
+    for node_id in selected:
+        parent_id = page.nodes[node_id].parent_id
+        has_selected_ancestor = False
+        guard = 0
+        while parent_id and parent_id in page.nodes and guard < 128:
+            if parent_id in selected:
+                has_selected_ancestor = True
+                break
+            parent_id = page.nodes[parent_id].parent_id
+            guard += 1
+        if not has_selected_ancestor:
+            roots.append(node_id)
+
+    editable_roots: list[str] = []
+    blocked_roots: list[str] = []
+    for root_id in roots:
+        tree_ids = [root_id, *page.descendants(root_id)]
+        if any(session.effective_locked(node_id) for node_id in tree_ids):
+            blocked_roots.append(root_id)
+        else:
+            editable_roots.append(root_id)
+
+    if not editable_roots:
+        return 0, len(blocked_roots)
+
+    original_selection = set(session.selection)
+    original_anchor = session.anchor_id
+    session.selection = set(editable_roots)
+    session.anchor_id = editable_roots[-1] if editable_roots else None
+    count = session.delete_selected()
+    remaining = {node_id for node_id in original_selection if node_id in session.page.nodes}
+    session.selection = remaining
+    session.anchor_id = original_anchor if original_anchor in remaining else next(iter(remaining), None)
+    return count, len(blocked_roots)
+
+
+def _dispatch_editable_selection(
+    self: Any,
+    command: dict[str, Any],
+    command_module: Any,
+    original_dispatch: Any,
+    label: str,
+):
+    session = self.session
+    page = session.page
+    original_selection = {node_id for node_id in session.selection if node_id in page.nodes}
+    if not original_selection:
+        return original_dispatch(self, command)
+    editable = {node_id for node_id in original_selection if not session.effective_locked(node_id)}
+    blocked = len(original_selection - editable)
+    if not editable:
+        return command_module.CommandResult(
+            True,
+            False,
+            f"{label}: seleção protegida por bloqueio; nenhuma alteração aplicada.",
+            {"blocked": blocked},
+        )
+
+    original_anchor = session.anchor_id
+    session.selection = editable
+    session.anchor_id = original_anchor if original_anchor in editable else next(iter(editable), None)
+    try:
+        result = original_dispatch(self, command)
+    finally:
+        remaining = {node_id for node_id in original_selection if node_id in session.page.nodes}
+        session.selection = remaining
+        session.anchor_id = original_anchor if original_anchor in remaining else next(iter(remaining), None)
+    if blocked and result.ok:
+        result.payload = dict(result.payload or {})
+        result.payload["blocked"] = blocked
+        result.message = f"{result.message} {blocked} elemento(s) bloqueado(s) preservado(s).".strip()
+    return result
 
 
 def _copy_selection(self: Any) -> tuple[dict[str, Any], str]:
