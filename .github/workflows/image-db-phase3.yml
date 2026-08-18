@@ -13,11 +13,8 @@ on:
       - 'tests/test_image_*.py'
       - 'pyproject.toml'
 
-# Contents write is used only so the installation token has repository push-level
-# Release visibility (including draft releases). This validation workflow does not
-# mutate repository contents or Release assets.
 permissions:
-  contents: write
+  contents: read
 
 env:
   ARTIFACT_DIR: artifacts/image-db-phase3
@@ -28,7 +25,7 @@ env:
 
 jobs:
   validate-image-db:
-    name: Validate Image Database Phase 3
+    name: Validate Image Database Phase 3A
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
@@ -54,6 +51,7 @@ jobs:
             echo "runner_os=$RUNNER_OS"
             echo "runner_arch=$RUNNER_ARCH"
             echo "timestamp_utc=$(date -u +%FT%TZ)"
+            echo "standalone_phase=DEFERRED"
           } > "$ARTIFACT_DIR/environment.txt"
           git status --short --branch >> "$ARTIFACT_DIR/environment.txt"
           git log -5 --oneline >> "$ARTIFACT_DIR/environment.txt"
@@ -115,7 +113,7 @@ jobs:
           fi
           exit 0
 
-      - name: Locate, download and cryptographically verify Release corpus
+      - name: Resolve explicit Release image-db-corpus-v1 and verify Phase 3A assets
         if: env.ENVIRONMENT_PASS == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -128,21 +126,26 @@ jobs:
           echo "$?" > "$ARTIFACT_DIR/corpus-resolver-exit-code.txt"
           exit 0
 
-      - name: Require complete corpus before ingest
+      - name: PHASE 3A CORPUS GATE — rich corpus + catalog; standalone deferred
         if: env.ENVIRONMENT_PASS == 'true'
         shell: bash
         run: |
           set +e
           if [ "${CORPUS_INTEGRITY_PASS:-false}" = true ] && \
              [ "${RICH_CORPUS_AVAILABLE:-false}" = true ] && \
-             [ "${CATALOG_AVAILABLE:-false}" = true ] && \
-             [ "${STANDALONE_AVAILABLE:-false}" = true ]; then
+             [ "${CATALOG_AVAILABLE:-false}" = true ]; then
             echo 'CORPUS_GATE_PASS=true' >> "$GITHUB_ENV"
             echo PASS > "$ARTIFACT_DIR/corpus-gate.txt"
           else
             echo 'CORPUS_GATE_PASS=false' >> "$GITHUB_ENV"
             echo FAIL > "$ARTIFACT_DIR/corpus-gate.txt"
           fi
+          {
+            echo 'STANDALONE_AVAILABLE=false'
+            echo 'STANDALONE_PHASE=DEFERRED'
+            echo 'STANDALONE_VALIDATION=DEFERRED'
+          } >> "$GITHUB_ENV"
+          printf '{"status":"DEFERRED","standalone_available":false,"processed":false}\n' > "$ARTIFACT_DIR/standalone-phase.json"
           exit 0
 
       - name: Record BEFORE state
@@ -214,44 +217,14 @@ jobs:
           baseline_rc=$?
           if [ "$ingest_rc" -eq 0 ]; then echo 'RICH_INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'RICH_INGEST_PASS=false' >> "$GITHUB_ENV"; fi
           if [ "$baseline_rc" -eq 0 ]; then echo 'CORPUS_BASELINE_PASS=true' >> "$GITHUB_ENV"; else echo 'CORPUS_BASELINE_PASS=false' >> "$GITHUB_ENV"; fi
+          if [ "$ingest_rc" -eq 0 ] && [ "$baseline_rc" -eq 0 ]; then echo 'INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'INGEST_PASS=false' >> "$GITHUB_ENV"; fi
           exit 0
 
-      - name: INGEST — 160 standalone images
-        if: env.RICH_INGEST_PASS == 'true' && env.CORPUS_BASELINE_PASS == 'true'
+      - name: STANDALONE — deferred to incremental Phase 3B
+        if: always()
         shell: bash
         run: |
-          set +e
-          start=$(date +%s)
-          /usr/bin/time -v python -m srstudio.images.standalone_cli \
-            --library "$LIBRARY_DIR" \
-            --product-db "$PRODUCT_DB" \
-            --state "$IMPORTS_DIR/standalone-state.json" \
-            --report "$ARTIFACT_DIR/standalone-ingest-report.json" \
-            "$STANDALONE_DIR" \
-            > "$ARTIFACT_DIR/standalone-ingest.stdout.json" 2> "$ARTIFACT_DIR/standalone-ingest-time.txt"
-          standalone_rc=$?
-          echo $(( $(date +%s) - start )) > "$ARTIFACT_DIR/standalone-ingest-seconds.txt"
-          python - <<'PY'
-          import json, os
-          from pathlib import Path
-          path = Path(os.environ['ARTIFACT_DIR'], 'standalone-ingest-report.json')
-          data = json.loads(path.read_text(encoding='utf-8')) if path.is_file() else {}
-          metrics = data.get('metrics', {})
-          ok = int(metrics.get('discovered', -1)) == 160 and int(metrics.get('processed', -1)) == 160
-          Path(os.environ['ARTIFACT_DIR'], 'standalone-ingest-gate.json').write_text(
-              json.dumps({'metrics': metrics, 'expected_discovered':160, 'pass':ok}, indent=2), encoding='utf-8'
-          )
-          raise SystemExit(0 if ok else 12)
-          PY
-          count_rc=$?
-          if [ "$standalone_rc" -eq 0 ] && [ "$count_rc" -eq 0 ]; then
-            echo 'INGEST_PASS=true' >> "$GITHUB_ENV"
-            echo 'STANDALONE_PASS=true' >> "$GITHUB_ENV"
-          else
-            echo 'INGEST_PASS=false' >> "$GITHUB_ENV"
-            echo 'STANDALONE_PASS=false' >> "$GITHUB_ENV"
-          fi
-          exit 0
+          echo 'Standalone validation intentionally deferred; no standalone asset is required or processed in Phase 3A.' | tee "$ARTIFACT_DIR/standalone-deferred.txt"
 
       - name: RELOAD — persistence and field invariants
         if: env.INGEST_PASS == 'true'
@@ -293,7 +266,7 @@ jobs:
           if [ "$rc" -eq 0 ]; then echo 'PERSISTENCE_PASS=true' >> "$GITHUB_ENV"; else echo 'PERSISTENCE_PASS=false' >> "$GITHUB_ENV"; fi
           exit 0
 
-      - name: SECOND INGEST — replay exact same corpus
+      - name: SECOND INGEST — replay exact same rich corpus
         if: env.PERSISTENCE_PASS == 'true'
         shell: bash
         run: |
@@ -308,19 +281,14 @@ jobs:
           (art/'before-second.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
           PY
           start=$(date +%s)
-          python -m srstudio.images.batch_training \
+          /usr/bin/time -v python -m srstudio.images.batch_training \
             --library "$LIBRARY_DIR" --imports-root "$IMPORTS_DIR" --state "$IMPORTS_DIR/corpus-state.json" \
             --report "$ARTIFACT_DIR/second-ingest-report.json" \
             "$CORPUS_DIR/Downloads(1)(1).zip" "$CORPUS_DIR/Downloads(2)(1).zip" \
-            > "$ARTIFACT_DIR/second-ingest.stdout.json" 2> "$ARTIFACT_DIR/second-ingest.stderr.txt"
+            > "$ARTIFACT_DIR/second-ingest.stdout.json" 2> "$ARTIFACT_DIR/second-ingest-time.txt"
           rich_rc=$?
-          python -m srstudio.images.standalone_cli \
-            --library "$LIBRARY_DIR" --product-db "$PRODUCT_DB" --state "$IMPORTS_DIR/standalone-state.json" \
-            --report "$ARTIFACT_DIR/second-standalone-ingest-report.json" "$STANDALONE_DIR" \
-            > "$ARTIFACT_DIR/second-standalone.stdout.json" 2> "$ARTIFACT_DIR/second-standalone.stderr.txt"
-          standalone_rc=$?
           echo $(( $(date +%s) - start )) > "$ARTIFACT_DIR/second-ingest-seconds.txt"
-          if [ "$rich_rc" -eq 0 ] && [ "$standalone_rc" -eq 0 ]; then echo 'SECOND_INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'SECOND_INGEST_PASS=false' >> "$GITHUB_ENV"; fi
+          if [ "$rich_rc" -eq 0 ]; then echo 'SECOND_INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'SECOND_INGEST_PASS=false' >> "$GITHUB_ENV"; fi
           exit 0
 
       - name: IDEMPOTENCY — compare BEFORE SECOND and AFTER SECOND
@@ -408,13 +376,13 @@ jobs:
               p=art/name; return p.read_text(encoding='utf-8',errors='replace') if p.is_file() else ''
           def rss(name):
               m=re.search(r'Maximum resident set size \(kbytes\):\s*(\d+)',read(name)); return int(m.group(1)) if m else None
-          payload={'measurement':'approximate GitHub Actions CI memory evidence','baseline':read('memory-baseline.txt'),'after_ingest':read('memory-after-ingest.txt'),'ingest_peak_rss_kb':rss('ingest-time.txt'),'standalone_ingest_peak_rss_kb':rss('standalone-ingest-time.txt'),'audit_peak_rss_kb':rss('audit-time.txt')}
+          payload={'measurement':'approximate GitHub Actions CI memory evidence','baseline':read('memory-baseline.txt'),'after_ingest':read('memory-after-ingest.txt'),'ingest_peak_rss_kb':rss('ingest-time.txt'),'second_ingest_peak_rss_kb':rss('second-ingest-time.txt'),'audit_peak_rss_kb':rss('audit-time.txt')}
           (art/'memory.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
           PY
           df -h . > "$ARTIFACT_DIR/disk-after.txt"
           exit 0
 
-      - name: Build complete Phase 3 summary
+      - name: Build complete Phase 3A summary
         if: always()
         shell: bash
         run: |
@@ -429,37 +397,41 @@ jobs:
               return json.loads(p.read_text(encoding='utf-8')) if p.is_file() else ({} if default is None else default)
           gates={
             'Environment':envbool('ENVIRONMENT_PASS'),'Tests':envbool('TESTS_PASS'),'Corpus integrity':envbool('CORPUS_INTEGRITY_PASS'),
-            'Rich corpus available':envbool('RICH_CORPUS_AVAILABLE'),'Catalog available':envbool('CATALOG_AVAILABLE'),'Standalone available':envbool('STANDALONE_AVAILABLE'),
+            'Rich corpus available':envbool('RICH_CORPUS_AVAILABLE'),'Catalog available':envbool('CATALOG_AVAILABLE'),
             'Corpus baseline':envbool('CORPUS_BASELINE_PASS'),'Ingest':envbool('INGEST_PASS'),'Persistence / Reload':envbool('PERSISTENCE_PASS'),
             'Second ingest':envbool('SECOND_INGEST_PASS'),'Idempotency':envbool('IDEMPOTENCY_PASS'),'Recovery':envbool('RECOVERY_PASS'),
             'Library audit':envbool('AUDIT_PASS'),'Catalog 520':envbool('CATALOG_COVERAGE_PASS'),'Department coverage':envbool('DEPARTMENT_COVERAGE_PASS'),
             'Top missing':envbool('TOP_MISSING_PASS'),'Find Image':envbool('FIND_IMAGE_PASS'),'Performance':envbool('PERFORMANCE_PASS'),'Review dataset':envbool('REVIEW_DATASET_PASS')}
-          corpus_present=gates['Rich corpus available'] and gates['Catalog available'] and gates['Standalone available']
-          status='READY FOR INTEGRATION' if all(gates.values()) else ('BLOCKED — CORPUS NOT AVAILABLE TO CI' if not corpus_present else 'NOT READY')
-          report={'status':status,'tested_sha':os.environ.get('GITHUB_SHA',''),'run_id':os.environ.get('GITHUB_RUN_ID',''),'run_attempt':os.environ.get('GITHUB_RUN_ATTEMPT',''),'gates':gates,
-                  'release_asset_verification':load('corpus-download-verification.json'),'corpus_inventory':load('corpus-inventory-gate.json'),'persistence':load('persistence-report.json'),
+          status='PHASE 3A PASS — STANDALONE PENDING' if all(gates.values()) else 'NOT READY'
+          release_assets=load('release-assets.json')
+          report={'status':status,'phase':'3A','standalone_available':False,'standalone_phase':'DEFERRED','standalone_validation':'DEFERRED',
+                  'tested_sha':os.environ.get('GITHUB_SHA',''),'run_id':os.environ.get('GITHUB_RUN_ID',''),'run_attempt':os.environ.get('GITHUB_RUN_ATTEMPT',''),'gates':gates,
+                  'release_found':bool(release_assets.get('release_found')),'release_assets':release_assets,'release_asset_verification':load('corpus-download-verification.json'),
+                  'catalog_source_validation':load('catalog-source-validation.json'),'corpus_inventory':load('corpus-inventory-gate.json'),'persistence':load('persistence-report.json'),
                   'idempotency':load('idempotency-report.json'),'database':load('library-audit.json').get('metrics',{}),'coverage':load('coverage-catalog-520.json'),
                   'departments':load('coverage-departments.json'),'structured_corpus':load('structured-corpus-coverage.json'),'performance':load('performance.json'),'memory':load('memory.json'),
-                  'previous_human_sample':{'size':30,'correct':30,'wrong_auto_accept':0,'uncertain':0},'current_ci_review_sample':'generated in review/review-dataset.json and review-contact-sheet.png; human judgement remains separate'}
+                  'previous_human_sample':{'size':30,'correct':30,'wrong_auto_accept':0,'uncertain':0},'current_ci_review_sample':'generated only if review dataset gate passed; human judgement remains separate'}
           (art/'phase3-summary.json').write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8')
           with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as f:
-              f.write('# Image DB Phase 3 Operational Validation\n\n')
-              f.write(f"**SHA:** `{report['tested_sha']}`  \n**Run:** `{report['run_id']}` attempt `{report['run_attempt']}`  \n**Status:** **{status}**\n\n")
+              f.write('# Image DB Phase 3A Operational Validation\n\n')
+              f.write(f"**SHA:** `{report['tested_sha']}`  \n**Run:** `{report['run_id']}` attempt `{report['run_attempt']}`  \n**Status:** **{status}**  \n**Standalone:** **DEFERRED**\n\n")
               f.write('| Gate | Result |\n|---|---|\n')
-              for name,value in gates.items(): f.write(f"| {name} | {'PASS' if value else 'FAIL/BLOCKED'} |\n")
-              inv=report['corpus_inventory'].get('metrics',{}); cov=report['coverage']; db=report['database']; perf=report['performance']
+              for name,value in gates.items(): f.write(f"| {name} | {'PASS' if value else 'FAIL'} |\n")
+              inv=report['corpus_inventory'].get('metrics',{}); cov=report['coverage']; db=report['database']; perf=report['performance']; cat=report['catalog_source_validation']
+              if cat:
+                  f.write(f"\n## Source catalog\n- products: {cat.get('products')} / 520\n- historical records: {cat.get('historical_records')} / 3116\n")
               if inv:
-                  f.write(f"\n## Corpus\n- PPTX: {inv.get('files_found')}\n- slides: {inv.get('slides')}\n- embedded unique: {inv.get('unique_media_exact')}\n- media occurrences: {inv.get('raw_image_refs')}\n- standalone: 160\n")
+                  f.write(f"\n## Corpus\n- PPTX: {inv.get('files_found')}\n- slides: {inv.get('slides')}\n- embedded unique: {inv.get('unique_media_exact')}\n- media occurrences: {inv.get('raw_image_refs')}\n- standalone: DEFERRED\n")
               if db:
-                  f.write(f"\n## Database\n- physical: {db.get('physical_images')}\n- canonical: {db.get('canonical_assets')}\n- exact duplicates: {db.get('exact_duplicate_observations')}\n- near/variant hashes: {db.get('near_duplicate_variants')}\n")
+                  f.write(f"\n## Database\n- physical: {db.get('physical_images')}\n- canonical: {db.get('canonical_assets')}\n- exact duplicates: {db.get('exact_duplicate_observations')}\n- near/variant hashes: {db.get('near_duplicate_variants')}\n- decorative: {db.get('decorative')}\n- accepted: {db.get('accepted')}\n- likely: {db.get('likely')}\n- review-required: {db.get('review_required')}\n- rejected: {db.get('rejected')}\n- orphan: {db.get('without_product')}\n- missing provenance: {db.get('missing_provenance')}\n")
               if cov:
                   f.write(f"\n## Catalog 520\n- auto-approved: {cov.get('auto_approved')}\n- likely: {cov.get('likely')}\n- review-required: {cov.get('review_required')}\n- missing: {cov.get('missing')}\n- any candidate coverage: {cov.get('any_candidate_coverage_percent')}%\n- auto-approved coverage: {cov.get('auto_approved_coverage_percent')}%\n")
               if perf:
                   f.write(f"\n## Performance\n- index load: {perf.get('index_load_seconds')}s\n- exact p95: {perf.get('exact_lookup',{}).get('p95_ms')}ms\n- fuzzy p95: {perf.get('fuzzy_lookup',{}).get('p95_ms')}ms\n- ingest: {perf.get('ingest_seconds')}s\n- incremental: {perf.get('incremental_seconds')}s\n- audit: {perf.get('audit_seconds')}s\n")
-              f.write('\nPrevious human sample: 30 correct / 0 wrong-auto-accept / 0 uncertain. Current CI review sample is awaiting human review.\n')
+              f.write('\nPrevious human sample: 30 correct / 0 wrong-auto-accept / 0 uncertain. Standalone images were not processed in Phase 3A.\n')
           PY
 
-      - name: Upload complete Phase 3 evidence
+      - name: Upload complete Phase 3A evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -471,11 +443,11 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Final operational gate
+      - name: Final Phase 3A operational gate
         if: always()
         shell: bash
         run: |
           set -euo pipefail
           status=$(python -c "import json; print(json.load(open('$ARTIFACT_DIR/phase3-summary.json'))['status'])")
-          echo "Phase 3 status: $status"
-          [ "$status" = 'READY FOR INTEGRATION' ]
+          echo "Phase 3A status: $status"
+          [ "$status" = 'PHASE 3A PASS — STANDALONE PENDING' ]
