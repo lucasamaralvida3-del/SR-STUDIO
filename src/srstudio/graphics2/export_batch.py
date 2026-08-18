@@ -11,6 +11,10 @@ import uuid
 from . import export_output as output
 from .model import GraphicsDocument
 
+# Alias separado para que testes/falhas de publicação final não contaminem a
+# escrita atômica usada internamente pelos arquivos staged.
+_atomic_replace = os.replace
+
 
 def export_raster_batch(
     document: GraphicsDocument,
@@ -29,11 +33,11 @@ def export_raster_batch(
     overwrite: bool = True,
     progress: output.ProgressCallback | None = None,
 ) -> output.BatchRenderReport:
-    """Render a batch sequentially, then publish the complete set atomically-ish.
+    """Render a batch sequentially, then publish the complete set transactionally.
 
     Pages are rendered one at a time into a sibling staging directory, so the
-    operation does not retain all QImages in memory.  Final files are untouched
-    until every page rendered and reopened successfully.  During publication,
+    operation does not retain all QImages in memory. Final files are untouched
+    until every page rendered and reopened successfully. During publication,
     existing targets are moved to backups; a later failure rolls already
     published pages back to their previous state.
     """
@@ -133,15 +137,15 @@ def _publish_complete_batch(staged: list[tuple[object, Path]], *, staging: Path,
                     raise IsADirectoryError(f"Destino de batch é um diretório: {target}")
                 backup = backup_dir / f"{position:04d}-{target.name}"
                 try:
-                    os.replace(target, backup)
+                    _atomic_replace(target, backup)
                 except OSError as exc:
                     raise OSError(f"Não foi possível preparar sobrescrita de '{target}': {exc}") from exc
             try:
-                os.replace(source, target)
+                _atomic_replace(source, target)
             except OSError as exc:
                 if backup is not None and backup.exists():
                     try:
-                        os.replace(backup, target)
+                        _atomic_replace(backup, target)
                     except OSError as restore_exc:
                         raise output.ExportValidationError(
                             f"Falha ao publicar '{target}' e ao restaurar o arquivo anterior: {restore_exc}"
@@ -154,7 +158,7 @@ def _publish_complete_batch(staged: list[tuple[object, Path]], *, staging: Path,
             try:
                 target.unlink(missing_ok=True)
                 if backup is not None and backup.exists():
-                    os.replace(backup, target)
+                    _atomic_replace(backup, target)
             except OSError as restore_exc:
                 rollback_errors.append(f"{target.name}: {restore_exc}")
         if rollback_errors:
