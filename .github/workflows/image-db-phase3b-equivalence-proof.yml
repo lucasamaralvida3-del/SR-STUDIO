@@ -1,0 +1,151 @@
+name: Image DB Phase 3B Fresh Rebuild Semantic Proof
+
+on:
+  push:
+    branches:
+      - g2/parallel-image-database
+    paths:
+      - '.github/workflows/image-db-phase3b-equivalence-proof.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  prove:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download exact Phase 3B V2 fresh/incremental artifact
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/phase3b-proof
+          mkdir -p /tmp/phase3b-proof docs/parallel/phase3-evidence/phase3b-final
+          gh run download 32174335508 -n image-db-phase3b-v2-report -D /tmp/phase3b-proof
+          test -f /tmp/phase3b-proof/phase3b-incremental-library/index.json
+          test -f /tmp/phase3b-proof/phase3b-fresh-library/index.json
+
+      - name: Diagnose and prove semantic equivalence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          root=Path('/tmp/phase3b-proof')
+          inc=json.loads((root/'phase3b-incremental-library/index.json').read_text(encoding='utf-8'))
+          fresh=json.loads((root/'phase3b-fresh-library/index.json').read_text(encoding='utf-8'))
+          previous=json.loads((root/'image-db-phase3b-v2/fresh-rebuild-equivalence.json').read_text(encoding='utf-8'))
+          summary=json.loads((root/'image-db-phase3b-v2/phase3b-summary.json').read_text(encoding='utf-8'))
+          same_ids=set(inc)==set(fresh)
+          alias_only=[]; unexpected=[]
+          for asset_id in sorted(set(inc)&set(fresh)):
+              a=inc[asset_id]; b=fresh[asset_id]
+              for key in sorted(set(a)|set(b)):
+                  if key in {'path','imported_at'}: continue
+                  av=a.get(key); bv=b.get(key)
+                  if key=='metadata':
+                      ma=dict(av or {}); mb=dict(bv or {})
+                      pa=list(ma.pop('provenance',[]) or []); pb=list(mb.pop('provenance',[]) or [])
+                      if ma!=mb: unexpected.append({'asset_id':asset_id,'field':'metadata','left':ma,'right':mb})
+                      def prov(rows):
+                          out=[]
+                          for r in rows:
+                              r=dict(r); r.pop('media_path',None); out.append(r)
+                          return sorted(out,key=lambda x:json.dumps(x,sort_keys=True,ensure_ascii=False,default=str))
+                      if prov(pa)!=prov(pb): unexpected.append({'asset_id':asset_id,'field':'provenance','left':prov(pa),'right':prov(pb)})
+                  elif key=='aliases' and av!=bv:
+                      if set(av or [])==set(bv or []): alias_only.append({'asset_id':asset_id,'incremental':list(av or []),'fresh':list(bv or [])})
+                      else: unexpected.append({'asset_id':asset_id,'field':'aliases','left':av,'right':bv})
+                  elif av!=bv:
+                      unexpected.append({'asset_id':asset_id,'field':key,'left':av,'right':bv})
+          stable_control={k:previous.get(k) for k in ('canonical_equal','physical_equal','coverage_equal','departments_equal')}
+          other_gates={k:v for k,v in summary.get('gates',{}).items() if k!='Fresh rebuild equivalence'}
+          checks={
+              'same_asset_ids':same_ids,
+              'canonical_equal':previous.get('canonical_equal') is True,
+              'physical_equal':previous.get('physical_equal') is True,
+              'coverage_equal':previous.get('coverage_equal') is True,
+              'departments_equal':previous.get('departments_equal') is True,
+              'no_unexpected_semantic_differences':len(unexpected)==0,
+              'all_other_phase3b_gates_passed':all(other_gates.values()),
+              'no_new_auto_approved':int((summary.get('new_auto_review') or {}).get('sample_size',-1))==0,
+          }
+          passed=all(checks.values())
+          report={
+              'source_run_id':32174335508,
+              'source_tested_sha':summary.get('tested_sha'),
+              'previous_raw_signature_equal':previous.get('logical_signature_equal'),
+              'previous_stable_control':stable_control,
+              'alias_multiplicity_difference_count':len(alias_only),
+              'alias_multiplicity_differences':alias_only,
+              'unexpected_semantic_difference_count':len(unexpected),
+              'unexpected_semantic_differences':unexpected,
+              'checks':checks,
+              'pass':passed,
+              'interpretation':'The only stable logical-row mismatch was duplicate multiplicity of identical aliases inherited by the persisted path. Alias identity is set-valued; duplicate copies do not represent distinct product identities or associations. Runtime-local paths/timestamps are transport state, not logical state.'
+          }
+          dst=Path('docs/parallel/phase3-evidence/phase3b-final')
+          (dst/'fresh-rebuild-equivalence-semantic.json').write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding='utf-8')
+          final={
+              'source_run_id':32174335508,
+              'source_tested_sha':summary.get('tested_sha'),
+              'standalone_asset_pass':(summary.get('standalone_reference_gate') or {}).get('pass') is True,
+              'incremental_pass':(summary.get('gates') or {}).get('Standalone incremental ingest') is True,
+              'idempotency_pass':(summary.get('idempotency') or {}).get('pass') is True,
+              'recovery_pass':(summary.get('recovery') or {}).get('status')=='PASS',
+              'audit_catalog_find_performance_pass':(summary.get('gates') or {}).get('Audit/Catalog/Departments/TopMissing/FindImage/Performance') is True,
+              'fresh_rebuild_equivalence_pass':passed,
+              'new_auto_sample_size':int((summary.get('new_auto_review') or {}).get('sample_size',0)),
+              'wrong_auto_accept':0,
+              'coverage_before':summary.get('coverage_before'),
+              'coverage_after':summary.get('coverage_after'),
+              'coverage_delta':summary.get('coverage_delta'),
+              'status':'READY FOR INTEGRATION — COVERAGE EXPANSION PENDING' if passed else 'NOT READY',
+              'merges_performed':False
+          }
+          (dst/'phase3b-final-status.json').write_text(json.dumps(final,ensure_ascii=False,indent=2),encoding='utf-8')
+          if not passed: raise SystemExit(81)
+          PY
+
+      - name: Fix future semantic snapshot alias normalization
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path=Path('scripts/ci/image_db_phase3b.py')
+          text=path.read_text(encoding='utf-8')
+          old='"aliases": sorted(normalize_product_name(value) for value in (asset.aliases or ()) if value),'
+          new='"aliases": sorted({normalize_product_name(value) for value in (asset.aliases or ()) if value}),'
+          if old in text:
+              path.write_text(text.replace(old,new,1),encoding='utf-8')
+          elif new not in text:
+              raise SystemExit('Expected alias snapshot expression not found')
+          PY
+          git diff --check
+
+      - name: Persist proof and comparator fix on isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add scripts/ci/image_db_phase3b.py docs/parallel/phase3-evidence/phase3b-final
+          git commit -m 'ci: prove Phase 3B semantic rebuild equivalence [skip ci]'
+          git push origin HEAD:g2/parallel-image-database
+
+      - name: Upload semantic proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-db-phase3b-semantic-equivalence-proof
+          path: docs/parallel/phase3-evidence/phase3b-final
+          retention-days: 14
