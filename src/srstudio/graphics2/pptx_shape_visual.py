@@ -13,7 +13,6 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 from xml.etree import ElementTree as ET
-import math
 import zipfile
 
 from srstudio.importers.pptx.package_order import ordered_slide_paths
@@ -22,8 +21,6 @@ from .model import GraphicsDocument, GraphicsNode, NodeKind, Transform
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
-EMU_PER_INCH = 914400.0
-PX_PER_INCH = 96.0
 
 
 @dataclass(slots=True, frozen=True)
@@ -41,6 +38,7 @@ class PptxShapeVisualIssue:
 class PptxShapeVisualReport:
     text_shapes: int = 0
     text_colors_corrected: int = 0
+    compound_text_colors_corrected: int = 0
     visual_shapes: int = 0
     visuals_recovered: int = 0
     existing_visuals: int = 0
@@ -58,6 +56,7 @@ class PptxShapeVisualReport:
         return {
             "text_shapes": self.text_shapes,
             "text_colors_corrected": self.text_colors_corrected,
+            "compound_text_colors_corrected": self.compound_text_colors_corrected,
             "visual_shapes": self.visual_shapes,
             "visuals_recovered": self.visuals_recovered,
             "existing_visuals": self.existing_visuals,
@@ -89,21 +88,58 @@ def recover_pptx_shape_visuals(
                 scale_x = page.width / max(1.0, slide_width)
                 scale_y = page.height / max(1.0, slide_height)
                 for shape in root.findall(f".//{{{P_NS}}}sp"):
-                    if shape.find(f".//{{{A_NS}}}blip") is not None:
-                        continue
                     name = _shape_name(shape)
                     if not name:
                         continue
                     text_body = shape.find(f"./{{{P_NS}}}txBody")
-                    if text_body is not None and _has_text_contract(text_body):
+                    has_text = text_body is not None and _has_text_contract(text_body)
+                    if shape.find(f".//{{{A_NS}}}blip") is not None:
+                        # Picture-filled p:sp já possui um owner visual IMAGE.
+                        # Aqui preservamos apenas o texto compound sobreposto,
+                        # sem criar um segundo backplate concorrente.
+                        if has_text and text_body is not None:
+                            _recover_compound_text_color(page, text_body, name, slide, report)
+                        continue
+                    if has_text and text_body is not None:
                         _recover_text_shape(page, shape, text_body, name, slide, scale_x, scale_y, report)
                     else:
-                        _recover_pure_shape_color(page, shape, name, report)
+                        _recover_pure_shape_color(page, shape, name, scale_x, scale_y, report)
     except (OSError, zipfile.BadZipFile, ET.ParseError) as exc:
         report.issues.append(PptxShapeVisualIssue("PPTX_SHAPE_VISUAL_READ_FAILED", 0, "", str(exc)))
 
     document.metadata["pptx_shape_visual_recovery"] = report.to_dict()
     return report
+
+
+def _recover_compound_text_color(
+    page,
+    text_body: ET.Element,
+    name: str,
+    slide: int,
+    report: PptxShapeVisualReport,
+) -> None:
+    target = _normal(name)
+    candidates = [
+        node
+        for node in page.nodes.values()
+        if node.kind is NodeKind.TEXT
+        and bool(node.metadata.get("pptx_compound_text_recovered"))
+        and _normal((node.metadata or {}).get("source_name") or node.name) == target
+    ]
+    if len(candidates) != 1:
+        code = "PPTX_COMPOUND_TEXT_AMBIGUOUS" if candidates else "PPTX_COMPOUND_TEXT_MISSING"
+        report.issues.append(
+            PptxShapeVisualIssue(
+                code,
+                slide,
+                name,
+                f"Shape picture-fill possui {len(candidates)} overlay(s) TEXT compound correspondente(s).",
+            )
+        )
+        return
+    color = _text_color(text_body)
+    if color and _set_text_color(candidates[0], color):
+        report.compound_text_colors_corrected += 1
 
 
 def _recover_text_shape(
@@ -172,7 +208,14 @@ def _recover_text_shape(
     report.visuals_recovered += 1
 
 
-def _recover_pure_shape_color(page, shape: ET.Element, name: str, report: PptxShapeVisualReport) -> None:
+def _recover_pure_shape_color(
+    page,
+    shape: ET.Element,
+    name: str,
+    scale_x: float,
+    scale_y: float,
+    report: PptxShapeVisualReport,
+) -> None:
     nodes = _candidates(
         page.nodes.values(),
         name,
@@ -181,7 +224,7 @@ def _recover_pure_shape_color(page, shape: ET.Element, name: str, report: PptxSh
     )
     if len(nodes) != 1:
         return
-    fill, outline, _ = _shape_paint(shape, 1.0, 1.0)
+    fill, outline, stroke_width = _shape_paint(shape, scale_x, scale_y)
     node = nodes[0]
     changed = False
     if fill and node.style.get("fill") != fill:
@@ -193,6 +236,9 @@ def _recover_pure_shape_color(page, shape: ET.Element, name: str, report: PptxSh
             changed = True
         if node.style.get("outline") != outline:
             node.style["outline"] = outline
+            changed = True
+        if float(node.style.get("stroke_width", -1.0) or 0.0) != float(stroke_width):
+            node.style["stroke_width"] = stroke_width
             changed = True
     if changed:
         report.pure_shape_colors_corrected += 1
@@ -265,9 +311,9 @@ def _shape_paint(shape: ET.Element, scale_x: float, scale_y: float) -> tuple[str
     stroke_width = 0.0
     if line is not None and line.get("w") not in (None, ""):
         try:
-            emu = float(line.get("w") or 0.0)
+            source_width = float(line.get("w") or 0.0)
             average_scale = (abs(scale_x) + abs(scale_y)) / 2.0
-            stroke_width = emu * average_scale
+            stroke_width = source_width * average_scale
         except (TypeError, ValueError):
             stroke_width = 0.0
     return fill, outline, max(0.0, stroke_width)
@@ -326,7 +372,10 @@ def _geometry_kind(shape: ET.Element) -> NodeKind | None:
     if preset is None:
         return None
     name = str(preset.get("prst") or "").strip().casefold()
-    if name in {"rect", "roundrect", "round1rect", "round2samerect", "round2diagrect"}:
+    # SR Scene 2 não possui corner-radius canônico hoje. Preservar roundRect
+    # como RECT seria uma aproximação silenciosa, então shapes arredondados
+    # permanecem explicitamente deferidos até existir geometria equivalente.
+    if name == "rect":
         return NodeKind.RECT
     if name == "ellipse":
         return NodeKind.ELLIPSE
