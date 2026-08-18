@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -22,11 +23,22 @@ class SafeImageLibrary(ImageLibrary):
     the replacement is validated, then atomically installed. Perceptual duplicate
     checks also require compatible image geometry so a dHash collision cannot by
     itself merge unrelated assets.
+
+    Legacy asset IDs remain compatible with ImageLibrary's 24-hex digest key. New
+    safe imports additionally preserve the complete SHA-256 in metadata so exact
+    identity/provenance can be audited without a destructive ID migration.
     """
 
     @property
     def backup_path(self) -> Path:
         return self.index_path.with_suffix(self.index_path.suffix + ".bak")
+
+    def import_image(self, source: str | Path, *args, metadata: dict | None = None, **kwargs) -> ImageAsset:
+        full_sha256 = self._full_sha256(Path(source))
+        merged_metadata = dict(metadata or {})
+        merged_metadata.setdefault("sha256_full", full_sha256)
+        merged_metadata.setdefault("sha256", full_sha256)
+        return super().import_image(source, *args, metadata=merged_metadata, **kwargs)
 
     def _load(self) -> dict:
         if not self.index_path.exists():
@@ -68,6 +80,14 @@ class SafeImageLibrary(ImageLibrary):
             except OSError:
                 pass
             raise
+
+    @staticmethod
+    def _full_sha256(path: Path) -> str:
+        digest = hashlib.sha256()
+        with path.open("rb") as handle:
+            for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+                digest.update(chunk)
+        return digest.hexdigest()
 
     @staticmethod
     def _source_visual_signature(source: str | Path) -> tuple[str, tuple[int, int]] | None:
