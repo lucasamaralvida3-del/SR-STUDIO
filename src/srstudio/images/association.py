@@ -16,27 +16,9 @@ _NON_ALNUM_RE = re.compile(r"[^A-Z0-9.]+")
 _SOURCE_DIGEST_RE = re.compile(r"^[0-9a-fA-F]{24,64}$")
 
 _BLOCKED_PREFIXES = (
-    "LIMITE",
-    "VALIDADE",
-    "OFERTA",
-    "OFERTAS",
-    "CADA",
-    "PRECO",
-    "LEVE ",
-    "PAGUE ",
-    "A PARTIR",
-    "NO CLUBE",
-    "CLUBE ",
-    "SUPER ",
-    "ECONOMIA",
-    "TERCA VERDE",
-    "QUARTA CAFE",
-    "QUINTA FILE",
-    "FIM DE SEMANA",
-    "HORTIFRUTI",
-    "LIMPEZA",
-    "POR APENAS",
-    "SO HOJE",
+    "LIMITE", "VALIDADE", "OFERTA", "OFERTAS", "CADA", "PRECO", "LEVE ", "PAGUE ", "A PARTIR",
+    "NO CLUBE", "CLUBE ", "SUPER ", "ECONOMIA", "TERCA VERDE", "QUARTA CAFE", "QUINTA FILE",
+    "FIM DE SEMANA", "HORTIFRUTI", "LIMPEZA", "POR APENAS", "SO HOJE",
 )
 
 _PRODUCT_TERMS = {
@@ -109,7 +91,6 @@ def evidence_source_identity(row: AssociationEvidence) -> str:
     explicit = str(metadata.get("source_document_id") or metadata.get("source_sha256") or "").strip()
     if explicit:
         return explicit.lower()
-
     parts = [part for part in re.split(r"[\\/]+", row.media_path or "") if part]
     for part in reversed(parts[:-1]):
         if _SOURCE_DIGEST_RE.fullmatch(part):
@@ -146,7 +127,6 @@ class ProductImageAssociationEngine:
         by_name: dict[str, list[AssociationEvidence]] = defaultdict(list)
         for row in rows:
             by_name[row.normalized_name].append(row)
-
         ranked = sorted(
             by_name.items(),
             key=lambda item: (
@@ -166,12 +146,7 @@ class ProductImageAssociationEngine:
         template_observations = sum(bool((row.metadata or {}).get("template_asset")) for row in rows)
         template_ratio = template_observations / max(1, len(rows))
 
-        recurring_template_conflict = (
-            len(rows) >= 3
-            and template_ratio >= 0.75
-            and distinct_products >= 3
-            and consensus < 0.65
-        )
+        recurring_template_conflict = len(rows) >= 3 and template_ratio >= 0.75 and distinct_products >= 3 and consensus < 0.65
         broad_product_conflict = len(rows) >= 5 and distinct_products >= 4 and consensus < 0.55
         if recurring_template_conflict or broad_product_conflict:
             status = "decorative"
@@ -184,11 +159,6 @@ class ProductImageAssociationEngine:
             if distinct_products > 1:
                 final_confidence *= 0.90 + 0.10 * consensus
             final_confidence = max(0.0, min(0.995, final_confidence))
-
-            # Strong local geometry in one flyer is useful, but not enough to
-            # auto-approve by itself. Independent document consensus is the
-            # production safety gate against a logo/seal that happens to sit in
-            # the same visual cell as a product name.
             if (
                 final_confidence >= self.auto_accept_confidence
                 and avg_confidence >= 0.875
@@ -259,19 +229,13 @@ def is_product_text_candidate(value: str) -> bool:
         return False
     if any(fragment in normalized for fragment in ("LIMITE DE", "POR CLIENTE", "COMPRANDO", "MAXIMO DE")):
         return False
-
     alpha_tokens = re.findall(r"[A-Z]{2,}", normalized)
     has_unit = bool(re.search(r"\b\d+(?:\.\d+)?(?:KG|G|MG|ML|L|UN|CM|MM|M)\b", normalized))
     has_product_term = any(term in normalized for term in _PRODUCT_TERMS)
-
     if has_product_term and len(alpha_tokens) >= 2:
         return True
     if has_unit:
-        meaningful = [
-            token
-            for token in alpha_tokens
-            if len(token) >= 3 and token not in _GENERIC_MEASURE_TOKENS
-        ]
+        meaningful = [token for token in alpha_tokens if len(token) >= 3 and token not in _GENERIC_MEASURE_TOKENS]
         return bool(meaningful)
     return False
 
@@ -304,6 +268,11 @@ def product_names_compatible(left: str, right: str) -> bool:
     sig_b = measurement_signature(b)
     if sig_a and sig_b and sig_a != sig_b:
         return False
+    # Harmless token order changes are common between the catalog and Canva text.
+    # Requiring an identical token multiset means this rule cannot introduce a
+    # brand, flavor, unit or gramature that was absent on either side.
+    if Counter(a.split()) == Counter(b.split()):
+        return True
     return product_name_similarity(a, b) >= 0.94
 
 
@@ -317,14 +286,7 @@ def spatial_pair_score(
     same_group: bool = False,
     z_distance: int | None = None,
 ) -> tuple[float, dict[str, float]]:
-    """Score one product-name/image pair using grid-aware spatial evidence.
-
-    Real SR/Canva flyers often put the product name immediately above or below
-    the package photo. Center distance alone can therefore jump to the next row
-    in a repeated grid. Horizontal alignment and the nearest vertical *edge* gap
-    are explicit signals here, while proximity remains useful for irregular
-    layouts. No signal by itself can approve an association.
-    """
+    """Score one product-name/image pair using grid-aware spatial evidence."""
     width = max(int(slide_width), 1)
     height = max(int(slide_height), 1)
     diag = max(hypot(width, height), 1.0)
@@ -332,23 +294,17 @@ def spatial_pair_score(
     tx, ty, tw, th = name_bbox
     icx, icy = ix + iw / 2.0, iy + ih / 2.0
     tcx, tcy = tx + tw / 2.0, ty + th / 2.0
-
     distance = hypot(icx - tcx, icy - tcy) / diag
     proximity = max(0.0, 1.0 - distance / 0.28)
     horizontal_overlap = max(0, min(ix + iw, tx + tw) - max(ix, tx)) / max(1, min(iw, tw))
     x_alignment = max(0.0, 1.0 - abs(icx - tcx) / max(width * 0.22, 1.0))
-
-    # Distance between the closest horizontal edges. This is strong on repeated
-    # product cards where name and image are stacked but not overlapping.
     edge_gap = min(abs(iy - (ty + th)), abs(ty - (iy + ih))) / height
     vertical_nearness = max(0.0, 1.0 - edge_gap / 0.10)
-
     area_ratio = max(0, iw) * max(0, ih) / max(1, width * height)
     if 0.005 <= area_ratio <= 0.08:
         size_score = 1.0
     else:
         size_score = max(0.0, 1.0 - min(abs(area_ratio - 0.03) / 0.15, 1.0))
-
     likelihood = max(0.0, min(1.0, product_likelihood))
     score = (
         0.22 * horizontal_overlap
