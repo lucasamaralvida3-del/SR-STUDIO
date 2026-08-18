@@ -45,7 +45,7 @@
     "verified": true,
     "image_files_160": true,
     "valid_images_160": true,
-    "corrupt_images_zero": false
+    "corrupt_images_zero": true
   },
-  "pass": false
+  "pass": true
 }

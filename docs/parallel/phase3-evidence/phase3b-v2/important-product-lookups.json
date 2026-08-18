@@ -1,0 +1,76 @@
+{
+  "queries": [
+    {
+      "query": "LEITE TRIANGULO 1L",
+      "found": false,
+      "product_name": "",
+      "image_id": "",
+      "review_status": "",
+      "asset_confidence": 0.0,
+      "confidence": 0.0,
+      "match_type": "",
+      "quality_score": 0.0,
+      "provenance": []
+    },
+    {
+      "query": "ARROZ VASCONCELOS 5KG",
+      "found": false,
+      "product_name": "",
+      "image_id": "",
+      "review_status": "",
+      "asset_confidence": 0.0,
+      "confidence": 0.0,
+      "match_type": "",
+      "quality_score": 0.0,
+      "provenance": []
+    },
+    {
+      "query": "FLOCAO SINHA 400G",
+      "found": false,
+      "product_name": "",
+      "image_id": "",
+      "review_status": "",
+      "asset_confidence": 0.0,
+      "confidence": 0.0,
+      "match_type": "",
+      "quality_score": 0.0,
+      "provenance": []
+    },
+    {
+      "query": "FEIJAO PARANA 1KG",
+      "found": false,
+      "product_name": "",
+      "image_id": "",
+      "review_status": "",
+      "asset_confidence": 0.0,
+      "confidence": 0.0,
+      "match_type": "",
+      "quality_score": 0.0,
+      "provenance": []
+    },
+    {
+      "query": "CARVAO GOBBO",
+      "found": false,
+      "product_name": "",
+      "image_id": "",
+      "review_status": "",
+      "asset_confidence": 0.0,
+      "confidence": 0.0,
+      "match_type": "",
+      "quality_score": 0.0,
+      "provenance": []
+    },
+    {
+      "query": "FLOCAO DE MILHO SINHA 400G",
+      "found": false,
+      "product_name": "",
+      "image_id": "",
+      "review_status": "",
+      "asset_confidence": 0.0,
+      "confidence": 0.0,
+      "match_type": "",
+      "quality_score": 0.0,
+      "provenance": []
+    }
+  ]
+}

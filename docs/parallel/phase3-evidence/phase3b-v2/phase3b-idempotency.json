@@ -1,0 +1,38 @@
+{
+  "first": {
+    "canonical": 1037,
+    "physical": 1037,
+    "accepted": 11,
+    "pending": 1026,
+    "rejected": 0,
+    "missing_provenance": 0,
+    "logical_signature_sha256": "31486bc363b325d8ce7f3f7ffa2e8ae96b907abd7208accd57586d59bb736191"
+  },
+  "second": {
+    "canonical": 1037,
+    "physical": 1037,
+    "accepted": 11,
+    "pending": 1026,
+    "rejected": 0,
+    "missing_provenance": 0,
+    "logical_signature_sha256": "31486bc363b325d8ce7f3f7ffa2e8ae96b907abd7208accd57586d59bb736191"
+  },
+  "second_metrics": {
+    "discovered": 153,
+    "processed": 0,
+    "skipped": 153,
+    "accepted": 0,
+    "review": 0,
+    "unknown": 0,
+    "imported": 0
+  },
+  "selected_training_files": 153,
+  "checks": {
+    "new_physical_zero": true,
+    "new_canonical_zero": true,
+    "logical_signature_unchanged": true,
+    "processed_zero": true,
+    "all_selected_skipped": true
+  },
+  "pass": true
+}

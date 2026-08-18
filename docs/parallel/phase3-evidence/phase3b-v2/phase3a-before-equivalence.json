@@ -1,0 +1,16 @@
+{
+  "method": "persisted Phase 3A index + physical byte materialization only; no rich-corpus training before standalone",
+  "checks": {
+    "logical_signature_equal": true,
+    "canonical_1036": true,
+    "physical_1036": true,
+    "auto_2": true,
+    "likely_42": true,
+    "review_7": true,
+    "missing_469": true,
+    "coverage_9_8077": true,
+    "audit_physical_1036": true,
+    "audit_canonical_1036": true
+  },
+  "pass": true
+}
