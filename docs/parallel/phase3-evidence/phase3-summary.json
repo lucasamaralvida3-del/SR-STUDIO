@@ -2,7 +2,7 @@
   "status": "BLOCKED — CORPUS NOT AVAILABLE TO CI",
   "tested_sha": "45e41b8755ef457868dd39d3227ebcb0e3460796",
   "run_id": "32153423618",
-  "run_attempt": "1",
+  "run_attempt": "2",
   "gates": {
     "Environment": true,
     "Tests": true,
@@ -104,7 +104,7 @@
   "performance": {},
   "memory": {
     "measurement": "approximate GitHub Actions CI memory evidence",
-    "baseline": "MemTotal:       16372432 kB\nMemAvailable:   15344892 kB\n",
+    "baseline": "MemTotal:       16373456 kB\nMemAvailable:   15095428 kB\n",
     "after_ingest": "",
     "ingest_peak_rss_kb": null,
     "standalone_ingest_peak_rss_kb": null,
@@ -116,5 +116,5 @@
     "wrong_auto_accept": 0,
     "uncertain": 0
   },
-  "current_ci_review_sample": "generated in review/review-dataset.json and review-contact-sheet.png; human judgement remains separate"
+  "current_ci_review_sample": "not generated because corpus gate failed before ingest; previous human sample remains separate"
 }
