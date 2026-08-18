@@ -1,0 +1,17 @@
+{
+  "required": [
+    "Downloads(1)(1).zip",
+    "Downloads(2)(1).zip",
+    "publish_repository.zip",
+    "standalone-images.zip"
+  ],
+  "found": {},
+  "missing": [
+    "Downloads(1)(1).zip",
+    "Downloads(2)(1).zip",
+    "publish_repository.zip",
+    "standalone-images.zip"
+  ],
+  "errors": [],
+  "release_count_scanned": 73
+}

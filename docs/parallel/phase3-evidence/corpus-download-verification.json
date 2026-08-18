@@ -1,0 +1,70 @@
+{
+  "all_verified": false,
+  "assets": {
+    "Downloads(1)(1).zip": {
+      "name": "Downloads(1)(1).zip",
+      "release_found": false,
+      "path": ".phase3-corpus/Downloads(1)(1).zip",
+      "expected_size": 0,
+      "release_digest": "",
+      "tag": "",
+      "release_draft": false,
+      "exists": false,
+      "actual_size": 0,
+      "sha256": "",
+      "size_verified": false,
+      "hash_verified": false,
+      "zip_integrity": false,
+      "verified": false
+    },
+    "Downloads(2)(1).zip": {
+      "name": "Downloads(2)(1).zip",
+      "release_found": false,
+      "path": ".phase3-corpus/Downloads(2)(1).zip",
+      "expected_size": 0,
+      "release_digest": "",
+      "tag": "",
+      "release_draft": false,
+      "exists": false,
+      "actual_size": 0,
+      "sha256": "",
+      "size_verified": false,
+      "hash_verified": false,
+      "zip_integrity": false,
+      "verified": false
+    },
+    "publish_repository.zip": {
+      "name": "publish_repository.zip",
+      "release_found": false,
+      "path": ".phase3-corpus/publish_repository.zip",
+      "expected_size": 0,
+      "release_digest": "",
+      "tag": "",
+      "release_draft": false,
+      "exists": false,
+      "actual_size": 0,
+      "sha256": "",
+      "size_verified": false,
+      "hash_verified": false,
+      "zip_integrity": false,
+      "verified": false
+    },
+    "standalone-images.zip": {
+      "name": "standalone-images.zip",
+      "release_found": false,
+      "path": ".phase3-corpus/standalone-images.zip",
+      "expected_size": 0,
+      "release_digest": "",
+      "tag": "",
+      "release_draft": false,
+      "exists": false,
+      "actual_size": 0,
+      "sha256": "",
+      "size_verified": false,
+      "hash_verified": false,
+      "zip_integrity": false,
+      "verified": false
+    }
+  },
+  "errors": []
+}

@@ -1,0 +1,11 @@
+{
+  "measurement": "approximate GitHub Actions CI memory evidence",
+  "baseline": {
+    "MemTotal": "16373448 kB",
+    "MemAvailable": "14791000 kB"
+  },
+  "after_ingest": {},
+  "ingest_peak_rss_kb": null,
+  "standalone_ingest_peak_rss_kb": null,
+  "audit_peak_rss_kb": null
+}

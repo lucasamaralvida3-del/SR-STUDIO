@@ -1,0 +1,100 @@
+{
+  "corpus_integrity_pass": false,
+  "rich_corpus_available": false,
+  "catalog_available": false,
+  "standalone_available": false,
+  "standalone_count": 0,
+  "product_db": "",
+  "release_assets": {
+    "required": [
+      "Downloads(1)(1).zip",
+      "Downloads(2)(1).zip",
+      "publish_repository.zip",
+      "standalone-images.zip"
+    ],
+    "found": {},
+    "missing": [
+      "Downloads(1)(1).zip",
+      "Downloads(2)(1).zip",
+      "publish_repository.zip",
+      "standalone-images.zip"
+    ],
+    "errors": [],
+    "release_count_scanned": 73
+  },
+  "verification": {
+    "Downloads(1)(1).zip": {
+      "name": "Downloads(1)(1).zip",
+      "release_found": false,
+      "path": ".phase3-corpus/Downloads(1)(1).zip",
+      "expected_size": 0,
+      "release_digest": "",
+      "tag": "",
+      "release_draft": false,
+      "exists": false,
+      "actual_size": 0,
+      "sha256": "",
+      "size_verified": false,
+      "hash_verified": false,
+      "zip_integrity": false,
+      "verified": false
+    },
+    "Downloads(2)(1).zip": {
+      "name": "Downloads(2)(1).zip",
+      "release_found": false,
+      "path": ".phase3-corpus/Downloads(2)(1).zip",
+      "expected_size": 0,
+      "release_digest": "",
+      "tag": "",
+      "release_draft": false,
+      "exists": false,
+      "actual_size": 0,
+      "sha256": "",
+      "size_verified": false,
+      "hash_verified": false,
+      "zip_integrity": false,
+      "verified": false
+    },
+    "publish_repository.zip": {
+      "name": "publish_repository.zip",
+      "release_found": false,
+      "path": ".phase3-corpus/publish_repository.zip",
+      "expected_size": 0,
+      "release_digest": "",
+      "tag": "",
+      "release_draft": false,
+      "exists": false,
+      "actual_size": 0,
+      "sha256": "",
+      "size_verified": false,
+      "hash_verified": false,
+      "zip_integrity": false,
+      "verified": false
+    },
+    "standalone-images.zip": {
+      "name": "standalone-images.zip",
+      "release_found": false,
+      "path": ".phase3-corpus/standalone-images.zip",
+      "expected_size": 0,
+      "release_digest": "",
+      "tag": "",
+      "release_draft": false,
+      "exists": false,
+      "actual_size": 0,
+      "sha256": "",
+      "size_verified": false,
+      "hash_verified": false,
+      "zip_integrity": false,
+      "verified": false
+    }
+  },
+  "expected": {
+    "pptx": 36,
+    "slides": 566,
+    "embedded_unique": 1910,
+    "media_occurrences": 2324,
+    "standalone": 160,
+    "catalog": 520
+  },
+  "errors": []
+}
