@@ -14,6 +14,7 @@ from .autosave import AutosaveManager, RecoveryPoint, default_autosave_root
 from .command_router import GraphicsCommandRouter
 from .editor_persistence import (
     EditorPersistenceState,
+    EditorRecentProject,
     EditorRecoveryJournal,
     document_digest,
     newer_recovery_point,
@@ -95,6 +96,9 @@ def load_launch_context(
             resumed = _resume_pending_session(project_name=project_name)
             if resumed is not None:
                 return resumed
+            recent = _resume_recent_project(project_name=project_name)
+            if recent is not None:
+                return recent
         document = GraphicsDocument(name=project_name or "Novo Projeto SR — Graphics Engine 2")
         return GraphicsLaunchContext(document=document, gate=inspect_production_gate(document))
 
@@ -150,9 +154,33 @@ def _resume_pending_session(*, project_name: str = "") -> GraphicsLaunchContext 
     if point is None or current is None:
         return None
 
+    source = current.source_path if current.source_path and current.source_path.is_file() else None
+    if source is not None and source.suffix.lower() in {".srscene", ".zip"}:
+        try:
+            from .package import load_package
+
+            saved_document = load_package(source)
+        except (OSError, ValueError, KeyError):
+            source = None
+        else:
+            if saved_document.id != current.document_id:
+                # Um journal antigo/tamperado jamais pode transformar outro
+                # projeto no destino implícito de um save futuro.
+                source = None
+            else:
+                try:
+                    source_mtime = source.stat().st_mtime
+                except OSError:
+                    source_mtime = 0.0
+                if source_mtime and point.saved_at.timestamp() <= source_mtime:
+                    # O save manual já é tão novo quanto (ou mais novo que) o
+                    # recovery apontado. Preferir o arquivo salvo evita reabrir
+                    # uma geração antiga e "voltar no tempo" após um crash.
+                    journal.clear(current.document_id)
+                    return load_launch_context(source, project_name=project_name, resume_last=False)
+
     cache_dir = _runtime_cache_dir(point.path)
     document = manager.recover(point, extract_assets_to=cache_dir / "recovery-assets")
-    source = current.source_path if current.source_path and current.source_path.is_file() else None
     saved_digest = _saved_package_digest(source)
     if project_name:
         document.name = project_name
@@ -165,6 +193,22 @@ def _resume_pending_session(*, project_name: str = "") -> GraphicsLaunchContext 
         saved_digest=saved_digest,
         recovered_from=point,
     )
+
+
+def _resume_recent_project(*, project_name: str = "") -> GraphicsLaunchContext | None:
+    recent = EditorRecentProject(default_autosave_root())
+    current = recent.current()
+    if current is None:
+        return None
+    try:
+        context = load_launch_context(current.path, project_name=project_name, resume_last=False)
+    except (OSError, ValueError, KeyError):
+        recent.clear(current.document_id)
+        return None
+    if context.document.id != current.document_id:
+        recent.clear(current.document_id)
+        return None
+    return context
 
 
 def _saved_package_digest(source: Path | None) -> str:
@@ -268,6 +312,7 @@ def launch_qt_quick_editor(
     autosave_root = default_autosave_root()
     autosave_manager = AutosaveManager(autosave_root)
     recovery_journal = EditorRecoveryJournal(autosave_root)
+    recent_project = EditorRecentProject(autosave_root)
     persistence = EditorPersistenceState(
         saved_digest=str(context.saved_digest or ""),
         autosave_digest=document_digest(session.document) if context.recovered_from is not None else "",
@@ -278,6 +323,8 @@ def launch_qt_quick_editor(
         ),
         recovered_from=context.recovered_from,
     )
+    if persistence.saved_path is not None:
+        recent_project.mark(persistence.saved_path, document_id=session.document.id)
 
     class SceneBridge(QObject):
         sceneChanged = Signal()
@@ -364,17 +411,26 @@ def launch_qt_quick_editor(
 
         def _finish_file_job(self, ok: bool, kind: str, target: str, digest: str, message: str) -> None:
             self._busy = False
+            refresh_recovery = False
             if ok and kind == "save":
                 final = Path(target).resolve()
                 context.source = final
                 context.saved_digest = digest
                 context.recovered_from = None
                 persistence.mark_saved(digest, final)
-                if not persistence.is_dirty(session.document):
-                    recovery_journal.clear(session.document.id)
+                recent_project.mark(final, document_id=session.document.id)
+                # Todo recovery anterior ao save recém-confirmado fica obsoleto.
+                # Mantê-lo quando houve edição durante o worker poderia fazer o
+                # próximo boot preferir uma geração mais velha que o disco.
+                recovery_journal.clear(session.document.id)
+                refresh_recovery = persistence.is_dirty(session.document)
             self._status = message if ok else f"Falha: {message}"
             self.statusChanged.emit()
             self.sceneChanged.emit()
+            if refresh_recovery:
+                # Se o usuário continuou editando durante o save, proteja o
+                # estado vivo imediatamente em vez de aguardar o ticker.
+                self._start_autosave(force=True)
 
         def _start_autosave(self, *, force: bool = False) -> None:
             if self._autosave_busy or self._busy:
