@@ -51,12 +51,8 @@ class SafeImageLibrary(ImageLibrary):
                 for key, value in quality.items():
                     merged_metadata.setdefault(key, value)
             except (OSError, ValueError):
-                # A corrupt/unsupported raster will still fail in the base importer;
-                # quality analysis itself must not manufacture a different failure.
                 pass
 
-        # Exact duplicates use the legacy 24-hex asset id. Merge provenance before
-        # delegating so repeated observations cannot erase earlier source records.
         legacy_id = ImageLibrary._hash(source_path)
         current_data = self._load().get(legacy_id)
         if current_data:
@@ -146,7 +142,15 @@ class SafeImageLibrary(ImageLibrary):
         incoming = dict(incoming or {})
         merged = {**current, **incoming}
 
-        incoming_sha = str(incoming.get("sha256_full") or incoming.get("sha256") or "").strip().lower()
+        # Treat both hash fields as evidence. On a near-duplicate update the
+        # incoming dictionary may already contain the canonical sha256_full from
+        # the existing asset while `sha256` carries the newly observed physical
+        # file. Looking only at the first field would silently lose that variant.
+        incoming_hashes = {
+            str(value).strip().lower()
+            for value in (incoming.get("sha256_full"), incoming.get("sha256"))
+            if str(value or "").strip()
+        }
         variants = {
             str(value).strip().lower()
             for value in (
@@ -155,17 +159,19 @@ class SafeImageLibrary(ImageLibrary):
             )
             if str(value).strip()
         }
-        if incoming_sha and canonical_sha256 and incoming_sha != canonical_sha256:
-            variants.add(incoming_sha)
         if canonical_sha256:
+            variants.update(value for value in incoming_hashes if value != canonical_sha256)
             merged["sha256"] = canonical_sha256
             merged["sha256_full"] = canonical_sha256
+        elif incoming_hashes:
+            chosen = next(iter(incoming_hashes))
+            merged["sha256"] = chosen
+            merged["sha256_full"] = chosen
+            variants.discard(chosen)
         if variants:
             variants.discard(canonical_sha256)
             merged["variant_sha256"] = sorted(variants)
 
-        # Canonical visual/quality metadata must not be overwritten by a later
-        # recompressed near-duplicate merely because its provenance is merged.
         for key in (
             "rgb_signature",
             "quality_score",
