@@ -11,9 +11,9 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from srstudio.images.library import ImageLibrary
 from srstudio.images.lookup import ProductImageLookupService
 from srstudio.images.precision_training import PrecisionProductImageCorpusTrainer
+from srstudio.images.safe_library import SafeImageLibrary
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -46,7 +46,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.imports_root
         else bank_root / "training"
     )
-    library = ImageLibrary(bank_root)
+    library = SafeImageLibrary(bank_root)
     trainer = PrecisionProductImageCorpusTrainer(library, imports_root=imports_root)
     report = trainer.train([Path(value).expanduser() for value in args.sources], force=args.force)
 
