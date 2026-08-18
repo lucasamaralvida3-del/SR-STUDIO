@@ -64,12 +64,12 @@ def _pptx(path, *slides: str):
     return path
 
 
-def _text(node_id: str, name: str, content: str = "normalizado") -> GraphicsNode:
+def _text(node_id: str, name: str, text: str = "normalizado") -> GraphicsNode:
     return GraphicsNode(
         id=node_id,
         kind=NodeKind.TEXT,
         name=name,
-        content=content,
+        text=text,
         transform=Transform(width=200, height=80),
         metadata={"source": "pptx", "source_name": name},
     )
@@ -90,7 +90,7 @@ def test_preserves_boundary_whitespace_empty_paragraphs_and_inline_breaks(tmp_pa
     assert report.contracts_with_inline_breaks == 1
     assert report.contracts_with_boundary_whitespace == 1
     assert report.coverage == 1.0
-    assert node.content == "  Preço \n\nLinha\n final  "
+    assert node.text == "  Preço \n\nLinha\n final  "
     assert node.metadata["pptx_text_content_previous"] == "Preço\nLinha final"
     assert node.metadata["pptx_text_content"] == {
         "paragraph_count": 3,
@@ -109,7 +109,7 @@ def test_recovers_text_inside_nested_groups_without_guessing_group_geometry(tmp_
 
     assert report.source_contracts == 1
     assert report.exact_contracts == 1
-    assert document.active_page.node("nested").content == "Grupo"
+    assert document.active_page.node("nested").text == "Grupo"
     assert document.active_page.node("nested").metadata["pptx_shape_id"] == "22"
 
 
@@ -128,8 +128,8 @@ def test_maps_same_shape_name_independently_per_slide(tmp_path):
     assert report.source_contracts == 2
     assert report.mapped_contracts == 2
     assert report.exact_contracts == 2
-    assert page1.node("slide1").content == "\nSlide 1"
-    assert page2.node("slide2").content == "\nSlide 2"
+    assert page1.node("slide1").text == "\nSlide 1"
+    assert page2.node("slide2").text == "\nSlide 2"
     assert page1.node("slide1").metadata["pptx_shape_id"] == "30"
     assert page2.node("slide2").metadata["pptx_shape_id"] == "31"
 
@@ -145,6 +145,6 @@ def test_ambiguous_scene_mapping_is_reported_without_mutation(tmp_path):
     assert report.source_contracts == 1
     assert report.mapped_contracts == 0
     assert report.exact_contracts == 0
-    assert page.node("one").content == "um"
-    assert page.node("two").content == "dois"
+    assert page.node("one").text == "um"
+    assert page.node("two").text == "dois"
     assert any(issue.code == "PPTX_TEXT_CONTENT_SHAPE_AMBIGUOUS" for issue in report.issues)
