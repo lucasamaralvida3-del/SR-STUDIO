@@ -185,7 +185,7 @@ def _render_node(painter, document: GraphicsDocument, page: GraphicsPage, node: 
         return
     painter.save()
     try:
-        painter.setOpacity(max(0.0, min(1.0, float(node.opacity))))
+        painter.setOpacity(_effective_opacity(page, node))
         cx = t.x + t.width * t.pivot_x
         cy = t.y + t.height * t.pivot_y
         if t.rotation:
@@ -740,6 +740,22 @@ def _local_path(source: str, QtCore) -> str:
     if text.startswith("file:"):
         return str(QtCore.QUrl(text).toLocalFile())
     return text if Path(text).is_absolute() else ""
+
+
+def _effective_opacity(page: GraphicsPage, node: GraphicsNode) -> float:
+    opacity = _clamp(float(node.opacity), 0.0, 1.0)
+    parent_id = node.parent_id
+    seen: set[str] = set()
+    while parent_id and parent_id not in seen:
+        seen.add(parent_id)
+        parent = page.node(parent_id)
+        if parent is None:
+            break
+        opacity *= _clamp(float(parent.opacity), 0.0, 1.0)
+        if opacity <= 0.0:
+            return 0.0
+        parent_id = parent.parent_id
+    return _clamp(opacity, 0.0, 1.0)
 
 
 def _has_hidden_ancestor(page: GraphicsPage, node: GraphicsNode) -> bool:
