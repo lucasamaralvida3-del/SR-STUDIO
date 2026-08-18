@@ -629,7 +629,7 @@ def _draw_rect(painter, node: GraphicsNode, QtCore, QtGui) -> None:
 def _draw_ellipse(painter, node: GraphicsNode, QtCore, QtGui) -> None:
     rect = QtCore.QRectF(node.transform.x, node.transform.y, node.transform.width, node.transform.height)
     painter.setPen(_pen(node.style, QtCore, QtGui))
-    painter.setBrush(_brush(node.style, QtCore, QtGui))
+    painter.setBrush(_brush(node.style, QtCore, QtGui, rect=rect))
     painter.drawEllipse(rect)
 
 
@@ -644,7 +644,7 @@ def _draw_path(painter, page: GraphicsPage, node: GraphicsNode, warnings: list[R
     custom = _custom_path(node.metadata.get("custom_path"), rect, QtGui)
     if custom is not None:
         painter.setPen(_pen(node.style, QtCore, QtGui))
-        painter.setBrush(_brush(node.style, QtCore, QtGui))
+        painter.setBrush(_brush(node.style, QtCore, QtGui, rect=rect))
         painter.drawPath(custom)
         return
     path_text = str(node.metadata.get("svg_path") or "").strip()
