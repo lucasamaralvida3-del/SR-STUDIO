@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from pathlib import Path
+import sys
 
 import srstudio
+import srstudio.graphics2.studio_bridge as studio_bridge_module
 from srstudio.core.models import Page, Product, ProductCard, StudioProject
 from srstudio.graphics2.package import load_package
 from srstudio.graphics2.studio_bridge import (
@@ -53,6 +55,19 @@ def test_prepare_studio_project_creates_valid_srscene_snapshot_with_products(tmp
     assert restored.metadata["legacy_project_id"] == project.id
     assert restored.metadata["products"][0]["display_name"] == "ACÉM KG"
     assert restored.active_page.slots
+
+
+def test_development_bridge_fallback_uses_hardened_entrypoint(monkeypatch):
+    monkeypatch.setattr(studio_bridge_module, "discover_packaged_host", lambda: None)
+    monkeypatch.delattr(sys, "frozen", raising=False)
+
+    command = studio_bridge_module._host_command()
+
+    assert command == [sys.executable, "-m", "srstudio.graphics2.entrypoint"]
+    assert studio_bridge_module._uses_current_python(command)
+    assert not studio_bridge_module._uses_current_python(
+        [sys.executable, "-m", "srstudio.graphics2.qt_host"]
+    )
 
 
 def test_enabled_bridge_launches_isolated_host_with_snapshot_and_software_backend(tmp_path, monkeypatch):
