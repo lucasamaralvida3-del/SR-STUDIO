@@ -1,0 +1,35 @@
+name: Apply G2 Alpha 43 QML Payload Fix
+
+on:
+  push:
+    branches:
+      - integration/sr-studio-next
+    paths:
+      - 'tools/apply_g2_alpha43_qml_payload_sync.py'
+      - '.github/workflows/g2-alpha43-qml-payload-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/sr-studio-next
+          fetch-depth: 0
+      - name: Apply exact QML patch
+        run: python tools/apply_g2_alpha43_qml_payload_sync.py
+      - name: Check patch
+        run: |
+          git diff --check
+          grep -F 'function selectedImage(sourceScene)' src/srstudio/graphics2/qml/ImageInspector.qml
+          grep -F 'var selected = selectedImage(parsedScene)' src/srstudio/graphics2/qml/ImageInspector.qml
+      - name: Commit product fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/srstudio/graphics2/qml/ImageInspector.qml
+          git commit -m "fix: resolve ImageInspector selection from fresh payload"
+          git push origin HEAD:integration/sr-studio-next
