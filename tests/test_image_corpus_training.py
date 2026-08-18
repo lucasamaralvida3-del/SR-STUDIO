@@ -78,7 +78,10 @@ def test_incremental_training_skips_unchanged_source(tmp_path):
     assert first.metrics.files_processed == 1
     assert first.metrics.files_skipped == 0
     assert importer.calls == 1
-    assert first.metrics.accepted == 1
+    # One document is deliberately insufficient for production auto-approval.
+    # It remains a usable probable candidate while the incremental state is saved.
+    assert first.metrics.accepted == 0
+    assert first.metrics.probable == 1
     assert library.learned
     learned_count = len(library.learned)
 
