@@ -226,3 +226,151 @@ def test_common_clipboard_refuses_semantic_bound_nodes_instead_of_corrupting_bin
     assert not result.ok
     assert not result.changed
     assert "ProductCard/PriceBlock/Smart Slot" in result.message
+
+
+def test_delete_preserves_locked_nodes_and_deletes_unlocked_selection_only():
+    session = GraphicsSession(GraphicsDocument(name="Locks"))
+    locked = GraphicsNode(
+        kind=NodeKind.RECT,
+        name="Protegido",
+        locked=True,
+        transform=Transform(x=10, y=10, width=100, height=80),
+    )
+    free = GraphicsNode(
+        kind=NodeKind.RECT,
+        name="Livre",
+        transform=Transform(x=130, y=10, width=100, height=80),
+    )
+    session.page.add_node(locked)
+    session.page.add_node(free)
+    session.selection = {locked.id, free.id}
+    session.anchor_id = free.id
+    router = GraphicsCommandRouter(session)
+
+    result = router.dispatch({"name": "delete"})
+
+    assert result.ok and result.changed
+    assert result.payload == {"count": 1, "blocked": 1}
+    assert locked.id in session.page.nodes
+    assert free.id not in session.page.nodes
+    assert session.selection == {locked.id}
+    assert session.anchor_id == locked.id
+
+
+def test_delete_refuses_unlocked_group_when_it_contains_locked_descendant():
+    session = GraphicsSession(GraphicsDocument(name="Locked child"))
+    group = GraphicsNode(
+        kind=NodeKind.GROUP,
+        name="Grupo",
+        transform=Transform(x=0, y=0, width=200, height=160),
+    )
+    child = GraphicsNode(
+        kind=NodeKind.TEXT,
+        name="Texto bloqueado",
+        text="NÃO APAGAR",
+        locked=True,
+        transform=Transform(x=10, y=10, width=180, height=50),
+    )
+    session.page.add_node(group)
+    session.page.add_node(child, parent_id=group.id)
+    session.select(group.id)
+    router = GraphicsCommandRouter(session)
+
+    result = router.dispatch({"name": "delete"})
+
+    assert result.ok and not result.changed
+    assert result.payload == {"count": 0, "blocked": 1}
+    assert group.id in session.page.nodes
+    assert child.id in session.page.nodes
+
+
+def test_cut_locked_node_copies_but_never_removes_it():
+    session = GraphicsSession(GraphicsDocument(name="Locked cut"))
+    node = GraphicsNode(
+        kind=NodeKind.RECT,
+        name="Trava",
+        locked=True,
+        transform=Transform(x=10, y=20, width=90, height=60),
+    )
+    session.page.add_node(node)
+    session.select(node.id)
+    router = GraphicsCommandRouter(session)
+
+    cut = router.dispatch({"name": "cut"})
+
+    assert cut.ok and not cut.changed
+    assert node.id in session.page.nodes
+    assert cut.payload == {"count": 0, "blocked": 1}
+
+    # O clipboard continua útil como cópia, mas o original protegido permanece.
+    pasted = router.dispatch({"name": "paste", "dx": 25, "dy": 25})
+    assert pasted.ok and pasted.changed
+    assert len(session.page.nodes) == 2
+
+
+def test_property_and_layer_commands_preserve_locked_members_in_mixed_selection():
+    session = GraphicsSession(GraphicsDocument(name="Mixed locks"))
+    locked = GraphicsNode(
+        kind=NodeKind.RECT,
+        name="Protegido",
+        locked=True,
+        opacity=0.8,
+        z_index=3,
+        transform=Transform(x=10, y=10, width=80, height=60),
+    )
+    free = GraphicsNode(
+        kind=NodeKind.RECT,
+        name="Livre",
+        opacity=0.8,
+        z_index=4,
+        transform=Transform(x=100, y=10, width=80, height=60),
+    )
+    session.page.add_node(locked)
+    session.page.add_node(free)
+    session.selection = {locked.id, free.id}
+    session.anchor_id = free.id
+    router = GraphicsCommandRouter(session)
+
+    opacity = router.dispatch({"name": "opacity", "value": 0.25})
+    assert opacity.ok and opacity.changed
+    assert locked.opacity == 0.8
+    assert free.opacity == 0.25
+    assert session.selection == {locked.id, free.id}
+
+    locked_z = locked.z_index
+    layer = router.dispatch({"name": "layer", "mode": "front"})
+    assert layer.ok and layer.changed
+    assert locked.z_index == locked_z
+    assert free.z_index > locked.z_index
+    assert session.selection == {locked.id, free.id}
+
+
+def test_locked_text_and_geometry_commands_report_no_change():
+    session = GraphicsSession(GraphicsDocument(name="Locked inspector"))
+    text = GraphicsNode(
+        kind=NodeKind.TEXT,
+        name="Fixado",
+        text="ORIGINAL",
+        locked=True,
+        transform=Transform(x=20, y=30, width=160, height=60),
+    )
+    session.page.add_node(text)
+    session.select(text.id)
+    router = GraphicsCommandRouter(session)
+    before = session.document.to_dict()
+
+    resized = router.dispatch(
+        {
+            "name": "resize",
+            "node_id": text.id,
+            "x": 100,
+            "y": 120,
+            "width": 400,
+            "height": 90,
+        }
+    )
+    edited = router.dispatch({"name": "edit_text", "node_id": text.id, "text": "ALTERADO"})
+
+    assert resized.ok and not resized.changed
+    assert edited.ok and not edited.changed
+    assert session.document.to_dict() == before
