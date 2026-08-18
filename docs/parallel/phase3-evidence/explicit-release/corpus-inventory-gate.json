@@ -1,0 +1,34 @@
+{
+  "metrics": {
+    "files_found": 0,
+    "unique_files_exact": 0,
+    "logical_documents": 0,
+    "slides": 0,
+    "raw_image_refs": 0,
+    "media_file_occurrences": 0,
+    "unique_media_exact": 0,
+    "product_text_candidates": 0,
+    "unique_products": 0,
+    "exact_duplicate_file_groups": 0,
+    "logical_duplicate_groups": 0,
+    "near_duplicate_pairs": 0,
+    "geometry_rejected_dhash_pairs": 0,
+    "content_rejected_dhash_pairs": 0,
+    "text_only_files": 0,
+    "template_heavy_files": 0,
+    "mixed_files": 0
+  },
+  "expected": {
+    "files_found": 36,
+    "slides": 566,
+    "unique_media_exact": 1910,
+    "raw_image_refs": 2324
+  },
+  "checks": {
+    "files_found": false,
+    "slides": false,
+    "unique_media_exact": false,
+    "raw_image_refs": false
+  },
+  "pass": false
+}

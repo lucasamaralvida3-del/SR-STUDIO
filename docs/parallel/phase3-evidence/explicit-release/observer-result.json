@@ -1,249 +1,253 @@
 {
-  "target_sha": "7a18ca2586c1fbbe5584761054337785d9de5ac3",
+  "target_sha": "0409d702e8c3354b5287c6dd89f5305b45fb8723",
   "run": {
     "conclusion": "failure",
-    "createdAt": "2026-08-18T17:08:47Z",
-    "databaseId": 32164046556,
+    "createdAt": "2026-08-18T17:12:33Z",
+    "databaseId": 32164380448,
     "event": "push",
     "headBranch": "g2/parallel-image-database",
-    "headSha": "7a18ca2586c1fbbe5584761054337785d9de5ac3",
+    "headSha": "0409d702e8c3354b5287c6dd89f5305b45fb8723",
     "jobs": [
       {
-        "completedAt": "2026-08-18T17:09:22Z",
+        "completedAt": "2026-08-18T17:21:50Z",
         "conclusion": "failure",
-        "databaseId": 95799349574,
-        "name": "Validate Image Database Phase 3",
-        "startedAt": "2026-08-18T17:08:50Z",
+        "databaseId": 95800430635,
+        "name": "Validate Image Database Phase 3A",
+        "startedAt": "2026-08-18T17:12:36Z",
         "status": "completed",
         "steps": [
           {
-            "completedAt": "2026-08-18T17:08:52Z",
+            "completedAt": "2026-08-18T17:12:38Z",
             "conclusion": "success",
             "name": "Set up job",
             "number": 1,
-            "startedAt": "2026-08-18T17:08:51Z",
+            "startedAt": "2026-08-18T17:12:37Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:02Z",
+            "completedAt": "2026-08-18T17:12:40Z",
             "conclusion": "success",
             "name": "Checkout tested SHA",
             "number": 2,
-            "startedAt": "2026-08-18T17:08:52Z",
+            "startedAt": "2026-08-18T17:12:38Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:02Z",
+            "completedAt": "2026-08-18T17:12:40Z",
             "conclusion": "success",
             "name": "Prepare evidence directories",
             "number": 3,
-            "startedAt": "2026-08-18T17:09:02Z",
+            "startedAt": "2026-08-18T17:12:40Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:04Z",
+            "completedAt": "2026-08-18T17:12:41Z",
             "conclusion": "success",
             "name": "Setup Python",
             "number": 4,
-            "startedAt": "2026-08-18T17:09:02Z",
+            "startedAt": "2026-08-18T17:12:40Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:10Z",
+            "completedAt": "2026-08-18T17:12:47Z",
             "conclusion": "success",
             "name": "Install official project dependencies",
             "number": 5,
-            "startedAt": "2026-08-18T17:09:04Z",
+            "startedAt": "2026-08-18T17:12:41Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:14Z",
+            "completedAt": "2026-08-18T17:12:53Z",
             "conclusion": "success",
             "name": "Run complete Image DB test suite",
             "number": 6,
-            "startedAt": "2026-08-18T17:09:10Z",
+            "startedAt": "2026-08-18T17:12:47Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:16Z",
+            "completedAt": "2026-08-18T17:13:15Z",
             "conclusion": "success",
-            "name": "Locate, download and cryptographically verify Release corpus",
+            "name": "Resolve explicit Release image-db-corpus-v1 and verify Phase 3A assets",
             "number": 7,
-            "startedAt": "2026-08-18T17:09:14Z",
+            "startedAt": "2026-08-18T17:12:53Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:16Z",
+            "completedAt": "2026-08-18T17:13:15Z",
             "conclusion": "success",
-            "name": "Require complete corpus before ingest",
+            "name": "PHASE 3A CORPUS GATE — rich corpus + catalog; standalone deferred",
             "number": 8,
-            "startedAt": "2026-08-18T17:09:16Z",
+            "startedAt": "2026-08-18T17:13:15Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:16Z",
-            "conclusion": "skipped",
+            "completedAt": "2026-08-18T17:13:15Z",
+            "conclusion": "success",
             "name": "Record BEFORE state",
             "number": 9,
-            "startedAt": "2026-08-18T17:09:16Z",
+            "startedAt": "2026-08-18T17:13:15Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:16Z",
-            "conclusion": "skipped",
+            "completedAt": "2026-08-18T17:21:45Z",
+            "conclusion": "success",
             "name": "INGEST — rich PPTX corpus",
             "number": 10,
-            "startedAt": "2026-08-18T17:09:16Z",
+            "startedAt": "2026-08-18T17:13:15Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:16Z",
-            "conclusion": "skipped",
-            "name": "INGEST — 160 standalone images",
+            "completedAt": "2026-08-18T17:21:45Z",
+            "conclusion": "success",
+            "name": "STANDALONE — deferred to incremental Phase 3B",
             "number": 11,
-            "startedAt": "2026-08-18T17:09:16Z",
+            "startedAt": "2026-08-18T17:21:45Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:16Z",
+            "completedAt": "2026-08-18T17:21:45Z",
             "conclusion": "skipped",
             "name": "RELOAD — persistence and field invariants",
             "number": 12,
-            "startedAt": "2026-08-18T17:09:16Z",
+            "startedAt": "2026-08-18T17:21:45Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:16Z",
+            "completedAt": "2026-08-18T17:21:45Z",
             "conclusion": "skipped",
-            "name": "SECOND INGEST — replay exact same corpus",
+            "name": "SECOND INGEST — replay exact same rich corpus",
             "number": 13,
-            "startedAt": "2026-08-18T17:09:16Z",
+            "startedAt": "2026-08-18T17:21:45Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:16Z",
+            "completedAt": "2026-08-18T17:21:45Z",
             "conclusion": "skipped",
             "name": "IDEMPOTENCY — compare BEFORE SECOND and AFTER SECOND",
             "number": 14,
-            "startedAt": "2026-08-18T17:09:16Z",
+            "startedAt": "2026-08-18T17:21:45Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:17Z",
+            "completedAt": "2026-08-18T17:21:46Z",
             "conclusion": "success",
             "name": "RECOVERY — stale processed state with missing image_id",
             "number": 15,
-            "startedAt": "2026-08-18T17:09:16Z",
+            "startedAt": "2026-08-18T17:21:45Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:17Z",
+            "completedAt": "2026-08-18T17:21:46Z",
             "conclusion": "skipped",
             "name": "LIBRARY AUDIT → CATALOG 520 → DEPARTMENTS → TOP MISSING → FIND_IMAGE → PERFORMANCE → REVIEW DATASET",
             "number": 16,
-            "startedAt": "2026-08-18T17:09:17Z",
+            "startedAt": "2026-08-18T17:21:46Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:17Z",
+            "completedAt": "2026-08-18T17:21:46Z",
             "conclusion": "success",
             "name": "Build approximate CI memory report",
             "number": 17,
-            "startedAt": "2026-08-18T17:09:17Z",
+            "startedAt": "2026-08-18T17:21:46Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:17Z",
+            "completedAt": "2026-08-18T17:21:46Z",
             "conclusion": "success",
-            "name": "Build complete Phase 3 summary",
+            "name": "Build complete Phase 3A summary",
             "number": 18,
-            "startedAt": "2026-08-18T17:09:17Z",
+            "startedAt": "2026-08-18T17:21:46Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:18Z",
+            "completedAt": "2026-08-18T17:21:47Z",
             "conclusion": "success",
-            "name": "Upload complete Phase 3 evidence",
+            "name": "Upload complete Phase 3A evidence",
             "number": 19,
-            "startedAt": "2026-08-18T17:09:17Z",
+            "startedAt": "2026-08-18T17:21:46Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:18Z",
+            "completedAt": "2026-08-18T17:21:48Z",
             "conclusion": "failure",
-            "name": "Final operational gate",
+            "name": "Final Phase 3A operational gate",
             "number": 20,
-            "startedAt": "2026-08-18T17:09:18Z",
+            "startedAt": "2026-08-18T17:21:47Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:18Z",
+            "completedAt": "2026-08-18T17:21:48Z",
             "conclusion": "skipped",
             "name": "Post Setup Python",
             "number": 39,
-            "startedAt": "2026-08-18T17:09:18Z",
+            "startedAt": "2026-08-18T17:21:48Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:18Z",
+            "completedAt": "2026-08-18T17:21:48Z",
             "conclusion": "success",
             "name": "Post Checkout tested SHA",
             "number": 40,
-            "startedAt": "2026-08-18T17:09:18Z",
+            "startedAt": "2026-08-18T17:21:48Z",
             "status": "completed"
           },
           {
-            "completedAt": "2026-08-18T17:09:18Z",
+            "completedAt": "2026-08-18T17:21:48Z",
             "conclusion": "success",
             "name": "Complete job",
             "number": 41,
-            "startedAt": "2026-08-18T17:09:18Z",
+            "startedAt": "2026-08-18T17:21:48Z",
             "status": "completed"
           }
         ],
-        "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32164046556/job/95799349574"
+        "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32164380448/job/95800430635"
       }
     ],
     "status": "completed",
-    "updatedAt": "2026-08-18T17:09:23Z",
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32164046556",
+    "updatedAt": "2026-08-18T17:21:51Z",
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32164380448",
     "workflowName": "Image DB Phase 3 Operational Validation"
   },
   "artifacts": [
     {
-      "id": 9334708840,
-      "node_id": "MDg6QXJ0aWZhY3Q5MzM0NzA4ODQw",
+      "id": 9335118114,
+      "node_id": "MDg6QXJ0aWZhY3Q5MzM1MTE4MTE0",
       "name": "image-db-phase3-report",
-      "size_in_bytes": 19012,
-      "url": "https://api.github.com/repos/lucasamaralvida3-del/SR-STUDIO/actions/artifacts/9334708840",
-      "archive_download_url": "https://api.github.com/repos/lucasamaralvida3-del/SR-STUDIO/actions/artifacts/9334708840/zip",
+      "size_in_bytes": 1736982,
+      "url": "https://api.github.com/repos/lucasamaralvida3-del/SR-STUDIO/actions/artifacts/9335118114",
+      "archive_download_url": "https://api.github.com/repos/lucasamaralvida3-del/SR-STUDIO/actions/artifacts/9335118114/zip",
       "expired": false,
-      "digest": "sha256:4a6803b6adbae633dc923d59e170d5a132d2b371a8a9b7345d7db5f7e39ab22b",
-      "created_at": "2026-08-18T17:09:18Z",
-      "updated_at": "2026-08-18T17:09:18Z",
-      "expires_at": "2026-09-01T17:09:17Z",
+      "digest": "sha256:129e7b7fcb60a996a810fc795b7fe9fd537ebbb23309b9880ea8d2e8ce11a333",
+      "created_at": "2026-08-18T17:21:47Z",
+      "updated_at": "2026-08-18T17:21:47Z",
+      "expires_at": "2026-09-01T17:21:46Z",
       "workflow_run": {
-        "id": 32164046556,
+        "id": 32164380448,
         "repository_id": 1324396979,
         "head_repository_id": 1324396979,
         "head_branch": "g2/parallel-image-database",
-        "head_sha": "7a18ca2586c1fbbe5584761054337785d9de5ac3"
+        "head_sha": "0409d702e8c3354b5287c6dd89f5305b45fb8723"
       }
     }
   ],
-  "phase3_status": "BLOCKED — CORPUS NOT AVAILABLE TO CI",
+  "phase3_status": "NOT READY",
   "copied_evidence": [
     "catalog-source-validation.json",
     "corpus-availability.json",
     "corpus-download-verification.json",
     "corpus-download.log",
+    "corpus-inventory-gate.json",
     "environment.txt",
+    "ingest-report.json",
     "memory.json",
     "phase3-summary.json",
     "pytest.log",
     "recovery-report.json",
     "release-api-response.json",
     "release-assets.json",
+    "standalone-deferred.txt",
+    "standalone-phase.json",
     "test-results.xml"
   ]
 }

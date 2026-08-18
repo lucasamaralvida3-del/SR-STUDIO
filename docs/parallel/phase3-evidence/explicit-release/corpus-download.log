@@ -1,7 +1,7 @@
-[Downloads(1)(1).zip] asset_id=None found=False download_complete=False size=0 sha256= verified=False
+[Downloads(1)(1).zip] release_asset=Downloads.1.1.zip asset_id=519720279 found=True download_complete=True size=249253663 sha256=aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba verified=True
 
 
-[Downloads(2)(1).zip] asset_id=None found=False download_complete=False size=0 sha256= verified=False
+[Downloads(2)(1).zip] release_asset=Downloads.2.1.zip asset_id=519719841 found=True download_complete=True size=344039590 sha256=035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86 verified=True
 
 
-[publish_repository.zip] asset_id=519734424 found=True download_complete=True size=19093966 sha256=5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24 verified=True
+[publish_repository.zip] release_asset=publish_repository.zip asset_id=519734424 found=True download_complete=True size=19093966 sha256=5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24 verified=True
