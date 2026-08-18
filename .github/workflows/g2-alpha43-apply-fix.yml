@@ -1,4 +1,4 @@
-name: Apply G2 Alpha 43 QML Visibility Fix
+name: Apply G2 Alpha 43 QML Payload Sync Fix
 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
         with:
           ref: integration/sr-studio-next
           fetch-depth: 0
-      - name: Apply audited QML startup-selection fix
+      - name: Apply audited QML payload-sync fix
         shell: bash
         run: |
           python - <<'PY'
@@ -27,40 +27,92 @@ jobs:
           path = Path('src/srstudio/graphics2/qml/ImageInspector.qml')
           text = path.read_text(encoding='utf-8')
 
-          replacements = [
-              (
-                  '    visible: !!imageNode\n',
-                  '    visible: hasImageSelection\n',
-              ),
-              (
-                  '    property var imageNode: null\n    property bool syncing: false\n',
-                  '    property var imageNode: null\n    property bool hasImageSelection: false\n    property bool syncing: false\n',
-              ),
-              (
-                  '            scene = JSON.parse(sceneBridge.sceneJson)\n            imageNode = selectedImage()\n            if (!imageNode)\n                return\n',
-                  '            scene = JSON.parse(sceneBridge.sceneJson)\n            var selected = selectedImage()\n            imageNode = selected\n            hasImageSelection = selected !== null && selected !== undefined\n            if (!hasImageSelection)\n                return\n',
-              ),
-              (
-                  '    Component.onCompleted: Qt.callLater(refresh)\n',
-                  '    Component.onCompleted: refresh()\n',
-              ),
-          ]
-          for old, new in replacements:
-              count = text.count(old)
-              if count != 1:
-                  raise RuntimeError(f'expected one QML match, got {count}: {old!r}')
-              text = text.replace(old, new, 1)
+          old = '''    function activePage() {
+        if (!scene.pages || !scene.pages.length)
+            return null
+        for (var i = 0; i < scene.pages.length; ++i)
+            if (scene.pages[i].id === scene.active_page_id)
+                return scene.pages[i]
+        return scene.pages[0]
+    }
+
+    function selectedImage() {
+        var page = activePage()
+        if (!page || !scene.editor)
+            return null
+        var id = String(scene.editor.anchor_id || "")
+        var node = id && page.nodes ? page.nodes[id] : null
+        if (!node && scene.editor.selection && scene.editor.selection.length)
+            node = page.nodes[String(scene.editor.selection[0])] || null
+        if (!node && page.nodes) {
+            for (var nodeId in page.nodes) {
+                if (page.nodes[nodeId] && page.nodes[nodeId].selected) {
+                    node = page.nodes[nodeId]
+                    break
+                }
+            }
+        }
+        return node && (node.kind === "image" || node.kind === "background") ? node : null
+    }
+'''
+          new = '''    function activePage(sourceScene) {
+        var currentScene = sourceScene || scene
+        if (!currentScene.pages || !currentScene.pages.length)
+            return null
+        for (var i = 0; i < currentScene.pages.length; ++i)
+            if (currentScene.pages[i].id === currentScene.active_page_id)
+                return currentScene.pages[i]
+        return currentScene.pages[0]
+    }
+
+    function selectedImage(sourceScene) {
+        var currentScene = sourceScene || scene
+        var page = activePage(currentScene)
+        if (!page || !currentScene.editor)
+            return null
+        var id = String(currentScene.editor.anchor_id || "")
+        var node = id && page.nodes ? page.nodes[id] : null
+        if (!node && currentScene.editor.selection && currentScene.editor.selection.length)
+            node = page.nodes[String(currentScene.editor.selection[0])] || null
+        if (!node && page.nodes) {
+            for (var nodeId in page.nodes) {
+                if (page.nodes[nodeId] && page.nodes[nodeId].selected) {
+                    node = page.nodes[nodeId]
+                    break
+                }
+            }
+        }
+        return node && (node.kind === "image" || node.kind === "background") ? node : null
+    }
+'''
+          if text.count(old) != 1:
+              raise RuntimeError('expected exactly one activePage/selectedImage block')
+          text = text.replace(old, new, 1)
+
+          old = '''            scene = JSON.parse(sceneBridge.sceneJson)
+            var selected = selectedImage()
+            imageNode = selected
+'''
+          new = '''            var parsedScene = JSON.parse(sceneBridge.sceneJson)
+            var selected = selectedImage(parsedScene)
+            scene = parsedScene
+            imageNode = selected
+'''
+          if text.count(old) != 1:
+              raise RuntimeError('expected exactly one refresh selection block')
+          text = text.replace(old, new, 1)
+
           path.write_text(text, encoding='utf-8')
           PY
       - name: Static sanity checks
         run: |
           git diff --check
-          grep -F 'visible: hasImageSelection' src/srstudio/graphics2/qml/ImageInspector.qml
-          grep -F 'Component.onCompleted: refresh()' src/srstudio/graphics2/qml/ImageInspector.qml
-      - name: Commit QML visibility fix
+          grep -F 'function selectedImage(sourceScene)' src/srstudio/graphics2/qml/ImageInspector.qml
+          grep -F 'var selected = selectedImage(parsedScene)' src/srstudio/graphics2/qml/ImageInspector.qml
+      - name: Commit QML payload-sync fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/srstudio/graphics2/qml/ImageInspector.qml
-          git commit -m "fix: sync ImageInspector selection on startup"
+          git commit -m "fix: resolve ImageInspector selection from fresh payload"
           git push origin HEAD:integration/sr-studio-next
