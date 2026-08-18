@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
+from srstudio.images.corpus_inventory import CorpusInventoryReport, PptxCorpusInventory, report_payload as inventory_payload
 from srstudio.images.corpus_training import CorpusTrainingReport
 from srstudio.images.evidence_aliases import AliasLearningStats, apply_evidence_aliases
 from srstudio.images.lookup import ProductImageLookupService
@@ -15,6 +16,7 @@ from srstudio.images.safe_library import SafeImageLibrary
 
 @dataclass(slots=True)
 class BatchTrainingResult:
+    inventory: CorpusInventoryReport
     report: CorpusTrainingReport
     aliases: AliasLearningStats
     lookups: dict[str, dict]
@@ -29,14 +31,16 @@ def run_batch_training(
     force: bool = False,
     queries: Iterable[str] = (),
 ) -> BatchTrainingResult:
-    """Run the precision-first incremental Product↔Image training pipeline."""
+    """Run INVENTORY→TRAIN→ALIASES→LOOKUP as one precision-first pipeline."""
+    source_items = list(sources)
+    inventory = PptxCorpusInventory().scan(source_items)
     library = SafeImageLibrary(library_root)
     trainer = PrecisionProductImageCorpusTrainer(
         library,
         imports_root=imports_root,
         state_path=state_path,
     )
-    report = trainer.train(sources, force=force)
+    report = trainer.train(source_items, force=force)
     alias_stats = apply_evidence_aliases(library, report.decisions)
 
     lookup_service = ProductImageLookupService(library)
@@ -45,11 +49,12 @@ def run_batch_training(
         for query in queries
         if str(query).strip()
     }
-    return BatchTrainingResult(report, alias_stats, lookup_payload)
+    return BatchTrainingResult(inventory, report, alias_stats, lookup_payload)
 
 
 def result_payload(result: BatchTrainingResult) -> dict:
     return {
+        "inventory": inventory_payload(result.inventory),
         "metrics": asdict(result.report.metrics),
         "warnings": list(result.report.warnings),
         "processed_files": list(result.report.processed_files),
@@ -116,7 +121,7 @@ def _candidate_payload(candidate) -> dict | None:
 
 def _build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Treina incrementalmente o banco Produto↔Imagem usando corpus Canva/PPTX estruturado."
+        description="Inventaria e treina incrementalmente o banco Produto↔Imagem usando Canva/PPTX estruturado."
     )
     parser.add_argument("sources", nargs="+", help="PPTX, ZIP ou diretórios contendo PPTX")
     parser.add_argument("--library", required=True, help="Diretório persistente do banco de imagens")
