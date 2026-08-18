@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 
@@ -256,7 +257,7 @@ def test_forty_real_images_embed_extract_and_keep_node_asset_identity(tmp_path):
     assert set(reopened.assets) == set(original_asset_ids)
     assert sum(len(page.nodes) for page in reopened.pages) == 40
     for asset in reopened.assets.values():
-        extracted = __import__("pathlib").Path(asset.source)
+        extracted = Path(asset.source)
         assert asset.embedded is True
         assert asset.sha256
         assert extracted.is_file()
