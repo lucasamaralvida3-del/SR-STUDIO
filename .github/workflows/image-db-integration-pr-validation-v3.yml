@@ -1,0 +1,164 @@
+name: Image DB Integration PR Validation V3
+
+on:
+  pull_request:
+    branches:
+      - g2/integration-beta
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ARTIFACT_DIR: artifacts/image-db-integration-v3
+  CORPUS_DIR: .phase3-corpus
+  INC_LIBRARY: artifacts/image-db-integration-v3-library
+  INC_IMPORTS: artifacts/image-db-integration-v3-imports
+  PHASE3A_RUN_ID: '32166973267'
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  validate:
+    name: Validate integrated Image Database G2 V3
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout integration candidate
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install project
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR" "$CORPUS_DIR" "$INC_LIBRARY" "$INC_IMPORTS"
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+          python -m compileall -q src scripts/ci
+
+      - name: Image DB full suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_image_*.py tests/test_safe_image_library.py \
+            --junitxml="$ARTIFACT_DIR/image-db-tests.xml" 2>&1 | tee "$ARTIFACT_DIR/image-db-tests.log"
+
+      - name: Restore approved Phase 3A persisted index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .phase3a-persisted artifacts/phase3a-persisted-index
+          gh run download "$PHASE3A_RUN_ID" -n image-db-phase3a-report -D .phase3a-persisted
+          index=$(find .phase3a-persisted -type f -name index.json | head -1)
+          test -n "$index"
+          cp "$index" artifacts/phase3a-persisted-index/index.json
+          echo "PHASE3A_INDEX=$index" >> "$GITHUB_ENV"
+
+      - name: Resolve validated rich corpus and catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: python scripts/ci/image_db_phase3_corpus.py > "$ARTIFACT_DIR/corpus-resolver.json"
+
+      - name: Confirm validated rich corpus and catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${CORPUS_INTEGRITY_PASS:-false}" = true
+          test "${RICH_CORPUS_AVAILABLE:-false}" = true
+          test "${CATALOG_AVAILABLE:-false}" = true
+          test -n "${PRODUCT_DB:-}"
+
+      - name: Resolve and inventory standalone corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: python scripts/ci/image_db_phase3b.py inventory --artifact-dir "$ARTIFACT_DIR" --corpus-dir "$CORPUS_DIR"
+
+      - name: Standalone corpus gate
+        shell: bash
+        run: python scripts/ci/image_db_integration_gate.py standalone --artifact-dir "$ARTIFACT_DIR"
+
+      - name: Materialize approved Phase 3A physical bank
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/ci/image_db_phase3b_restore.py \
+            --index-source "$PHASE3A_INDEX" \
+            --library "$INC_LIBRARY" \
+            --archive "$CORPUS_DIR/Downloads(1)(1).zip" \
+            --archive "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --output "$ARTIFACT_DIR/phase3a-physical-restore.json"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$INC_LIBRARY" --output "$ARTIFACT_DIR/before-standalone.json"
+          python scripts/ci/image_db_integration_gate.py baseline \
+            --snapshot "$ARTIFACT_DIR/before-standalone.json" --output "$ARTIFACT_DIR/before-gate.json"
+
+      - name: Incremental standalone ingest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m srstudio.images.standalone_cli \
+            --library "$INC_LIBRARY" --product-db "$PRODUCT_DB" --manifest "$STANDALONE_MANIFEST" \
+            --state "$INC_IMPORTS/standalone-state.json" --report "$ARTIFACT_DIR/standalone-ingest-report.json"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$INC_LIBRARY" --output "$ARTIFACT_DIR/after-first-ingest.json"
+
+      - name: Second ingest and idempotency
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m srstudio.images.standalone_cli \
+            --library "$INC_LIBRARY" --product-db "$PRODUCT_DB" --manifest "$STANDALONE_MANIFEST" \
+            --state "$INC_IMPORTS/standalone-state.json" --report "$ARTIFACT_DIR/second-ingest-report.json"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$INC_LIBRARY" --output "$ARTIFACT_DIR/after-second-ingest.json"
+          python scripts/ci/image_db_integration_gate.py idempotency \
+            --first "$ARTIFACT_DIR/after-first-ingest.json" \
+            --second "$ARTIFACT_DIR/after-second-ingest.json" \
+            --report "$ARTIFACT_DIR/second-ingest-report.json" \
+            --selected "$STANDALONE_TRAINING_FILES" \
+            --output "$ARTIFACT_DIR/idempotency.json"
+
+      - name: Recovery regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_image_standalone_recovery.py \
+            --junitxml="$ARTIFACT_DIR/recovery.xml" 2>&1 | tee "$ARTIFACT_DIR/recovery.log"
+          echo '{"status":"PASS"}' > "$ARTIFACT_DIR/recovery-report.json"
+
+      - name: Audit catalog lookup and performance
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR/after"
+          python scripts/ci/image_db_phase3_analysis.py \
+            --library "$INC_LIBRARY" --product-db "$PRODUCT_DB" \
+            --corpus-source "$CORPUS_DIR/Downloads(1)(1).zip" \
+            --corpus-source "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --artifact-dir "$ARTIFACT_DIR/after" --review-limit 100
+
+      - name: Integration smoke and invariants
+        shell: bash
+        run: python scripts/ci/image_db_integration_gate.py smoke --library "$INC_LIBRARY" --artifact-dir "$ARTIFACT_DIR"
+
+      - name: Upload Image DB integration evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-db-integration-v3-report
+          path: |
+            artifacts/image-db-integration-v3
+            artifacts/image-db-integration-v3-library/index.json
+            artifacts/image-db-integration-v3-imports/*.json
+          if-no-files-found: warn
+          retention-days: 14
