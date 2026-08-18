@@ -1,0 +1,89 @@
+{
+  "schema": "srstudio/g2-official-visual-corpus-1",
+  "product": "SR Studio de Encartes G2",
+  "scope": "graphics2-only",
+  "status": "awaiting-official-references",
+  "baseline_policy": {
+    "thresholds": null,
+    "rule": "measure-first",
+    "notes": "No acceptance threshold is inherited from another product. Establish the first G2 distribution from official Canva/PowerPoint exports before proposing a gate."
+  },
+  "immutability": {
+    "approved_cases_are_append_only": true,
+    "reference_replacement_requires_new_case_version": true,
+    "source_or_reference_hash_mismatch_is_fatal": true
+  },
+  "forbidden_legacy_gates": [
+    "CARTAZ_VENDA",
+    "SEGUNDA_DA_LIMPEZA",
+    "CLUBE_EXCLUSIVO",
+    "ATACADO_LEGACY"
+  ],
+  "approved_cases": [],
+  "candidates": [
+    {
+      "candidate_id": "g2-quinta-file-selected-pages-2026-08-v1",
+      "source_pptx": "OFERTAS QUINTA FILÉ NOVO.pptx",
+      "source_pptx_sha256": "0353b8e2848eb6019c970ae6c83610ecb821d66d29a2f8faff80ee416b1f76f8",
+      "source_type": "canva-pptx-export",
+      "slide_count": 3,
+      "slide_size_emu": [10287000, 12852400],
+      "slide_numbers": [1, 2, 3],
+      "coverage": [
+        "multipage",
+        "text",
+        "prices",
+        "images",
+        "crop",
+        "groups",
+        "shapes",
+        "layers",
+        "fonts",
+        "multiple-layouts"
+      ],
+      "provenance_evidence": {
+        "canva_ui_capture_only_not_reference": "CANVA.PNG",
+        "notes": "The Canva capture proves design/source lineage for the Quinta File layout but is explicitly forbidden as a visual baseline because it contains Canva UI chrome."
+      },
+      "reference_status": "missing-direct-export",
+      "promotion_requirements": [
+        "direct PNG export from the same Canva design or direct PowerPoint PNG export",
+        "one explicit PNG-to-slide mapping per approved page",
+        "SHA-256 for every reference PNG",
+        "width and height for every reference PNG",
+        "reference content independently verified against the selected slide"
+      ],
+      "notes": "This is a real G2 Encartes source candidate, not a legacy poster-generator fixture. It must not enter approved_cases until official direct exports are available."
+    }
+  ],
+  "rejected_reference_candidates": [
+    {
+      "file": "CANVA.PNG",
+      "reason": "Canva UI screenshot; provenance evidence only, never a baseline"
+    },
+    {
+      "file": "CANVA(1).PNG",
+      "reason": "Duplicate Canva UI screenshot; provenance evidence only, never a baseline"
+    },
+    {
+      "file": "Capturar(20260814-104506).PNG",
+      "reason": "Captured screen image; not a direct Canva/PowerPoint export"
+    },
+    {
+      "file": "7.jpg",
+      "reason": "Clean exported artwork but no source PPTX/slide pairing is proven; also not PNG under corpus v1 policy"
+    },
+    {
+      "file": "8(1).jpg",
+      "reason": "Clean exported artwork but no source PPTX/slide pairing is proven; also not PNG under corpus v1 policy"
+    },
+    {
+      "file": "9.jpg",
+      "reason": "Clean exported artwork but no source PPTX/slide pairing is proven; also not PNG under corpus v1 policy"
+    },
+    {
+      "file": "10.jpg",
+      "reason": "Clean exported artwork but no source PPTX/slide pairing is proven; also not PNG under corpus v1 policy"
+    }
+  ]
+}
