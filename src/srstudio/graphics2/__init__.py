@@ -92,9 +92,12 @@ from .semantic_blocks import (
 # because the official integration base does not include the older 89c package
 # bootstrap that used to install them implicitly.
 from . import semantic_blocks as _semantic_blocks
+from . import semantic_named_slot_runtime as _semantic_named_slots
+from .product_semantic_compat import install_product_semantic_compat_guard
 from .semantic_runtime import install_semantic_recovery_guard
 
 install_semantic_recovery_guard(_semantic_blocks)
+install_product_semantic_compat_guard(_semantic_blocks, _semantic_named_slots)
 build_semantic_blocks = _semantic_blocks.build_semantic_blocks
 
 from . import import_bridge as _import_bridge
