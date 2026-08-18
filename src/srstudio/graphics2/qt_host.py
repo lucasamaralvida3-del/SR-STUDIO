@@ -490,6 +490,30 @@ def launch_qt_quick_editor(
         def autosaveIfNeeded(self) -> None:
             self._start_autosave(force=False)
 
+        @Slot(result=bool)
+        def protectBeforeClose(self) -> bool:
+            try:
+                snapshot = _snapshot_document(session)
+                if not persistence.is_dirty(snapshot):
+                    recovery_journal.clear(snapshot.id)
+                    return True
+                digest = document_digest(snapshot)
+                recovery_path = autosave_manager.save(snapshot, embed_local_assets=True)
+                persistence.mark_autosaved(digest)
+                recovery_journal.mark(
+                    snapshot.id,
+                    recovery_path,
+                    source_path=context.source,
+                )
+                self._status = "Alterações protegidas no recovery antes de fechar."
+                self.statusChanged.emit()
+                self.sceneChanged.emit()
+                return True
+            except Exception as exc:
+                self._status = f"Não foi possível proteger o projeto; fechamento cancelado: {exc}"
+                self.statusChanged.emit()
+                return False
+
         @Slot(str)
         def exportPdf(self, raw_target: str) -> None:
             target = _qml_file_path(raw_target, ".pdf", QUrl)
