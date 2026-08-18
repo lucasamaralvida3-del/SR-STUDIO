@@ -1,4 +1,4 @@
-param(
+﻿param(
   [switch]$RepairOnly,
   [switch]$NoLaunch,
   [switch]$FullRepair
@@ -10,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 # GitHub and Python.org require modern TLS on Windows PowerShell 5.1.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$LauncherVersion = '4.0.1-hybrid.base3.4'
+$LauncherVersion = '4.0.1-hybrid.base2.5'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir      = Join-Path $SrHomeRoot 'App'
 $DataDir     = Join-Path $SrHomeRoot 'Data'
@@ -132,102 +132,6 @@ if(-not [string](Get-SrProperty $cfg 'remote_manifest_base' '')) {
 $channel = [string](Get-SrProperty $cfg 'channel' 'stable')
 if(($channel -ne 'stable') -and ($channel -ne 'beta')) { $channel = 'stable' }
 
-# Base 3.0: acesso Beta universal, independente da versao do Core.
-$BetaAccessLocalPath = Join-Path $CfgDir 'beta_access.json'
-$BetaAccessCachePath = Join-Path $CacheDir 'beta_access_manifest.json'
-
-function Get-SrTextSha256([string]$Text) {
-  $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
-  $sha = [Security.Cryptography.SHA256]::Create()
-  try {
-    return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-','').ToLowerInvariant()
-  } finally { $sha.Dispose() }
-}
-
-function Normalize-SrBetaKey([string]$Key) {
-  if(-not $Key) { return '' }
-  return (($Key.ToUpperInvariant()) -replace '[^A-Z0-9]','')
-}
-
-function Get-SrBetaAccessManifest {
-  $url = $officialRepositoryBase.TrimEnd('/') + '/manifests/beta_access.json?ts=' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-  $tmp = Join-Path $StageDir 'beta_access_manifest.download.json'
-  try {
-    Invoke-WebRequest -UseBasicParsing -Uri $url -OutFile $tmp -TimeoutSec 20 -Headers @{'Cache-Control'='no-cache'}
-    $m = Read-SrJson $tmp
-    if([string]$m.format -ne 'SRSTUDIO_BETA_ACCESS_1') { throw 'Formato de acesso Beta invalido.' }
-    Copy-Item -LiteralPath $tmp -Destination $BetaAccessCachePath -Force
-    return $m
-  } catch {
-    Write-SrLog ('Validacao online da chave Beta indisponivel: ' + $_.Exception.Message)
-    if(Test-Path -LiteralPath $BetaAccessCachePath) {
-      $cached = Read-SrJson $BetaAccessCachePath
-      if([string]$cached.format -eq 'SRSTUDIO_BETA_ACCESS_1') {
-        Write-SrLog 'Usando manifesto de acesso Beta em cache.'
-        return $cached
-      }
-    }
-    throw 'Nao foi possivel validar o acesso ao canal Beta. Verifique a internet e tente novamente.'
-  }
-}
-
-function Find-SrBetaKeyEntry($Manifest,[string]$Hash) {
-  foreach($entry in @($Manifest.keys)) {
-    $enabled = [bool](Get-SrProperty $entry 'enabled' $false)
-    $expected = ([string](Get-SrProperty $entry 'sha256' '')).ToLowerInvariant()
-    if($enabled -and $expected -and ($expected -eq $Hash.ToLowerInvariant())) { return $entry }
-  }
-  return $null
-}
-
-function Test-SrStoredBetaAccess($Manifest) {
-  if(-not (Test-Path -LiteralPath $BetaAccessLocalPath)) { return $false }
-  try {
-    $local = Read-SrJson $BetaAccessLocalPath
-    $hash = ([string](Get-SrProperty $local 'key_sha256' '')).ToLowerInvariant()
-    if(-not $hash) { return $false }
-    return ($null -ne (Find-SrBetaKeyEntry $Manifest $hash))
-  } catch { return $false }
-}
-
-function Request-SrBetaAccess($Manifest) {
-  try { Add-Type -AssemblyName Microsoft.VisualBasic -ErrorAction Stop } catch { throw 'Nao foi possivel abrir a tela de chave Beta.' }
-  $message = "Digite sua CHAVE DE ACESSO BETA do SR Studio.`r`n`r`nA chave e universal e nao depende da versao da Beta."
-  for($attempt=1; $attempt -le 3; $attempt++) {
-    $entered = [Microsoft.VisualBasic.Interaction]::InputBox($message,'SR Studio - Acesso Beta','')
-    if([string]::IsNullOrWhiteSpace($entered)) { throw 'Acesso ao canal Beta cancelado.' }
-    $normalized = Normalize-SrBetaKey $entered
-    $hash = Get-SrTextSha256 $normalized
-    $entry = Find-SrBetaKeyEntry $Manifest $hash
-    if($null -ne $entry) {
-      $local = [ordered]@{
-        format = 'SRSTUDIO_BETA_ACCESS_LOCAL_1'
-        key_id = [string](Get-SrProperty $entry 'id' '')
-        key_sha256 = $hash
-        scope = 'beta'
-        activated_at = (Get-Date).ToString('o')
-      }
-      Save-SrJson $local $BetaAccessLocalPath
-      Write-SrLog ('Acesso Beta autorizado. Key ID: ' + [string]$local.key_id)
-      return
-    }
-    $message = "Chave invalida. Tentativa $attempt de 3.`r`n`r`nDigite novamente a CHAVE DE ACESSO BETA."
-  }
-  throw 'Chave de acesso Beta invalida.'
-}
-
-function Assert-SrBetaAccess {
-  if($channel -ne 'beta') { return }
-  $manifest = Get-SrBetaAccessManifest
-  if(Test-SrStoredBetaAccess $manifest) {
-    Write-SrLog 'Acesso Beta universal ja autorizado neste computador.'
-    return
-  }
-  Request-SrBetaAccess $manifest
-}
-
-if($channel -eq 'beta') { Assert-SrBetaAccess }
-
 function Resolve-SrManifest {
   $remoteBase = [string](Get-SrProperty $cfg 'remote_manifest_base' '')
   $connectTimeout = [int](Get-SrProperty $cfg 'connect_timeout_seconds' 15)
@@ -237,7 +141,7 @@ function Resolve-SrManifest {
     if(-not (Test-SrUrlAllowed $baseUrl)) {
       throw 'Repository URL must use HTTPS. HTTP is accepted only for localhost tests.'
     }
-    $url = $baseUrl + '/' + $channel + '/manifest.json?ts=' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
+    $url = $baseUrl + '/' + $channel + '/manifest.json'
     $tmp = Join-Path $StageDir ('manifest_' + $channel + '.json')
     try {
       Write-SrLog ('Checking online repository: ' + $url)
@@ -493,55 +397,7 @@ function Test-SrIntegrityCatalog($Catalog) {
   return $true
 }
 
-function Repair-SrBundleManifest($Source,$Manifest) {
-  if($null -eq $Manifest) { throw 'Repository manifest is empty.' }
-  $bundleInfo = Get-SrProperty $Manifest 'bundle' $null
-  $legacyUrl = [string](Get-SrProperty $Manifest 'bundle_url' '')
-  if(-not $legacyUrl) { $legacyUrl = [string](Get-SrProperty $Manifest 'url' '') }
-  $legacySha = ([string](Get-SrProperty $Manifest 'sha256' '')).ToLowerInvariant()
-  $legacySize = [int64](Get-SrProperty $Manifest 'size' 0)
-  $legacyPrefix = [string](Get-SrProperty $Manifest 'member_prefix' 'files/')
-  if(-not $legacyPrefix) { $legacyPrefix = 'files/' }
-  $changed = $false
-
-  if($null -eq $bundleInfo) {
-    if($legacyUrl -and $legacySha) {
-      $bundleInfo = [pscustomobject][ordered]@{ url=$legacyUrl; sha256=$legacySha; size=$legacySize; member_prefix=$legacyPrefix }
-      $Manifest | Add-Member -NotePropertyName bundle -NotePropertyValue $bundleInfo -Force
-      $changed = $true
-      Write-SrLog 'AUTO-REPAIR: manifesto bundle legado detectado; bloco bundle reconstruido automaticamente.'
-    } else {
-      throw 'Bundle manifest does not contain bundle information and cannot be repaired automatically.'
-    }
-  } else {
-    $bundleUrlNow = [string](Get-SrProperty $bundleInfo 'url' '')
-    $bundleShaNow = ([string](Get-SrProperty $bundleInfo 'sha256' '')).ToLowerInvariant()
-    $bundleSizeNow = [int64](Get-SrProperty $bundleInfo 'size' 0)
-    $bundlePrefixNow = [string](Get-SrProperty $bundleInfo 'member_prefix' '')
-    if(-not $bundleUrlNow -and $legacyUrl) { $bundleInfo | Add-Member -NotePropertyName url -NotePropertyValue $legacyUrl -Force; $changed=$true }
-    if(-not $bundleShaNow -and $legacySha) { $bundleInfo | Add-Member -NotePropertyName sha256 -NotePropertyValue $legacySha -Force; $changed=$true }
-    if($bundleSizeNow -le 0 -and $legacySize -gt 0) { $bundleInfo | Add-Member -NotePropertyName size -NotePropertyValue $legacySize -Force; $changed=$true }
-    if(-not $bundlePrefixNow) { $bundleInfo | Add-Member -NotePropertyName member_prefix -NotePropertyValue $legacyPrefix -Force; $changed=$true }
-    if($changed) { Write-SrLog 'AUTO-REPAIR: bloco bundle incompleto foi completado usando campos de compatibilidade.' }
-  }
-
-  $finalUrl = [string](Get-SrProperty $bundleInfo 'url' '')
-  $finalSha = ([string](Get-SrProperty $bundleInfo 'sha256' '')).ToLowerInvariant()
-  if(-not $finalUrl -or -not (Test-SrUrlAllowed $finalUrl)) { throw 'Auto-repair could not produce a safe bundle URL.' }
-  if($finalSha -and $finalSha.Length -ne 64) { throw 'Auto-repair found an invalid bundle SHA256.' }
-
-  if($changed) {
-    try {
-      $repairPath = Join-Path $CacheDir 'last_manifest.repaired.json'
-      Save-SrJson $Manifest $repairPath
-      Write-SrLog ('AUTO-REPAIR: copia reparada salva em ' + $repairPath)
-    } catch { Write-SrLog ('AUTO-REPAIR: nao foi possivel salvar copia local: ' + $_.Exception.Message) }
-  }
-  return $Manifest
-}
-
 function Apply-SrBundleManifest($Source,$Manifest) {
-  $Manifest = Repair-SrBundleManifest $Source $Manifest
   $targetVersion = [string]$Manifest.version
   $installedState = Get-SrInstalledState
   $installedVersion = ''
@@ -587,20 +443,7 @@ function Apply-SrBundleManifest($Source,$Manifest) {
     $extractDir = Join-Path $stage 'extracted'
     Expand-Archive -LiteralPath $bundleZip -DestinationPath $extractDir -Force
     $sourceRoot = Join-Path $extractDir ($memberPrefix.Trim('/').Replace('/','\\'))
-    if(-not (Test-Path $sourceRoot)) {
-      $fallbackFiles = Join-Path $extractDir 'files'
-      if(Test-Path $fallbackFiles) {
-        $sourceRoot = $fallbackFiles
-        $memberPrefix = 'files/'
-        Write-SrLog 'AUTO-REPAIR: member_prefix invalido; pasta files/ detectada automaticamente.'
-      } else {
-        $topDirs = @(Get-ChildItem -LiteralPath $extractDir -Directory -ErrorAction SilentlyContinue)
-        if($topDirs.Count -eq 1) {
-          $sourceRoot = $topDirs[0].FullName
-          Write-SrLog ('AUTO-REPAIR: member_prefix inferido automaticamente: ' + $topDirs[0].Name)
-        } else { throw ('Bundle member prefix not found: ' + $memberPrefix) }
-      }
-    }
+    if(-not (Test-Path $sourceRoot)) { throw ('Bundle member prefix not found: ' + $memberPrefix) }
 
     $newCatalog = New-SrIntegrityCatalog $sourceRoot $targetVersion
     if(@($newCatalog.files).Count -eq 0) { throw 'Desktop Core bundle contains no distributable files.' }
@@ -658,259 +501,57 @@ function Apply-SrBundleManifest($Source,$Manifest) {
 
 function Ensure-SrPythonRuntime {
   $pythonRoot = Join-Path $RuntimeDir 'python'
-  New-Item -ItemType Directory -Path $RuntimeDir -Force | Out-Null
-
-  $candidateList = New-Object 'System.Collections.Generic.List[string]'
-  function Add-SrPythonCandidate([string]$Candidate,[string]$Origin='unknown') {
-    if(-not $Candidate) { return }
-    try { $expanded = Expand-SrEnv $Candidate } catch { $expanded = $Candidate }
-    if(-not $expanded) { return }
-    if($expanded -match '\\WindowsApps\\') { return }
-    if((Test-Path -LiteralPath $expanded -PathType Leaf) -and -not $candidateList.Contains($expanded)) {
-      $candidateList.Add($expanded)
-      Write-SrLog ('Python candidate [' + $Origin + ']: ' + $expanded)
+  $pythonExe = Join-Path $pythonRoot 'python.exe'
+  $pythonwExe = Join-Path $pythonRoot 'pythonw.exe'
+  if(-not (Test-Path $pythonExe) -or -not (Test-Path $pythonwExe)) {
+    Write-SrLog 'Python runtime is not present. Preparing private per-user runtime (ZERO ADMIN).'
+    New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+    $installer = Join-Path $CacheDir 'python-3.12.10-amd64.exe'
+    if(-not (Test-Path $installer)) {
+      Invoke-SrDownload 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' $installer 300 3
     }
-  }
-
-  function Add-SrRegistryPythonCandidates {
-    $roots = @(
-      'Registry::HKEY_CURRENT_USER\Software\Python\PythonCore',
-      'Registry::HKEY_LOCAL_MACHINE\Software\Python\PythonCore',
-      'Registry::HKEY_LOCAL_MACHINE\Software\Wow6432Node\Python\PythonCore'
+    $arguments = @(
+      '/quiet',
+      'InstallAllUsers=0',
+      ('TargetDir=' + $pythonRoot),
+      'Include_launcher=0',
+      'InstallLauncherAllUsers=0',
+      'PrependPath=0',
+      'AppendPath=0',
+      'AssociateFiles=0',
+      'Shortcuts=0',
+      'Include_test=0',
+      'Include_doc=0',
+      'Include_dev=0',
+      'Include_debug=0',
+      'Include_symbols=0',
+      'Include_tcltk=1',
+      'Include_pip=1'
     )
-    foreach($root in $roots) {
-      try {
-        if(-not (Test-Path -LiteralPath $root)) { continue }
-        foreach($tagKey in @(Get-ChildItem -LiteralPath $root -ErrorAction SilentlyContinue)) {
-          if(([string]$tagKey.PSChildName) -notmatch '^3\.12') { continue }
-          $installKey = $tagKey.PSPath + '\InstallPath'
-          if(-not (Test-Path -LiteralPath $installKey)) { continue }
-          $item = Get-Item -LiteralPath $installKey -ErrorAction SilentlyContinue
-          $props = Get-ItemProperty -LiteralPath $installKey -ErrorAction SilentlyContinue
-          $installDir = ''
-          try { $installDir = [string]$item.GetValue('') } catch { }
-          $exe = ''
-          $wexe = ''
-          if($props) {
-            try { $exe = [string]$props.ExecutablePath } catch { }
-            try { $wexe = [string]$props.WindowedExecutablePath } catch { }
-          }
-          if(-not $exe -and $installDir) { $exe = Join-Path $installDir 'python.exe' }
-          if(-not $wexe -and $installDir) { $wexe = Join-Path $installDir 'pythonw.exe' }
-          Add-SrPythonCandidate $exe ('registry ' + $tagKey.PSChildName)
-          Add-SrPythonCandidate $wexe ('registry ' + $tagKey.PSChildName)
-        }
-      } catch {
-        Write-SrLog ('Python registry scan skipped for ' + $root + ': ' + $_.Exception.Message)
-      }
+    $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+    if($process.ExitCode -ne 0 -or -not (Test-Path $pythonExe)) {
+      throw ('Private Python runtime installation failed. Exit code: ' + $process.ExitCode)
     }
+    Write-SrLog 'Private Python runtime prepared successfully.'
   }
-
-  function Resolve-SrPythonPair($Candidates) {
-    foreach($candidate in @($Candidates)) {
-      $leaf = [IO.Path]::GetFileName($candidate).ToLowerInvariant()
-      $dir = Split-Path $candidate -Parent
-      if($leaf -eq 'pythonw.exe') {
-        $wexe = $candidate
-        $exe = Join-Path $dir 'python.exe'
-      } else {
-        $exe = $candidate
-        $wexe = Join-Path $dir 'pythonw.exe'
-      }
-      if(-not (Test-Path -LiteralPath $exe -PathType Leaf)) { continue }
-      try {
-        $tmpOut = Join-Path $LogDir 'python_candidate.out.log'
-        $tmpErr = Join-Path $LogDir 'python_candidate.err.log'
-        Remove-Item -LiteralPath $tmpOut,$tmpErr -Force -ErrorAction SilentlyContinue
-        $probe = Join-Path $LogDir 'python_candidate_probe.py'
-        [IO.File]::WriteAllText($probe,"import sys`nprint('%d.%d.%d' % sys.version_info[:3])`n",(New-Object Text.UTF8Encoding($false)))
-        & $exe $probe 1> $tmpOut 2> $tmpErr
-        $candidateExit = $LASTEXITCODE
-        $ver = ''
-        if(Test-Path $tmpOut) { $ver = (Get-Content -Raw -LiteralPath $tmpOut).Trim() }
-        if($candidateExit -ne 0 -or -not $ver) {
-          $errText=''
-          if(Test-Path $tmpErr) { try { $errText=(Get-Content -Raw -LiteralPath $tmpErr).Trim() } catch { } }
-          Write-SrLog ('Python candidate rejected. Exit=' + $candidateExit + ' Path=' + $exe + $(if($errText){' Error=' + $errText}else{''}))
-          continue
-        }
-        if($ver -notmatch '^3\.12\.') { Write-SrLog ('Python candidate wrong version ' + $ver + ': ' + $exe); continue }
-        if(-not (Test-Path -LiteralPath $wexe -PathType Leaf)) { $wexe = $exe }
-        return @{ python=$exe; pythonw=$wexe; version=$ver }
-      } catch {
-        Write-SrLog ('Python candidate could not start: ' + $exe + ' / ' + $_.Exception.Message)
-      }
-    }
-    return $null
-  }
-
-  # 1) Runtime portatil do proprio SR Studio.
-  Add-SrPythonCandidate (Join-Path $pythonRoot 'pythonw.exe') 'SR runtime'
-  Add-SrPythonCandidate (Join-Path $pythonRoot 'python.exe') 'SR runtime'
-
-  # 2) Python configurado no launcher.
-  Add-SrPythonCandidate ([string](Get-SrProperty $cfg 'python_command' '')) 'launcher config'
-
-  # 3) Registro oficial do Python (PEP 514 / instalador oficial).
-  Add-SrRegistryPythonCandidates
-
-  # 4) Caminhos comuns e qualquer Python312/Python3.12 instalado por usuario/maquina.
-  foreach($baseDir in @(
-    (Join-Path $env:LOCALAPPDATA 'Programs\Python'),
-    $(if($env:ProgramFiles){$env:ProgramFiles}else{$null}),
-    $(if(${env:ProgramFiles(x86)}){${env:ProgramFiles(x86)}}else{$null})
-  )) {
-    if(-not $baseDir -or -not (Test-Path -LiteralPath $baseDir)) { continue }
-    try {
-      foreach($exeFile in @(Get-ChildItem -LiteralPath $baseDir -Filter 'python.exe' -File -Recurse -Depth 3 -ErrorAction SilentlyContinue)) {
-        if($exeFile.FullName -match '\\WindowsApps\\') { continue }
-        Add-SrPythonCandidate $exeFile.FullName 'filesystem scan'
-        $w = Join-Path $exeFile.DirectoryName 'pythonw.exe'
-        Add-SrPythonCandidate $w 'filesystem scan'
-      }
-    } catch { }
-  }
-
-  foreach($cmdName in @('pythonw.exe','python.exe')) {
-    try {
-      $cmd = Get-Command $cmdName -ErrorAction SilentlyContinue
-      if($cmd) { Add-SrPythonCandidate $cmd.Source 'PATH' }
-    } catch { }
-  }
-
-  $resolvedPair = Resolve-SrPythonPair $candidateList
-  $runtimeRequirementsHash = ''
-
-  if($null -eq $resolvedPair) {
-    Write-SrLog 'Python 3.12 utilizavel nao encontrado. Preparando runtime portatil oficial do SR Studio.'
-    $runtimeManifestUrl = $officialRepositoryBase.TrimEnd('/') + '/runtime/manifest.json'
-    $runtimeManifestPath = Join-Path $CacheDir 'python_runtime_manifest.json'
-    Invoke-SrDownload $runtimeManifestUrl $runtimeManifestPath 60 3
-    $runtimeManifest = Read-SrJson $runtimeManifestPath
-    if([string]$runtimeManifest.format -ne 'SRSTUDIO_PYTHON_RUNTIME_1') { throw 'Manifesto do runtime Python invalido.' }
-    if(([string]$runtimeManifest.python_version) -notmatch '^3\.12\.') { throw 'Versao Python do runtime nao suportada.' }
-    $runtimeUrl = [string]$runtimeManifest.url
-    if(-not (Test-SrUrlAllowed $runtimeUrl)) { throw 'URL insegura no runtime Python.' }
-    $runtimeZip = Join-Path $CacheDir 'srstudio_python_runtime.zip'
-    $expectedSize = [int64]$runtimeManifest.size
-    $expectedHash = ([string]$runtimeManifest.sha256).ToLowerInvariant()
-
-    $cacheOk = $false
-    if(Test-Path -LiteralPath $runtimeZip -PathType Leaf) {
-      try {
-        $cacheOk = (((Get-Item -LiteralPath $runtimeZip).Length -eq $expectedSize) -and ((Get-SrSha256 $runtimeZip) -eq $expectedHash))
-      } catch { $cacheOk = $false }
-    }
-    if($cacheOk) {
-      Write-SrLog 'Reutilizando runtime Python ja baixado e validado no cache.'
-    } else {
-      Invoke-SrDownload $runtimeUrl $runtimeZip ([int](Get-SrProperty $cfg 'download_timeout_seconds' 600)) 3
-    }
-    if($expectedSize -gt 0 -and (Get-Item -LiteralPath $runtimeZip).Length -ne $expectedSize) { throw 'Tamanho invalido do runtime Python.' }
-    if((Get-SrSha256 $runtimeZip) -ne $expectedHash) { throw 'SHA-256 invalido do runtime Python.' }
-    Write-SrLog ('Runtime Python validado: ' + $expectedHash)
-
-    # Remove Mark-of-the-Web do ZIP e dos binarios extraidos. Isto nao desativa antivirus.
-    try { Unblock-File -LiteralPath $runtimeZip -ErrorAction SilentlyContinue } catch { }
-    $runtimeStage = Join-Path $StageDir ('python_runtime_' + (Get-Date -Format 'yyyyMMdd_HHmmss'))
-    Remove-Item -LiteralPath $runtimeStage -Recurse -Force -ErrorAction SilentlyContinue
-    New-Item -ItemType Directory -Path $runtimeStage -Force | Out-Null
-    Expand-Archive -LiteralPath $runtimeZip -DestinationPath $runtimeStage -Force
-    try { Get-ChildItem -LiteralPath $runtimeStage -File -Recurse -ErrorAction SilentlyContinue | Unblock-File -ErrorAction SilentlyContinue } catch { }
-
-    $stagePython = Join-Path $runtimeStage 'python.exe'
-    if(-not (Test-Path -LiteralPath $stagePython -PathType Leaf)) { throw 'python.exe ausente no runtime portatil.' }
-    foreach($dll in @('python312.dll','vcruntime140.dll','vcruntime140_1.dll')) {
-      $dllPath=Join-Path $runtimeStage $dll
-      Write-SrLog ('Runtime component ' + $dll + ': ' + $(if(Test-Path -LiteralPath $dllPath){'OK'}else{'AUSENTE'}))
-    }
-
-    $stageOut = Join-Path $LogDir 'portable_python_start.out.log'
-    $stageErr = Join-Path $LogDir 'portable_python_start.err.log'
-    Remove-Item -LiteralPath $stageOut,$stageErr -Force -ErrorAction SilentlyContinue
-    try {
-      $stageProbe = Join-Path $LogDir 'portable_python_start_probe.py'
-      [IO.File]::WriteAllText($stageProbe,"import sys`nprint('%d.%d.%d' % sys.version_info[:3])`n",(New-Object Text.UTF8Encoding($false)))
-      & $stagePython $stageProbe 1> $stageOut 2> $stageErr
-      $stageExit = $LASTEXITCODE
-    } catch {
-      throw ('Runtime Python portatil nao conseguiu iniciar processo: ' + $_.Exception.Message)
-    }
-    $stageVersion=''
-    if(Test-Path $stageOut) { try { $stageVersion=(Get-Content -Raw -LiteralPath $stageOut).Trim() } catch { } }
-    $stageError=''
-    if(Test-Path $stageErr) { try { $stageError=(Get-Content -Raw -LiteralPath $stageErr).Trim() } catch { } }
-    Write-SrLog ('Portable Python startup exit=' + $stageExit + ' version=' + $stageVersion + $(if($stageError){' stderr=' + $stageError}else{''}))
-    if($stageExit -ne 0 -or $stageVersion -notmatch '^3\.12\.') {
-      throw ('Runtime Python portatil nao iniciou corretamente. Exit=' + $stageExit + $(if($stageError){' / ' + $stageError}else{''}))
-    }
-
-    $importOut = Join-Path $LogDir 'portable_python_imports.out.log'
-    $importErr = Join-Path $LogDir 'portable_python_imports.err.log'
-    Remove-Item -LiteralPath $importOut,$importErr -Force -ErrorAction SilentlyContinue
-    $importProbe = Join-Path $LogDir 'portable_python_imports_probe.py'
-    [IO.File]::WriteAllText($importProbe,"import tkinter, openpyxl, pypdf, PIL, numpy, cv2, tkinterdnd2`nprint('SR_RUNTIME_OK')`n",(New-Object Text.UTF8Encoding($false)))
-    & $stagePython $importProbe 1> $importOut 2> $importErr
-    $importExit = $LASTEXITCODE
-    if($importExit -ne 0) {
-      $importError=''
-      if(Test-Path $importErr) { try { $importError=(Get-Content -Raw -LiteralPath $importErr).Trim() } catch { } }
-      throw ('Runtime Python portatil esta incompleto. Exit=' + $importExit + $(if($importError){' / ' + $importError}else{''}))
-    }
-
-    Remove-Item -LiteralPath $pythonRoot -Recurse -Force -ErrorAction SilentlyContinue
-    Move-Item -LiteralPath $runtimeStage -Destination $pythonRoot -Force
-    $runtimeRequirementsHash = ([string]$runtimeManifest.requirements_sha256).ToLowerInvariant()
-    $resolvedPair = Resolve-SrPythonPair @((Join-Path $pythonRoot 'pythonw.exe'),(Join-Path $pythonRoot 'python.exe'))
-    if($null -eq $resolvedPair) { throw 'Runtime Python foi extraido, mas nao pode ser iniciado depois da instalacao.' }
-    Write-SrLog ('Runtime Python portatil pronto: ' + [string]$resolvedPair.version)
-  }
-
-  $pythonExe = [string]$resolvedPair.python
-  $pythonwExe = [string]$resolvedPair.pythonw
-  Write-SrLog ('Using Python ' + [string]$resolvedPair.version + ': ' + $pythonExe)
 
   $requirementsPath = Join-Path $AppDir 'requirements.txt'
   if(Test-Path $requirementsPath) {
     $requirementsHash = Get-SrSha256 $requirementsPath
-    $marker = Join-Path $RuntimeDir 'srstudio_requirements.sha256'
-    $markerValue = $requirementsHash + '|' + $pythonExe
-    if($runtimeRequirementsHash -and $runtimeRequirementsHash -eq $requirementsHash) {
-      [IO.File]::WriteAllText($marker,$markerValue,(New-Object Text.UTF8Encoding($false)))
-    }
-    $installedMarker = ''
-    if(Test-Path $marker) { try { $installedMarker = (Get-Content -Raw -LiteralPath $marker).Trim() } catch { } }
-    if($installedMarker -ne $markerValue) {
-      Write-SrLog 'Installing/updating SR Studio Python dependencies.'
+    $marker = Join-Path $pythonRoot 'srstudio_requirements.sha256'
+    $installedHash = ''
+    if(Test-Path $marker) { try { $installedHash = (Get-Content -Raw -LiteralPath $marker).Trim() } catch { } }
+    if($installedHash -ne $requirementsHash) {
+      Write-SrLog 'Installing/updating SR Studio Python dependencies in the private runtime.'
       $pipLog = Join-Path $LogDir 'pip_runtime.log'
-      $pipErr = $pipLog + '.err'
       $pipArgs = @('-m','pip','install','--disable-pip-version-check','--no-warn-script-location','--upgrade','-r',$requirementsPath)
-      $proc = Start-Process -FilePath $pythonExe -ArgumentList $pipArgs -Wait -PassThru -RedirectStandardOutput $pipLog -RedirectStandardError $pipErr
-      if($proc.ExitCode -ne 0) { throw ('Python dependencies failed to install. See ' + $pipErr) }
-      [IO.File]::WriteAllText($marker,$markerValue,(New-Object Text.UTF8Encoding($false)))
+      $proc = Start-Process -FilePath $pythonExe -ArgumentList $pipArgs -Wait -PassThru -RedirectStandardOutput $pipLog -RedirectStandardError ($pipLog + '.err')
+      if($proc.ExitCode -ne 0) { throw ('Python dependencies failed to install. See ' + $pipLog + '.err') }
+      [IO.File]::WriteAllText($marker,$requirementsHash,(New-Object Text.UTF8Encoding($false)))
       Write-SrLog 'SR Studio Python dependencies are ready.'
     }
   }
   return $pythonwExe
-}
-
-function Start-SrOfficialDesktopProcess([string]$FilePath,[object[]]$ArgumentList,[string]$WorkingDirectory) {
-  # Base 3.4: o Core 5.0 exige esta marca para distinguir a abertura oficial
-  # de atalhos/Python antigos. O processo filho herda a variavel e o Launcher
-  # restaura o ambiente logo apos iniciar o Core.
-  $previousLaunchMarker = [Environment]::GetEnvironmentVariable('SR_STUDIO_LAUNCHED_BY_UPDATER','Process')
-  [Environment]::SetEnvironmentVariable('SR_STUDIO_LAUNCHED_BY_UPDATER','1','Process')
-  try {
-    Write-SrLog ('Opening officially through Launcher Base 3.4: ' + $FilePath)
-    if($null -ne $ArgumentList -and @($ArgumentList).Count -gt 0) {
-      Start-Process -FilePath $FilePath -ArgumentList $ArgumentList -WorkingDirectory $WorkingDirectory
-    } else {
-      Start-Process -FilePath $FilePath -WorkingDirectory $WorkingDirectory
-    }
-  }
-  finally {
-    [Environment]::SetEnvironmentVariable('SR_STUDIO_LAUNCHED_BY_UPDATER',$previousLaunchMarker,'Process')
-  }
 }
 
 function Start-SrDesktop {
@@ -923,7 +564,7 @@ function Start-SrDesktop {
   $extension = [IO.Path]::GetExtension($entry).ToLowerInvariant()
   Write-SrLog ('Opening Desktop Core: ' + $entry)
   if($extension -eq '.exe') {
-    Start-SrOfficialDesktopProcess $entry @() $AppDir
+    Start-Process -FilePath $entry -WorkingDirectory $AppDir
     return
   }
   if($extension -eq '.py') {
@@ -957,10 +598,10 @@ function Start-SrDesktop {
       if($pythonCommand) { $pythonPath=$pythonCommand.Source }
     }
     if(-not $pythonPath) { throw 'Python runtime not found. The Stable repository must provide a portable runtime for a new computer.' }
-    Start-SrOfficialDesktopProcess $pythonPath @('"' + $entry + '"') $AppDir
+    Start-Process -FilePath $pythonPath -ArgumentList @('"' + $entry + '"') -WorkingDirectory $AppDir
     return
   }
-  Start-SrOfficialDesktopProcess $entry @() $AppDir
+  Start-Process -FilePath $entry -WorkingDirectory $AppDir
 }
 
 try {
