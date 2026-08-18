@@ -1,0 +1,34 @@
+name: CHAT7 Golden Source Snapshot
+
+on:
+  pull_request:
+    branches:
+      - g2/integration-beta
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d14dc5bed4bf4f7402f4668eb66a63823f48a35a
+      - name: Verify exact functional HEAD
+        shell: bash
+        run: test "$(git rev-parse HEAD)" = "d14dc5bed4bf4f7402f4668eb66a63823f48a35a"
+      - name: Archive source
+        shell: bash
+        run: |
+          tar --exclude=.git -czf /tmp/sr-studio-d14dc5-source.tar.gz .
+          sha256sum /tmp/sr-studio-d14dc5-source.tar.gz | tee /tmp/source.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sr-studio-d14dc5-source
+          path: |
+            /tmp/sr-studio-d14dc5-source.tar.gz
+            /tmp/source.sha256
+          if-no-files-found: error
+          retention-days: 1
