@@ -12,14 +12,13 @@ from .model import AssetRef, GraphicsDocument
 from .preflight import assert_document_integrity
 
 PACKAGE_FORMAT = "SR_GRAPHICS_PACKAGE_2"
+_REQUIRED_MEMBERS = {"manifest.json", "scene.json"}
+_MAX_MANIFEST_BYTES = 8 * 1024 * 1024
+_MAX_SCENE_BYTES = 256 * 1024 * 1024
 
 
 def save_package(document: GraphicsDocument, path: str | Path, *, embed_local_assets: bool = True) -> Path:
-    """Salva um pacote portátil SR Scene 2 com assets e fontes do projeto.
-
-    Fontes extraídas de PPTX/Canva são tratadas como recursos do documento e
-    permanecem dentro do `.srscene`; elas não são instaladas no sistema.
-    """
+    """Salva um pacote portátil SR Scene 2 com assets e fontes do projeto."""
 
     assert_document_integrity(document)
     target = Path(path)
@@ -43,10 +42,7 @@ def save_package(document: GraphicsDocument, path: str | Path, *, embed_local_as
             scene_raw = json.dumps(scene, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
             manifest["scene_sha256"] = sha256(scene_raw).hexdigest()
             archive.writestr("scene.json", scene_raw)
-            archive.writestr(
-                "manifest.json",
-                json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"),
-            )
+            archive.writestr("manifest.json", json.dumps(manifest, ensure_ascii=False, indent=2).encode("utf-8"))
         os.replace(temp_path, target)
     finally:
         if temp_path.exists():
@@ -55,20 +51,29 @@ def save_package(document: GraphicsDocument, path: str | Path, *, embed_local_as
 
 
 def load_package(path: str | Path, *, extract_assets_to: str | Path | None = None) -> GraphicsDocument:
+    """Abre um `.srscene` validando layout, identidade e round-trip canônico."""
+
     source = Path(path)
     try:
         with zipfile.ZipFile(source, "r") as archive:
-            manifest = json.loads(archive.read("manifest.json").decode("utf-8"))
+            _validate_archive_layout(archive)
+            manifest_raw = _read_bounded_member(archive, "manifest.json", _MAX_MANIFEST_BYTES, "manifesto")
+            scene_raw = _read_bounded_member(archive, "scene.json", _MAX_SCENE_BYTES, "cena")
+            manifest = json.loads(manifest_raw.decode("utf-8"))
+            if not isinstance(manifest, dict):
+                raise ValueError("Manifesto do pacote é inválido")
             if manifest.get("format") != PACKAGE_FORMAT:
                 raise ValueError("Pacote não é SR Graphics Engine 2")
-            scene_raw = archive.read("scene.json")
             if sha256(scene_raw).hexdigest() != manifest.get("scene_sha256"):
                 raise ValueError("Hash do scene.json inválido")
             scene_data = json.loads(scene_raw.decode("utf-8"))
+            if not isinstance(scene_data, dict):
+                raise ValueError("scene.json precisa conter um objeto")
             document = GraphicsDocument.from_dict(scene_data)
-            # from_dict normalizes page dimensions/guides to float for runtime math.
-            # Restore the JSON scalar representation so repeated package round-trips
-            # remain byte-stable for documents originally authored with integers.
+
+            # Preserve a representação escalar histórica de dimensões/guides.
+            # O runtime usa float, mas repeated save/load não deve transformar
+            # documentos originalmente inteiros em um payload diferente.
             raw_pages = list(scene_data.get("pages") or [])
             for page, raw_page in zip(document.pages, raw_pages):
                 if not isinstance(raw_page, dict):
@@ -79,19 +84,19 @@ def load_package(path: str | Path, *, extract_assets_to: str | Path | None = Non
                     page.width = width
                 if isinstance(height, (int, float)):
                     page.height = height
-                page.guides_x = [
-                    value for value in raw_page.get("guides_x") or [] if isinstance(value, (int, float))
-                ]
-                page.guides_y = [
-                    value for value in raw_page.get("guides_y") or [] if isinstance(value, (int, float))
-                ]
+                page.guides_x = [value for value in raw_page.get("guides_x") or [] if isinstance(value, (int, float))]
+                page.guides_y = [value for value in raw_page.get("guides_y") or [] if isinstance(value, (int, float))]
+
+            _validate_manifest_identity(manifest, document)
+            assert_document_integrity(document)
+            _validate_current_schema_roundtrip(scene_data, document)
             if extract_assets_to:
                 destination = Path(extract_assets_to)
                 destination.mkdir(parents=True, exist_ok=True)
                 _extract_assets(document, manifest, archive, destination)
                 _extract_fonts(document, manifest, archive, destination / "fonts")
     except zipfile.BadZipFile as exc:
-        raise ValueError("Pacote SR Scene inválido: arquivo ZIP corrompido.") from exc
+        raise ValueError("Pacote SR Scene está corrompido ou truncado") from exc
     assert_document_integrity(document)
     return document
 
@@ -108,6 +113,70 @@ def register_local_asset(
     asset = AssetRef(kind=kind, source=str(source), mime=mime, sha256=sha256(raw).hexdigest())
     document.add_asset(asset)
     return asset
+
+
+def _validate_archive_layout(archive: zipfile.ZipFile) -> None:
+    names = [info.filename for info in archive.infolist()]
+    duplicates = sorted({name for name in names if names.count(name) > 1})
+    if duplicates:
+        raise ValueError(f"Pacote contém membros duplicados: {', '.join(duplicates[:3])}")
+    missing = sorted(_REQUIRED_MEMBERS.difference(names))
+    if missing:
+        raise ValueError(f"Pacote incompleto: ausente {', '.join(missing)}")
+    for info in archive.infolist():
+        normalized = Path(info.filename)
+        if normalized.is_absolute() or ".." in normalized.parts:
+            raise ValueError(f"Caminho inválido no pacote: {info.filename}")
+
+
+def _read_bounded_member(archive: zipfile.ZipFile, name: str, limit: int, label: str) -> bytes:
+    try:
+        info = archive.getinfo(name)
+    except KeyError as exc:
+        raise ValueError(f"Pacote incompleto: ausente {name}") from exc
+    if info.file_size < 0 or info.file_size > limit:
+        raise ValueError(f"{label.capitalize()} excede o limite seguro do SR Scene")
+    return archive.read(info)
+
+
+def _validate_manifest_identity(manifest: dict[str, Any], document: GraphicsDocument) -> None:
+    schema = str(manifest.get("schema") or "")
+    if schema and schema not in {document.schema, "srscene/2"}:
+        raise ValueError("Schema do manifesto não corresponde ao scene.json")
+    document_id = str(manifest.get("document_id") or "")
+    if document_id and document_id != document.id:
+        raise ValueError("ID do documento no manifesto não corresponde ao scene.json")
+
+
+def _validate_current_schema_roundtrip(scene_data: dict[str, Any], document: GraphicsDocument) -> None:
+    if str(scene_data.get("schema") or "") != "srscene/2.0":
+        return
+    restored = document.to_dict()
+    mismatch = _first_unpreserved_value(scene_data, restored, path="scene")
+    if mismatch:
+        raise ValueError(f"Round-trip canônico do SR Scene 2.0 perdeu ou alterou propriedades em {mismatch}")
+
+
+def _first_unpreserved_value(source: object, restored: object, *, path: str) -> str:
+    if isinstance(source, dict):
+        if not isinstance(restored, dict):
+            return path
+        for key, value in source.items():
+            if key not in restored:
+                return f"{path}.{key}"
+            mismatch = _first_unpreserved_value(value, restored[key], path=f"{path}.{key}")
+            if mismatch:
+                return mismatch
+        return ""
+    if isinstance(source, list):
+        if not isinstance(restored, list) or len(source) != len(restored):
+            return path
+        for index, value in enumerate(source):
+            mismatch = _first_unpreserved_value(value, restored[index], path=f"{path}[{index}]")
+            if mismatch:
+                return mismatch
+        return ""
+    return "" if source == restored else path
 
 
 def _write_assets(
@@ -131,7 +200,27 @@ def _write_assets(
             scene["assets"][asset_id]["source"] = stored
             scene["assets"][asset_id]["embedded"] = True
             scene["assets"][asset_id]["sha256"] = digest
+            _rebind_serialized_asset_nodes(scene, asset_id, stored)
         manifest["assets"][asset_id] = {"sha256": digest, "stored": stored}
+
+
+def _rebind_serialized_asset_nodes(scene: dict[str, Any], asset_id: str, stored: str) -> None:
+    for page in scene.get("pages") or []:
+        if not isinstance(page, dict):
+            continue
+        nodes = page.get("nodes")
+        if not isinstance(nodes, dict):
+            continue
+        for node in nodes.values():
+            if not isinstance(node, dict) or str(node.get("asset_id") or "") != str(asset_id):
+                continue
+            metadata = node.get("metadata")
+            if not isinstance(metadata, dict):
+                metadata = {}
+                node["metadata"] = metadata
+            metadata["bound_image_source"] = stored
+            metadata.pop("package_asset_extracted", None)
+            metadata.pop("graphics2_preview_original_source", None)
 
 
 def _write_fonts(
@@ -190,16 +279,14 @@ def _extract_assets(
         out.write_bytes(raw)
         if asset_id in document.assets:
             document.assets[asset_id].source = str(out)
-            # The local extraction is a runtime path; provenance remains that
-            # this asset is embedded in the portable SR Scene package.
+            # Preserve a proveniência de que o recurso veio embutido no pacote,
+            # mesmo que o runtime tenha um caminho local extraído.
             document.assets[asset_id].embedded = True
             document.assets[asset_id].sha256 = sha256(raw).hexdigest()
             _rebind_asset_nodes(document, asset_id, out)
 
 
 def _rebind_asset_nodes(document: GraphicsDocument, asset_id: str, extracted_path: Path) -> None:
-    """Atualiza o caminho visual usado pela UI após descompactar um `.srscene`."""
-
     source = str(extracted_path)
     for page in document.pages:
         for node in page.nodes.values():
