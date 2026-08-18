@@ -65,26 +65,28 @@ class PrecisionProductImageCorpusTrainer(ProductImageCorpusTrainer):
         # every unchanged source just because one record was created by an older
         # precision policy.
         stale_processed = 0
+        stale_processed_files: list[str] = []
         stale_warnings: list[str] = []
         for source in stale_sources:
             stale_report = super().train([source], force=True)
             stale_processed += stale_report.metrics.files_processed
+            stale_processed_files.extend(stale_report.processed_files)
             stale_warnings.extend(stale_report.warnings)
 
         # Re-resolve the full active state without forcing work. This final call
-        # returns consensus/coverage metrics for the corpus visible in this batch
-        # while every current-version record is skipped incrementally.
+        # returns consensus/coverage metrics while all current-version records are
+        # skipped. We then restore batch execution counters from the actual work.
         if stale_sources:
             final_report = super().train(discovered, force=False)
-            final_report.metrics.files_processed = report.metrics.files_processed + stale_processed
-            final_report.metrics.files_skipped = max(
-                0,
-                final_report.metrics.files_skipped - stale_processed,
+            final_report.processed_files = list(
+                dict.fromkeys([*report.processed_files, *stale_processed_files])
             )
-            final_report.processed_files = list(dict.fromkeys([*report.processed_files, *[str(path) for path in stale_sources]]))
+            processed_set = set(final_report.processed_files)
             final_report.skipped_files = [
-                path for path in final_report.skipped_files if path not in final_report.processed_files
+                path for path in final_report.skipped_files if path not in processed_set
             ]
+            final_report.metrics.files_processed = report.metrics.files_processed + stale_processed
+            final_report.metrics.files_skipped = len(final_report.skipped_files)
             final_report.warnings = list(
                 dict.fromkeys(
                     [
