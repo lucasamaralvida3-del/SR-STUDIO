@@ -7,7 +7,7 @@ import pytest
 from srstudio.graphics2.command_router import GraphicsCommandRouter
 from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Transform
 from srstudio.graphics2.operations import GraphicsSession
-from srstudio.graphics2.package import load_package, save_package
+from srstudio.graphics2.package import load_package, register_local_asset, save_package
 from srstudio.graphics2.preflight import assert_document_integrity
 from srstudio.graphics2.semantic_blocks import build_semantic_blocks
 
@@ -211,3 +211,58 @@ def test_thirty_one_product_cards_keep_bindings_isolated_and_roundtrip(tmp_path)
     assert_document_integrity(reopened)
     assert _canonical(reopened) == expected
     assert len(reopened.active_page.slots) == product_count
+
+
+def test_forty_real_images_embed_extract_and_keep_node_asset_identity(tmp_path):
+    pil_image = pytest.importorskip("PIL.Image")
+    pages = [GraphicsPage(name=f"Imagens {index + 1}", width=1080, height=1350) for index in range(4)]
+    document = GraphicsDocument(name="QA 40 imagens reais", pages=pages, active_page_id=pages[0].id)
+    original_asset_ids: list[str] = []
+    original_node_asset_ids: dict[str, str] = {}
+
+    for index in range(40):
+        source = tmp_path / "source-images" / f"image-{index:02d}.png"
+        source.parent.mkdir(parents=True, exist_ok=True)
+        rgb = ((index * 47) % 256, (index * 83) % 256, (index * 131) % 256)
+        pil_image.new("RGB", (128, 128), rgb).save(source, format="PNG")
+        asset = register_local_asset(document, source, mime="image/png")
+        asset.width = 128
+        asset.height = 128
+        original_asset_ids.append(asset.id)
+
+        page = pages[index // 10]
+        local_index = index % 10
+        column = local_index % 5
+        row = local_index // 5
+        node = GraphicsNode(
+            kind=NodeKind.IMAGE,
+            name=f"Imagem QA {index:02d}",
+            asset_id=asset.id,
+            transform=Transform(x=35 + column * 205, y=80 + row * 330, width=175, height=260),
+            style={"fit": "cover", "focus_x": 0.5, "focus_y": 0.5, "zoom": 1.0},
+            z_index=local_index,
+        )
+        page.add_node(node)
+        original_node_asset_ids[node.id] = asset.id
+
+    assert_document_integrity(document)
+    package = tmp_path / "forty-images.srscene"
+    save_package(document, package, embed_local_assets=True)
+    reopened = load_package(package, extract_assets_to=tmp_path / "extracted-images")
+
+    assert_document_integrity(reopened)
+    assert len(reopened.pages) == 4
+    assert len(reopened.assets) == 40
+    assert set(reopened.assets) == set(original_asset_ids)
+    assert sum(len(page.nodes) for page in reopened.pages) == 40
+    for asset in reopened.assets.values():
+        extracted = __import__("pathlib").Path(asset.source)
+        assert asset.embedded is True
+        assert asset.sha256
+        assert extracted.is_file()
+        assert extracted.read_bytes().startswith(b"\x89PNG\r\n\x1a\n")
+    for page in reopened.pages:
+        for node in page.nodes.values():
+            assert node.asset_id == original_node_asset_ids[node.id]
+            assert node.metadata["package_asset_extracted"] is True
+            assert node.metadata["bound_image_source"] == reopened.assets[node.asset_id].source
