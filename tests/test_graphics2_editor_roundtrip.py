@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from pathlib import Path
+import json
+import zipfile
 
 from srstudio.graphics2 import GraphicsDocument, GraphicsNode, GraphicsSession, NodeKind, Transform
 from srstudio.graphics2.package import load_package, register_local_asset, save_package
@@ -41,7 +43,10 @@ def test_editor_roundtrip_preserves_multipage_visual_state_and_embedded_image(tm
             "crop": {"l": 0.08, "t": 0.03, "r": 0.12, "b": 0.05},
             "flip_x": True,
         },
-        metadata={"editor_custom": {"keep": True}},
+        metadata={
+            "editor_custom": {"keep": True},
+            "bound_image_source": str(source.resolve()),
+        },
     )
     text = GraphicsNode(
         kind=NodeKind.TEXT,
@@ -117,9 +122,22 @@ def test_editor_roundtrip_preserves_multipage_visual_state_and_embedded_image(tm
     extracted = Path(loaded_asset.source)
     assert extracted.is_file()
     assert extracted.read_bytes() == raw
+    assert loaded_image.metadata["bound_image_source"] == str(extracted)
 
     loaded_duplicate = loaded.page(duplicate_page_id)
     assert loaded_duplicate is not None
     loaded_duplicate_text = next(node for node in loaded_duplicate.nodes.values() if node.name == "Chamada")
     assert loaded_duplicate_text.text == "VERSO INDEPENDENTE"
     assert loaded_front.nodes[text.id].text == "OFERTA ESPECIAL"
+
+    # Re-salvar um projeto que veio do cache extraído não pode persistir o
+    # caminho temporário da máquina dentro de scene.json.
+    resaved = save_package(loaded, tmp_path / "projeto-resalvo.srscene", embed_local_assets=True)
+    with zipfile.ZipFile(resaved, "r") as archive:
+        scene = json.loads(archive.read("scene.json").decode("utf-8"))
+    serialized_image = scene["pages"][0]["nodes"][image.id]
+    serialized_asset = scene["assets"][asset.id]
+    assert serialized_asset["source"].startswith("assets/")
+    assert serialized_image["metadata"]["bound_image_source"] == serialized_asset["source"]
+    assert "package_asset_extracted" not in serialized_image["metadata"]
+    assert str(tmp_path / "extracted") not in json.dumps(scene, ensure_ascii=False)
