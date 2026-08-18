@@ -83,7 +83,11 @@ def test_real_pptx_imports_to_valid_sr_scene_without_empty_pages(name):
     assert_document_integrity(document)
     assert _node_count(document) > 0, f"{name} importou sem elementos."
     assert all(page.width > 0 and page.height > 0 for page in document.pages)
-    assert str(document.metadata.get("input_type") or "").lower() == "pptx"
+    assert document.metadata.get("graphics2_import_bridge") == 2
+    assert document.metadata.get("import_summary", {}).get("source")
+    assert document.metadata.get("pptx_structure")
+    fingerprint = str(document.metadata.get("import_fingerprint_sha256") or "")
+    assert len(fingerprint) == 64
 
 
 def test_real_pptx_import_edit_save_reopen_and_export_png_pdf(tmp_path):
