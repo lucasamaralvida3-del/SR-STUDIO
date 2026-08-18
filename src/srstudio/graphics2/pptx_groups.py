@@ -11,8 +11,9 @@ sem alterar x/y/w/h/rotação dos elementos importados.
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from xml.etree import ElementTree as ET
-import re
 import zipfile
+
+from srstudio.importers.pptx.package_order import ordered_slide_paths
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind, Rect, Transform
 
@@ -43,10 +44,7 @@ def rebuild_pptx_groups(source: str | Path, document: GraphicsDocument) -> PptxG
         return report
     try:
         with zipfile.ZipFile(path) as archive:
-            slides = sorted(
-                (name for name in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)),
-                key=_slide_number,
-            )
+            slides = ordered_slide_paths(archive)
             for page_index, slide_path in enumerate(slides):
                 if page_index >= len(document.pages):
                     break
@@ -226,8 +224,3 @@ def _shape_name(node: ET.Element) -> str:
 
 def _tag(node: ET.Element) -> str:
     return node.tag.rsplit("}", 1)[-1]
-
-
-def _slide_number(path: str) -> int:
-    match = re.search(r"slide(\d+)\.xml$", path)
-    return int(match.group(1)) if match else 0
