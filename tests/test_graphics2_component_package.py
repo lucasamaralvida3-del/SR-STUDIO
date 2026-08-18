@@ -85,3 +85,25 @@ def test_component_descriptor_can_be_prepared_for_future_release_without_activat
     assert payload["url"].startswith("https://")
     assert payload["enabled"] is False
     assert payload["required"] is False
+
+
+def test_component_activation_requires_distribution_location(tmp_path):
+    root = _build_root(tmp_path)
+
+    try:
+        MODULE.package_component(root, enabled=True)
+    except ValueError as exc:
+        assert "url ou source" in str(exc)
+    else:
+        raise AssertionError("componente habilitado sem origem não pode ser distribuído")
+
+
+def test_component_cannot_be_required_while_disabled(tmp_path):
+    root = _build_root(tmp_path)
+
+    try:
+        MODULE.package_component(root, enabled=False, required=True)
+    except ValueError as exc:
+        assert "required=true" in str(exc)
+    else:
+        raise AssertionError("componente disabled não pode ser required")
