@@ -10,7 +10,9 @@ import json
 import sys
 import threading
 
+from .autosave import AutosaveManager, RecoveryPoint, default_autosave_root
 from .command_router import GraphicsCommandRouter
+from .editor_persistence import EditorPersistenceState, document_digest, newer_recovery_point
 from .fonts import register_qt_document_fonts
 from .model import GraphicsDocument
 from .operations import GraphicsSession
@@ -18,6 +20,7 @@ from .quality import ProductionGateReport, inspect_production_gate
 from .qt_image_provider import PREVIEW_PROVIDER_NAME, create_live_scene_image_provider, inject_preview_image_urls
 
 GRAPHICS_API_CHOICES = ("auto", "d3d11", "d3d12", "vulkan", "opengl", "software")
+AUTOSAVE_INTERVAL_MS = 45_000
 
 
 @dataclass(slots=True)
@@ -27,6 +30,8 @@ class GraphicsLaunchContext:
     cache_dir: Path | None = None
     gate: ProductionGateReport | None = None
     import_audit: dict[str, Any] | None = None
+    saved_digest: str = ""
+    recovered_from: RecoveryPoint | None = None
 
 
 @dataclass(slots=True, frozen=True)
@@ -82,11 +87,27 @@ def load_launch_context(source: str | Path | None, *, project_name: str = "") ->
         from .package import load_package
 
         cache_dir = _runtime_cache_dir(path)
-        document = load_package(path, extract_assets_to=cache_dir / "assets")
+        saved_document = load_package(path, extract_assets_to=cache_dir / "assets")
+        saved_digest = document_digest(saved_document)
+        autosave_manager = AutosaveManager(default_autosave_root())
+        recovery_point = newer_recovery_point(autosave_manager, saved_document, path)
+        document = saved_document
+        if recovery_point is not None:
+            document = autosave_manager.recover(
+                recovery_point,
+                extract_assets_to=cache_dir / "recovery-assets",
+            )
         if project_name:
             document.name = project_name
         gate = inspect_production_gate(document, require_visual_fidelity=False)
-        return GraphicsLaunchContext(document=document, source=path, cache_dir=cache_dir, gate=gate)
+        return GraphicsLaunchContext(
+            document=document,
+            source=path,
+            cache_dir=cache_dir,
+            gate=gate,
+            saved_digest=saved_digest,
+            recovered_from=recovery_point,
+        )
 
     from .import_bridge import GraphicsImportService
 
@@ -174,7 +195,7 @@ def launch_qt_quick_editor(
     launch_context: GraphicsLaunchContext | None = None,
 ) -> int:
     try:
-        from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl
+        from PySide6.QtCore import QObject, Property, QTimer, Signal, Slot, QUrl
         from PySide6.QtGui import QGuiApplication
         from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
         from PySide6.QtQuick import QQuickItem, QQuickWindow, QSGRendererInterface
@@ -193,17 +214,32 @@ def launch_qt_quick_editor(
     router = GraphicsCommandRouter(session)
     gate = context.gate or inspect_production_gate(session.document, require_visual_fidelity=False)
     preview_provider = create_live_scene_image_provider()
+    autosave_manager = AutosaveManager(default_autosave_root())
+    persistence = EditorPersistenceState(
+        saved_digest=str(context.saved_digest or ""),
+        autosave_digest=document_digest(session.document) if context.recovered_from is not None else "",
+        saved_path=(
+            context.source.resolve()
+            if context.saved_digest and context.source is not None and context.source.suffix.lower() in {".srscene", ".zip"}
+            else None
+        ),
+        recovered_from=context.recovered_from,
+    )
 
     class SceneBridge(QObject):
         sceneChanged = Signal()
         statusChanged = Signal()
-        fileJobDone = Signal(bool, str, str, str)
+        saveAsRequested = Signal()
+        fileJobDone = Signal(bool, str, str, str, str)
+        autosaveDone = Signal(bool, str, str, str)
 
         def __init__(self) -> None:
             super().__init__()
             self._status = _startup_status(context, gate, requested_api)
             self._busy = False
+            self._autosave_busy = False
             self.fileJobDone.connect(self._finish_file_job)
+            self.autosaveDone.connect(self._finish_autosave)
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
@@ -216,6 +252,9 @@ def launch_qt_quick_editor(
                 source=context.source,
                 graphics_api=requested_api,
             )
+            editor["dirty"] = persistence.is_dirty(session.document)
+            editor["autosave_busy"] = self._autosave_busy
+            editor["recovered_from_autosave"] = context.recovered_from is not None
             return json.dumps(prepare_qml_payload(payload), ensure_ascii=False, separators=(",", ":"))
 
         @Property(str, notify=statusChanged)
@@ -225,6 +264,14 @@ def launch_qt_quick_editor(
         @Property(bool, notify=statusChanged)
         def busy(self) -> bool:
             return self._busy
+
+        @Property(bool, notify=sceneChanged)
+        def dirty(self) -> bool:
+            return persistence.is_dirty(session.document)
+
+        @Property(bool, notify=statusChanged)
+        def autosaveBusy(self) -> bool:
+            return self._autosave_busy
 
         def _run(self, command: dict) -> None:
             result = router.dispatch(command)
@@ -247,6 +294,7 @@ def launch_qt_quick_editor(
                 self.statusChanged.emit()
                 return
             snapshot = _snapshot_document(session)
+            snapshot_digest = document_digest(snapshot)
             self._busy = True
             labels = {"save": "Salvando projeto", "pdf": "Exportando PDF", "png": "Exportando PNG"}
             self._status = f"{labels.get(kind, 'Processando')} · {target.name}..."
@@ -255,19 +303,66 @@ def launch_qt_quick_editor(
             def worker() -> None:
                 try:
                     message = task(snapshot, target)
-                    self.fileJobDone.emit(True, kind, str(target), message)
+                    self.fileJobDone.emit(True, kind, str(target), snapshot_digest, message)
                 except Exception as exc:
-                    self.fileJobDone.emit(False, kind, str(target), f"{type(exc).__name__}: {exc}")
+                    self.fileJobDone.emit(False, kind, str(target), snapshot_digest, f"{type(exc).__name__}: {exc}")
 
             threading.Thread(target=worker, name=f"sr-graphics2-{kind}", daemon=True).start()
 
-        def _finish_file_job(self, ok: bool, kind: str, target: str, message: str) -> None:
+        def _finish_file_job(self, ok: bool, kind: str, target: str, digest: str, message: str) -> None:
             self._busy = False
             if ok and kind == "save":
-                context.source = Path(target)
+                final = Path(target).resolve()
+                context.source = final
+                context.saved_digest = digest
+                context.recovered_from = None
+                persistence.mark_saved(digest, final)
             self._status = message if ok else f"Falha: {message}"
             self.statusChanged.emit()
             self.sceneChanged.emit()
+
+        def _start_autosave(self, *, force: bool = False) -> None:
+            if self._autosave_busy or self._busy:
+                return
+            snapshot = _snapshot_document(session)
+            digest = document_digest(snapshot)
+            if not force and not persistence.needs_autosave(snapshot):
+                return
+            if digest == persistence.saved_digest or digest == persistence.autosave_digest:
+                return
+            self._autosave_busy = True
+            self.statusChanged.emit()
+
+            def worker() -> None:
+                try:
+                    path = autosave_manager.save(snapshot, embed_local_assets=True)
+                    self.autosaveDone.emit(True, str(path), digest, f"Autosave protegido · {path.name}")
+                except Exception as exc:
+                    self.autosaveDone.emit(False, "", digest, f"{type(exc).__name__}: {exc}")
+
+            threading.Thread(target=worker, name="sr-graphics2-autosave", daemon=True).start()
+
+        def _finish_autosave(self, ok: bool, target: str, digest: str, message: str) -> None:
+            self._autosave_busy = False
+            if ok:
+                persistence.mark_autosaved(digest)
+                self._status = message
+            else:
+                self._status = f"Falha no autosave: {message}"
+            self.statusChanged.emit()
+            self.sceneChanged.emit()
+
+        def _save_to(self, target: Path) -> None:
+            def task(snapshot: GraphicsDocument, output: Path) -> str:
+                from .package import load_package, save_package
+
+                final = save_package(snapshot, output, embed_local_assets=True)
+                verified = load_package(final)
+                if verified.id != snapshot.id or len(verified.pages) != len(snapshot.pages):
+                    raise ValueError("Verificação pós-save não corresponde ao documento salvo")
+                return f"Projeto salvo e verificado · {final.name}"
+
+            self._start_file_job("save", target, task)
 
         @Slot(str)
         def selectNode(self, node_id: str) -> None:
@@ -317,19 +412,23 @@ def launch_qt_quick_editor(
             self.sceneChanged.emit()
             return result_raw
 
+        @Slot()
+        def saveProject(self) -> None:
+            if persistence.saved_path is None:
+                self.saveAsRequested.emit()
+                return
+            self._save_to(persistence.saved_path)
+
         @Slot(str)
         def saveSceneAs(self, raw_target: str) -> None:
             target = _qml_file_path(raw_target, ".srscene", QUrl)
             if target is None:
                 return
+            self._save_to(target)
 
-            def task(snapshot: GraphicsDocument, output: Path) -> str:
-                from .package import save_package
-
-                final = save_package(snapshot, output, embed_local_assets=True)
-                return f"Projeto salvo · {final.name}"
-
-            self._start_file_job("save", target, task)
+        @Slot()
+        def autosaveIfNeeded(self) -> None:
+            self._start_autosave(force=False)
 
         @Slot(str)
         def exportPdf(self, raw_target: str) -> None:
@@ -406,6 +505,34 @@ def launch_qt_quick_editor(
         QQuickWindow=QQuickWindow,
         QUrl=QUrl,
     )
+    page_component, page_inspector = _attach_context_qml_tool(
+        engine,
+        root_window,
+        qml_dir / "PageInspector.qml",
+        QQmlComponent=QQmlComponent,
+        QQuickItem=QQuickItem,
+        QQuickWindow=QQuickWindow,
+        QUrl=QUrl,
+    )
+
+    autosave_timer = QTimer(bridge)
+    autosave_timer.setInterval(AUTOSAVE_INTERVAL_MS)
+    autosave_timer.timeout.connect(bridge.autosaveIfNeeded)
+    autosave_timer.start()
+
+    def protect_unsaved_on_quit() -> None:
+        try:
+            snapshot = _snapshot_document(session)
+            if not persistence.needs_autosave(snapshot):
+                return
+            digest = document_digest(snapshot)
+            autosave_manager.save(snapshot, embed_local_assets=True)
+            persistence.mark_autosaved(digest)
+        except Exception as exc:
+            print(f"SR Graphics Engine 2: autosave de encerramento falhou: {exc}", file=sys.stderr)
+
+    app.aboutToQuit.connect(protect_unsaved_on_quit)
+
     _context_tools = (
         preview_provider,
         image_component,
@@ -414,6 +541,9 @@ def launch_qt_quick_editor(
         quality_inspector,
         actions_component,
         project_actions,
+        page_component,
+        page_inspector,
+        autosave_timer,
     )
 
     app.processEvents()
@@ -422,6 +552,8 @@ def launch_qt_quick_editor(
     details = [f"GPU: {resolved_api}"]
     if context.source:
         details.insert(0, context.source.name)
+    if context.recovered_from is not None:
+        details.append("autosave recuperado")
     live_gate = inspect_production_gate(session.document, require_visual_fidelity=False)
     details.append(f"gate {live_gate.score}/100")
     if font_report.families:
@@ -534,7 +666,8 @@ def _startup_status(context: GraphicsLaunchContext, gate: ProductionGateReport, 
     source = context.source.name if context.source else "Novo projeto"
     requested = "automático" if requested_api == "auto" else requested_api
     state = "pronto" if gate.ready else "em validação"
-    return f"{source} · {state} · gate {gate.score}/100 · GPU {requested}"
+    recovery = " · recovery autosave" if context.recovered_from is not None else ""
+    return f"{source} · {state} · gate {gate.score}/100 · GPU {requested}{recovery}"
 
 
 def main(argv: list[str] | None = None) -> int:
