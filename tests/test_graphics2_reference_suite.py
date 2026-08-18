@@ -7,7 +7,12 @@ import json
 from PIL import Image
 import pytest
 
-from srstudio.graphics2.reference_suite import _top_suspect_note, load_reference_manifest, verify_reference_case
+from srstudio.graphics2.reference_suite import (
+    _render_performance,
+    _top_suspect_note,
+    load_reference_manifest,
+    verify_reference_case,
+)
 
 
 def _write_image(path: Path, size=(120, 160)) -> str:
@@ -109,6 +114,23 @@ def test_reference_suite_formats_top_scene_suspect_for_console() -> None:
     assert _top_suspect_note({}) == ""
 
 
+def test_reference_suite_summarizes_render_timings_without_threshold_coupling() -> None:
+    summary = _render_performance([12.5, 25.0, 17.5])
+
+    assert summary == {
+        "total_ms": 55.0,
+        "average_ms": pytest.approx(55.0 / 3.0),
+        "minimum_ms": 12.5,
+        "maximum_ms": 25.0,
+    }
+    assert _render_performance([]) == {
+        "total_ms": 0,
+        "average_ms": 0.0,
+        "minimum_ms": 0.0,
+        "maximum_ms": 0.0,
+    }
+
+
 def test_reference_suite_source_persists_scene_aware_worst_case() -> None:
     source = (Path(__file__).parents[1] / "src" / "srstudio" / "graphics2" / "reference_suite.py").read_text(encoding="utf-8")
     assert "attribute_fidelity_regions" in source
@@ -116,6 +138,8 @@ def test_reference_suite_source_persists_scene_aware_worst_case() -> None:
     assert "store_fidelity_triage" in source
     assert '"visual_fidelity_worst_case"' in source
     assert '"pptx_effect_mapping"' in source
+    assert '"render_ms"' in source
+    assert '"performance"' in source
 
 
 def test_real_quinta_manifest_keeps_confirmed_slide_mapping():
