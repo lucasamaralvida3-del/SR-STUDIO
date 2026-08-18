@@ -116,6 +116,7 @@ class PptxRasterCorrelator:
 
             if row.embedded_image_elements > 0:
                 row.source_preference = "embedded-original"
+                result.append(row)
                 continue
 
             row.source_preference = "raster-review-fallback"
@@ -124,8 +125,10 @@ class PptxRasterCorrelator:
                     raster_size = image.size
             except OSError as exc:
                 row.warnings.append(f"Raster dimensions unavailable: {exc}")
+                result.append(row)
                 continue
             row.crop_candidates = self._review_crops(slide_data, raster_size)
+            result.append(row)
         return result
 
     @staticmethod
@@ -189,8 +192,6 @@ class PptxRasterCorrelator:
         result: list[RasterCropCandidate] = []
         for element in slide_data["product_elements"]:
             tx, ty, tw, th = int(element.x), int(element.y), int(element.width), int(element.height)
-            # Review-only card envelope. It intentionally contains the name region,
-            # so it can never be mistaken for a clean product-only cutout.
             x1 = max(0, int((tx - max(tw * 0.45, slide.width * 0.025)) * scale_x))
             x2 = min(raster_w, int((tx + tw + max(tw * 0.45, slide.width * 0.025)) * scale_x))
             y1 = max(0, int((ty - slide.height * 0.13) * scale_y))
