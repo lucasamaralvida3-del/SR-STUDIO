@@ -10,8 +10,9 @@ from srstudio.graphics2 import (
     NodeKind,
     Transform,
 )
+from srstudio.graphics2 import qt_host
 from srstudio.graphics2.autosave import AutosaveManager
-from srstudio.graphics2.editor_persistence import EditorRecoveryJournal
+from srstudio.graphics2.editor_persistence import EditorRecoveryJournal, document_digest
 from srstudio.graphics2.package import load_package, register_local_asset, save_package
 
 
@@ -111,24 +112,35 @@ def test_flow_3_move_resize_rotate_undo_redo_roundtrip():
     assert (redone.x, redone.y, redone.width, redone.height, redone.rotation) == (130, 140, 260, 150, 25)
 
 
-def test_flow_4_autosave_and_recovery_after_unsaved_change(tmp_path):
-    manager = AutosaveManager(tmp_path / "autosave")
-    journal = EditorRecoveryJournal(tmp_path / "autosave")
-    document = GraphicsDocument(name="Fluxo 4")
-    document.metadata["revision"] = 1
-    first = manager.save(document)
-    journal.mark(document.id, first)
+def test_flow_4_autosave_and_recovery_after_unsaved_change(tmp_path, monkeypatch):
+    autosave_root = tmp_path / "autosave"
+    monkeypatch.setattr(qt_host, "default_autosave_root", lambda: autosave_root)
+    manager = AutosaveManager(autosave_root)
+    journal = EditorRecoveryJournal(autosave_root)
 
-    document.metadata["revision"] = 2
-    second = manager.save(document)
-    journal.mark(document.id, second)
+    saved = GraphicsDocument(name="Fluxo 4")
+    saved.metadata["revision"] = 1
+    project = save_package(saved, tmp_path / "fluxo4.srscene", embed_local_assets=True)
+    base_digest = document_digest(saved)
 
-    point = journal.recovery_point(manager)
-    assert point is not None
-    assert point.path == second.resolve()
-    recovered = manager.recover(point)
-    assert recovered.id == document.id
-    assert recovered.metadata["revision"] == 2
+    pending = GraphicsDocument.from_dict(saved.to_dict())
+    pending.metadata["revision"] = 2
+    recovery_path = manager.save(pending)
+    journal.mark(
+        pending.id,
+        recovery_path,
+        source_path=project,
+        base_saved_digest=base_digest,
+    )
+
+    context = qt_host.load_launch_context(project)
+
+    assert context.recovered_from is not None
+    assert context.source == project.resolve()
+    assert context.saved_digest == base_digest
+    assert context.document.id == saved.id
+    assert context.document.metadata["revision"] == 2
+    assert document_digest(context.document) != context.saved_digest
 
 
 def test_flow_5_text_and_image_survive_save_load_without_original_asset(tmp_path):
