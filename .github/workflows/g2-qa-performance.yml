@@ -9,6 +9,14 @@ on:
       - "tests/test_graphics2_*.py"
       - "tools/g2_qa_baseline.py"
       - ".github/workflows/g2-qa-performance.yml"
+  pull_request:
+    branches:
+      - integration/sr-studio-next
+    paths:
+      - "src/srstudio/graphics2/**"
+      - "tests/test_graphics2_*.py"
+      - "tools/g2_qa_baseline.py"
+      - ".github/workflows/g2-qa-performance.yml"
   workflow_dispatch:
 
 permissions:
