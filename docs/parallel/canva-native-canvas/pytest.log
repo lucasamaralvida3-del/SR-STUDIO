@@ -1,0 +1,9 @@
+...............................                                          [100%]
+=============================== warnings summary ===============================
+tests/test_canva_visual_fidelity_v5.py: 3 warnings
+tests/test_canva_encartes_v2.py: 11 warnings
+  /home/runner/work/SR-STUDIO/SR-STUDIO/src/srstudio/images/library.py:499: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    pixels = list(gray.getdata())
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+31 passed, 14 warnings in 0.58s
