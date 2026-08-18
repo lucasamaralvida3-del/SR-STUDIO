@@ -125,10 +125,10 @@ def recover_pptx_text_content(
 
         node = candidates[0]
         report.mapped_contracts += 1
-        previous = str(node.content or "")
+        previous = str(node.text or "")
         if previous != contract.text:
             node.metadata["pptx_text_content_previous"] = previous
-            node.content = contract.text
+            node.text = contract.text
             report.corrected_contracts += 1
 
         node.metadata["pptx_shape_id"] = node.metadata.get("pptx_shape_id") or contract.shape_id
@@ -142,7 +142,7 @@ def recover_pptx_text_content(
         }
         node.metadata["pptx_enhanced"] = True
 
-        if str(node.content or "") == contract.text:
+        if str(node.text or "") == contract.text:
             report.exact_contracts += 1
         else:
             report.issues.append(
