@@ -4,7 +4,9 @@ from PIL import Image, ImageDraw
 
 from srstudio.images.safe_library import SafeImageLibrary
 from srstudio.images.visual_dedup import (
+    compact_rgb_signature,
     is_conservative_visual_duplicate,
+    rgb_signature_distance,
     visual_duplicate_signals,
 )
 
@@ -26,12 +28,44 @@ def test_dhash_collision_with_incompatible_geometry_is_not_duplicate():
     )
 
 
+def test_same_geometry_dhash_collision_is_rejected_by_color_content():
+    white = Image.new("RGB", (300, 300), "white")
+    black = Image.new("RGB", (300, 300), "black")
+    white_signature = compact_rgb_signature(white)
+    black_signature = compact_rgb_signature(black)
+
+    assert rgb_signature_distance(white_signature, black_signature) == 1.0
+    signals = visual_duplicate_signals(
+        "0000000000000000",
+        "0000000000000000",
+        (300, 300),
+        (300, 300),
+        left_rgb_signature=white_signature,
+        right_rgb_signature=black_signature,
+    )
+    assert signals.hamming_distance == 0
+    assert signals.aspect_delta == 0.0
+    assert signals.content_distance == 1.0
+    assert not is_conservative_visual_duplicate(
+        "0000000000000000",
+        "0000000000000000",
+        (300, 300),
+        (300, 300),
+        left_rgb_signature=white_signature,
+        right_rgb_signature=black_signature,
+    )
+
+
 def test_resized_same_aspect_candidate_can_still_be_near_duplicate():
+    source = Image.new("RGB", (500, 1000), (20, 80, 160))
+    same = source.resize((1000, 2000))
     assert is_conservative_visual_duplicate(
         "1234567890abcdef",
         "1234567890abcdee",
-        (500, 1000),
-        (1000, 2000),
+        source.size,
+        same.size,
+        left_rgb_signature=compact_rgb_signature(source),
+        right_rgb_signature=compact_rgb_signature(same),
         max_hamming_distance=2,
     )
 
@@ -47,6 +81,7 @@ def test_safe_library_preserves_complete_sha256_without_breaking_legacy_id(tmp_p
     assert len(asset.id) == 24
     assert asset.metadata["sha256"] == expected
     assert asset.metadata["sha256_full"] == expected
+    assert asset.metadata["rgb_signature"]
 
 
 def test_near_duplicate_keeps_canonical_sha_and_merges_provenance(tmp_path):
@@ -82,6 +117,7 @@ def test_near_duplicate_keeps_canonical_sha_and_merges_provenance(tmp_path):
     assert second.id == first.id
     assert second.metadata["sha256"] == png_sha
     assert second.metadata["sha256_full"] == png_sha
+    assert second.metadata["rgb_signature"] == first.metadata["rgb_signature"]
     assert jpg_sha in second.metadata["variant_sha256"]
     assert {row["source_file"] for row in second.metadata["provenance"]} == {
         "encarte-a.pptx",
@@ -110,6 +146,21 @@ def test_safe_library_does_not_merge_realistic_dhash_collision_shape(tmp_path):
     assert first.perceptual_hash == second.perceptual_hash == "0000000000000000"
     assert first.id != second.id
     assert len(library.find_for_product("CAFE VASCONCELOS 500G")) == 2
+
+
+def test_safe_library_does_not_merge_same_shape_flat_color_dhash_collision(tmp_path):
+    library = SafeImageLibrary(tmp_path / "bank")
+    white = tmp_path / "white.png"
+    black = tmp_path / "black.png"
+    Image.new("RGB", (300, 300), "white").save(white)
+    Image.new("RGB", (300, 300), "black").save(black)
+
+    first = library.learn_product_image(white, "MONSTER 473ML", confidence=.95)
+    second = library.learn_product_image(black, "MONSTER 473ML", confidence=.95)
+
+    assert first.perceptual_hash == second.perceptual_hash == "0000000000000000"
+    assert first.id != second.id
+    assert len(library.find_for_product("MONSTER 473ML")) == 2
 
 
 def test_safe_library_cross_product_collision_does_not_create_false_conflict(tmp_path):
