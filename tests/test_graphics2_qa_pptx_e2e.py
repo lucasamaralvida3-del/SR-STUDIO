@@ -42,13 +42,15 @@ def _node_count(document) -> int:
 
 def _editable_node(router: GraphicsCommandRouter, kind: NodeKind):
     for page in router.session.document.pages:
+        selected_page = router.dispatch({"name": "select_page", "page_id": page.id})
+        assert selected_page.ok
         for node in page.nodes.values():
-            if node.kind is kind and not router.session.effective_locked(node.id, page_id=page.id):
+            if node.kind is kind and not router.session.effective_locked(node.id):
                 return page, node
     return None, None
 
 
-def _import_editable_pptx() -> tuple[Path, object, object]:
+def _import_editable_pptx() -> tuple[Path, GraphicsCommandRouter]:
     service = GraphicsImportService()
     diagnostics: list[str] = []
     for name in PPTX_NAMES:
@@ -57,14 +59,14 @@ def _import_editable_pptx() -> tuple[Path, object, object]:
         document = result.document
         assert_document_integrity(document)
         router = GraphicsCommandRouter(GraphicsSession(document))
-        text_page, text_node = _editable_node(router, NodeKind.TEXT)
-        image_page, image_node = _editable_node(router, NodeKind.IMAGE)
+        _text_page, text_node = _editable_node(router, NodeKind.TEXT)
+        _image_page, image_node = _editable_node(router, NodeKind.IMAGE)
         diagnostics.append(
             f"{name}: pages={len(document.pages)} nodes={_node_count(document)} "
             f"editable_text={bool(text_node)} editable_image={bool(image_node)}"
         )
         if text_node is not None and image_node is not None:
-            return path, result, router
+            return path, router
     pytest.fail(
         "Nenhum PPTX real do corpus produziu texto e imagem simultaneamente editáveis no G2. "
         + " | ".join(diagnostics)
@@ -95,9 +97,8 @@ def test_real_pptx_import_edit_save_reopen_and_export_png_pdf(tmp_path):
     from pypdf import PdfReader
 
     _app = QGuiApplication.instance() or QGuiApplication([])
-    source_pptx, imported, router = _import_editable_pptx()
-    document = router.session.document
-    original_page_ids = [page.id for page in document.pages]
+    source_pptx, router = _import_editable_pptx()
+    original_page_ids = [page.id for page in router.session.document.pages]
 
     # Navegar todas as páginas importadas pelo mesmo Command Router usado pela UI.
     for page_id in original_page_ids:
@@ -133,8 +134,14 @@ def test_real_pptx_import_edit_save_reopen_and_export_png_pdf(tmp_path):
     assert_document_integrity(reopened)
     assert len(reopened.pages) == len(original_page_ids)
     assert [page.id for page in reopened.pages] == original_page_ids
-    assert any(node.id == text_node.id and node.text == edited_text for page in reopened.pages for node in page.nodes.values())
-    reopened_image = next(node for page in reopened.pages for node in page.nodes.values() if node.id == image_node.id)
+    assert any(
+        node.id == text_node.id and node.text == edited_text
+        for page in reopened.pages
+        for node in page.nodes.values()
+    )
+    reopened_image = next(
+        node for page in reopened.pages for node in page.nodes.values() if node.id == image_node.id
+    )
     assert reopened_image.asset_id == replacement_asset_id
     assert Path(reopened.assets[replacement_asset_id].source).is_file()
 
