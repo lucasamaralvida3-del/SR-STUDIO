@@ -1,0 +1,246 @@
+{
+  "measurement_semantics": {
+    "media_file_occurrences": "sum of ppt/media package entries across the 36 extracted PPTX documents",
+    "unique_media_exact": "global unique SHA-256 values of ppt/media package entries",
+    "note": "This intentionally does not equate slide image/blip references with package media occurrences."
+  },
+  "metrics": {
+    "files_found": 36,
+    "slides": 566,
+    "media_file_occurrences": 2324,
+    "unique_media_exact": 1910
+  },
+  "expected": {
+    "pptx": 36,
+    "slides": 566,
+    "media_file_occurrences": 2324,
+    "unique_media_exact": 1910
+  },
+  "checks": {
+    "pptx": true,
+    "slides": true,
+    "media_file_occurrences": true,
+    "unique_media_exact": true,
+    "no_scan_errors": true
+  },
+  "pass": true,
+  "errors": [],
+  "files": [
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/0d940ec71895__CARNE FIM DE SEMANA.pptx",
+      "slides": 63,
+      "media_file_occurrences": 97,
+      "unique_media_exact_in_file": 97
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/0db8fd59282c__HORTIFRUTI SANJU.pptx",
+      "slides": 11,
+      "media_file_occurrences": 39,
+      "unique_media_exact_in_file": 39
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/1575e405744f__CHOCOLATE KIT KAT 41,5G.pptx",
+      "slides": 4,
+      "media_file_occurrences": 28,
+      "unique_media_exact_in_file": 28
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/1753c3057e1f__Cópia de Cópia de ECONOMIA SANJU.pptx",
+      "slides": 4,
+      "media_file_occurrences": 57,
+      "unique_media_exact_in_file": 57
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/1d595b7176e8__Cópia de TERÇA VERDE SANJU.pptx",
+      "slides": 23,
+      "media_file_occurrences": 62,
+      "unique_media_exact_in_file": 62
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/218e8c28ffec__Cópia de ECONOMIA SANJU.pptx",
+      "slides": 14,
+      "media_file_occurrences": 65,
+      "unique_media_exact_in_file": 65
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/33c619a8793c__Cópia de Cópia de Cópia de Cópia de FIM DE SEMANA NOVO.pptx",
+      "slides": 14,
+      "media_file_occurrences": 99,
+      "unique_media_exact_in_file": 99
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/39dfb7615cb4__LIMPEZA SANJU.pptx",
+      "slides": 5,
+      "media_file_occurrences": 48,
+      "unique_media_exact_in_file": 48
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/5114bd6bb4c3__CERVEJA HEINEKEN CHOPP 5L.pptx",
+      "slides": 5,
+      "media_file_occurrences": 33,
+      "unique_media_exact_in_file": 33
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/637d9c1598ba__MUSSARELA TRADICIONAL.pptx",
+      "slides": 6,
+      "media_file_occurrences": 29,
+      "unique_media_exact_in_file": 29
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/7081709cad5e__QUINTA FILÉ SANJU.pptx",
+      "slides": 22,
+      "media_file_occurrences": 84,
+      "unique_media_exact_in_file": 84
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/75244b7e48be___Post - Feed - Ver╞o Delicioso - 3d render -Sorvete.pptx",
+      "slides": 1,
+      "media_file_occurrences": 16,
+      "unique_media_exact_in_file": 16
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/7c1ffc00dea1__Cópia de Cópia de ECONOMIA SANJU (1).pptx",
+      "slides": 11,
+      "media_file_occurrences": 65,
+      "unique_media_exact_in_file": 65
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/7fd089cb12c6__Cópia de Cópia de Cópia de -----.pptx",
+      "slides": 13,
+      "media_file_occurrences": 90,
+      "unique_media_exact_in_file": 90
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/813297c08354__Post para Instagram Dia do hambúrguer divertido amarelo  (210 x 297 mm).pptx",
+      "slides": 4,
+      "media_file_occurrences": 20,
+      "unique_media_exact_in_file": 20
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/87078034f905__CERVEJA HEINEKEN GARRAFA 600ML.pptx",
+      "slides": 22,
+      "media_file_occurrences": 71,
+      "unique_media_exact_in_file": 71
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/887368ae8e18__BATATA BEM BRASIL 2KG.pptx",
+      "slides": 5,
+      "media_file_occurrences": 22,
+      "unique_media_exact_in_file": 22
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/9c01bced5016__OFERTAS CARNES SANJU.pptx",
+      "slides": 22,
+      "media_file_occurrences": 57,
+      "unique_media_exact_in_file": 57
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/a43ce3ca50ad__OFERTA PESCADOS.pptx",
+      "slides": 4,
+      "media_file_occurrences": 35,
+      "unique_media_exact_in_file": 35
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/a4a8a5749270__TERÇA VERDE SANJU.pptx",
+      "slides": 24,
+      "media_file_occurrences": 67,
+      "unique_media_exact_in_file": 67
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/ec09745066d5__QUARTA CAFÉ SANJU.pptx",
+      "slides": 21,
+      "media_file_occurrences": 86,
+      "unique_media_exact_in_file": 86
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/f3ea78887558__SHAMPOO SI╖GE.pptx",
+      "slides": 4,
+      "media_file_occurrences": 20,
+      "unique_media_exact_in_file": 20
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/f49eec3abbf8__ECONOMIA SANJU.pptx",
+      "slides": 7,
+      "media_file_occurrences": 75,
+      "unique_media_exact_in_file": 75
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/26b962275b7f__OFERTAS CERVEJAS E BEBIDAS NOVA.pptx",
+      "slides": 27,
+      "media_file_occurrences": 74,
+      "unique_media_exact_in_file": 74
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/2850ba629a7a__OFERTAS DE CHURRASCO E AÇOUGUE NOVO.pptx",
+      "slides": 27,
+      "media_file_occurrences": 98,
+      "unique_media_exact_in_file": 98
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/2d12804a794b__OFERTAS DA ECONOMIA NOVA.pptx",
+      "slides": 16,
+      "media_file_occurrences": 107,
+      "unique_media_exact_in_file": 107
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/39f28371097a__OFERTAS AMBEV  COPA DO MUNDO NOVA.pptx",
+      "slides": 13,
+      "media_file_occurrences": 39,
+      "unique_media_exact_in_file": 39
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/736e94c5a965__OFERTAS TERÇA VERDE NOVO.pptx",
+      "slides": 14,
+      "media_file_occurrences": 78,
+      "unique_media_exact_in_file": 78
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/7ab4d1981ea9__OFERTAS QUARTA CAFÉ COM P╟O NOVO.pptx",
+      "slides": 26,
+      "media_file_occurrences": 95,
+      "unique_media_exact_in_file": 95
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/88a79c6c0387__OFERTAS ESPECIAIS NOVA.pptx",
+      "slides": 27,
+      "media_file_occurrences": 59,
+      "unique_media_exact_in_file": 59
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/9d1abfe0467f__OFERTAS DO HORTIFRUTI NOVA.pptx",
+      "slides": 18,
+      "media_file_occurrences": 68,
+      "unique_media_exact_in_file": 68
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/bd321b43e9ec__OFERTAS QUINTA FILÉ NOVO (1).pptx",
+      "slides": 23,
+      "media_file_occurrences": 84,
+      "unique_media_exact_in_file": 84
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/ce2836bf2566__OFERTAS REL╢MPAGO NOVA.pptx",
+      "slides": 7,
+      "media_file_occurrences": 26,
+      "unique_media_exact_in_file": 26
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/df5c42055fce__OFERTAS DA LIMPEZA NOVA.pptx",
+      "slides": 10,
+      "media_file_occurrences": 75,
+      "unique_media_exact_in_file": 75
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/dfe0ccb2afe2__OFERTAS BABY NOVA.pptx",
+      "slides": 6,
+      "media_file_occurrences": 48,
+      "unique_media_exact_in_file": 48
+    },
+    {
+      "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/fa73ae407c3a__OFERTAS FIM DE SEMANA NOVA.pptx",
+      "slides": 43,
+      "media_file_occurrences": 208,
+      "unique_media_exact_in_file": 208
+    }
+  ]
+}

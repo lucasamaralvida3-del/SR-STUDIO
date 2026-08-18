@@ -1,0 +1,18 @@
+repository=lucasamaralvida3-del/SR-STUDIO
+ref=refs/heads/g2/parallel-image-database
+sha=3115a38b0d688d5b1118c9734583ceb1f11fd534
+run_id=32165757884
+run_attempt=1
+event=push
+runner_os=Linux
+runner_arch=X64
+timestamp_utc=2026-08-18T17:28:17Z
+standalone_phase=DEFERRED
+## g2/parallel-image-database...origin/g2/parallel-image-database
+?? artifacts/
+3115a38 ci: run corrected Phase 3A operational validation
+1a0a9de ci: validate Phase 3A corpus baseline from extracted PPTX
+46a036e ci: validate Phase 3A rich corpus package baseline
+0fa8f1f image-db: persist Phase 3A explicit Release evidence [skip ci]
+60e0047 image-db: snapshot Phase 3A run status [skip ci]
+Python 3.11.15

@@ -1,0 +1,12 @@
+{
+  "status": "PASS",
+  "assets": 1036,
+  "physical_images": 1036,
+  "reload_seconds": 0.03406787799997346,
+  "duplicate_ids": false,
+  "missing_files": [],
+  "malformed_assets": [],
+  "missing_provenance_count": 0,
+  "variant_hashes": 146,
+  "index_exists": true
+}

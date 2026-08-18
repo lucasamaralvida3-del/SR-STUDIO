@@ -1,0 +1,533 @@
+{
+  "status": "NOT READY",
+  "phase": "3A",
+  "standalone_available": false,
+  "standalone_phase": "DEFERRED",
+  "standalone_validation": "DEFERRED",
+  "tested_sha": "3115a38b0d688d5b1118c9734583ceb1f11fd534",
+  "run_id": "32165757884",
+  "run_attempt": "1",
+  "gates": {
+    "Environment": true,
+    "Tests": true,
+    "Corpus integrity": true,
+    "Rich corpus available": true,
+    "Catalog available": true,
+    "Corpus baseline": true,
+    "Ingest": true,
+    "Persistence / Reload": true,
+    "Second ingest": true,
+    "Idempotency": true,
+    "Recovery": true,
+    "Library audit": false,
+    "Catalog 520": false,
+    "Department coverage": false,
+    "Top missing": false,
+    "Find Image": false,
+    "Performance": false,
+    "Review dataset": false
+  },
+  "release_assets": {
+    "lookup_mode": "explicit-tag-only",
+    "requested_tag": "image-db-corpus-v1",
+    "api_http_status": 200,
+    "release_found": true,
+    "release_tag": "image-db-corpus-v1",
+    "release_id": 372506555,
+    "release_name": "Image DB Corpus v1",
+    "release_draft": false,
+    "release_prerelease": false,
+    "all_assets_returned": [
+      {
+        "name": "Downloads.1.1.zip",
+        "asset_id": 519720279,
+        "size": 249253663,
+        "digest": "sha256:aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba",
+        "state": "uploaded",
+        "created_at": "2026-08-18T16:49:25Z",
+        "updated_at": "2026-08-18T16:49:43Z",
+        "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/Downloads.1.1.zip"
+      },
+      {
+        "name": "Downloads.2.1.zip",
+        "asset_id": 519719841,
+        "size": 344039590,
+        "digest": "sha256:035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86",
+        "state": "uploaded",
+        "created_at": "2026-08-18T16:48:59Z",
+        "updated_at": "2026-08-18T16:49:18Z",
+        "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/Downloads.2.1.zip"
+      },
+      {
+        "name": "publish_repository.zip",
+        "asset_id": 519734424,
+        "size": 19093966,
+        "digest": "sha256:5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
+        "state": "uploaded",
+        "created_at": "2026-08-18T17:03:00Z",
+        "updated_at": "2026-08-18T17:03:03Z",
+        "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/publish_repository.zip"
+      }
+    ],
+    "phase3a_required": [
+      "Downloads(1)(1).zip",
+      "Downloads(2)(1).zip",
+      "publish_repository.zip"
+    ],
+    "standalone_phase": "DEFERRED",
+    "standalone_asset": "standalone-images.zip",
+    "found": {
+      "Downloads(1)(1).zip": {
+        "name": "Downloads.1.1.zip",
+        "asset_id": 519720279,
+        "size": 249253663,
+        "digest": "sha256:aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba",
+        "state": "uploaded",
+        "created_at": "2026-08-18T16:49:25Z",
+        "updated_at": "2026-08-18T16:49:43Z",
+        "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/Downloads.1.1.zip",
+        "canonical_name": "Downloads(1)(1).zip",
+        "release_asset_name": "Downloads.1.1.zip",
+        "matched_via_alias": true,
+        "tag": "image-db-corpus-v1",
+        "release_id": 372506555,
+        "release_name": "Image DB Corpus v1",
+        "release_draft": false,
+        "release_prerelease": false
+      },
+      "Downloads(2)(1).zip": {
+        "name": "Downloads.2.1.zip",
+        "asset_id": 519719841,
+        "size": 344039590,
+        "digest": "sha256:035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86",
+        "state": "uploaded",
+        "created_at": "2026-08-18T16:48:59Z",
+        "updated_at": "2026-08-18T16:49:18Z",
+        "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/Downloads.2.1.zip",
+        "canonical_name": "Downloads(2)(1).zip",
+        "release_asset_name": "Downloads.2.1.zip",
+        "matched_via_alias": true,
+        "tag": "image-db-corpus-v1",
+        "release_id": 372506555,
+        "release_name": "Image DB Corpus v1",
+        "release_draft": false,
+        "release_prerelease": false
+      },
+      "publish_repository.zip": {
+        "name": "publish_repository.zip",
+        "asset_id": 519734424,
+        "size": 19093966,
+        "digest": "sha256:5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
+        "state": "uploaded",
+        "created_at": "2026-08-18T17:03:00Z",
+        "updated_at": "2026-08-18T17:03:03Z",
+        "browser_download_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/image-db-corpus-v1/publish_repository.zip",
+        "canonical_name": "publish_repository.zip",
+        "release_asset_name": "publish_repository.zip",
+        "matched_via_alias": false,
+        "tag": "image-db-corpus-v1",
+        "release_id": 372506555,
+        "release_name": "Image DB Corpus v1",
+        "release_draft": false,
+        "release_prerelease": false
+      }
+    },
+    "missing_phase3a_required": [],
+    "errors": [],
+    "release_count_scanned": 1
+  },
+  "release_asset_verification": {
+    "requested_tag": "image-db-corpus-v1",
+    "phase": "3A",
+    "standalone_phase": "DEFERRED",
+    "all_phase3a_required_verified": true,
+    "assets": {
+      "Downloads(1)(1).zip": {
+        "name": "Downloads(1)(1).zip",
+        "release_asset_name": "Downloads.1.1.zip",
+        "release_found": true,
+        "asset_id": 519720279,
+        "path": ".phase3-corpus/Downloads(1)(1).zip",
+        "expected_size": 249253663,
+        "release_digest": "sha256:aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba",
+        "tag": "image-db-corpus-v1",
+        "download_complete": true,
+        "download_command_success": true,
+        "download_output": "",
+        "renamed_to_canonical": true,
+        "exists": true,
+        "actual_size": 249253663,
+        "sha256": "aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba",
+        "size_verified": true,
+        "hash_verified": true,
+        "hash_verification_basis": "release-digest",
+        "zip_integrity": true,
+        "bad_member": null,
+        "verified": true
+      },
+      "Downloads(2)(1).zip": {
+        "name": "Downloads(2)(1).zip",
+        "release_asset_name": "Downloads.2.1.zip",
+        "release_found": true,
+        "asset_id": 519719841,
+        "path": ".phase3-corpus/Downloads(2)(1).zip",
+        "expected_size": 344039590,
+        "release_digest": "sha256:035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86",
+        "tag": "image-db-corpus-v1",
+        "download_complete": true,
+        "download_command_success": true,
+        "download_output": "",
+        "renamed_to_canonical": true,
+        "exists": true,
+        "actual_size": 344039590,
+        "sha256": "035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86",
+        "size_verified": true,
+        "hash_verified": true,
+        "hash_verification_basis": "release-digest",
+        "zip_integrity": true,
+        "bad_member": null,
+        "verified": true
+      },
+      "publish_repository.zip": {
+        "name": "publish_repository.zip",
+        "release_asset_name": "publish_repository.zip",
+        "release_found": true,
+        "asset_id": 519734424,
+        "path": ".phase3-corpus/publish_repository.zip",
+        "expected_size": 19093966,
+        "release_digest": "sha256:5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
+        "tag": "image-db-corpus-v1",
+        "download_complete": true,
+        "download_command_success": true,
+        "download_output": "",
+        "renamed_to_canonical": false,
+        "exists": true,
+        "actual_size": 19093966,
+        "sha256": "5a6901e3b5d8574d3c2541267609979c8efcc8361fc44887ef2621d9bd565c24",
+        "size_verified": true,
+        "hash_verified": true,
+        "hash_verification_basis": "release-digest",
+        "zip_integrity": true,
+        "bad_member": null,
+        "verified": true
+      },
+      "standalone-images.zip": {
+        "name": "standalone-images.zip",
+        "phase": "DEFERRED",
+        "release_found": false,
+        "release_asset_name": "",
+        "asset_id": null,
+        "expected_size": 0,
+        "release_digest": "",
+        "download_complete": false,
+        "verified": false,
+        "processed": false
+      }
+    },
+    "errors": []
+  },
+  "catalog_source_validation": {
+    "db_path": ".phase3-corpus/publish/publish_repository/beta/files/dados/atacado_historico.db",
+    "exists": true,
+    "products": 520,
+    "historical_records": 3116,
+    "products_expected": 520,
+    "historical_records_expected": 3116,
+    "pass": true
+  },
+  "corpus_inventory": {
+    "measurement_semantics": {
+      "media_file_occurrences": "sum of ppt/media package entries across the 36 extracted PPTX documents",
+      "unique_media_exact": "global unique SHA-256 values of ppt/media package entries",
+      "note": "This intentionally does not equate slide image/blip references with package media occurrences."
+    },
+    "metrics": {
+      "files_found": 36,
+      "slides": 566,
+      "media_file_occurrences": 2324,
+      "unique_media_exact": 1910
+    },
+    "expected": {
+      "pptx": 36,
+      "slides": 566,
+      "media_file_occurrences": 2324,
+      "unique_media_exact": 1910
+    },
+    "checks": {
+      "pptx": true,
+      "slides": true,
+      "media_file_occurrences": true,
+      "unique_media_exact": true,
+      "no_scan_errors": true
+    },
+    "pass": true,
+    "errors": [],
+    "files": [
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/0d940ec71895__CARNE FIM DE SEMANA.pptx",
+        "slides": 63,
+        "media_file_occurrences": 97,
+        "unique_media_exact_in_file": 97
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/0db8fd59282c__HORTIFRUTI SANJU.pptx",
+        "slides": 11,
+        "media_file_occurrences": 39,
+        "unique_media_exact_in_file": 39
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/1575e405744f__CHOCOLATE KIT KAT 41,5G.pptx",
+        "slides": 4,
+        "media_file_occurrences": 28,
+        "unique_media_exact_in_file": 28
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/1753c3057e1f__Cópia de Cópia de ECONOMIA SANJU.pptx",
+        "slides": 4,
+        "media_file_occurrences": 57,
+        "unique_media_exact_in_file": 57
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/1d595b7176e8__Cópia de TERÇA VERDE SANJU.pptx",
+        "slides": 23,
+        "media_file_occurrences": 62,
+        "unique_media_exact_in_file": 62
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/218e8c28ffec__Cópia de ECONOMIA SANJU.pptx",
+        "slides": 14,
+        "media_file_occurrences": 65,
+        "unique_media_exact_in_file": 65
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/33c619a8793c__Cópia de Cópia de Cópia de Cópia de FIM DE SEMANA NOVO.pptx",
+        "slides": 14,
+        "media_file_occurrences": 99,
+        "unique_media_exact_in_file": 99
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/39dfb7615cb4__LIMPEZA SANJU.pptx",
+        "slides": 5,
+        "media_file_occurrences": 48,
+        "unique_media_exact_in_file": 48
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/5114bd6bb4c3__CERVEJA HEINEKEN CHOPP 5L.pptx",
+        "slides": 5,
+        "media_file_occurrences": 33,
+        "unique_media_exact_in_file": 33
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/637d9c1598ba__MUSSARELA TRADICIONAL.pptx",
+        "slides": 6,
+        "media_file_occurrences": 29,
+        "unique_media_exact_in_file": 29
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/7081709cad5e__QUINTA FILÉ SANJU.pptx",
+        "slides": 22,
+        "media_file_occurrences": 84,
+        "unique_media_exact_in_file": 84
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/75244b7e48be___Post - Feed - Ver╞o Delicioso - 3d render -Sorvete.pptx",
+        "slides": 1,
+        "media_file_occurrences": 16,
+        "unique_media_exact_in_file": 16
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/7c1ffc00dea1__Cópia de Cópia de ECONOMIA SANJU (1).pptx",
+        "slides": 11,
+        "media_file_occurrences": 65,
+        "unique_media_exact_in_file": 65
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/7fd089cb12c6__Cópia de Cópia de Cópia de -----.pptx",
+        "slides": 13,
+        "media_file_occurrences": 90,
+        "unique_media_exact_in_file": 90
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/813297c08354__Post para Instagram Dia do hambúrguer divertido amarelo  (210 x 297 mm).pptx",
+        "slides": 4,
+        "media_file_occurrences": 20,
+        "unique_media_exact_in_file": 20
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/87078034f905__CERVEJA HEINEKEN GARRAFA 600ML.pptx",
+        "slides": 22,
+        "media_file_occurrences": 71,
+        "unique_media_exact_in_file": 71
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/887368ae8e18__BATATA BEM BRASIL 2KG.pptx",
+        "slides": 5,
+        "media_file_occurrences": 22,
+        "unique_media_exact_in_file": 22
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/9c01bced5016__OFERTAS CARNES SANJU.pptx",
+        "slides": 22,
+        "media_file_occurrences": 57,
+        "unique_media_exact_in_file": 57
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/a43ce3ca50ad__OFERTA PESCADOS.pptx",
+        "slides": 4,
+        "media_file_occurrences": 35,
+        "unique_media_exact_in_file": 35
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/a4a8a5749270__TERÇA VERDE SANJU.pptx",
+        "slides": 24,
+        "media_file_occurrences": 67,
+        "unique_media_exact_in_file": 67
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/ec09745066d5__QUARTA CAFÉ SANJU.pptx",
+        "slides": 21,
+        "media_file_occurrences": 86,
+        "unique_media_exact_in_file": 86
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/f3ea78887558__SHAMPOO SI╖GE.pptx",
+        "slides": 4,
+        "media_file_occurrences": 20,
+        "unique_media_exact_in_file": 20
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/035789d47d06e8f2667d776c/f49eec3abbf8__ECONOMIA SANJU.pptx",
+        "slides": 7,
+        "media_file_occurrences": 75,
+        "unique_media_exact_in_file": 75
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/26b962275b7f__OFERTAS CERVEJAS E BEBIDAS NOVA.pptx",
+        "slides": 27,
+        "media_file_occurrences": 74,
+        "unique_media_exact_in_file": 74
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/2850ba629a7a__OFERTAS DE CHURRASCO E AÇOUGUE NOVO.pptx",
+        "slides": 27,
+        "media_file_occurrences": 98,
+        "unique_media_exact_in_file": 98
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/2d12804a794b__OFERTAS DA ECONOMIA NOVA.pptx",
+        "slides": 16,
+        "media_file_occurrences": 107,
+        "unique_media_exact_in_file": 107
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/39f28371097a__OFERTAS AMBEV  COPA DO MUNDO NOVA.pptx",
+        "slides": 13,
+        "media_file_occurrences": 39,
+        "unique_media_exact_in_file": 39
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/736e94c5a965__OFERTAS TERÇA VERDE NOVO.pptx",
+        "slides": 14,
+        "media_file_occurrences": 78,
+        "unique_media_exact_in_file": 78
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/7ab4d1981ea9__OFERTAS QUARTA CAFÉ COM P╟O NOVO.pptx",
+        "slides": 26,
+        "media_file_occurrences": 95,
+        "unique_media_exact_in_file": 95
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/88a79c6c0387__OFERTAS ESPECIAIS NOVA.pptx",
+        "slides": 27,
+        "media_file_occurrences": 59,
+        "unique_media_exact_in_file": 59
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/9d1abfe0467f__OFERTAS DO HORTIFRUTI NOVA.pptx",
+        "slides": 18,
+        "media_file_occurrences": 68,
+        "unique_media_exact_in_file": 68
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/bd321b43e9ec__OFERTAS QUINTA FILÉ NOVO (1).pptx",
+        "slides": 23,
+        "media_file_occurrences": 84,
+        "unique_media_exact_in_file": 84
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/ce2836bf2566__OFERTAS REL╢MPAGO NOVA.pptx",
+        "slides": 7,
+        "media_file_occurrences": 26,
+        "unique_media_exact_in_file": 26
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/df5c42055fce__OFERTAS DA LIMPEZA NOVA.pptx",
+        "slides": 10,
+        "media_file_occurrences": 75,
+        "unique_media_exact_in_file": 75
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/dfe0ccb2afe2__OFERTAS BABY NOVA.pptx",
+        "slides": 6,
+        "media_file_occurrences": 48,
+        "unique_media_exact_in_file": 48
+      },
+      {
+        "path": "artifacts/image-imports/corpus_sources/aae355ed0ddcb60867172cf1/fa73ae407c3a__OFERTAS FIM DE SEMANA NOVA.pptx",
+        "slides": 43,
+        "media_file_occurrences": 208,
+        "unique_media_exact_in_file": 208
+      }
+    ]
+  },
+  "persistence": {
+    "status": "PASS",
+    "assets": 1036,
+    "physical_images": 1036,
+    "reload_seconds": 0.03406787799997346,
+    "duplicate_ids": false,
+    "missing_files": [],
+    "malformed_assets": [],
+    "missing_provenance_count": 0,
+    "variant_hashes": 146,
+    "index_exists": true
+  },
+  "idempotency": {
+    "before": {
+      "canonical_assets": 1036,
+      "physical_images": 1036,
+      "logical_signature_sha256": "bd3973856857f80bb3d97ee31a77cea4277401677efebfad63389b00deaafaa4"
+    },
+    "after": {
+      "canonical_assets": 1036,
+      "physical_images": 1036,
+      "logical_signature_sha256": "bd3973856857f80bb3d97ee31a77cea4277401677efebfad63389b00deaafaa4"
+    },
+    "canonical_count_unchanged": true,
+    "physical_count_unchanged": true,
+    "logical_signature_unchanged": true,
+    "pass": true
+  },
+  "database": {},
+  "coverage": {},
+  "departments": {},
+  "structured_corpus": {},
+  "find_image": {},
+  "performance": {},
+  "memory": {
+    "measurement": "approximate GitHub Actions CI memory evidence",
+    "baseline": "MemTotal:       16373452 kB\nMemAvailable:   15010264 kB\n",
+    "after_ingest": "MemTotal:       16373452 kB\nMemAvailable:   15370836 kB\n",
+    "ingest_peak_rss_kb": 112196,
+    "second_ingest_peak_rss_kb": 63568,
+    "audit_peak_rss_kb": 29376
+  },
+  "previous_human_sample": {
+    "size": 30,
+    "correct": 30,
+    "wrong_auto_accept": 0,
+    "uncertain": 0
+  },
+  "current_ci_review_sample": "generated only if review dataset gate passed; human judgement remains separate"
+}

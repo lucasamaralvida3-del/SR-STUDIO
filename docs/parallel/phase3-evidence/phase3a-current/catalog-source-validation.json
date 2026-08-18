@@ -1,0 +1,9 @@
+{
+  "db_path": ".phase3-corpus/publish/publish_repository/beta/files/dados/atacado_historico.db",
+  "exists": true,
+  "products": 520,
+  "historical_records": 3116,
+  "products_expected": 520,
+  "historical_records_expected": 3116,
+  "pass": true
+}
