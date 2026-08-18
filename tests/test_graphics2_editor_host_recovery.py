@@ -99,13 +99,15 @@ def test_new_project_option_ignores_pending_session_without_deleting_it(tmp_path
     assert journal.current() is not None
 
 
-def test_qt_host_wires_periodic_and_shutdown_autosave_contract():
+def test_qt_host_wires_periodic_shutdown_and_close_guard_contract():
     text = Path(qt_host.__file__).read_text(encoding="utf-8")
 
     assert "AUTOSAVE_INTERVAL_MS = 45_000" in text
     assert "autosave_timer.timeout.connect(bridge.autosaveIfNeeded)" in text
     assert "QTimer.singleShot(5_000, bridge.autosaveIfNeeded)" in text
     assert "app.aboutToQuit.connect(protect_unsaved_on_quit)" in text
+    assert "def protectBeforeClose(self) -> bool:" in text
+    assert "fechamento cancelado" in text
     assert "EditorRecoveryJournal" in text
     assert 'qml_dir / "PageInspector.qml"' in text
     assert "verified = load_package(final)" in text
