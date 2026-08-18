@@ -16,19 +16,11 @@ Rectangle {
     color: "#FFFFFFF8"
     border.width: 1
     border.color: "#CBD5E1"
-    visible: bridgeHasImageSelection
+    visible: false
 
     property var scene: ({})
     property var imageNode: null
     property bool hasImageSelection: false
-    readonly property bool bridgeHasImageSelection: {
-        try {
-            var parsedScene = JSON.parse(sceneBridge.sceneJson)
-            return selectedImage(parsedScene) !== null
-        } catch (error) {
-            return false
-        }
-    }
     property bool syncing: false
 
     function activePage(sourceScene) {
@@ -102,6 +94,7 @@ Rectangle {
             scene = parsedScene
             imageNode = selected
             hasImageSelection = selected !== null && selected !== undefined
+            panel.visible = hasImageSelection
             if (!hasImageSelection)
                 return
             var fit = String(styleValue("fit", "contain"))
@@ -147,7 +140,9 @@ Rectangle {
 
     Connections {
         target: sceneBridge
+        ignoreUnknownSignals: true
         function onSceneChanged() { panel.refresh() }
+        function onSelectionChanged() { panel.refresh() }
     }
 
     Component.onCompleted: refresh()
