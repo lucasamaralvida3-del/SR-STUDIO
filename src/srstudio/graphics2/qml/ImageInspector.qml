@@ -16,7 +16,7 @@ Rectangle {
     color: "#FFFFFFF8"
     border.width: 1
     border.color: "#CBD5E1"
-    visible: bridgeHasImageSelection
+    visible: hasImageSelection
 
     property var scene: ({})
     property var imageNode: null
