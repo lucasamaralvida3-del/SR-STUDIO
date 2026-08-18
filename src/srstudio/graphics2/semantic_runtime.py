@@ -7,13 +7,15 @@ card. Isso é desejável dentro de uma página, mas duas páginas clonadas podem
 produzir o mesmo ID. Além disso, a reconstrução remove slots inferidos antes de
 criá-los novamente, o que pode apagar o vínculo de produto feito pelo usuário.
 
-Esta camada mantém o algoritmo visual/recovery original intacto e adiciona duas
+Esta camada mantém o algoritmo visual/recovery original intacto e adiciona três
 invariantes de documento:
 
 1. identidades recuperadas não colidem entre páginas;
-2. estado de produto/lock de um slot recuperado sobrevive a rebuild idempotente.
+2. estado de produto/lock de um slot recuperado sobrevive a rebuild idempotente;
+3. PriceBlocks comerciais adicionais são anexados só depois da identidade final.
 
-Nenhuma geometria, texto ou regra de detecção é alterada aqui.
+Nenhuma geometria de origem, texto de template ou regra de detecção é alterada
+nesta camada.
 """
 
 from collections import defaultdict
@@ -23,6 +25,7 @@ from dataclasses import dataclass
 from hashlib import sha1
 from typing import Any, Callable
 
+from .commercial_price_runtime import apply_commercial_price_blocks
 from .model import GraphicsDocument, GraphicsPage, SmartSlot
 from .semantic_named_slot_runtime import recover_explicit_named_slots
 from .semantic_price_runtime import install_complete_price_recovery_guard
@@ -51,13 +54,16 @@ def install_semantic_recovery_guard(semantic_module: Any) -> None:
 
     def guarded_build(document: GraphicsDocument, *args: Any, **kwargs: Any):
         # Marcadores explícitos do próprio PPTX têm precedência sobre inferência
-        # espacial. Assim SR_PRODUTO + SR_PRECO_PROMO + SR_PRECO_CLUBE formam um
-        # único slot com preço principal e preço secundário antes do fallback.
+        # espacial. Assim produto + preço principal + Clube/App + Atacado ficam
+        # no mesmo SmartSlot antes do fallback.
         recover_explicit_named_slots(document)
         recovered_state = _capture_recovered_slot_state(document)
         report = original(document, *args, **kwargs)
         _normalize_document_recovered_identities(document)
         _restore_recovered_slot_state(document, recovered_state)
+        # O PriceBlock atacado é uma extensão comercial sobre o slot já final,
+        # evitando IDs obsoletos em projetos multipágina.
+        apply_commercial_price_blocks(semantic_module, document, report)
         return report
 
     guarded_build.__name__ = original.__name__
