@@ -1,0 +1,148 @@
+name: G2 Editor Polish Image Inspector PR Certification
+
+on:
+  pull_request:
+    branches:
+      - g2/integration-beta
+
+permissions:
+  contents: read
+
+env:
+  TARGET_SHA: 0de7177c29a015f6d63e781383ea5a83b31f2462
+
+jobs:
+  exact-sha-windows-qml:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: 0de7177c29a015f6d63e781383ea5a83b31f2462
+          fetch-depth: 0
+      - name: Verify exact SHA
+        shell: pwsh
+        run: |
+          $head = git rev-parse HEAD
+          Write-Host "HEAD=$head"
+          if ($head -ne "$env:TARGET_SHA") { throw "SHA mismatch: $head != $env:TARGET_SHA" }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install Qt Quick
+        shell: pwsh
+        run: python -m pip install -U pip; python -m pip install -e '.[dev,graphics2]'
+      - name: Verify Qt Quick runtime
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "from srstudio.graphics2.qt_host import qt_quick_available; assert qt_quick_available()"
+          python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api
+      - name: QML Image Inspector contract
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          @'
+          import json, sys
+          from pathlib import Path
+          from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl
+          from PySide6.QtGui import QGuiApplication
+          from PySide6.QtQml import QQmlComponent, QQmlEngine
+
+          app = QGuiApplication.instance() or QGuiApplication(sys.argv)
+          qml_dir = Path.cwd() / "src" / "srstudio" / "graphics2" / "qml"
+
+          def make_scene(kind=None, node_id=""):
+              nodes = {}
+              selection = []
+              anchor = ""
+              if kind:
+                  nodes[node_id] = {
+                      "id": node_id, "kind": kind, "name": node_id,
+                      "selected": True, "visible": True, "opacity": 1.0,
+                      "transform": {"x": 10, "y": 20, "width": 100, "height": 80, "rotation": 0},
+                      "style": {}, "metadata": {},
+                      "text": "sample" if kind == "text" else ""
+                  }
+                  selection = [node_id]
+                  anchor = node_id
+              return {
+                  "id": "cert", "name": "Cert", "active_page_id": "p1", "assets": {},
+                  "pages": [{"id": "p1", "name": "P1", "width": 800, "height": 600,
+                             "nodes": nodes, "slots": {}, "metadata": {}}],
+                  "editor": {"selection": selection, "anchor_id": anchor, "products": [],
+                             "can_undo": False, "can_redo": False}
+              }
+
+          class Bridge(QObject):
+              sceneChanged = Signal()
+              def __init__(self, data):
+                  super().__init__(); self.data = data
+              @Property(str, notify=sceneChanged)
+              def sceneJson(self): return json.dumps(self.data)
+              @Property(str, constant=True)
+              def status(self): return "cert"
+              def set_scene(self, data):
+                  self.data = data; self.sceneChanged.emit(); app.processEvents()
+              @Slot(str, result=str)
+              def dispatch(self, payload): return json.dumps({"ok": True, "payload": {}})
+              @Slot()
+              def undo(self): pass
+              @Slot()
+              def redo(self): pass
+              @Slot(str, str)
+              def editText(self, node_id, text): pass
+
+          def load(name, bridge):
+              engine = QQmlEngine()
+              engine.rootContext().setContextProperty("sceneBridge", bridge)
+              component = QQmlComponent(engine, QUrl.fromLocalFile(str(qml_dir / name)))
+              if component.status() == QQmlComponent.Error:
+                  raise AssertionError(" | ".join(e.toString() for e in component.errors()))
+              obj = component.create()
+              if obj is None:
+                  raise AssertionError(" | ".join(e.toString() for e in component.errors()))
+              app.processEvents()
+              return engine, component, obj
+
+          gbridge = Bridge(make_scene())
+          ge, gc, graphics = load("GraphicsEditor.qml", gbridge)
+          assert graphics is not None
+          print("GRAPHICS_EDITOR_QML=PASS")
+          graphics.close(); graphics.deleteLater(); app.processEvents()
+
+          bridge = Bridge(make_scene())
+          ie, ic, inspector = load("ImageInspector.qml", bridge)
+          assert inspector.property("visible") is False
+          print("NO_IMAGE=PASS")
+
+          bridge.set_scene(make_scene("image", "img-1"))
+          assert inspector.property("visible") is True
+          assert inspector.property("imageNode").get("id") == "img-1"
+          print("IMAGE=PASS")
+
+          bridge.set_scene(make_scene("text", "txt-1"))
+          assert inspector.property("visible") is False
+          assert inspector.property("imageNode") is None
+          print("IMAGE_TO_TEXT=PASS")
+
+          bridge.set_scene(make_scene("image", "img-1"))
+          assert inspector.property("visible") is True
+          assert inspector.property("imageNode").get("id") == "img-1"
+          print("TEXT_TO_IMAGE=PASS")
+
+          bridge.set_scene(make_scene("image", "img-2"))
+          assert inspector.property("visible") is True
+          assert inspector.property("imageNode").get("id") == "img-2"
+          print("IMAGE_TO_IMAGE=PASS")
+
+          bridge.sceneChanged.emit(); app.processEvents()
+          assert inspector.property("visible") is True
+          assert inspector.property("imageNode").get("id") == "img-2"
+          print("SCENE_CHANGED=PASS")
+          print("IMAGE_INSPECTOR_QML=PASS")
+          '@ | Set-Content -Encoding UTF8 "$env:RUNNER_TEMP\image_inspector_cert.py"
+          python "$env:RUNNER_TEMP\image_inspector_cert.py"
