@@ -18,7 +18,7 @@
 
 ## Baseline real recuperado dos artefatos existentes
 
-Relatório histórico usado sem rerender desnecessário: `SR_STUDIO_ALPHA_29_FINAL_ASSESSMENT.md` + relatórios Alpha 30–34 já persistidos.
+Relatórios históricos usados sem rerender desnecessário: `SR_STUDIO_ALPHA_29_FINAL_ASSESSMENT.md` e relatórios Alpha 30–34 persistidos.
 
 | Caso | Score | Pixel pass | Área alterada |
 |---|---:|---:|---:|
@@ -76,15 +76,15 @@ Maiores regiões/nós históricos incluem aproximadamente:
 
 - `ce42388edf3081cf9ffd88dde5244d9eb6a1b780` — `fix(graphics2): preserve renderer font weight`
 - `_set_font_weight()` preserva a escala CSS/DrawingML 100..900 via `QFont.Weight`.
-- regressão dedicada cobre 100,200,...,900 e clamps/default.
+- regressão dedicada cobre 100, 200, ..., 900 e clamps/default.
 
 ### Teste/gates
 
-- testes dedicados adicionados em `tests/test_graphics2_qt_renderer_font_weight.py`;
+- testes dedicados em `tests/test_graphics2_qt_renderer_font_weight.py`;
 - SR Graphics Engine 2 CI: PASS;
 - SR Studio 5 Quality: PASS;
 - G2 Alpha 43 Validation: PASS;
-- Windows Qt Quick: PASS no primeiro ciclo.
+- Windows Qt Quick: PASS.
 
 ### Limitação para o corpus atual
 
@@ -92,10 +92,10 @@ O import bridge ainda reduz a origem PPTX a `font_weight = 700 if bold else 400`
 
 ## Ciclo 2 — desempenho por Golden Master
 
-### Patch
+### Patches
 
 - `c482507de5263aa4a80c30cd0b50a6d1fb0f2ec6` — `feat(graphics2): measure reference render performance`
-- `1f1d19aea27f3b8384a4993573c85621a04b8963` — teste do resumo de timing.
+- `1f1d19aea27f3b8384a4993573c85621a04b8963` — regressão do resumo de timing.
 
 `reference_suite.py` agora persiste, sem alterar thresholds:
 
@@ -128,36 +128,90 @@ Regras conservadoras:
 - texto só vira FONT se existir sinal concreto de família substituída/peso não padrão/fonte ausente;
 - spacing/wrap/alinhamento ficam TEXT;
 - imagem com crop/fillRect/cover/zoom vira CROP;
-- clip_path vira MASK;
+- `clip_path` vira MASK;
 - contratos visuais em ancestral group viram GROUP;
 - forte ambiguidade de z-order vira LAYERS;
 - sem nó associado vira RENDER.
 
-## Auditoria WordArt / escala física — P1 sistêmico
+## Ciclo 4 — agregação transversal do corpus
 
-Foram inspecionados os PPTX reais `CLUBE PROMO EXCLUSIVO.pptx`, `CARTAZ AMARELO FONTE 2 - Copia.pptx` e `Cartazes Atacarejo SR (1)(2).pptx` diretamente no OOXML, sem alterar o importador.
+### Patches
 
-Todos usam `p:sldSz cx=5400675 cy=7559675`, aproximadamente 5,90625 pol de largura. A pipeline converte a geometria para página lógica de 1080 px, fator de escala de aproximadamente 1,9048 em relação a 96 dpi, mas `_pptx_element()` mantém o `font_size_pt` original e a SR Scene não conserva `sldSz`/escala física em `GraphicsPage.metadata`.
+- `37a3fe250df39ad38395f46536c66429000bc668` — `feat(graphics2): aggregate fidelity causes across corpus`;
+- `9a5d4dfeceacc3b0348b3d25b9a4e75bc0a1f079` — `test(graphics2): cover systemic fidelity aggregation`.
 
-Nos elementos dominantes também foi confirmado:
+Novo módulo `src/srstudio/graphics2/fidelity_corpus.py` agrega múltiplos relatórios de impacto e responde automaticamente quais causas são sistêmicas nos Golden Masters. O relatório inclui:
 
-- `bodyPr fromWordArt="1"`;
-- `prstTxWarp prst="textPlain"`;
-- tamanhos base recorrentes de 36,16 pt e 40 pt;
-- caixas de WordArt muito maiores que o ink produzido por texto Qt comum;
-- outline DrawingML presente, por exemplo `a:ln w=9525` em tokens de preço.
+- casos afetados por categoria;
+- regiões;
+- importância acumulada;
+- perda de score estimada acumulada;
+- participação no gap do corpus;
+- maior prioridade observada;
+- `systemic_categories` para causas presentes em pelo menos dois casos e com share relevante do gap.
 
-Conclusão: o problema dominante não é um simples DPI constante do QPainter. A geometria PPTX foi normalizada sem transportar o contrato físico/WordArt suficiente para o renderer reproduzir PowerPoint de forma determinística. Não foi aplicado um multiplicador fixo ~1,90x porque isso seria template-specific e arriscaria regressão, repetindo o problema observado na Alpha 34.
+Isso elimina a necessidade de analisar manualmente os oito `impact.json` após a próxima execução real do corpus.
 
-### Evidência contra patch amplo
+## Auditoria OOXML dos oito PPTX fonte — P1 sistêmico
 
-A Alpha 34 já mostrou que ativar um caminho Full-Spec amplo melhorou 10/10 microfixtures mas regrediu CARTAZ_VENDA em aproximadamente -0,8588 p.p.; a maior ablação isolada foi vertical anchor/line-box, ~-2,1851 p.p. Portanto qualquer nova ativação de WordArt/autofit deve entrar em patch pequeno + A/B em CARTAZ_VENDA primeiro.
+Foram inspecionados os PPTX reais diretamente no OOXML, sem alterar o importador e sem tratar screenshots auxiliares como Golden Masters.
+
+| Fonte/caso | Text shapes | WordArt `fromWordArt=1` | `textPlain` | WordArt com outline | Escala física aproximada para página lógica 1080 px |
+|---|---:|---:|---:|---:|---:|
+| CARTAZ_VENDA | 14 | 12 | 12 | 12 | 1,9048x |
+| SEGUNDA_DA_LIMPEZA_1_PRECO | 12 | 10 | 10 | 10 | 1,5000x |
+| SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE | 12 | 10 | 10 | 10 | 1,5000x |
+| SEGUNDA_DA_LIMPEZA_2_PRECOS | 15 | 13 | 13 | 13 | 1,9132x |
+| SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE | 15 | 13 | 13 | 13 | 1,9132x |
+| CLUBE_EXCLUSIVO | 12 | 10 | 10 | 10 | 1,9048x |
+| CLUBE_EXCLUSIVO_COM_LIMITE | 18 | 14 | 14 | 14 | 1,9048x |
+| ATACADO — fonte multipágina (93 slides) | 1.767 | 1.395 | 1.395 | 1.395 | 1,9048x |
+
+Achados compartilhados:
+
+- `bodyPr fromWordArt="1"` é dominante nos textos que mais perdem score;
+- o corpus observado usa `prstTxWarp prst="textPlain"`, não warps exóticos;
+- praticamente todo WordArt auditado possui outline DrawingML;
+- largura de outline recorrente: `a:ln w="9525"`, equivalente a ~0,75 pt / ~1 px lógico a 96 dpi antes da escala da cena;
+- Algerian é a família dominante nas caixas WordArt auditadas;
+- tamanhos base recorrentes: 36,16 pt, 40 pt e valores próximos;
+- os fatores físicos de normalização variam de 1,50x a 1,9132x entre templates.
+
+### Conclusão sobre escala
+
+A pipeline converte x/y/w/h da geometria PPTX para uma página lógica de 1080 px, mas mantém `font_size_pt` como valor absoluto e a SR Scene não conserva o `p:sldSz`/escala física da origem em `GraphicsPage.metadata`.
+
+Para uma conversão materializada em pixels lógicos, a relação exata é:
+
+`font_size_logical_px = font_size_pt * 12700 * (page_logical_width / source_slide_width_emu)`
+
+onde 1 pt = 12.700 EMU. Alternativamente, CHAT 2 pode preservar `source_slide_width_emu`, `source_slide_height_emu` e a escala original e deixar o renderer aplicar o contrato explicitamente.
+
+Não foi aplicado um multiplicador fixo de ~1,90x no renderer porque isso quebraria os templates cuja relação é 1,50x ou 1,9132x. Um fator hard-coded seria template-specific e repetiria a classe de regressão já observada no piloto Full-Spec.
+
+### Conclusão sobre WordArt/outline
+
+O renderer atual não tem como reproduzir corretamente o WordArt se a Scene não identificar que o texto veio de `fromWordArt=1`, qual `prstTxWarp` foi usado e qual stroke/fill pertence a cada run.
+
+O outline também se perde antes do renderer: `_draw_text()` recebe apenas o fill/cor comum e o bridge atual não transporta `a:rPr/a:ln` como contrato de stroke tipográfico. O problema é repetido em todos os WordArts auditados, mas permanece P2 isoladamente; os dados históricos mostram BOX_LAYOUT/AUTOFIT/transformação de WordArt como P1 maior.
+
+## Evidência contra patch amplo de texto
+
+A Alpha 34 já mostrou que ativar um caminho Full-Spec amplo melhorou 10/10 microfixtures, mas regrediu CARTAZ_VENDA de 93,579777% para 92,720982% (-0,858795 p.p.). A maior ablação isolada foi vertical anchor/line-box, aproximadamente -2,185127 p.p.
+
+Portanto:
+
+- não ativar backend completo por preferência arquitetural;
+- manter Qt como raster de produção;
+- corrigir layout Office em componentes pequenos;
+- validar primeiro em CARTAZ_VENDA;
+- só executar os outros sete após ganho sem regressão.
 
 ## GROUP/alpha — divergência renderer↔preview confirmada, P2 no corpus atual
 
 `GraphicsEditor.qml` calcula opacidade efetiva multiplicando ancestrais. O QPainter atualmente usa somente `node.opacity` e pula nodes GROUP durante desenho. Um filho dentro de group com opacity != 1 pode renderizar com alpha incorreto.
 
-Não foi priorizado antes de TEXT/WORDART porque a telemetria do corpus histórico registra efeitos/alpha praticamente ausentes e apenas dois casos com group reconstruído. Corrigir genericamente continua recomendado depois do P1 tipográfico ou quando um Golden Master apontar GROUP como região dominante.
+Não foi priorizado antes de TEXT/WORDART porque a telemetria do corpus histórico registra IMAGE em apenas 4,86% do diff classificado, nenhum sinal novo de perda de shape/z-order e apenas dois grupos reconstruídos, ambos sem membros não associados. Corrigir genericamente continua recomendado depois do P1 tipográfico ou quando um Golden Master apontar GROUP como região dominante.
 
 ## Dependências dos outros chats
 
@@ -172,40 +226,67 @@ Não foi priorizado antes de TEXT/WORDART porque a telemetria do corpus históri
    - impacto: limita diretamente o patch de FONT do CHAT 1.
 
 2. **Escala física da página não chega à Scene**
-   - arquivos: `src/srstudio/importers/pipeline.py`, `src/srstudio/graphics2/import_bridge.py`
+   - arquivos: `src/srstudio/importers/pipeline.py`, `src/srstudio/graphics2/import_bridge.py`.
    - funções: `_pptx_element()`, `_convert_visual_page()`.
    - causa: x/y/w/h são normalizados para 1080 px; `font_size_pt` permanece absoluto; `GraphicsPage.metadata` não registra `sldSz` nem scale-from-source.
-   - reprodução: PPTX real com `cx=5400675`; 36,16 pt mantém 36,16 no style embora toda geometria tenha sido ampliada para 1080 px.
-   - correção sugerida: transportar `source_slide_width_emu`, `source_slide_height_emu`, escala lógica e metadados WordArt/run; não bakear fator específico do template.
+   - reprodução: os oito fontes têm fatores físicos diferentes, aproximadamente 1,50x, 1,9048x e 1,9132x.
+   - correção sugerida: transportar `source_slide_width_emu`, `source_slide_height_emu`, escala lógica e/ou materializar `font_size` em pixels lógicos a partir da mesma transformação da geometria.
    - impacto estimado: P1, pois WORDART+TEXT somam 94,20% do diff atribuído.
 
 3. **WordArt não identificado semanticamente para o renderer**
+   - arquivos suspeitos: `src/srstudio/importers/pipeline.py`, `src/srstudio/graphics2/pptx_fidelity.py`, `src/srstudio/graphics2/import_bridge.py`.
    - causa: OOXML real tem `fromWordArt=1` + `prstTxWarp=textPlain`, mas esses contratos não aparecem no style/metadata consumido por `qt_renderer._draw_text()`.
-   - correção sugerida: preservar flag WordArt, preset warp, outline/fill por run e transformação necessária no SR Scene.
+   - reprodução: 12/14 textos no CARTAZ, 10/12 nos CLUBE/SEGUNDA 1 preço, 13/15 nos SEGUNDA 2 preços e 1.395/1.767 no fonte ATACADO são WordArt.
+   - correção sugerida: preservar flag WordArt, preset warp, transform, runs, defaults herdados e vínculo com outline/fill.
    - impacto: P1, especialmente ATACADO e CLUBE.
+
+4. **Outline tipográfico por run não é transportado**
+   - arquivos suspeitos: `src/srstudio/importers/pipeline.py`, `src/srstudio/graphics2/pptx_fidelity.py`, `src/srstudio/graphics2/import_bridge.py`.
+   - causa: `a:rPr/a:ln`, inclusive `w="9525"`, não chega ao style/metadata que o renderer usa.
+   - reprodução: todos os WordArts auditados nos oito fontes possuem outline.
+   - correção sugerida: preservar stroke color/alpha/width/join por run, sem convertê-lo em glyph-path prematuramente.
+   - impacto: P2 isolado; repetição sistêmica e pré-requisito para paridade final.
 
 ### CHAT 3 — QML/editor
 
-- arquivo: `src/srstudio/graphics2/qml/GraphicsEditor.qml`
-- causa: `font.bold: font_weight >= 700` também colapsa 800/900 para Bold 700.
-- reprodução: Scene `font_weight=900` aparece como Bold no preview.
-- correção sugerida: usar peso numérico Qt equivalente.
+- arquivo: `src/srstudio/graphics2/qml/GraphicsEditor.qml`;
+- causa: `font.bold: font_weight >= 700` também colapsa 800/900 para Bold 700;
+- reprodução: Scene `font_weight=900` aparece como Bold no preview;
+- correção sugerida: usar peso numérico Qt equivalente;
 - impacto: preview/export podem divergir em peso quando CHAT 2 começar a preservar 800/900.
 
-## CI do HEAD atual
+## CI do último HEAD de código
 
-HEAD validado antes desta atualização documental: `53bb9b7d5be1adc8406463b3cb44e8e3fb11f5f6`.
+HEAD de código validado: `9a5d4dfeceacc3b0348b3d25b9a4e75bc0a1f079`.
 
-- SR Studio 5 Quality — PASS (`32086225506`)
-- SR Graphics Engine 2 CI — PASS (`32086225519`)
-- G2 Alpha 43 Validation — PASS (`32086225582`)
+- SR Studio 5 Quality — PASS (`32086861948`)
+- SR Graphics Engine 2 CI — PASS (`32086862041`)
+  - compile: PASS;
+  - runtime lint gate: PASS;
+  - Visual Fidelity/Production Gate: PASS;
+  - Fidelity Lab/Triage/Golden Master/Reference Suite CLI smokes: PASS;
+  - Graphics Engine 2 tests: PASS;
+  - full SR Studio regression suite: PASS;
+  - Windows Qt Quick job: PASS.
+- G2 Alpha 43 Validation — PASS (`32086862089`)
+  - Ubuntu G2: PASS;
+  - Windows Qt: PASS.
 
-O branch está 11 commits à frente do BASE_SHA, 0 atrás, sem merge em `main`/`stable`.
+Antes deste commit exclusivamente documental, o branch estava 14 commits à frente do BASE_SHA e 0 atrás. Nenhum merge em `main` ou `stable` foi feito.
+
+## Score antes/depois desta sessão
+
+Não foi inventado delta de Golden Master.
+
+Os artefatos históricos existentes foram suficientes para recuperar scores, performance, regiões dominantes e priorização. Os PNG/JSON brutos do run atual dos oito Golden Masters não estavam montados no ambiente do CHAT 1, e o worktree local também não estava disponível; por isso o corpus completo não foi rerenderizado cegamente.
+
+Além disso, o primeiro patch de FONT preserva 800/900 no renderer, mas o bridge atual entrega somente 400/700 para o corpus PPTX. Logo, atribuir qualquer aumento de score real a esse patch sem o handoff do CHAT 2 seria incorreto.
 
 ## Próximo ciclo recomendado
 
-1. Consumir metadados de WordArt/escala física assim que CHAT 2 os preservar; começar por CARTAZ_VENDA como A/B de aceitação.
-2. Implementar no renderer a composição específica `textPlain`/outline/line-box em passos independentes, nunca como backend inteiro de uma vez.
-3. Medir antes/depois com `reference_suite` novo: score + render_ms + região + impact category.
-4. Só depois rerodar os outros sete casos.
-5. Corrigir ancestor GROUP opacity como P2 isolado com regressão pixel-level.
+1. CHAT 2 preservar escala física, WordArt, runs, peso real e outline no SR Scene.
+2. CHAT 1 consumir esses metadados no renderer em patches independentes: primeiro escala/transformação `textPlain`, depois line-box/anchor, depois outline/run composition.
+3. Usar CARTAZ_VENDA como A/B inicial; o patch só avança se superar 93,579777% sem piorar pixel pass, changed area ou TEXT loss.
+4. Medir com o Reference Suite novo: score + `render_ms` + região + categoria + perda estimada.
+5. Somente após CARTAZ_VENDA melhorar, rerodar os outros sete e usar `fidelity_corpus.py` para ordenar causas sistêmicas restantes.
+6. Corrigir ancestor GROUP opacity como P2 isolado com regressão pixel-level após o P1 de WordArt/BOX_LAYOUT.
