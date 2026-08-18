@@ -55,6 +55,7 @@ from .model import (
     Transform,
 )
 from .operations import GraphicsSession
+from .page_duplicate import clone_page_with_fresh_ids, install_safe_page_duplication
 from .pdf_baseline import PdfBaselinePage, render_pdf_baselines
 from .pptx_artwork import PptxArtworkIssue, PptxArtworkRecoveryReport, recover_pptx_artwork
 from .pptx_effect_mapping import (
@@ -127,6 +128,9 @@ ENGINE_NAME = "SR Graphics Engine"
 ENGINE_VERSION = "2.0.0-alpha.43"
 SCHEMA_VERSION = "srscene/2.0"
 
+# Safe duplication is a prerequisite for ProductCards/SmartSlots in multipage
+# documents: every duplicated page must receive fresh internal identities.
+install_safe_page_duplication(GraphicsSession)
 install_product_card_runtime(GraphicsSession, _semantic_blocks)
 install_product_card_commands(_command_router)
 install_product_data_runtime(GraphicsSession, _command_router)
@@ -210,6 +214,7 @@ __all__ = [
     "audit_pptx_effects",
     "bridge_flags",
     "build_semantic_blocks",
+    "clone_page_with_fresh_ids",
     "compact_fidelity_triage",
     "compare_images",
     "crop_pixel_box",
