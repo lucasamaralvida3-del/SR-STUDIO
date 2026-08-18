@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import sys
 import tempfile
+import uuid
 
 import srstudio
 from srstudio.diagnostics.crash_guard import CrashGuard
@@ -16,6 +17,16 @@ from . import qt_host
 LOGGER_NAME = "srstudio.graphics2"
 
 
+def _writable_directory(candidate: Path) -> Path:
+    candidate.mkdir(parents=True, exist_ok=True)
+    probe = candidate / f".srstudio-write-probe-{uuid.uuid4().hex}"
+    try:
+        probe.write_bytes(b"")
+    finally:
+        probe.unlink(missing_ok=True)
+    return candidate
+
+
 def diagnostics_root() -> Path:
     configured = str(os.environ.get("SR_STUDIO_G2_DIAGNOSTICS_ROOT") or "").strip()
     preferred = Path(configured).expanduser() if configured else Path.home() / ".srstudio5" / "diagnostics-g2"
@@ -23,16 +34,14 @@ def diagnostics_root() -> Path:
     last_error: OSError | None = None
     for candidate in (preferred, fallback):
         try:
-            candidate.mkdir(parents=True, exist_ok=True)
-            return candidate
+            return _writable_directory(candidate)
         except OSError as exc:
             last_error = exc
-    raise OSError(f"Não foi possível criar diretório de diagnóstico G2: {last_error}")
+    raise OSError(f"Não foi possível obter diretório gravável de diagnóstico G2: {last_error}")
 
 
 def configure_logging(root: Path | None = None) -> tuple[logging.Logger, Path]:
-    target_root = (root or diagnostics_root()).resolve()
-    target_root.mkdir(parents=True, exist_ok=True)
+    target_root = _writable_directory((root or diagnostics_root()).resolve())
     log_path = target_root / "graphics2.log"
     logger = logging.getLogger(LOGGER_NAME)
     logger.setLevel(logging.INFO)
