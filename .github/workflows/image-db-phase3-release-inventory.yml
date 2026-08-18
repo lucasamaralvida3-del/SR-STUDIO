@@ -37,6 +37,29 @@ jobs:
           jq '[.[] | select((.name|ascii_downcase|contains("download")) or (.name|ascii_downcase|contains("standalone")) or (.name|ascii_downcase|contains("publish")) or (.name|ascii_downcase|contains("phase3")))]' \
             docs/parallel/phase3-evidence/release-assets-flat.json \
             > docs/parallel/phase3-evidence/release-assets-relevant.json
+
+          # `image-db-corpus-v1` was a previously suggested tag, not an assumed
+          # fact. Probe it directly to distinguish list visibility from a tag-specific
+          # Release that may not be returned by the collection endpoint.
+          set +e
+          gh release view image-db-corpus-v1 \
+            --json tagName,name,isDraft,isPrerelease,createdAt,publishedAt,assets \
+            > /tmp/direct-probe.json 2> /tmp/direct-probe.err
+          probe_rc=$?
+          set -e
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          out=Path('/tmp/direct-probe.json'); err=Path('/tmp/direct-probe.err')
+          payload={
+              'tag_probed':'image-db-corpus-v1',
+              'tag_was_only_previously_suggested':True,
+              'success':bool(out.is_file() and out.stat().st_size),
+              'result':json.loads(out.read_text(encoding='utf-8')) if out.is_file() and out.stat().st_size else None,
+              'error':err.read_text(encoding='utf-8',errors='replace') if err.is_file() else '',
+          }
+          Path('docs/parallel/phase3-evidence/release-direct-probe.json').write_text(json.dumps(payload,indent=2,ensure_ascii=False),encoding='utf-8')
+          PY
       - name: Persist inventory on isolated branch
         shell: bash
         run: |
