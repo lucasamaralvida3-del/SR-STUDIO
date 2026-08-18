@@ -54,7 +54,7 @@ jobs:
 
   windows-frozen-release:
     runs-on: windows-latest
-    timeout-minutes: 50
+    timeout-minutes: 55
     env:
       QT_QPA_PLATFORM: offscreen
     steps:
@@ -134,6 +134,45 @@ jobs:
           if(-not [bool]$report.frozen) { throw 'Frozen smoke did not execute from packaged host.' }
           Get-Content -Raw -LiteralPath (Join-Path $smoke 'release-smoke.json')
 
+      - name: Package disabled distribution component
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'graphics2-host'
+          $zip = Join-Path $root 'graphics2-host-component.zip'
+          $descriptor = Join-Path $root 'graphics2-host-component.json'
+          python build/package_graphics2_component.py --build-root $root --output-zip $zip --descriptor $descriptor
+          $component = Get-Content -Raw -LiteralPath $descriptor | ConvertFrom-Json
+          if([bool]$component.enabled) { throw 'CI component must remain disabled.' }
+          if([bool]$component.required) { throw 'CI component must remain optional.' }
+          if(-not (Test-Path -LiteralPath $zip)) { throw 'Graphics2 component ZIP missing.' }
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $zip).Hash.ToLowerInvariant()
+          if($actual -ne ([string]$component.sha256).ToLowerInvariant()) { throw 'Component ZIP SHA-256 mismatch.' }
+
+      - name: Install discover smoke and rollback host
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'graphics2-host'
+          $bundle = Join-Path $root 'SRGraphicsEngine2Host'
+          $localAppData = Join-Path $env:RUNNER_TEMP 'g2-localappdata'
+          $dest = Join-Path $localAppData 'SRStudio\App\Graphics2Host'
+          $env:LOCALAPPDATA = $localAppData
+
+          python build/install_graphics2_host.py install $bundle --dest $dest
+          python build/install_graphics2_host.py status --dest $dest
+          python -c "from srstudio.graphics2.studio_bridge import discover_packaged_host; p=discover_packaged_host(); print(p); assert p is not None and p.is_file()"
+
+          $installedExe = Join-Path $dest 'SRGraphicsEngine2Host.exe'
+          $installedSmoke = Join-Path $env:RUNNER_TEMP 'g2-installed-smoke'
+          $process = Start-Process -FilePath $installedExe -ArgumentList @('--release-smoke','--output-dir',$installedSmoke) -WorkingDirectory $env:RUNNER_TEMP -Wait -PassThru
+          if($process.ExitCode -ne 0) { throw ('Installed host smoke failed with exit code ' + $process.ExitCode) }
+          if(-not (Test-Path -LiteralPath (Join-Path $installedSmoke 'release-smoke.json'))) { throw 'Installed host smoke report missing.' }
+
+          # A segunda instalação cria Graphics2Host.previous; rollback deve restaurar um bundle válido.
+          python build/install_graphics2_host.py install $bundle --dest $dest
+          python build/install_graphics2_host.py rollback --dest $dest
+          python build/install_graphics2_host.py status --dest $dest
+          python -c "from srstudio.graphics2.studio_bridge import discover_packaged_host; p=discover_packaged_host(); print(p); assert p is not None and p.is_file()"
+
       - name: Upload Windows release evidence
         uses: actions/upload-artifact@v4
         with:
@@ -141,6 +180,10 @@ jobs:
           path: |
             ${{ runner.temp }}\g2-dev-smoke
             ${{ runner.temp }}\g2-frozen-smoke
+            ${{ runner.temp }}\g2-installed-smoke
+            ${{ runner.temp }}\g2-localappdata\SRStudio\App\Graphics2Host\graphics2-host-install.json
             ${{ runner.temp }}\graphics2-host\graphics2-host-manifest.json
+            ${{ runner.temp }}\graphics2-host\graphics2-host-component.json
+            ${{ runner.temp }}\graphics2-host\graphics2-host-component.zip
             ${{ runner.temp }}\graphics2-host\SRGraphicsEngine2Host\graphics2-host-runtime.json
           retention-days: 7
