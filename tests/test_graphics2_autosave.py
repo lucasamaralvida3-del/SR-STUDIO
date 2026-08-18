@@ -23,6 +23,25 @@ def test_autosave_keeps_generations_and_recovers(tmp_path):
     assert restored.metadata["revision"] == 2
 
 
+def test_back_to_back_autosaves_have_distinct_generation_paths(tmp_path):
+    manager = AutosaveManager(tmp_path, generations=4)
+    document = GraphicsDocument(name="Gerações únicas")
+
+    document.metadata["revision"] = 1
+    first = manager.save(document)
+    document.metadata["revision"] = 2
+    second = manager.save(document)
+
+    assert first != second
+    assert first.name.endswith("Z.srscene")
+    assert second.name.endswith("Z.srscene")
+    # O trecho fracionário evita que duas gerações dentro do mesmo segundo
+    # compartilhem o mesmo alvo e misturem conteúdo/journal concorrentes.
+    assert "." in first.stem and len(first.stem.rsplit(".", 1)[1].removesuffix("Z")) == 6
+    assert "." in second.stem and len(second.stem.rsplit(".", 1)[1].removesuffix("Z")) == 6
+    assert manager.recover(manager.latest(document.id)).metadata["revision"] == 2
+
+
 def test_corrupt_generation_does_not_consume_valid_retention_slot(tmp_path):
     manager = AutosaveManager(tmp_path, generations=2)
     document = GraphicsDocument(name="Campanha")
