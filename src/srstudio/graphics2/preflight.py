@@ -35,9 +35,7 @@ def run_preflight(document: GraphicsDocument, *, available_fonts: Iterable[str] 
         for node in page.nodes.values():
             issues.extend(_node_issues(document, page.id, page.width, page.height, node, page.nodes, fonts))
         for slot in page.slots.values():
-            for role, node_id in slot.node_by_role.items():
-                if node_id not in page.nodes:
-                    issues.append(PreflightIssue("error", "SLOT_NODE_MISSING", f"Smart Slot '{slot.name}' aponta para elemento ausente em {role}.", page.id, node_id))
+            issues.extend(_slot_issues(page.id, page.nodes, slot))
         issues.extend(_cycle_issues(page.id, page.nodes))
     return issues
 
@@ -49,7 +47,87 @@ def assert_document_integrity(document: GraphicsDocument) -> None:
         raise ValueError(f"{first.code}: {first.message}")
 
 
-def _node_issues(document: GraphicsDocument, page_id: str, page_width: float, page_height: float, node: GraphicsNode, nodes: dict[str, GraphicsNode], fonts: set[str]) -> list[PreflightIssue]:
+def _slot_issues(page_id: str, nodes: dict[str, GraphicsNode], slot: object) -> list[PreflightIssue]:
+    issues: list[PreflightIssue] = []
+    slot_name = str(getattr(slot, "name", "") or getattr(slot, "id", "") or "Smart Slot")
+    slot_page_id = str(getattr(slot, "page_id", "") or "")
+    if slot_page_id and slot_page_id != page_id:
+        issues.append(
+            PreflightIssue(
+                "error",
+                "SLOT_PAGE_MISMATCH",
+                f"Smart Slot '{slot_name}' pertence a outra página.",
+                page_id,
+            )
+        )
+
+    node_by_role = getattr(slot, "node_by_role", {})
+    if isinstance(node_by_role, dict):
+        for role, node_id in node_by_role.items():
+            if node_id not in nodes:
+                issues.append(
+                    PreflightIssue(
+                        "error",
+                        "SLOT_NODE_MISSING",
+                        f"Smart Slot '{slot_name}' aponta para elemento ausente em {role}.",
+                        page_id,
+                        str(node_id),
+                    )
+                )
+
+    metadata = getattr(slot, "metadata", {})
+    extras = metadata.get("extra_bindings") if isinstance(metadata, dict) else None
+    if extras in (None, {}):
+        return issues
+    if not isinstance(extras, dict):
+        issues.append(
+            PreflightIssue(
+                "error",
+                "SLOT_EXTRA_BINDINGS_INVALID",
+                f"Smart Slot '{slot_name}' possui extra_bindings inválido.",
+                page_id,
+            )
+        )
+        return issues
+
+    for role, raw_ids in extras.items():
+        if isinstance(raw_ids, str):
+            node_ids = [raw_ids]
+        elif isinstance(raw_ids, (list, tuple, set)):
+            node_ids = [str(node_id) for node_id in raw_ids if str(node_id)]
+        else:
+            issues.append(
+                PreflightIssue(
+                    "error",
+                    "SLOT_EXTRA_BINDINGS_INVALID",
+                    f"Smart Slot '{slot_name}' possui binding extra inválido em {role}.",
+                    page_id,
+                )
+            )
+            continue
+        for node_id in node_ids:
+            if node_id not in nodes:
+                issues.append(
+                    PreflightIssue(
+                        "error",
+                        "SLOT_EXTRA_NODE_MISSING",
+                        f"Smart Slot '{slot_name}' aponta para elemento extra ausente em {role}.",
+                        page_id,
+                        node_id,
+                    )
+                )
+    return issues
+
+
+def _node_issues(
+    document: GraphicsDocument,
+    page_id: str,
+    page_width: float,
+    page_height: float,
+    node: GraphicsNode,
+    nodes: dict[str, GraphicsNode],
+    fonts: set[str],
+) -> list[PreflightIssue]:
     issues: list[PreflightIssue] = []
     t = node.transform
     if t.width < 0 or t.height < 0:
