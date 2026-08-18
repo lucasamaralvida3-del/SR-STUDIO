@@ -1,17 +1,17 @@
 repository=lucasamaralvida3-del/SR-STUDIO
 ref=refs/heads/g2/parallel-image-database
-sha=5f3800fd7698e69d752c0df7c829d6b33d97dd2d
+sha=45e41b8755ef457868dd39d3227ebcb0e3460796
+run_id=32153423618
+run_attempt=1
+event=push
 runner_os=Linux
 runner_arch=X64
-event=push
-run_id=32151628637
-run_attempt=1
-timestamp_utc=2026-08-18T14:58:40Z
+timestamp_utc=2026-08-18T15:16:16Z
 ## g2/parallel-image-database...origin/g2/parallel-image-database
 ?? artifacts/
-5f3800f ci: trigger Phase 3 corpus validation run
-d2bac76 ci: validate full Phase 3 corpus from Release assets
-40655ec ci: download Phase 3 release assets through gh safely
-e141908 ci: resolve and verify Image DB Phase 3 release corpus
-9a3863f image-db: persist phase3 Actions evidence in parallel report
+45e41b8 ci: harden full corpus-dependent Phase 3 gates
+f9f3b6f ci: add Phase 3 operational audit and benchmark runner
+cc5a303 ci: orchestrate Phase 3 after Release corpus is visible
+c867947 ci: recheck Phase 3 Release inventory
+750e611 image-db: persist Release asset inventory [skip ci]
 Python 3.11.15

@@ -1,7 +1,7 @@
 {
   "status": "BLOCKED — CORPUS NOT AVAILABLE TO CI",
-  "tested_sha": "5f3800fd7698e69d752c0df7c829d6b33d97dd2d",
-  "run_id": "32151628637",
+  "tested_sha": "45e41b8755ef457868dd39d3227ebcb0e3460796",
+  "run_id": "32153423618",
   "run_attempt": "1",
   "gates": {
     "Environment": true,
@@ -12,7 +12,6 @@
     "Standalone available": false,
     "Corpus baseline": false,
     "Ingest": false,
-    "Standalone ingest": false,
     "Persistence / Reload": false,
     "Second ingest": false,
     "Idempotency": false,
@@ -25,10 +24,6 @@
     "Performance": false,
     "Review dataset": false
   },
-  "coverage": {},
-  "database": {},
-  "performance": {},
-  "corpus_inventory": {},
   "release_asset_verification": {
     "all_verified": false,
     "assets": {
@@ -99,11 +94,27 @@
     },
     "errors": []
   },
+  "corpus_inventory": {},
+  "persistence": {},
+  "idempotency": {},
+  "database": {},
+  "coverage": {},
+  "departments": {},
+  "structured_corpus": {},
+  "performance": {},
+  "memory": {
+    "measurement": "approximate GitHub Actions CI memory evidence",
+    "baseline": "MemTotal:       16372432 kB\nMemAvailable:   15344892 kB\n",
+    "after_ingest": "",
+    "ingest_peak_rss_kb": null,
+    "standalone_ingest_peak_rss_kb": null,
+    "audit_peak_rss_kb": null
+  },
   "previous_human_sample": {
     "size": 30,
     "correct": 30,
     "wrong_auto_accept": 0,
     "uncertain": 0
   },
-  "current_ci_review_sample": "generated as artifact; human judgement remains separate"
+  "current_ci_review_sample": "generated in review/review-dataset.json and review-contact-sheet.png; human judgement remains separate"
 }
