@@ -50,3 +50,15 @@ def test_diagnostics_root_is_independent_from_working_directory(tmp_path, monkey
     assert resolved == configured
     assert resolved.is_dir()
     assert resolved != Path.cwd()
+
+
+def test_diagnostics_root_falls_back_when_preferred_path_is_not_writable(tmp_path, monkeypatch):
+    blocked = tmp_path / "blocked-diagnostics"
+    blocked.write_text("not-a-directory", encoding="utf-8")
+    monkeypatch.setenv("SR_STUDIO_G2_DIAGNOSTICS_ROOT", str(blocked))
+
+    resolved = diagnostics_root()
+
+    assert resolved != blocked
+    assert resolved.is_dir()
+    assert resolved.name == "diagnostics-g2"
