@@ -34,26 +34,74 @@ class PrecisionProductImageCorpusTrainer(ProductImageCorpusTrainer):
 
     def train(self, sources: Iterable[str | Path], *, force: bool = False) -> CorpusTrainingReport:
         source_items = list(sources)
-        stale_sources: list[str] = []
-        if not force:
-            state_before = self.state.load()
-            records = state_before.get("files", {}) if isinstance(state_before, dict) else {}
-            discovery_warnings: list[str] = []
-            for source in self.discover_sources(source_items, warnings=discovery_warnings):
-                try:
-                    digest = sha256_file(source)
-                except OSError:
-                    continue
-                record = records.get(digest) if isinstance(records, dict) else None
-                if isinstance(record, dict) and record.get("precision_trainer_version") != PRECISION_TRAINER_VERSION:
-                    stale_sources.append(str(source))
+        if force:
+            return super().train(source_items, force=True)
 
-        report = super().train(source_items, force=force or bool(stale_sources))
+        state_before = self.state.load()
+        records = state_before.get("files", {}) if isinstance(state_before, dict) else {}
+        discovered_warnings: list[str] = []
+        discovered = self.discover_sources(source_items, warnings=discovered_warnings)
+        stale_sources: list[Path] = []
+        fresh_sources: list[Path] = []
+
+        for source in discovered:
+            try:
+                digest = sha256_file(source)
+            except OSError:
+                fresh_sources.append(source)
+                continue
+            record = records.get(digest) if isinstance(records, dict) else None
+            if isinstance(record, dict) and record.get("precision_trainer_version") != PRECISION_TRAINER_VERSION:
+                stale_sources.append(source)
+            else:
+                fresh_sources.append(source)
+
+        # Process normal/new sources once. Existing current-version records are
+        # skipped by the base trainer as usual.
+        report = super().train(fresh_sources, force=False)
+
+        # Reprocess only stale records, one source at a time. Calling the base
+        # trainer with force=True on the whole batch would unnecessarily reprocess
+        # every unchanged source just because one record was created by an older
+        # precision policy.
+        stale_processed = 0
+        stale_warnings: list[str] = []
+        for source in stale_sources:
+            stale_report = super().train([source], force=True)
+            stale_processed += stale_report.metrics.files_processed
+            stale_warnings.extend(stale_report.warnings)
+
+        # Re-resolve the full active state without forcing work. This final call
+        # returns consensus/coverage metrics for the corpus visible in this batch
+        # while every current-version record is skipped incrementally.
         if stale_sources:
-            report.warnings.append(
-                f"Precision trainer upgraded to {PRECISION_TRAINER_VERSION}; reprocessed "
-                f"{len(stale_sources)} stale source(s) in this batch."
+            final_report = super().train(discovered, force=False)
+            final_report.metrics.files_processed = report.metrics.files_processed + stale_processed
+            final_report.metrics.files_skipped = max(
+                0,
+                final_report.metrics.files_skipped - stale_processed,
             )
+            final_report.processed_files = list(dict.fromkeys([*report.processed_files, *[str(path) for path in stale_sources]]))
+            final_report.skipped_files = [
+                path for path in final_report.skipped_files if path not in final_report.processed_files
+            ]
+            final_report.warnings = list(
+                dict.fromkeys(
+                    [
+                        *discovered_warnings,
+                        *report.warnings,
+                        *stale_warnings,
+                        *final_report.warnings,
+                        (
+                            f"Precision trainer upgraded to {PRECISION_TRAINER_VERSION}; reprocessed "
+                            f"{stale_processed} stale source(s) without forcing unchanged sources."
+                        ),
+                    ]
+                )
+            )
+            return final_report
+
+        report.warnings = list(dict.fromkeys([*discovered_warnings, *report.warnings]))
         return report
 
     def _process_pptx(self, source, digest: str) -> dict:
