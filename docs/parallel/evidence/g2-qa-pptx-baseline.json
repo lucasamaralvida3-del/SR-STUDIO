@@ -1,0 +1,242 @@
+{
+  "schema": "srstudio/g2-qa-pptx-baseline/2",
+  "python": "3.11.15 (main, Jun 16 2026, 21:41:52) [GCC 13.3.0]",
+  "platform": "linux",
+  "qt_qpa_platform": "offscreen",
+  "root": "/home/runner/work/SR-STUDIO/SR-STUDIO/src/srstudio/assets/poster_templates/legacy/models",
+  "corpus_count": 8,
+  "cases": {
+    "ATACADO.pptx": {
+      "file_bytes": 176889,
+      "pages": 1,
+      "nodes": 18,
+      "assets": 1,
+      "warnings": [
+        "Slide 1: 3 associação(ões) ambígua(s) ignorada(s) para proteger o layout."
+      ],
+      "warning_count": 1,
+      "import": {
+        "repeats": 2,
+        "min_s": 0.020470353000007435,
+        "median_s": 0.02202331050000339,
+        "max_s": 0.023576267999999345,
+        "cpu_median_s": 0.02201935150000002,
+        "cpu_max_s": 0.02357108600000002,
+        "rss_before_mb": 32.890625,
+        "rss_after_mb": 33.828125,
+        "rss_delta_mb": 0.9375,
+        "seconds_per_page": 0.02202331050000339
+      }
+    },
+    "CARTAZ_VENDA.pptx": {
+      "file_bytes": 46695,
+      "pages": 1,
+      "nodes": 4,
+      "assets": 0,
+      "warnings": [
+        "Slide 1: 1 associação(ões) ambígua(s) ignorada(s) para proteger o layout."
+      ],
+      "warning_count": 1,
+      "import": {
+        "repeats": 2,
+        "min_s": 0.007865718999994442,
+        "median_s": 0.00788841199999979,
+        "max_s": 0.007911105000005136,
+        "cpu_median_s": 0.007885616500000026,
+        "cpu_max_s": 0.007907923000000039,
+        "rss_before_mb": 33.828125,
+        "rss_after_mb": 33.828125,
+        "rss_delta_mb": 0.0,
+        "seconds_per_page": 0.00788841199999979
+      }
+    },
+    "CLUBE_EXCLUSIVO.pptx": {
+      "file_bytes": 192432,
+      "pages": 1,
+      "nodes": 15,
+      "assets": 3,
+      "warnings": [
+        "Slide 1: 1 associação(ões) ambígua(s) ignorada(s) para proteger o layout."
+      ],
+      "warning_count": 1,
+      "import": {
+        "repeats": 2,
+        "min_s": 0.01817602099998794,
+        "median_s": 0.018456712499990147,
+        "max_s": 0.018737403999992353,
+        "cpu_median_s": 0.018453334000000016,
+        "cpu_max_s": 0.018733512000000008,
+        "rss_before_mb": 33.828125,
+        "rss_after_mb": 33.8671875,
+        "rss_delta_mb": 0.0390625,
+        "seconds_per_page": 0.018456712499990147
+      }
+    },
+    "CLUBE_EXCLUSIVO_COM_LIMITE.pptx": {
+      "file_bytes": 188985,
+      "pages": 1,
+      "nodes": 20,
+      "assets": 3,
+      "warnings": [
+        "Slide 1: 1 associação(ões) ambígua(s) ignorada(s) para proteger o layout."
+      ],
+      "warning_count": 1,
+      "import": {
+        "repeats": 2,
+        "min_s": 0.021500125000002868,
+        "median_s": 0.02179569900000189,
+        "max_s": 0.02209127300000091,
+        "cpu_median_s": 0.021792332999999997,
+        "cpu_max_s": 0.02208712800000001,
+        "rss_before_mb": 33.8671875,
+        "rss_after_mb": 34.06640625,
+        "rss_delta_mb": 0.19921875,
+        "seconds_per_page": 0.02179569900000189
+      }
+    },
+    "SEGUNDA_DA_LIMPEZA_1_PRECO.pptx": {
+      "file_bytes": 173767,
+      "pages": 1,
+      "nodes": 12,
+      "assets": 1,
+      "warnings": [
+        "Slide 1: 1 associação(ões) ambígua(s) ignorada(s) para proteger o layout."
+      ],
+      "warning_count": 1,
+      "import": {
+        "repeats": 2,
+        "min_s": 0.015084826000006046,
+        "median_s": 0.015126849000004938,
+        "max_s": 0.01516887200000383,
+        "cpu_median_s": 0.015124177000000016,
+        "cpu_max_s": 0.015165735000000014,
+        "rss_before_mb": 34.06640625,
+        "rss_after_mb": 34.0703125,
+        "rss_delta_mb": 0.00390625,
+        "seconds_per_page": 0.015126849000004938
+      }
+    },
+    "SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx": {
+      "file_bytes": 175159,
+      "pages": 1,
+      "nodes": 12,
+      "assets": 1,
+      "warnings": [
+        "Slide 1: 1 associação(ões) ambígua(s) ignorada(s) para proteger o layout."
+      ],
+      "warning_count": 1,
+      "import": {
+        "repeats": 2,
+        "min_s": 0.015116155000001186,
+        "median_s": 0.015365582500002972,
+        "max_s": 0.015615010000004759,
+        "cpu_median_s": 0.015362776999999994,
+        "cpu_max_s": 0.015611596000000005,
+        "rss_before_mb": 34.0703125,
+        "rss_after_mb": 34.08984375,
+        "rss_delta_mb": 0.01953125,
+        "seconds_per_page": 0.015365582500002972
+      }
+    },
+    "SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx": {
+      "file_bytes": 247759,
+      "pages": 1,
+      "nodes": 17,
+      "assets": 4,
+      "warnings": [
+        "Slide 1: 2 associação(ões) ambígua(s) ignorada(s) para proteger o layout."
+      ],
+      "warning_count": 1,
+      "import": {
+        "repeats": 2,
+        "min_s": 0.01950121599999477,
+        "median_s": 0.02001199399999365,
+        "max_s": 0.02052277199999253,
+        "cpu_median_s": 0.02000921650000001,
+        "cpu_max_s": 0.02051956399999999,
+        "rss_before_mb": 34.08984375,
+        "rss_after_mb": 34.2578125,
+        "rss_delta_mb": 0.16796875,
+        "seconds_per_page": 0.02001199399999365
+      }
+    },
+    "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx": {
+      "file_bytes": 248244,
+      "pages": 1,
+      "nodes": 18,
+      "assets": 4,
+      "warnings": [
+        "Slide 1: 2 associação(ões) ambígua(s) ignorada(s) para proteger o layout."
+      ],
+      "warning_count": 1,
+      "import": {
+        "repeats": 2,
+        "min_s": 0.020602852999999755,
+        "median_s": 0.020625891000001673,
+        "max_s": 0.02064892900000359,
+        "cpu_median_s": 0.020623257499999964,
+        "cpu_max_s": 0.020646470999999944,
+        "rss_before_mb": 34.2578125,
+        "rss_after_mb": 34.3828125,
+        "rss_delta_mb": 0.125,
+        "seconds_per_page": 0.020625891000001673
+      }
+    }
+  },
+  "representative": {
+    "name": "CLUBE_EXCLUSIVO_COM_LIMITE.pptx",
+    "save": {
+      "repeats": 3,
+      "min_s": 0.006982753000002617,
+      "median_s": 0.007011136999992118,
+      "max_s": 0.007304377000011186,
+      "cpu_median_s": 0.007009116999999954,
+      "cpu_max_s": 0.007301161999999972,
+      "rss_before_mb": 34.3828125,
+      "rss_after_mb": 34.625,
+      "rss_delta_mb": 0.2421875
+    },
+    "load": {
+      "repeats": 3,
+      "min_s": 0.0020558749999963766,
+      "median_s": 0.0021026530000085586,
+      "max_s": 0.002105799000005959,
+      "cpu_median_s": 0.002100758999999952,
+      "cpu_max_s": 0.0021038049999999586,
+      "rss_before_mb": 34.625,
+      "rss_after_mb": 34.7421875,
+      "rss_delta_mb": 0.1171875
+    },
+    "project_bytes": 145475,
+    "pages": 1,
+    "nodes": 20,
+    "assets": 3,
+    "render_png": {
+      "repeats": 3,
+      "min_s": 0.053659264999993184,
+      "median_s": 0.05587797700000863,
+      "max_s": 0.0840245039999985,
+      "cpu_median_s": 0.056380429999999926,
+      "cpu_max_s": 0.08493731300000007,
+      "rss_before_mb": 57.09375,
+      "rss_after_mb": 72.25,
+      "rss_delta_mb": 15.15625
+    },
+    "png_bytes": 6543950,
+    "png_warnings": [],
+    "render_pdf": {
+      "repeats": 2,
+      "min_s": 0.025874025999996775,
+      "median_s": 0.03415734299999684,
+      "max_s": 0.04244065999999691,
+      "cpu_median_s": 0.03414322650000001,
+      "cpu_max_s": 0.04241566600000002,
+      "rss_before_mb": 72.25,
+      "rss_after_mb": 69.54296875,
+      "rss_delta_mb": -2.70703125
+    },
+    "pdf_bytes": 148405,
+    "pdf_pages": 1,
+    "pdf_warnings": []
+  }
+}

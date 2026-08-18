@@ -1,0 +1,251 @@
+name: G2 QA Performance
+
+on:
+  push:
+    branches:
+      - g2/parallel-qa-performance
+    paths:
+      - "src/srstudio/graphics2/**"
+      - "src/srstudio/importers/**"
+      - "src/srstudio/assets/poster_templates/legacy/models/*.pptx"
+      - "tests/test_graphics2_*.py"
+      - "tools/g2_qa_baseline.py"
+      - "tools/g2_qa_pptx_baseline.py"
+      - ".github/workflows/g2-qa-performance.yml"
+  pull_request:
+    branches:
+      - integration/sr-studio-next
+    paths:
+      - "src/srstudio/graphics2/**"
+      - "src/srstudio/importers/**"
+      - "src/srstudio/assets/poster_templates/legacy/models/*.pptx"
+      - "tests/test_graphics2_*.py"
+      - "tools/g2_qa_baseline.py"
+      - "tools/g2_qa_pptx_baseline.py"
+      - ".github/workflows/g2-qa-performance.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  qa-performance:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 \
+            libgl1 \
+            libxkbcommon-x11-0 \
+            libxcb-cursor0
+
+      - name: Install G2 QA dependencies
+        run: python -m pip install -e ".[dev,graphics2]"
+
+      - name: Compile QA surface
+        run: >-
+          python -m compileall -q
+          src/srstudio/graphics2
+          src/srstudio/importers
+          tools/g2_qa_baseline.py
+          tools/g2_qa_pptx_baseline.py
+          tests/test_graphics2_qa_longrun.py
+          tests/test_graphics2_qa_pptx_e2e.py
+
+      - name: Ruff QA additions
+        run: >-
+          python -m ruff check
+          tools/g2_qa_baseline.py
+          tools/g2_qa_pptx_baseline.py
+          tests/test_graphics2_qa_longrun.py
+          tests/test_graphics2_qa_pptx_e2e.py
+
+      - name: Focused production-flow regressions
+        id: focused
+        continue-on-error: true
+        run: |
+          mkdir -p artifacts
+          python -m pytest -q \
+            tests/test_graphics2_autosave.py \
+            tests/test_graphics2_bridge_roundtrip.py \
+            tests/test_graphics2_package_stress.py \
+            tests/test_graphics2_page_clone_ids.py \
+            tests/test_graphics2_project_actions.py \
+            tests/test_graphics2_product_card_duplicate.py \
+            tests/test_graphics2_pdf_multipage.py \
+            tests/test_graphics2_real_flyer_e2e.py \
+            tests/test_graphics2_qa_longrun.py \
+            tests/test_graphics2_qa_pptx_e2e.py \
+            --junitxml=artifacts/g2-qa-focused.xml
+
+      - name: Synthetic performance and RSS baseline
+        id: baseline
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python tools/g2_qa_baseline.py \
+            --output artifacts/g2-qa-baseline.json \
+            --pages 1,10,25 \
+            | tee artifacts/g2-qa-baseline.log
+
+      - name: Real PPTX import performance baseline
+        id: pptx_baseline
+        if: always()
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          python tools/g2_qa_pptx_baseline.py \
+            --output artifacts/g2-qa-pptx-baseline.json \
+            | tee artifacts/g2-qa-pptx-baseline.log
+
+      - name: Full Graphics2 regression suite
+        id: full
+        if: always()
+        continue-on-error: true
+        run: python -m pytest -q tests -k graphics2 --junitxml=artifacts/g2-qa-full.xml
+
+      - name: Record QA run metadata
+        if: always()
+        env:
+          FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
+          BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          PPTX_BASELINE_OUTCOME: ${{ steps.pptx_baseline.outcome }}
+          FULL_OUTCOME: ${{ steps.full.outcome }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          VALIDATED_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p artifacts
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          payload = {
+              "validated_sha": os.environ["VALIDATED_SHA"],
+              "workflow_run_id": int(os.environ["RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              "focused": os.environ["FOCUSED_OUTCOME"],
+              "baseline": os.environ["BASELINE_OUTCOME"],
+              "pptx_baseline": os.environ["PPTX_BASELINE_OUTCOME"],
+              "full_graphics2": os.environ["FULL_OUTCOME"],
+              "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+          }
+          Path("artifacts/g2-qa-run.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Persist latest QA evidence on isolated branch
+        if: always() && github.event_name == 'push'
+        run: |
+          mkdir -p docs/parallel/evidence
+          cp artifacts/g2-qa-run.json docs/parallel/evidence/g2-qa-run.json
+          if [ -f artifacts/g2-qa-baseline.json ]; then
+            cp artifacts/g2-qa-baseline.json docs/parallel/evidence/g2-qa-baseline.json
+          fi
+          if [ -f artifacts/g2-qa-pptx-baseline.json ]; then
+            cp artifacts/g2-qa-pptx-baseline.json docs/parallel/evidence/g2-qa-pptx-baseline.json
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/parallel/evidence/g2-qa-run.json \
+            docs/parallel/evidence/g2-qa-baseline.json \
+            docs/parallel/evidence/g2-qa-pptx-baseline.json || true
+          git commit -m "qa(g2): record latest performance evidence [skip ci]" || exit 0
+          git push origin HEAD:g2/parallel-qa-performance
+
+      - name: Upload QA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g2-qa-performance-evidence
+          path: artifacts/
+          if-no-files-found: warn
+
+      - name: Enforce QA gate result
+        if: always()
+        env:
+          FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
+          BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          PPTX_BASELINE_OUTCOME: ${{ steps.pptx_baseline.outcome }}
+          FULL_OUTCOME: ${{ steps.full.outcome }}
+        run: |
+          test "$FOCUSED_OUTCOME" = "success"
+          test "$BASELINE_OUTCOME" = "success"
+          test "$PPTX_BASELINE_OUTCOME" = "success"
+          test "$FULL_OUTCOME" = "success"
+
+  windows-qt-bootstrap-stress:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install G2 Qt dependencies
+        run: python -m pip install -e ".[dev,graphics2]"
+
+      - name: Probe Qt Quick software runtime
+        run: |
+          python -c "from srstudio.graphics2.qt_host import qt_quick_available; assert qt_quick_available(); print('Qt Quick runtime OK')"
+          python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api
+
+      - name: Repeat fresh-process renderer and ImageInspector smoke five times
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          $results = @()
+          $failed = $false
+          for ($i = 1; $i -le 5; $i++) {
+            $watch = [System.Diagnostics.Stopwatch]::StartNew()
+            python -m pytest -q `
+              tests/test_graphics2_qt_renderer.py::test_renderer_bootstraps_qgui_application_in_fresh_process `
+              tests/test_graphics2_image_replace_qml.py::test_image_inspector_qml_loads_offscreen_with_selected_image
+            $code = $LASTEXITCODE
+            $watch.Stop()
+            $results += [pscustomobject]@{
+              iteration = $i
+              exit_code = $code
+              duration_s = [Math]::Round($watch.Elapsed.TotalSeconds, 3)
+            }
+            if ($code -ne 0) { $failed = $true }
+          }
+          $results | ConvertTo-Json | Set-Content -Encoding utf8 artifacts/g2-windows-qt-bootstrap-stress.json
+          $results | Format-Table -AutoSize
+          if ($failed) { exit 1 }
+
+      - name: Upload Windows Qt stress evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: g2-windows-qt-bootstrap-stress
+          path: artifacts/g2-windows-qt-bootstrap-stress.json
+          if-no-files-found: warn
