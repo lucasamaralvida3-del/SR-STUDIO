@@ -1,0 +1,184 @@
+name: Image DB Phase 3 Corpus Orchestrator
+
+on:
+  push:
+    branches:
+      - g2/parallel-image-database
+    paths:
+      - '.github/workflows/corpus-phase3-orchestrator.yml'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: write
+
+jobs:
+  orchestrate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 125
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Wait until all required Release assets are visible
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p docs/parallel/phase3-evidence /tmp/phase3-orchestrator
+          required=(
+            'Downloads(1)(1).zip'
+            'Downloads(2)(1).zip'
+            'publish_repository.zip'
+            'standalone-images.zip'
+          )
+          ready=false
+          for attempt in $(seq 1 30); do
+            gh api "repos/${GITHUB_REPOSITORY}/releases?per_page=100" --paginate --slurp > /tmp/phase3-orchestrator/releases-pages.json
+            jq '[.[][] | . as $r | .assets[]? | {tag:$r.tag_name,release_id:$r.id,draft:$r.draft,prerelease:$r.prerelease,asset_id:.id,name,size,digest,state,created_at,updated_at}]' \
+              /tmp/phase3-orchestrator/releases-pages.json > /tmp/phase3-orchestrator/assets.json
+            jq '[.[] | select(.name == "Downloads(1)(1).zip" or .name == "Downloads(2)(1).zip" or .name == "publish_repository.zip" or .name == "standalone-images.zip")]' \
+              /tmp/phase3-orchestrator/assets.json > /tmp/phase3-orchestrator/required-assets.json
+            count=$(jq 'length' /tmp/phase3-orchestrator/required-assets.json)
+            echo "Release visibility attempt $attempt: $count/4 exact assets visible"
+            if [ "$count" -eq 4 ]; then
+              ready=true
+              break
+            fi
+            sleep 20
+          done
+          cp /tmp/phase3-orchestrator/required-assets.json docs/parallel/phase3-evidence/orchestrator-release-assets.json
+          if [ "$ready" != true ]; then
+            jq -n \
+              --arg status 'BLOCKED — CORPUS NOT AVAILABLE TO CI' \
+              --arg sha "$GITHUB_SHA" \
+              --slurpfile assets /tmp/phase3-orchestrator/required-assets.json \
+              '{status:$status,orchestrator_sha:$sha,required_assets_visible:$assets[0],message:"All four exact Release assets were not visible after repeated authenticated Release API checks."}' \
+              > docs/parallel/phase3-evidence/orchestrator-status.json
+            echo 'CORPUS_VISIBLE=false' >> "$GITHUB_ENV"
+            exit 0
+          fi
+          echo 'CORPUS_VISIBLE=true' >> "$GITHUB_ENV"
+
+      - name: Dispatch exact Phase 3 validation
+        if: env.CORPUS_VISIBLE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          before=$(date -u +%FT%TZ)
+          echo "$before" > /tmp/phase3-orchestrator/dispatch-time.txt
+          gh workflow run image-db-phase3.yml --ref g2/parallel-image-database
+          run_id=''
+          for attempt in $(seq 1 30); do
+            row=$(gh run list \
+              --workflow image-db-phase3.yml \
+              --branch g2/parallel-image-database \
+              --event workflow_dispatch \
+              --limit 10 \
+              --json databaseId,status,conclusion,headSha,url,createdAt,updatedAt,event \
+              --jq '.[0] // empty' || true)
+            if [ -n "$row" ]; then
+              created=$(printf '%s\n' "$row" | jq -r '.createdAt')
+              if [[ "$created" > "$before" || "$created" == "$before" ]]; then
+                printf '%s\n' "$row" > /tmp/phase3-orchestrator/dispatched-run.json
+                run_id=$(printf '%s\n' "$row" | jq -r '.databaseId')
+                break
+              fi
+            fi
+            sleep 5
+          done
+          if [ -z "$run_id" ]; then
+            echo 'Unable to resolve dispatched Phase 3 run ID.' >&2
+            exit 2
+          fi
+          echo "PHASE3_RUN_ID=$run_id" >> "$GITHUB_ENV"
+          echo "Dispatched Phase 3 run $run_id"
+
+      - name: Wait for Phase 3 validation to finish
+        if: env.CORPUS_VISIBLE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          for attempt in $(seq 1 240); do
+            gh run view "$PHASE3_RUN_ID" --json databaseId,status,conclusion,headSha,headBranch,event,url,createdAt,updatedAt,workflowName,jobs \
+              > /tmp/phase3-orchestrator/run-view.json
+            status=$(jq -r '.status' /tmp/phase3-orchestrator/run-view.json)
+            echo "Phase 3 run $PHASE3_RUN_ID status=$status (poll $attempt)"
+            if [ "$status" = completed ]; then
+              break
+            fi
+            sleep 30
+          done
+          status=$(jq -r '.status' /tmp/phase3-orchestrator/run-view.json)
+          if [ "$status" != completed ]; then
+            echo "Phase 3 run $PHASE3_RUN_ID did not complete within observer window." >&2
+            exit 3
+          fi
+          exit 0
+
+      - name: Collect Phase 3 artifact and run evidence
+        if: env.CORPUS_VISIBLE == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/phase3-orchestrator/artifact docs/parallel/phase3-evidence/current
+          gh run download "$PHASE3_RUN_ID" -n image-db-phase3-report -D /tmp/phase3-orchestrator/artifact || true
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${PHASE3_RUN_ID}/artifacts" > /tmp/phase3-orchestrator/artifacts.json
+          cp /tmp/phase3-orchestrator/run-view.json docs/parallel/phase3-evidence/current/run.json
+          cp /tmp/phase3-orchestrator/artifacts.json docs/parallel/phase3-evidence/current/artifacts.json
+          python - <<'PY'
+          import json, shutil
+          from pathlib import Path
+          source = Path('/tmp/phase3-orchestrator/artifact')
+          target = Path('docs/parallel/phase3-evidence/current')
+          wanted = {
+              'phase3-summary.json','corpus-availability.json','corpus-download-verification.json','release-assets.json',
+              'corpus-inventory-gate.json','ingest-report.json','standalone-ingest-report.json','persistence-report.json',
+              'before-second.json','second-ingest-report.json','second-standalone-ingest-report.json','idempotency-report.json',
+              'recovery-report.json','library-audit.json','coverage-catalog-520.json','coverage-departments.json',
+              'top-missing-100.csv','find-image-results.json','performance.json','memory.json','operational-analysis-gates.json',
+              'review-files.txt','environment.txt','test-results.xml','pytest.log'
+          }
+          copied=[]
+          for name in sorted(wanted):
+              path = next(source.rglob(name), None) if source.exists() else None
+              if path and path.is_file():
+                  shutil.copy2(path, target/name)
+                  copied.append(name)
+          summary_path = target/'phase3-summary.json'
+          summary = json.loads(summary_path.read_text(encoding='utf-8')) if summary_path.exists() else {}
+          payload = {
+              'status': summary.get('status', 'NOT READY'),
+              'phase3_run_id': summary.get('run_id'),
+              'tested_sha': summary.get('tested_sha'),
+              'copied_evidence': copied,
+          }
+          (target/'orchestrator-result.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+
+      - name: Persist orchestrator evidence on isolated branch
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/parallel/phase3-evidence/orchestrator-*.json docs/parallel/phase3-evidence/current 2>/dev/null || true
+          if git diff --cached --quiet; then
+            echo 'No orchestrator evidence changes.'
+            exit 0
+          fi
+          git commit -m 'image-db: persist orchestrated Phase 3 evidence [skip ci]'
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:g2/parallel-image-database; then exit 0; fi
+            git pull --rebase origin g2/parallel-image-database
+          done
+          exit 1
