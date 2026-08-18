@@ -1,0 +1,15 @@
+{
+  "requested_tag": "image-db-corpus-v1",
+  "endpoint": "https://api.github.com/repos/lucasamaralvida3-del/SR-STUDIO/releases/tags/image-db-corpus-v1",
+  "http_status": 404,
+  "response": {
+    "message": "Not Found",
+    "documentation_url": "https://docs.github.com/rest/releases/releases#get-a-release-by-tag-name",
+    "status": "404"
+  },
+  "selected_headers": {
+    "Content-Type": "application/json; charset=utf-8",
+    "X-RateLimit-Remaining": "4963",
+    "X-RateLimit-Reset": "1787069346"
+  }
+}
