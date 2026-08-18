@@ -5,7 +5,7 @@ from zipfile import ZipFile
 from srstudio.graphics2.image_crop import normalize_crop
 from srstudio.graphics2.import_bridge import _element_to_node
 from srstudio.graphics2.model import GraphicsDocument, NodeKind
-from srstudio.importers.pipeline import ImportPipeline
+from srstudio.importers.pipeline import UnifiedImportPipeline
 from srstudio.importers.pptx.reader import PptxImporter
 
 
@@ -64,7 +64,7 @@ def test_signed_src_rect_survives_reader_pipeline_and_scene_conversion(tmp_path)
         "b": -0.03,
     }
 
-    legacy = ImportPipeline._pptx_element(element, slide.width, slide.height, 100, 100)
+    legacy = UnifiedImportPipeline._pptx_element(element, slide.width, slide.height, 100, 100)
     assert legacy is not None
     assert legacy["crop"] == element.metadata["crop"]
 
