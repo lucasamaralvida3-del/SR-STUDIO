@@ -1,98 +1,210 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+import zipfile
 
 import pytest
 
-from srstudio.core.models import StudioProject
-from srstudio.graphics2.model import CoordinateUnit, GraphicsPage
+from srstudio.graphics2.model import CoordinateUnit, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, Transform
+from srstudio.graphics2.pptx_page_geometry_runtime import install_pptx_page_geometry_guard
+from srstudio.graphics2.pptx_source_profile import (
+    CANVA_4X5_PHYSICAL_EMU,
+    apply_pptx_page_geometry,
+    inspect_pptx_source_profile,
+)
 from srstudio.graphics2.qt_renderer import _raster_scale
-from srstudio.importers.pipeline import UnifiedImportPipeline
-from srstudio.importers.pptx.reader import PptxSlide
 
 
-G2_CANVA_PAGE_WIDTH_EMU = 10_287_000
-G2_CANVA_PAGE_HEIGHT_EMU = 12_852_400
+CANVA_WIDTH_EMU, CANVA_HEIGHT_EMU = CANVA_4X5_PHYSICAL_EMU
 
 
-def _import_single_empty_slide(tmp_path, monkeypatch):
-    source = tmp_path / "g2-canva-page.pptx"
-    source.write_bytes(b"diagnostic-only")
+def _write_profile_pptx(
+    path,
+    *,
+    design_id: str = "DAHMLMj6EH8",
+    width_emu: int = CANVA_WIDTH_EMU,
+    height_emu: int = CANVA_HEIGHT_EMU,
+    canva_fingerprint: bool = True,
+) -> None:
+    created = "2006-08-16T00:00:00Z" if canva_fingerprint else "2026-08-18T12:00:00Z"
+    modified = "2011-08-01T06:04:30Z" if canva_fingerprint else "2026-08-18T12:30:00Z"
+    revision = "1" if canva_fingerprint else "8"
+    app_version = "14.0000" if canva_fingerprint else "16.0000"
+    slides = "0" if canva_fingerprint else "3"
+    presentation_format = "On-screen Show (4:3)" if canva_fingerprint else "Custom"
 
-    pipeline = UnifiedImportPipeline()
-    slide = PptxSlide(
-        index=1,
-        width=G2_CANVA_PAGE_WIDTH_EMU,
-        height=G2_CANVA_PAGE_HEIGHT_EMU,
-        elements=[],
-    )
-    parsed = SimpleNamespace(slides=[slide], warnings=[])
-    monkeypatch.setattr(pipeline.pptx_importer, "import_file", lambda *_args, **_kwargs: parsed)
-    monkeypatch.setattr(pipeline.semantic_mapper, "map_slide", lambda _slide: [])
-
-    project = StudioProject(name="G2 geometry diagnostic")
-    pipeline._pptx(source, project)
-    return project.pages[0]
-
-
-def test_g2_canva_page_geometry_loses_one_pixel_before_qimage(tmp_path, monkeypatch) -> None:
-    """Pin the current root cause without changing renderer/import behavior.
-
-    The three official G2 corpus PPTX files encode 10287000 x 12852400 EMU.
-    UnifiedImportPipeline normalizes every PPTX page to 1080 px width while
-    preserving that exact OOXML aspect ratio. The resulting scene height is
-    1349.333..., so render_png(target_width=1080) rounds to 1349. Canva's direct
-    export for the measured pages is 1080 x 1350.
-
-    This test is diagnostic: it must be updated only when the page-geometry
-    contract is deliberately corrected after the official PNG baseline is frozen.
-    """
-
-    imported_page = _import_single_empty_slide(tmp_path, monkeypatch)
-
-    assert imported_page.width == 1080.0
-    assert imported_page.height == pytest.approx(1349.3333333333333)
-
-    scene_page = GraphicsPage(
-        name="diagnostic",
-        width=imported_page.width,
-        height=imported_page.height,
-        unit=CoordinateUnit.PIXEL,
-    )
-    scale = _raster_scale(scene_page, dpi=300, target_width=1080)
-
-    assert scale == pytest.approx(1.0)
-    assert round(scene_page.width * scale) == 1080
-    assert round(scene_page.height * scale) == 1349
-    assert 1350 - round(scene_page.height * scale) == 1
+    core = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<cp:coreProperties
+ xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
+ xmlns:dc="http://purl.org/dc/elements/1.1/"
+ xmlns:dcterms="http://purl.org/dc/terms/"
+ xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+ <dc:identifier>{design_id}</dc:identifier>
+ <cp:revision>{revision}</cp:revision>
+ <dcterms:created xsi:type="dcterms:W3CDTF">{created}</dcterms:created>
+ <dcterms:modified xsi:type="dcterms:W3CDTF">{modified}</dcterms:modified>
+</cp:coreProperties>"""
+    app = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Properties xmlns="http://schemas.openxmlformats.org/officeDocument/2006/extended-properties">
+ <Application>Microsoft Office PowerPoint</Application>
+ <AppVersion>{app_version}</AppVersion>
+ <Slides>{slides}</Slides>
+ <PresentationFormat>{presentation_format}</PresentationFormat>
+</Properties>"""
+    presentation = f"""<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<p:presentation xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+ <p:sldSz cx="{width_emu}" cy="{height_emu}"/>
+</p:presentation>"""
+    with zipfile.ZipFile(path, "w") as archive:
+        archive.writestr("docProps/core.xml", core)
+        archive.writestr("docProps/app.xml", app)
+        archive.writestr("ppt/presentation.xml", presentation)
 
 
-def test_g2_canva_page_geometry_same_root_cause_at_quinta_reference_width(tmp_path, monkeypatch) -> None:
-    imported_page = _import_single_empty_slide(tmp_path, monkeypatch)
-    scene_page = GraphicsPage(
-        name="diagnostic",
-        width=imported_page.width,
-        height=imported_page.height,
-        unit=CoordinateUnit.PIXEL,
-    )
-
-    scale = _raster_scale(scene_page, dpi=300, target_width=1229)
-    raw_height = scene_page.height * scale
-
-    assert scale == pytest.approx(1229 / 1080)
-    assert raw_height == pytest.approx(1535.4913580246914)
-    assert round(raw_height) == 1535
-    assert 1536 - round(raw_height) == 1
-
-
-def test_target_width_path_does_not_depend_on_dpi() -> None:
-    page = GraphicsPage(
-        name="diagnostic",
+def _physical_ratio_page(*, height_emu: int = CANVA_HEIGHT_EMU) -> GraphicsPage:
+    return GraphicsPage(
+        name="Imported PPTX",
         width=1080.0,
-        height=1349.3333333333333,
+        height=1080.0 * height_emu / CANVA_WIDTH_EMU,
         unit=CoordinateUnit.PIXEL,
     )
 
-    assert _raster_scale(page, dpi=72, target_width=1080) == pytest.approx(1.0)
-    assert _raster_scale(page, dpi=300, target_width=1080) == pytest.approx(1.0)
-    assert _raster_scale(page, dpi=600, target_width=1080) == pytest.approx(1.0)
+
+def test_known_canva_4x5_uses_intended_1080x1350_and_keeps_physical_size(tmp_path) -> None:
+    source = tmp_path / "canva-known.pptx"
+    _write_profile_pptx(source)
+    profile = inspect_pptx_source_profile(source)
+
+    page = _physical_ratio_page()
+    node = GraphicsNode(
+        kind=NodeKind.RECT,
+        transform=Transform(x=100.0, y=100.0, width=200.0, height=300.0),
+    )
+    page.add_node(node)
+    document = GraphicsDocument(pages=[page])
+
+    assert profile.name == "canva"
+    assert profile.confidence == "reliable"
+    assert profile.reliable_canva is True
+    assert profile.design_id == "DAHMLMj6EH8"
+    assert profile.physical_page_size is not None
+    assert profile.physical_page_size.width_emu == CANVA_WIDTH_EMU
+    assert profile.physical_page_size.height_emu == CANVA_HEIGHT_EMU
+    assert profile.physical_page_size.width_pt == pytest.approx(810.0)
+    assert profile.physical_page_size.height_pt == pytest.approx(1012.0)
+    assert profile.intended_canvas_size is not None
+
+    old_y = node.transform.y
+    old_h = node.transform.height
+    old_page_height = page.height
+    assert apply_pptx_page_geometry(document, profile) is True
+
+    assert page.width == 1080.0
+    assert page.height == 1350.0
+    assert node.transform.y == pytest.approx(old_y * 1350.0 / old_page_height)
+    assert node.transform.height == pytest.approx(old_h * 1350.0 / old_page_height)
+    assert page.metadata["physical_page_size"]["width_emu"] == CANVA_WIDTH_EMU
+    assert page.metadata["physical_page_size"]["height_emu"] == CANVA_HEIGHT_EMU
+    assert page.metadata["intended_canvas_size"] == {"width": 1080.0, "height": 1350.0}
+    assert page.metadata["source_profile"]["name"] == "canva"
+    assert page.metadata["source_profile"]["confidence"] == "reliable"
+
+
+def test_generic_non_canva_pptx_preserves_physical_aspect_ratio(tmp_path) -> None:
+    source = tmp_path / "generic-office.pptx"
+    width_emu = 9_144_000
+    height_emu = 6_858_000
+    _write_profile_pptx(
+        source,
+        design_id="office-document-42",
+        width_emu=width_emu,
+        height_emu=height_emu,
+        canva_fingerprint=False,
+    )
+    profile = inspect_pptx_source_profile(source)
+    page = GraphicsPage(width=1080.0, height=1080.0 * height_emu / width_emu)
+    document = GraphicsDocument(pages=[page])
+
+    assert profile.reliable_canva is False
+    assert profile.intended_canvas_size is None
+    assert apply_pptx_page_geometry(document, profile) is False
+    assert page.width == 1080.0
+    assert page.height == pytest.approx(810.0)
+    assert page.metadata["physical_page_size"]["width_emu"] == width_emu
+    assert page.metadata["physical_page_size"]["height_emu"] == height_emu
+
+
+def test_aspect_ratio_alone_never_classifies_generic_4x5_as_canva(tmp_path) -> None:
+    source = tmp_path / "generic-4x5.pptx"
+    _write_profile_pptx(
+        source,
+        design_id="generic-4x5-office",
+        canva_fingerprint=False,
+    )
+    profile = inspect_pptx_source_profile(source)
+
+    assert profile.physical_page_size is not None
+    assert (profile.physical_page_size.width_emu, profile.physical_page_size.height_emu) == CANVA_4X5_PHYSICAL_EMU
+    assert profile.reliable_canva is False
+    assert profile.intended_canvas_size is None
+
+
+def test_canva_identifier_without_full_fingerprint_is_partial_and_does_not_override(tmp_path) -> None:
+    source = tmp_path / "partial-canva.pptx"
+    _write_profile_pptx(source, canva_fingerprint=False)
+    profile = inspect_pptx_source_profile(source)
+    page = _physical_ratio_page()
+    original_height = page.height
+
+    assert profile.name == "canva"
+    assert profile.confidence == "partial"
+    assert profile.reliable_canva is False
+    assert profile.intended_canvas_size is None
+    assert apply_pptx_page_geometry(GraphicsDocument(pages=[page]), profile) is False
+    assert page.height == pytest.approx(original_height)
+
+
+def test_reliable_canva_arbitrary_physical_page_is_not_forced_to_4x5_preset(tmp_path) -> None:
+    source = tmp_path / "canva-arbitrary.pptx"
+    width_emu = 9_144_000
+    height_emu = 5_143_500
+    _write_profile_pptx(source, width_emu=width_emu, height_emu=height_emu)
+    profile = inspect_pptx_source_profile(source)
+    page = GraphicsPage(width=1080.0, height=1080.0 * height_emu / width_emu)
+    original_height = page.height
+
+    assert profile.reliable_canva is True
+    assert profile.intended_canvas_size is None
+    assert apply_pptx_page_geometry(GraphicsDocument(pages=[page]), profile) is False
+    assert page.height == pytest.approx(original_height)
+
+
+def test_target_width_uses_intended_canva_aspect_ratio() -> None:
+    page = GraphicsPage(
+        name="Canva intended canvas",
+        width=1080.0,
+        height=1350.0,
+        unit=CoordinateUnit.PIXEL,
+    )
+
+    scale = _raster_scale(page, dpi=300, target_width=1229)
+    assert scale == pytest.approx(1229 / 1080)
+    assert round(page.width * scale) == 1229
+    assert round(page.height * scale) == 1536
+
+
+def test_g2_runtime_hook_applies_canvas_after_shared_import_without_mutating_source_project(tmp_path) -> None:
+    source = tmp_path / "canva-runtime.pptx"
+    _write_profile_pptx(source)
+    page = _physical_ratio_page()
+    document = GraphicsDocument(pages=[page])
+    fake_bridge = SimpleNamespace(from_imported_project=lambda _project: document)
+    install_pptx_page_geometry_guard(fake_bridge)
+    project = SimpleNamespace(settings={"pptx_source": str(source)})
+
+    result = fake_bridge.from_imported_project(project)
+
+    assert result is document
+    assert page.width == 1080.0
+    assert page.height == 1350.0
+    assert project.settings == {"pptx_source": str(source)}
