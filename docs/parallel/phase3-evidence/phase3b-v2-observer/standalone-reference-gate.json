@@ -1,0 +1,51 @@
+{
+  "expected_size": 48848012,
+  "expected_sha256": "9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff",
+  "verification": {
+    "release_found": true,
+    "release_id": 372506555,
+    "release_name": "Image DB Corpus v1",
+    "asset_found": true,
+    "asset_name": "standalone-images.zip",
+    "asset_id": 519806747,
+    "expected_size": 48848012,
+    "actual_size": 48848012,
+    "release_digest": "sha256:9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff",
+    "sha256": "9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff",
+    "download_complete": true,
+    "download_command_success": true,
+    "size_verified": true,
+    "hash_verified": true,
+    "zip_integrity": true,
+    "bad_member": null,
+    "zip_error": "",
+    "verified": true,
+    "download_output": ""
+  },
+  "manifest_metrics": {
+    "image_files": 160,
+    "expected_image_files": 160,
+    "valid_images": 160,
+    "corrupt_images": 0,
+    "candidate_images": 153,
+    "decorative_rejected": 7,
+    "screenshots_review": 0,
+    "exact_duplicate_groups": 15,
+    "exact_duplicate_observations": 18,
+    "near_duplicate_groups": 7,
+    "near_duplicate_pairs": 13
+  },
+  "checks": {
+    "asset_found": true,
+    "asset_id_present": true,
+    "download_complete": true,
+    "zip_integrity": true,
+    "size_exact_reference": true,
+    "sha256_exact_reference": true,
+    "verified": true,
+    "image_files_160": true,
+    "valid_images_160": true,
+    "corrupt_images_zero": false
+  },
+  "pass": false
+}

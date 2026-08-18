@@ -1,0 +1,23 @@
+........................................................................ [ 43%]
+........................................................................ [ 86%]
+.......................                                                  [100%]
+=============================== warnings summary ===============================
+tests/test_image_bank_approval_gate.py: 18 warnings
+tests/test_image_bank_batch_review.py: 4 warnings
+tests/test_image_bank_cloud_sync.py: 5 warnings
+tests/test_image_quality_ranking.py: 3 warnings
+tests/test_image_real_corpus_regressions.py: 10 warnings
+tests/test_image_safe_perceptual_index.py: 48 warnings
+tests/test_image_standalone_cli.py: 25 warnings
+tests/test_image_standalone_recovery.py: 10 warnings
+tests/test_image_standalone_training.py: 35 warnings
+tests/test_image_visual_dedup.py: 27 warnings
+  /home/runner/work/SR-STUDIO/SR-STUDIO/src/srstudio/images/library.py:499: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    pixels = list(gray.getdata())
+
+tests/test_image_corpus_inventory.py: 10 warnings
+  /home/runner/work/SR-STUDIO/SR-STUDIO/src/srstudio/images/corpus_inventory.py:458: DeprecationWarning: Image.Image.getdata is deprecated and will be removed in Pillow 14 (2027-10-15). Use get_flattened_data instead.
+    pixels = list(gray.getdata())
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+167 passed, 195 warnings in 4.16s
