@@ -140,9 +140,16 @@ jobs:
           (art/'standalone-gate.json').write_text(json.dumps({'checks':checks,'pass':all(checks.values())},indent=2))
           raise SystemExit(0 if all(checks.values()) else 61)
           PY
+
+      - name: Validate resolved standalone corpus
+        run: |
+          set -euo pipefail
           test "${STANDALONE_AVAILABLE:-false}" = true
           test "${STANDALONE_CORPUS_VALIDATED:-false}" = true
           test -n "${STANDALONE_MANIFEST:-}"
+          test -f "$STANDALONE_MANIFEST"
+          test "${STANDALONE_TOTAL_FILES:-0}" = 160
+          test "${STANDALONE_TRAINING_FILES:-0}" = 153
 
       - name: Materialize approved physical Phase 3A bank
         run: |
