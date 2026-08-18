@@ -189,6 +189,21 @@ def _asset_identity(asset: Any) -> str:
     source = str(getattr(asset, "source", "") or "").strip()
     if not source:
         return ""
+
+    # Assets importados ainda podem não ter SHA persistido antes do primeiro
+    # save. Quando o arquivo local existe, use o conteúdo desde já para que o
+    # fingerprint pré-save seja idêntico ao fingerprint do pacote reaberto.
+    source_path = Path(source)
+    try:
+        if source_path.is_file():
+            hasher = sha256()
+            with source_path.open("rb") as stream:
+                for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                    hasher.update(chunk)
+            return "sha256:" + hasher.hexdigest()
+    except OSError:
+        pass
+
     normalized = source.replace("\\", "/")
     # Caminhos absolutos de cache variam entre máquinas. O nome de mídia PPTX
     # já é content-addressed no importador; para outros assets preservamos os
