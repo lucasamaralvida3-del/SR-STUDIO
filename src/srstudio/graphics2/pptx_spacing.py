@@ -32,6 +32,7 @@ import zipfile
 from xml.etree import ElementTree as ET
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind
+from .pptx_text_content import recover_pptx_text_content
 
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
@@ -111,6 +112,11 @@ def recover_pptx_spacing(source: str | Path, document: GraphicsDocument) -> Pptx
     if path.suffix.lower() != ".pptx":
         raise ValueError("Recuperação de spacing requer um arquivo .pptx.")
 
+    # O leitor legado normaliza texto antes da SR Scene existir. O passe de
+    # spacing já é executado para toda importação PPTX, portanto é o ponto mais
+    # estreito para restaurar o contrato textual OOXML sem duplicar o pipeline.
+    recover_pptx_text_content(path, document)
+
     contracts = _read_contracts(path)
     report = PptxSpacingRecoveryReport(source_shapes=len(contracts))
 
@@ -143,10 +149,6 @@ def recover_pptx_spacing(source: str | Path, document: GraphicsDocument) -> Pptx
         spacing_meta = dict(node.metadata.get("pptx_spacing") or {})
 
         if contract.letter_ambiguous:
-            # A primeira passagem de fidelidade historicamente usa o primeiro
-            # a:rPr. Em um shape com runs mistos isso é uma simplificação falsa;
-            # remova-a para que preview, renderer e Production Gate não tratem o
-            # primeiro valor como se representasse todo o shape.
             node.style.pop("letter_spacing", None)
             node.style.pop("letter_spacing_pt", None)
             spacing_meta.pop("letter_spacing_pt", None)
@@ -274,13 +276,11 @@ def _line_values(tx_body: ET.Element) -> list[tuple[str, float]]:
         pts = ln_spc.find("./a:spcPts", _NS)
         if pct is not None and pct.get("val") not in (None, ""):
             try:
-                # DrawingML usa milésimos de porcentagem: 100000 = 100%.
                 values.append(("percent", int(pct.get("val")) / 1000.0))
             except ValueError:
                 pass
         elif pts is not None and pts.get("val") not in (None, ""):
             try:
-                # spcPts usa centésimos de ponto.
                 values.append(("pt", int(pts.get("val")) / 100.0))
             except ValueError:
                 pass
