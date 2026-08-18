@@ -6,6 +6,7 @@ import os
 from srstudio.graphics2.autosave import AutosaveManager, RecoveryPoint
 from srstudio.graphics2.editor_persistence import (
     EditorPersistenceState,
+    EditorRecoveryJournal,
     document_digest,
     newer_recovery_point,
 )
@@ -91,3 +92,37 @@ def test_recovered_state_remains_dirty_against_manual_save(tmp_path):
     assert state.is_dirty(document)
     assert not state.needs_autosave(document)
     assert state.recovered_from == point
+
+
+def test_recovery_journal_only_points_to_explicit_pending_session(tmp_path):
+    manager = AutosaveManager(tmp_path / "autosave")
+    document = GraphicsDocument(name="Sessão pendente")
+    recovery_path = manager.save(document)
+    journal = EditorRecoveryJournal(tmp_path / "autosave")
+    source = tmp_path / "origem.srscene"
+    source.write_bytes(b"saved-marker")
+
+    journal.mark(document.id, recovery_path, source_path=source)
+
+    current = journal.current()
+    assert current is not None
+    assert current.document_id == document.id
+    assert current.recovery_path == recovery_path.resolve()
+    assert current.source_path == source.resolve()
+    assert journal.recovery_point(manager) == manager.latest(document.id)
+
+    journal.clear(document.id)
+    assert journal.current() is None
+
+
+def test_recovery_journal_does_not_resume_missing_or_unrelated_pointer(tmp_path):
+    manager = AutosaveManager(tmp_path / "autosave")
+    document = GraphicsDocument(name="Outro")
+    manager.save(document)
+    journal = EditorRecoveryJournal(tmp_path / "autosave")
+
+    missing = tmp_path / "missing.srscene"
+    journal.mark(document.id, missing)
+
+    assert journal.current() is None
+    assert journal.recovery_point(manager) is None
