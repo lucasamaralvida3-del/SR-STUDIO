@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtQuick.Window
 
 Rectangle {
     id: panel
@@ -44,6 +45,14 @@ Rectangle {
         target: sceneBridge
         function onSceneChanged() { panel.refreshScene() }
         function onSaveAsRequested() { saveDialog.open() }
+    }
+
+    Connections {
+        target: panel.Window.window
+        function onClosing(close) {
+            if (sceneBridge.dirty && !sceneBridge.protectBeforeClose())
+                close.accepted = false
+        }
     }
 
     Component.onCompleted: refreshScene()
