@@ -113,6 +113,7 @@ from .product_card_runtime import (
     install_product_card_commands,
     install_product_card_runtime,
 )
+from .product_data_runtime import ProductUpdateResult, install_product_data_runtime
 
 # ProductCard/SmartSlot é um contrato de backend. O QML pode chamá-lo pelo
 # command router sem conhecer IDs/roles internos, e os mesmos métodos ficam
@@ -120,6 +121,7 @@ from .product_card_runtime import (
 install_product_card_runtime(GraphicsSession, _semantic_blocks)
 install_image_replace_command(_command_router)
 install_product_card_commands(_command_router)
+install_product_data_runtime(GraphicsSession, _command_router)
 
 from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_image_placeholders
 from .semantic_recovery import recover_canva_semantic_cards
@@ -204,6 +206,7 @@ __all__ = [
     "PptxStructureReport",
     "PreflightIssue",
     "ProductCardCreation",
+    "ProductUpdateResult",
     "ProductionGateIssue",
     "ProductionGateReport",
     "Rect",
