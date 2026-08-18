@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 
 from srstudio.images.library import ImageAsset, ImageLibrary
-from srstudio.images.visual_dedup import is_conservative_visual_duplicate
+from srstudio.images.visual_dedup import compact_rgb_signature, is_conservative_visual_duplicate
 
 
 class ImageLibraryCorruptionError(RuntimeError):
@@ -21,8 +21,8 @@ class SafeImageLibrary(ImageLibrary):
     The original library API is intentionally preserved. Persistence is hardened:
     existing JSON is validated before writes, a rolling logical backup is made,
     the replacement is validated, then atomically installed. Perceptual duplicate
-    checks also require compatible image geometry so a dHash collision cannot by
-    itself merge unrelated assets.
+    checks require compatible dHash, geometry and coarse RGB content so a low-detail
+    hash collision cannot by itself merge unrelated assets.
 
     Legacy asset IDs remain compatible with ImageLibrary's 24-hex digest key. New
     safe imports additionally preserve the complete SHA-256 in metadata so exact
@@ -39,6 +39,9 @@ class SafeImageLibrary(ImageLibrary):
         merged_metadata = dict(metadata or {})
         merged_metadata.setdefault("sha256_full", full_sha256)
         merged_metadata.setdefault("sha256", full_sha256)
+        rgb_signature = self._rgb_signature_for_path(source_path)
+        if rgb_signature:
+            merged_metadata.setdefault("rgb_signature", rgb_signature)
 
         # Exact duplicates use the legacy 24-hex asset id. Merge provenance before
         # delegating so repeated observations cannot erase earlier source records.
@@ -91,8 +94,6 @@ class SafeImageLibrary(ImageLibrary):
         self.assets_dir.mkdir(parents=True, exist_ok=True)
 
         if self.index_path.exists():
-            # Validate before backing up. Never bless an already-corrupt index as
-            # a usable backup and never overwrite it with an empty replacement.
             self._load()
             shutil.copy2(self.index_path, self.backup_path)
 
@@ -150,6 +151,13 @@ class SafeImageLibrary(ImageLibrary):
             variants.discard(canonical_sha256)
             merged["variant_sha256"] = sorted(variants)
 
+        # rgb_signature belongs to the canonical stored asset. A recompressed
+        # near-duplicate must not replace that signature just because its metadata
+        # is merged later.
+        canonical_rgb = str(current.get("rgb_signature") or "")
+        if canonical_rgb:
+            merged["rgb_signature"] = canonical_rgb
+
         provenance = cls._merge_provenance_lists(
             current.get("provenance"),
             incoming.get("provenance"),
@@ -188,18 +196,35 @@ class SafeImageLibrary(ImageLibrary):
         return digest.hexdigest()
 
     @staticmethod
-    def _source_visual_signature(source: str | Path) -> tuple[str, tuple[int, int]] | None:
+    def _rgb_signature_for_path(path: Path) -> str:
+        try:
+            with Image.open(path) as image:
+                return compact_rgb_signature(image)
+        except (OSError, ValueError):
+            return ""
+
+    @staticmethod
+    def _source_visual_signature(source: str | Path) -> tuple[str, tuple[int, int], str] | None:
         path = Path(source)
         try:
             with Image.open(path) as image:
-                return ImageLibrary._dhash(image), image.size
+                return ImageLibrary._dhash(image), image.size, compact_rgb_signature(image)
         except (OSError, ValueError):
             return None
 
-    @staticmethod
+    @classmethod
+    def _asset_rgb_signature(cls, asset: ImageAsset) -> str:
+        signature = str((asset.metadata or {}).get("rgb_signature") or "")
+        if signature:
+            return signature
+        return cls._rgb_signature_for_path(Path(asset.path))
+
+    @classmethod
     def _is_visual_duplicate(
+        cls,
         fingerprint: str,
         source_size: tuple[int, int],
+        source_rgb_signature: str,
         asset: ImageAsset,
         max_distance: int,
     ) -> bool:
@@ -210,6 +235,8 @@ class SafeImageLibrary(ImageLibrary):
                 asset.perceptual_hash,
                 source_size,
                 (asset.width, asset.height),
+                left_rgb_signature=source_rgb_signature,
+                right_rgb_signature=cls._asset_rgb_signature(asset),
                 max_hamming_distance=max_distance,
             )
         )
@@ -223,13 +250,13 @@ class SafeImageLibrary(ImageLibrary):
         signature = self._source_visual_signature(source)
         if signature is None:
             return None
-        fingerprint, source_size = signature
+        fingerprint, source_size, source_rgb_signature = signature
         normalized_key = self.normalize_product_key(product_key)
         for data in self._load().values():
             asset = self._asset(data)
             if normalized_key and asset.product_key and self.normalize_product_key(asset.product_key) != normalized_key:
                 continue
-            if self._is_visual_duplicate(fingerprint, source_size, asset, max_distance):
+            if self._is_visual_duplicate(fingerprint, source_size, source_rgb_signature, asset, max_distance):
                 return asset
         return None
 
@@ -242,7 +269,7 @@ class SafeImageLibrary(ImageLibrary):
         signature = self._source_visual_signature(source)
         if signature is None:
             return None
-        fingerprint, source_size = signature
+        fingerprint, source_size, source_rgb_signature = signature
         normalized_key = self.normalize_product_key(product_key)
         if not normalized_key:
             return None
@@ -251,6 +278,6 @@ class SafeImageLibrary(ImageLibrary):
             asset_key = self.normalize_product_key(asset.product_key or asset.product_name)
             if not asset_key or asset_key == normalized_key:
                 continue
-            if self._is_visual_duplicate(fingerprint, source_size, asset, max_distance):
+            if self._is_visual_duplicate(fingerprint, source_size, source_rgb_signature, asset, max_distance):
                 return asset
         return None
