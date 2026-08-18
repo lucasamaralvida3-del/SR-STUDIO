@@ -7,7 +7,7 @@
 - O runtime atual não expõe um checkout Git local do repositório, portanto `git status`/worktrees não podem ser observados com segurança daqui. A escrita está sendo feita exclusivamente na branch isolada via GitHub connector; nenhuma alteração foi feita em `main`/`stable`.
 - `AGENTS.md`, `docs/SR_STUDIO_NEXT_ARCHITECTURE.md` e `docs/G2_CONTINUOUS_PROGRESS.md` foram lidos antes das alterações.
 - `docs/G2_CONTINUOUS_PROGRESS.md` permanece somente leitura durante esta missão paralela.
-- BASE_SHA: `TO_BE_BACKFILLED_FROM_PARENT_OF_FIRST_CHAT8_COMMIT`.
+- BASE_SHA: `3b44feaf6480e286d3619d0a1c0c00a13a4f450c`.
 
 ## Implementação existente auditada
 
@@ -20,6 +20,7 @@ A branch já contém uma base relevante e ela deve ser fortalecida, não recriad
 - `src/srstudio/images/precision_training.py`: política precision-first e deduplicação lógica de referências repetidas no mesmo slide.
 - `src/srstudio/images/lookup.py`: contrato de busca por produto com melhor match, alternativas e confidence.
 - `src/srstudio/images/evidence_aliases.py`: aliases aprendidos somente quando compatíveis com identidade/SKU.
+- `src/srstudio/images/safe_library.py`: persistência fail-closed com backup lógico; agora também aplica deduplicação perceptual conservadora.
 
 ## Inventário do corpus real acessível — baseline 2026-08-18
 
@@ -43,7 +44,7 @@ Duplicata de arquivo confirmada:
 
 - `Cartazes Atacarejo SR (1).pptx`;
 - `Cartazes Atacarejo SR (1)(1).pptx`;
-- `Cartazes Atacarejo SR (1)(2).pptx`;
+- `Cartazes Atacarejo SR (1)(2).pptx`.
 
 Os três possuem o mesmo SHA-256 de arquivo e devem ser processados uma única vez pelo fluxo incremental.
 
@@ -100,43 +101,110 @@ Entre os nomes estruturados já encontrados no corpus estão, por exemplo:
 
 O corpus de cartazes deve alimentar normalização/aliases/produtos mesmo quando não contém foto embutida, mas não deve gerar associação Produto ↔ Imagem sem evidência visual.
 
-## P0/P1/P2/P3 — baseline
+## Melhorias implementadas nesta missão
+
+### Consenso por identidade real do documento
+
+`association.py` deixou de usar apenas o basename em `distinct_source_count`. A identidade de origem agora segue esta prioridade:
+
+1. `metadata.source_document_id`/`metadata.source_sha256` quando disponível;
+2. digest presente no caminho de extração `.../media/<source-sha-prefix>/...`;
+3. fallback para `source_file` por compatibilidade.
+
+Consequências:
+
+- cópias idênticas renomeadas não aumentam artificialmente a confiança;
+- documentos realmente diferentes com o mesmo nome continuam contando como fontes distintas;
+- o comportamento antigo continua compatível para evidências sintéticas/legadas sem digest.
+
+### Deduplicação perceptual conservadora
+
+Foi criado `src/srstudio/images/visual_dedup.py`.
+
+SHA-256 continua sendo a única identidade exata. dHash é usado apenas como candidato perceptual e agora precisa concordar também com:
+
+- orientação;
+- aspect ratio dentro de tolerância conservadora.
+
+`SafeImageLibrary` sobrescreve `find_near_duplicate()` e `find_cross_product_visual_duplicate()` com esse gate. O caso real observado no corpus — dHash 0 para uma imagem 119×119 e outra 2160×933 — deixa de ser merge/conflito falso.
+
+### Pipeline em lote reexecutável
+
+Foi criado `src/srstudio/images/batch_training.py` com uma entrada executável:
+
+```text
+python -m srstudio.images.batch_training --library <bank> --imports-root <imports> [--report report.json] [--query "MONSTER 473ML"] <corpus...>
+```
+
+Fluxo:
+
+`PPTX/ZIP/DIRETÓRIO → INVENTÁRIO → EXTRAÇÃO ESTRUTURADA → HASH → FILTRO DE TEMPLATE → ASSOCIAÇÃO ESPACIAL → CONSENSO → CONFIDENCE → SAFE IMAGE LIBRARY → ALIASES → LOOKUP → RELATÓRIO JSON`
+
+O processamento continua incremental pelo SHA-256 do arquivo e usa `PrecisionProductImageCorpusTrainer` + `SafeImageLibrary`.
+
+## P0/P1/P2/P3 — estado atual
 
 ### P0
 
-Nenhum P0 observado na baseline. O estado incremental existente grava backup antes de substituir o state file.
+Nenhum P0 observado. `CorpusStateStore` e `SafeImageLibrary` preservam backup lógico e falham fechados em caso de JSON corrompido.
 
 ### P1
 
-1. `ImageLibrary.find_near_duplicate()` e `find_cross_product_visual_duplicate()` usam dHash como sinal suficiente. O corpus real revelou uma colisão dHash=0 entre assets visualmente diferentes e de proporções muito diferentes. Isso pode produzir deduplicação/conflito falso.
-2. O consenso conta `source_file` pelo basename. Documentos distintos com o mesmo basename podem ser confundidos como uma única origem; por outro lado, cópias idênticas com nomes diferentes não devem aumentar consenso. O SHA-256 do documento precisa ser a identidade de origem.
-3. Corpus de template sem foto de produto deve terminar com 0 associações Produto ↔ Imagem, e não ser empurrado para `accepted` por proximidade de logo/fundo.
+1. **MITIGADO NO CAMINHO SEGURO** — colisão dHash: `SafeImageLibrary` agora exige geometria compatível além do hash perceptual.
+2. **CORRIGIDO** — consenso por basename: usa identidade de conteúdo/documento quando disponível.
+3. **ABERTO** — corpus de template curto pode produzir candidatos `review` de logo/fundo; eles não devem chegar a lookup aprovado. É necessário continuar reduzindo o volume de revisão sem perder produtos legítimos.
+4. **INTEGRAÇÃO NECESSÁRIA** — `src/srstudio/app/professional.py` ainda instancia `ImageLibrary` diretamente. Para levar a proteção perceptual ao Studio principal sem refatorar o shell, a alteração mínima futura é trocar a construção para `SafeImageLibrary`. O batch novo já usa a biblioteca segura.
 
 ### P2
 
 - Separar formalmente `naming/layout corpus` de `product-image corpus` para reduzir revisão inútil.
 - Ingestão opcional das imagens individuais da Library com provenance explícito.
+- Medir latência de consulta com corpus real maior.
 
 ### P3
 
 - Estatísticas adicionais de colisões perceptuais e cobertura por categoria.
 - Interface de revisão dedicada.
 
-## Próximos ciclos
+## Testes adicionados
 
-1. Endurecer deduplicação perceptual com gate de geometria/aspect ratio e testes de colisão dHash.
-2. Usar SHA-256 do documento como identidade de origem do consenso.
-3. Adicionar testes em que corpus real de template produz zero auto-accepted product images.
-4. Criar inventário reexecutável que distingue `product-image`, `decorative/branding` e `naming-only`.
-5. Integrar imagens standalone somente como fonte suplementar, mantendo provenance.
-6. Executar consultas reais no `find_image()` quando existirem assets aprovados para os SKUs do corpus.
+- `tests/test_image_association.py`
+  - mesmo basename + documentos diferentes;
+  - cópias exatas renomeadas não contam como fontes novas;
+  - `source_sha256` explícito tem prioridade.
+- `tests/test_image_visual_dedup.py`
+  - colisão realista de dHash com geometria incompatível;
+  - resize de mesma proporção continua candidato near-duplicate;
+  - biblioteca segura não mescla nem cria conflito falso nesses casos.
+- `tests/test_image_batch_training.py`
+  - contrato do processamento em lote;
+  - relatório JSON reconstruível.
+
+O ambiente desta sessão não possui checkout local do repositório e não disparou workflows de CI para os commits diretos da branch; portanto a execução completa do `pytest` ainda precisa ser feita no worktree/CI que possui o código. Nenhum resultado de teste foi inventado.
 
 ## Fronteiras com outros chats
 
 - CHAT 2: este trabalho consome `PptxImporter`; não refatora o importador.
 - CHAT 4: apenas expõe/fortalece contrato de lookup; não altera ProductCards/bindings.
 - CHAT 5: testes e métricas produzidos aqui podem ser consumidos por QA.
+- Integração futura mínima no shell: `src/srstudio/app/professional.py` deve construir `SafeImageLibrary` no lugar de `ImageLibrary`; não é necessário alterar o contrato de `ImageBankView`.
 
-## Commits
+## Próximos ciclos
 
-- primeiro commit desta documentação: ver histórico da branch; BASE_SHA será preenchido com o parent desse commit no próximo checkpoint.
+1. Reduzir falsos candidatos `review` de branding/template em decks curtos.
+2. Produzir inventário reexecutável que classifique fonte como `product-image`, `decorative/branding` ou `naming-only`.
+3. Adicionar ingestão de standalone assets com provenance explícito e confidence conservador.
+4. Validar lookup real com SKUs que efetivamente possuam imagem aprovada no corpus.
+5. Medir ingestão/hash/indexação/lookup em volume maior.
+6. Executar a suíte no worktree/CI e corrigir qualquer regressão encontrada.
+
+## Commits CHAT 8 desta sessão
+
+- `721ec2667c65fc9862a132d62e00dd094b94d0d1` — recovery audit + baseline do corpus.
+- `8a204a5ae0fd8d456645f601071480a6904e7407` — consenso source-content-aware.
+- `2ed879feeab2e58ef275e37cdf4b3c34a8eb4ce2` — testes do consenso por identidade de documento.
+- `da8da265c2e99cd491d701a2f25f45f89c0569b6` — gate perceptual conservador.
+- `fe62b485f241e777024826c34c176ab0aeec7aaa` — dedupe segura em `SafeImageLibrary`.
+- `41ffb0552f63e5daf0ca3b348dc0ebf95008ec52` — testes de colisão dHash.
+- `a658a407e2c5967a8ceb7a248da0951624ae3036` — comando de treinamento em lote.
+- `97ded045b5f24b3a2a576317f274447671b3b517` — teste do contrato batch/report.
