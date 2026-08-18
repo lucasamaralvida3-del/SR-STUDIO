@@ -187,3 +187,6 @@ def test_qt_host_wires_periodic_shutdown_and_close_guard_contract():
     assert "verified = load_package(final)" in text
     assert "recovery_journal.clear(session.document.id)" in text
     assert "self._start_autosave(force=True)" in text
+    assert "self._autosave_base_saved_digest = persistence.saved_digest" in text
+    assert "base_saved_digest == persistence.saved_digest" in text
+    assert "Autosave anterior ao último save descartado" in text
