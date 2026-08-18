@@ -48,7 +48,8 @@ _PRODUCT_TERMS = {
     "TILAPIA", "PEIXE", "CAMARAO", "MORANGO", "BANANA", "MAMAO", "MELANCIA", "TOMATE", "CEBOLA", "CENOURA",
     "ABACAXI", "UVA", "MACA", "PAPEL HIGIENICO", "ABSORVENTE", "DENTAL", "PROTETOR", "PURIFICADOR", "MARGARINA",
     "MANTEIGA", "IOGURTE", "BEBIDA", "CHOCOLATE", "BOMBOM", "MASSA", "MOLHO", "EXTRATO", "BANHA", "TORRESMO",
-    "CHIKENITOS", "SALAMITOS",
+    "CHIKENITOS", "SALAMITOS", "MAIONESE", "KETCHUP", "MILHO", "CALDO", "RACAO", "ESPONJA", "LIMPADOR",
+    "REFRESCO", "ISOTONICO", "LENCO", "DESODORANTE", "TAPIOCA", "ROSQUINHA", "SALGADINHO", "SEQUILHOS",
 }
 _GENERIC_MEASURE_TOKENS = {
     "PACOTE", "PCT", "UNIDADE", "UNIDADES", "UN", "UND", "PESO", "VOLUME", "GRAMAS", "QUILO", "QUILOS",
@@ -184,10 +185,15 @@ class ProductImageAssociationEngine:
                 final_confidence *= 0.90 + 0.10 * consensus
             final_confidence = max(0.0, min(0.995, final_confidence))
 
+            # Strong local geometry in one flyer is useful, but not enough to
+            # auto-approve by itself. Independent document consensus is the
+            # production safety gate against a logo/seal that happens to sit in
+            # the same visual cell as a product name.
             if (
                 final_confidence >= self.auto_accept_confidence
                 and avg_confidence >= 0.875
                 and consensus >= 0.80
+                and distinct_sources >= 2
             ):
                 status = "accepted"
             elif final_confidence >= self.probable_confidence and consensus >= self.minimum_consensus:
@@ -311,15 +317,47 @@ def spatial_pair_score(
     same_group: bool = False,
     z_distance: int | None = None,
 ) -> tuple[float, dict[str, float]]:
-    diag = max(hypot(slide_width, slide_height), 1.0)
+    """Score one product-name/image pair using grid-aware spatial evidence.
+
+    Real SR/Canva flyers often put the product name immediately above or below
+    the package photo. Center distance alone can therefore jump to the next row
+    in a repeated grid. Horizontal alignment and the nearest vertical *edge* gap
+    are explicit signals here, while proximity remains useful for irregular
+    layouts. No signal by itself can approve an association.
+    """
+    width = max(int(slide_width), 1)
+    height = max(int(slide_height), 1)
+    diag = max(hypot(width, height), 1.0)
     ix, iy, iw, ih = image_bbox
     tx, ty, tw, th = name_bbox
     icx, icy = ix + iw / 2.0, iy + ih / 2.0
     tcx, tcy = tx + tw / 2.0, ty + th / 2.0
+
     distance = hypot(icx - tcx, icy - tcy) / diag
-    proximity = max(0.0, 1.0 - distance / 0.32)
-    overlap = max(0, min(ix + iw, tx + tw) - max(ix, tx)) / max(1, min(iw, tw))
-    score = 0.48 * proximity + 0.28 * overlap + 0.24 * max(0.0, min(1.0, product_likelihood))
+    proximity = max(0.0, 1.0 - distance / 0.28)
+    horizontal_overlap = max(0, min(ix + iw, tx + tw) - max(ix, tx)) / max(1, min(iw, tw))
+    x_alignment = max(0.0, 1.0 - abs(icx - tcx) / max(width * 0.22, 1.0))
+
+    # Distance between the closest horizontal edges. This is strong on repeated
+    # product cards where name and image are stacked but not overlapping.
+    edge_gap = min(abs(iy - (ty + th)), abs(ty - (iy + ih))) / height
+    vertical_nearness = max(0.0, 1.0 - edge_gap / 0.10)
+
+    area_ratio = max(0, iw) * max(0, ih) / max(1, width * height)
+    if 0.005 <= area_ratio <= 0.08:
+        size_score = 1.0
+    else:
+        size_score = max(0.0, 1.0 - min(abs(area_ratio - 0.03) / 0.15, 1.0))
+
+    likelihood = max(0.0, min(1.0, product_likelihood))
+    score = (
+        0.22 * horizontal_overlap
+        + 0.17 * x_alignment
+        + 0.22 * vertical_nearness
+        + 0.16 * proximity
+        + 0.16 * likelihood
+        + 0.07 * size_score
+    )
     if same_group:
         score += 0.10
     if z_distance is not None:
@@ -327,7 +365,12 @@ def spatial_pair_score(
     return min(1.0, score), {
         "distance": round(distance, 6),
         "proximity": round(proximity, 6),
-        "horizontal_overlap": round(overlap, 6),
+        "horizontal_overlap": round(horizontal_overlap, 6),
+        "x_alignment": round(x_alignment, 6),
+        "edge_gap": round(edge_gap, 6),
+        "vertical_nearness": round(vertical_nearness, 6),
+        "image_area_ratio": round(area_ratio, 6),
+        "size_score": round(size_score, 6),
     }
 
 
