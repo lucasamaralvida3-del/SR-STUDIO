@@ -269,16 +269,25 @@ class ProductImageCorpusTrainer:
                 "provenance": provenance,
                 "alternatives": [asdict(item) for item in decision.alternatives],
             }
-            self.library.learn_product_image(
+            library_gate = float(getattr(self.library, "AUTO_ACCEPT_CONFIDENCE", 0.82))
+            learn_confidence = decision.confidence
+            if decision.status != "accepted":
+                learn_confidence = min(decision.confidence, max(0.0, library_gate - 0.001))
+            asset = self.library.learn_product_image(
                 media_path,
                 decision.product_name,
-                confidence=decision.confidence,
-                source="canva-pptx-corpus",
+                confidence=learn_confidence,
                 source_file=canonical.source_file,
                 slide_index=canonical.source_slide,
-                auto_accept=decision.status == "accepted",
                 metadata=metadata,
             )
+            if decision.status != "accepted" and hasattr(self.library, "update_metadata") and getattr(asset, "id", None):
+                self.library.update_metadata(
+                    asset.id,
+                    confidence=decision.confidence,
+                    review_status="pending",
+                    metadata=metadata,
+                )
             metrics.images_learned += 1
 
         if state_changed:
