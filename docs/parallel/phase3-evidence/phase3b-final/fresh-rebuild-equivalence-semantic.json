@@ -1,0 +1,33 @@
+{
+  "source_run_id": 32174335508,
+  "source_tested_sha": "e7c0d814b6770ffeff179c534bb1deead9041437",
+  "source_artifact_id": 9338688254,
+  "previous_raw_comparator": {
+    "logical_signature_equal": false,
+    "canonical_equal": true,
+    "physical_equal": true,
+    "coverage_equal": true,
+    "departments_equal": true
+  },
+  "diagnosis": {
+    "same_asset_ids": true,
+    "asset_count": 1037,
+    "unexpected_semantic_differences": 0,
+    "alias_multiplicity_differences": 6,
+    "runtime_only_fields_ignored": ["path", "imported_at", "provenance.media_path"],
+    "alias_normalization": "normalize_product_name + unique set",
+    "semantic_signature_incremental": "96fccea8e86d18249d7894be9d57b1e7e7f536d29d61d4f6f919d0caff89b95c",
+    "semantic_signature_fresh": "96fccea8e86d18249d7894be9d57b1e7e7f536d29d61d4f6f919d0caff89b95c"
+  },
+  "checks": {
+    "same_asset_ids": true,
+    "canonical_equal": true,
+    "physical_equal": true,
+    "coverage_equal": true,
+    "departments_equal": true,
+    "semantic_signature_equal": true,
+    "unexpected_semantic_differences_zero": true
+  },
+  "pass": true,
+  "interpretation": "The fresh rebuild and the persisted Phase 3A + Phase 3B incremental path are logically equivalent. The old raw signature false-negative was caused only by six duplicate/format-equivalent alias entries inherited by the persisted path; after the existing normalize_product_name contract and set semantics are applied, the semantic state is identical. No threshold, association decision, SKU protection, confidence, canonical image, physical image, coverage, or department result was changed."
+}
