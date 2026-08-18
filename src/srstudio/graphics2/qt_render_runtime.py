@@ -93,6 +93,7 @@ def install_headless_renderer_guard(renderer_module: Any) -> None:
     # Import tardio evita ciclo durante o bootstrap do pacote: export_output
     # também usa ensure_qt_gui_application e os helpers privados do renderer.
     from . import export_output as output
+    from .export_batch import export_raster_batch as transactional_export_raster_batch
 
     headless_png = getattr(renderer_module, "_sr_headless_png_renderer", renderer_module.render_png)
     headless_pdf = getattr(renderer_module, "_sr_headless_pdf_renderer", renderer_module.render_pdf)
@@ -101,6 +102,7 @@ def install_headless_renderer_guard(renderer_module: Any) -> None:
         render_png=headless_png,
         render_pdf=headless_pdf,
     )
+    output.export_raster_batch = transactional_export_raster_batch
 
     # Compatibilidade: chamadas existentes do host continuam usando os nomes
     # históricos e passam a receber o contrato de produção. APIs novas ficam
@@ -108,5 +110,5 @@ def install_headless_renderer_guard(renderer_module: Any) -> None:
     renderer_module.render_png = output.export_png
     renderer_module.render_pdf = output.export_pdf
     renderer_module.render_jpeg = output.export_jpeg
-    renderer_module.render_raster_batch = output.export_raster_batch
+    renderer_module.render_raster_batch = transactional_export_raster_batch
     renderer_module._sr_production_output_guard_installed = True
