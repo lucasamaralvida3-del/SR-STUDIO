@@ -1,0 +1,466 @@
+name: Image DB Phase 3B Standalone Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - g2/parallel-image-database
+    paths:
+      - '.github/workflows/image-db-phase3b.yml'
+      - 'scripts/ci/image_db_phase3b.py'
+      - 'src/srstudio/images/**'
+      - 'tests/test_image_*.py'
+      - 'pyproject.toml'
+
+permissions:
+  contents: write
+  actions: read
+
+env:
+  ARTIFACT_DIR: artifacts/image-db-phase3b
+  CORPUS_DIR: .phase3-corpus
+  INC_LIBRARY: artifacts/phase3b-incremental-library
+  INC_IMPORTS: artifacts/phase3b-incremental-imports
+  FRESH_LIBRARY: artifacts/phase3b-fresh-library
+  FRESH_IMPORTS: artifacts/phase3b-fresh-imports
+  PYTHON_VERSION: '3.11'
+  PHASE3A_RUN_ID: '32166973267'
+  PHASE3A_ARTIFACT_ID: '9336079515'
+
+jobs:
+  validate:
+    name: Validate Image Database Phase 3B
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout tested SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Prepare evidence directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR" "$CORPUS_DIR" "$INC_LIBRARY" "$INC_IMPORTS" "$FRESH_LIBRARY" "$FRESH_IMPORTS"
+          {
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "ref=$GITHUB_REF"
+            echo "sha=$GITHUB_SHA"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "event=$GITHUB_EVENT_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "timestamp_utc=$(date -u +%FT%TZ)"
+            echo "phase3a_run_id=$PHASE3A_RUN_ID"
+            echo "phase3a_artifact_id=$PHASE3A_ARTIFACT_ID"
+          } > "$ARTIFACT_DIR/environment.txt"
+          git status --short --branch >> "$ARTIFACT_DIR/environment.txt"
+          git log -8 --oneline >> "$ARTIFACT_DIR/environment.txt"
+          echo "$GITHUB_SHA" > "$ARTIFACT_DIR/tested-sha.txt"
+          df -h . > "$ARTIFACT_DIR/disk-before.txt"
+          grep -E '^(MemTotal|MemAvailable):' /proc/meminfo > "$ARTIFACT_DIR/memory-baseline.txt"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install official project dependencies
+        shell: bash
+        run: |
+          set +e
+          python --version 2>&1 | tee -a "$ARTIFACT_DIR/environment.txt"
+          python -m pip install --upgrade pip 2>&1 | tee "$ARTIFACT_DIR/pip-upgrade.log"
+          python -m pip install -e '.[dev]' 2>&1 | tee "$ARTIFACT_DIR/install.log"
+          install_rc=${PIPESTATUS[0]}
+          sanity_rc=1
+          if [ "$install_rc" -eq 0 ]; then
+            python -m compileall -q src scripts/ci
+            python - <<'PY'
+          from srstudio.images.safe_library import SafeImageLibrary
+          from srstudio.images.standalone_cli import run_incremental_standalone
+          print('phase3b-import-sanity=PASS')
+          PY
+            sanity_rc=$?
+          fi
+          if [ "$install_rc" -eq 0 ] && [ "$sanity_rc" -eq 0 ]; then
+            echo 'ENVIRONMENT_PASS=true' >> "$GITHUB_ENV"
+          else
+            echo 'ENVIRONMENT_PASS=false' >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Run Image DB tests
+        if: env.ENVIRONMENT_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q tests/test_image_*.py --junitxml="$ARTIFACT_DIR/test-results.xml" 2>&1 | tee "$ARTIFACT_DIR/pytest.log"
+          rc=${PIPESTATUS[0]}
+          if [ "$rc" -eq 0 ]; then echo 'TESTS_PASS=true' >> "$GITHUB_ENV"; else echo 'TESTS_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: Restore persisted Phase 3A logical index evidence
+        if: env.ENVIRONMENT_PASS == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          mkdir -p .phase3a-persisted artifacts/phase3a-persisted-index
+          gh run download "$PHASE3A_RUN_ID" -n image-db-phase3a-report -D .phase3a-persisted > "$ARTIFACT_DIR/phase3a-artifact-download.log" 2>&1
+          rc=$?
+          index=$(find .phase3a-persisted -type f -name index.json | head -1)
+          if [ "$rc" -eq 0 ] && [ -n "$index" ]; then
+            cp "$index" artifacts/phase3a-persisted-index/index.json
+            python scripts/ci/image_db_phase3b.py snapshot --library artifacts/phase3a-persisted-index --output "$ARTIFACT_DIR/phase3a-persisted-snapshot.json"
+            echo 'PHASE3A_PERSISTED_INDEX_PASS=true' >> "$GITHUB_ENV"
+          else
+            echo 'PHASE3A_PERSISTED_INDEX_PASS=false' >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Resolve verified Phase 3A rich corpus and catalog
+        if: env.ENVIRONMENT_PASS == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci/image_db_phase3_corpus.py > "$ARTIFACT_DIR/phase3a-corpus-resolver.stdout.json" 2> "$ARTIFACT_DIR/phase3a-corpus-resolver.stderr.txt"
+          rc=$?
+          if [ "$rc" -eq 0 ] && [ "${RICH_CORPUS_AVAILABLE:-false}" = true ] && [ "${CATALOG_AVAILABLE:-false}" = true ]; then
+            echo 'PHASE3A_CORPUS_PASS=true' >> "$GITHUB_ENV"
+          else
+            echo 'PHASE3A_CORPUS_PASS=false' >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Resolve, verify and inventory standalone-images.zip
+        if: env.ENVIRONMENT_PASS == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci/image_db_phase3b.py inventory --artifact-dir "$ARTIFACT_DIR" --corpus-dir "$CORPUS_DIR" > "$ARTIFACT_DIR/standalone-inventory.stdout.txt" 2> "$ARTIFACT_DIR/standalone-inventory.stderr.txt"
+          rc=$?
+          echo "$rc" > "$ARTIFACT_DIR/standalone-inventory-exit-code.txt"
+          if [ "$rc" -eq 0 ] && [ "${STANDALONE_AVAILABLE:-false}" = true ] && [ "${STANDALONE_CORPUS_VALIDATED:-false}" = true ]; then
+            echo 'STANDALONE_ASSET_PASS=true' >> "$GITHUB_ENV"
+          else
+            echo 'STANDALONE_ASSET_PASS=false' >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Phase 3B corpus gate
+        shell: bash
+        run: |
+          set +e
+          if [ "${ENVIRONMENT_PASS:-false}" = true ] && [ "${TESTS_PASS:-false}" = true ] && \
+             [ "${PHASE3A_PERSISTED_INDEX_PASS:-false}" = true ] && [ "${PHASE3A_CORPUS_PASS:-false}" = true ] && \
+             [ "${STANDALONE_ASSET_PASS:-false}" = true ]; then
+            echo 'PHASE3B_CORPUS_GATE_PASS=true' >> "$GITHUB_ENV"
+          else
+            echo 'PHASE3B_CORPUS_GATE_PASS=false' >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Reconstruct exact Phase 3A physical seed from verified corpus
+        if: env.PHASE3B_CORPUS_GATE_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          start=$(date +%s)
+          /usr/bin/time -v python -m srstudio.images.batch_training \
+            --library "$INC_LIBRARY" --imports-root "$INC_IMPORTS" --state "$INC_IMPORTS/corpus-state.json" \
+            --report "$ARTIFACT_DIR/phase3a-seed-ingest-report.json" \
+            "$CORPUS_DIR/Downloads(1)(1).zip" "$CORPUS_DIR/Downloads(2)(1).zip" \
+            > "$ARTIFACT_DIR/phase3a-seed.stdout.json" 2> "$ARTIFACT_DIR/phase3a-seed-time.txt"
+          rc=$?
+          echo $(( $(date +%s) - start )) > "$ARTIFACT_DIR/phase3a-seed-seconds.txt"
+          if [ "$rc" -eq 0 ]; then echo 'PHASE3A_SEED_INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'PHASE3A_SEED_INGEST_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: Validate reconstructed seed against approved Phase 3A state
+        if: env.PHASE3A_SEED_INGEST_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci/image_db_phase3b.py snapshot --library "$INC_LIBRARY" --output "$ARTIFACT_DIR/phase3a-reconstructed-snapshot.json"
+          python scripts/ci/image_db_phase3_analysis.py \
+            --library "$INC_LIBRARY" --product-db "$PRODUCT_DB" \
+            --corpus-source "$CORPUS_DIR/Downloads(1)(1).zip" --corpus-source "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --artifact-dir "$ARTIFACT_DIR/before" --review-limit 100 \
+            > "$ARTIFACT_DIR/before-analysis.stdout.txt" 2> "$ARTIFACT_DIR/before-analysis.stderr.txt"
+          analysis_rc=$?
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          art=Path(os.environ['ARTIFACT_DIR'])
+          persisted=json.loads((art/'phase3a-persisted-snapshot.json').read_text())
+          rebuilt=json.loads((art/'phase3a-reconstructed-snapshot.json').read_text())
+          coverage=json.loads((art/'before/coverage-catalog-520.json').read_text())
+          audit=json.loads((art/'before/library-audit.json').read_text())['metrics']
+          checks={
+            'persisted_logical_signature_equal': persisted['logical_signature_sha256']==rebuilt['logical_signature_sha256'],
+            'canonical_1036': rebuilt['canonical']==1036,
+            'physical_1036': rebuilt['physical']==1036,
+            'coverage_auto_2': coverage.get('auto_approved')==2,
+            'coverage_likely_42': coverage.get('likely')==42,
+            'coverage_review_7': coverage.get('review_required')==7,
+            'coverage_missing_469': coverage.get('missing')==469,
+            'audit_physical_1036': audit.get('physical_images')==1036,
+            'audit_canonical_1036': audit.get('canonical_assets')==1036,
+          }
+          report={'seed_origin':'approved Phase 3A persisted index + deterministic physical reconstruction from the exact verified rich corpus','checks':checks,'pass':all(checks.values())}
+          (art/'phase3a-seed-equivalence.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+          raise SystemExit(0 if report['pass'] else 41)
+          PY
+          seed_rc=$?
+          if [ "$analysis_rc" -eq 0 ] && [ "$seed_rc" -eq 0 ]; then echo 'PHASE3A_SEED_PASS=true' >> "$GITHUB_ENV"; else echo 'PHASE3A_SEED_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: Record standalone BEFORE state
+        if: env.PHASE3A_SEED_PASS == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp "$INC_LIBRARY/index.json" "$ARTIFACT_DIR/before-standalone-index.json"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$INC_LIBRARY" --output "$ARTIFACT_DIR/before-standalone-snapshot.json"
+
+      - name: Incremental standalone ingest
+        if: env.PHASE3A_SEED_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          start=$(date +%s)
+          /usr/bin/time -v python -m srstudio.images.standalone_cli \
+            --library "$INC_LIBRARY" --product-db "$PRODUCT_DB" --manifest "$STANDALONE_MANIFEST" \
+            --state "$INC_IMPORTS/standalone-state.json" --report "$ARTIFACT_DIR/standalone-ingest-report.json" \
+            > "$ARTIFACT_DIR/standalone-ingest.stdout.json" 2> "$ARTIFACT_DIR/standalone-ingest-time.txt"
+          rc=$?
+          echo $(( $(date +%s) - start )) > "$ARTIFACT_DIR/standalone-ingest-seconds.txt"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$INC_LIBRARY" --output "$ARTIFACT_DIR/after-first-standalone-snapshot.json"
+          if [ "$rc" -eq 0 ]; then echo 'STANDALONE_INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'STANDALONE_INGEST_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: Second standalone ingest — idempotency
+        if: env.STANDALONE_INGEST_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          start=$(date +%s)
+          /usr/bin/time -v python -m srstudio.images.standalone_cli \
+            --library "$INC_LIBRARY" --product-db "$PRODUCT_DB" --manifest "$STANDALONE_MANIFEST" \
+            --state "$INC_IMPORTS/standalone-state.json" --report "$ARTIFACT_DIR/second-standalone-ingest-report.json" \
+            > "$ARTIFACT_DIR/second-standalone-ingest.stdout.json" 2> "$ARTIFACT_DIR/second-standalone-ingest-time.txt"
+          cli_rc=$?
+          echo $(( $(date +%s) - start )) > "$ARTIFACT_DIR/second-standalone-ingest-seconds.txt"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$INC_LIBRARY" --output "$ARTIFACT_DIR/after-second-standalone-snapshot.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          art=Path(os.environ['ARTIFACT_DIR'])
+          first=json.loads((art/'after-first-standalone-snapshot.json').read_text())
+          second=json.loads((art/'after-second-standalone-snapshot.json').read_text())
+          report=json.loads((art/'second-standalone-ingest-report.json').read_text())
+          metrics=report.get('metrics',{})
+          checks={
+            'new_physical_zero': second['physical']-first['physical']==0,
+            'new_canonical_zero': second['canonical']-first['canonical']==0,
+            'logical_signature_unchanged': first['logical_signature_sha256']==second['logical_signature_sha256'],
+            'processed_zero': int(metrics.get('processed',-1))==0,
+            'all_selected_skipped': int(metrics.get('skipped',-1))==int(os.environ.get('STANDALONE_TRAINING_FILES','-2')),
+          }
+          payload={'first':{k:v for k,v in first.items() if k!='logical_rows'},'second':{k:v for k,v in second.items() if k!='logical_rows'},'second_metrics':metrics,'checks':checks,'pass':all(checks.values())}
+          (art/'phase3b-idempotency.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
+          raise SystemExit(0 if payload['pass'] else 42)
+          PY
+          idem_rc=$?
+          if [ "$cli_rc" -eq 0 ] && [ "$idem_rc" -eq 0 ]; then echo 'PHASE3B_IDEMPOTENCY_PASS=true' >> "$GITHUB_ENV"; else echo 'PHASE3B_IDEMPOTENCY_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: Recovery regression
+        if: env.TESTS_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q tests/test_image_standalone_recovery.py --junitxml="$ARTIFACT_DIR/recovery-test-results.xml" > "$ARTIFACT_DIR/recovery.log" 2>&1
+          rc=$?
+          if [ "$rc" -eq 0 ]; then echo 'RECOVERY_PASS=true' >> "$GITHUB_ENV"; echo '{"status":"PASS"}' > "$ARTIFACT_DIR/recovery-report.json"; else echo 'RECOVERY_PASS=false' >> "$GITHUB_ENV"; echo '{"status":"FAIL"}' > "$ARTIFACT_DIR/recovery-report.json"; fi
+          exit 0
+
+      - name: Recompute audit, catalog 520, departments, top missing, find_image and performance
+        if: env.PHASE3B_IDEMPOTENCY_PASS == 'true' && env.RECOVERY_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          mkdir -p "$ARTIFACT_DIR/after"
+          cp "$ARTIFACT_DIR/standalone-ingest-seconds.txt" "$ARTIFACT_DIR/after/standalone-ingest-seconds.txt"
+          cp "$ARTIFACT_DIR/second-standalone-ingest-seconds.txt" "$ARTIFACT_DIR/after/second-ingest-seconds.txt"
+          /usr/bin/time -v python scripts/ci/image_db_phase3_analysis.py \
+            --library "$INC_LIBRARY" --product-db "$PRODUCT_DB" \
+            --corpus-source "$CORPUS_DIR/Downloads(1)(1).zip" --corpus-source "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --artifact-dir "$ARTIFACT_DIR/after" --review-limit 100 \
+            > "$ARTIFACT_DIR/after-analysis.stdout.txt" 2> "$ARTIFACT_DIR/after-analysis-time.txt"
+          rc=$?
+          if [ "$rc" -eq 0 ]; then echo 'AFTER_ANALYSIS_PASS=true' >> "$GITHUB_ENV"; else echo 'AFTER_ANALYSIS_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: Important products, Top Missing delta and new-auto review sample
+        if: env.AFTER_ANALYSIS_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci/image_db_phase3b.py important --library "$INC_LIBRARY" --standalone-report "$ARTIFACT_DIR/standalone-ingest-report.json" --output "$ARTIFACT_DIR/important-product-lookups.json"
+          imp_rc=$?
+          python scripts/ci/image_db_phase3b.py top-delta --before "$ARTIFACT_DIR/before/top-missing-100.csv" --after "$ARTIFACT_DIR/after/top-missing-100.csv" --output "$ARTIFACT_DIR/top-missing-delta.json"
+          top_rc=$?
+          python scripts/ci/image_db_phase3b.py new-auto --before-index "$ARTIFACT_DIR/before-standalone-index.json" --library "$INC_LIBRARY" --output-manifest "$ARTIFACT_DIR/new-auto-approved.json" --output-sheet "$ARTIFACT_DIR/new-auto-approved-contact-sheet.png"
+          auto_rc=$?
+          if [ "$imp_rc" -eq 0 ] && [ "$top_rc" -eq 0 ] && [ "$auto_rc" -eq 0 ]; then echo 'PHASE3B_REVIEW_EVIDENCE_PASS=true' >> "$GITHUB_ENV"; else echo 'PHASE3B_REVIEW_EVIDENCE_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: Fresh rebuild control — rich corpus plus standalone into empty bank
+        if: env.PHASE3B_REVIEW_EVIDENCE_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          start=$(date +%s)
+          /usr/bin/time -v python -m srstudio.images.batch_training \
+            --library "$FRESH_LIBRARY" --imports-root "$FRESH_IMPORTS" --state "$FRESH_IMPORTS/corpus-state.json" \
+            --report "$ARTIFACT_DIR/fresh-rich-ingest-report.json" \
+            "$CORPUS_DIR/Downloads(1)(1).zip" "$CORPUS_DIR/Downloads(2)(1).zip" \
+            > "$ARTIFACT_DIR/fresh-rich.stdout.json" 2> "$ARTIFACT_DIR/fresh-rich-time.txt"
+          rich_rc=$?
+          python -m srstudio.images.standalone_cli \
+            --library "$FRESH_LIBRARY" --product-db "$PRODUCT_DB" --manifest "$STANDALONE_MANIFEST" \
+            --state "$FRESH_IMPORTS/standalone-state.json" --report "$ARTIFACT_DIR/fresh-standalone-ingest-report.json" \
+            > "$ARTIFACT_DIR/fresh-standalone.stdout.json" 2> "$ARTIFACT_DIR/fresh-standalone.stderr.txt"
+          standalone_rc=$?
+          echo $(( $(date +%s) - start )) > "$ARTIFACT_DIR/fresh-rebuild-seconds.txt"
+          python scripts/ci/image_db_phase3b.py compare --left-library "$INC_LIBRARY" --right-library "$FRESH_LIBRARY" --product-db "$PRODUCT_DB" --output "$ARTIFACT_DIR/fresh-rebuild-equivalence.json"
+          compare_rc=$?
+          if [ "$rich_rc" -eq 0 ] && [ "$standalone_rc" -eq 0 ] && [ "$compare_rc" -eq 0 ]; then echo 'FRESH_REBUILD_PASS=true' >> "$GITHUB_ENV"; else echo 'FRESH_REBUILD_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: Build Phase 3B automated final report
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          art=Path(os.environ['ARTIFACT_DIR'])
+          def load(rel):
+              p=art/rel
+              return json.loads(p.read_text(encoding='utf-8')) if p.is_file() else {}
+          def text(rel):
+              p=art/rel
+              return p.read_text(encoding='utf-8',errors='replace') if p.is_file() else ''
+          def envbool(name): return os.environ.get(name,'false').lower()=='true'
+          def rss(rel):
+              m=re.search(r'Maximum resident set size \(kbytes\):\s*(\d+)',text(rel)); return int(m.group(1)) if m else None
+          before_cov=load('before/coverage-catalog-520.json'); after_cov=load('after/coverage-catalog-520.json')
+          before_dep=load('before/coverage-departments.json'); after_dep=load('after/coverage-departments.json')
+          before_audit=load('before/library-audit.json').get('metrics',{}); after_audit=load('after/library-audit.json').get('metrics',{})
+          inv=load('standalone-manifest.json'); ingest=load('standalone-ingest-report.json'); new_auto=load('new-auto-approved.json'); perf=load('after/performance.json')
+          gates={
+            'Environment':envbool('ENVIRONMENT_PASS'),'Tests':envbool('TESTS_PASS'),'Phase 3A persisted index':envbool('PHASE3A_PERSISTED_INDEX_PASS'),
+            'Phase 3A corpus':envbool('PHASE3A_CORPUS_PASS'),'Standalone asset':envbool('STANDALONE_ASSET_PASS'),'Phase 3A seed equivalence':envbool('PHASE3A_SEED_PASS'),
+            'Standalone incremental ingest':envbool('STANDALONE_INGEST_PASS'),'Phase 3B idempotency':envbool('PHASE3B_IDEMPOTENCY_PASS'),'Recovery':envbool('RECOVERY_PASS'),
+            'Audit/Catalog/Departments/TopMissing/FindImage/Performance':envbool('AFTER_ANALYSIS_PASS'),'Review evidence':envbool('PHASE3B_REVIEW_EVIDENCE_PASS'),'Fresh rebuild equivalence':envbool('FRESH_REBUILD_PASS')}
+          automated_pass=all(gates.values())
+          coverage_delta={
+            'any_candidate_products': after_cov.get('any_candidate',0)-before_cov.get('any_candidate',0),
+            'auto_approved': after_cov.get('auto_approved',0)-before_cov.get('auto_approved',0),
+            'likely': after_cov.get('likely',0)-before_cov.get('likely',0),
+            'review_required': after_cov.get('review_required',0)-before_cov.get('review_required',0),
+            'missing': after_cov.get('missing',0)-before_cov.get('missing',0),
+          }
+          new_auto_count=int(new_auto.get('sample_size',0) or 0)
+          automated_status='AUTOMATED PASS — HUMAN AUTO-APPROVAL REVIEW PENDING' if automated_pass and new_auto_count>0 else ('READY FOR INTEGRATION — COVERAGE EXPANSION PENDING' if automated_pass else 'NOT READY')
+          report={
+            'status':automated_status,'automated_pass':automated_pass,'tested_sha':os.environ.get('GITHUB_SHA',''),'run_id':os.environ.get('GITHUB_RUN_ID',''),'gates':gates,
+            'phase3a_seed':load('phase3a-seed-equivalence.json'),'standalone_asset':load('standalone-asset-verification.json'),'standalone_manifest_metrics':inv.get('metrics',{}),
+            'standalone_ingest':ingest.get('metrics',{}),'database_before':before_audit,'database_after':after_audit,
+            'coverage_before':before_cov,'coverage_after':after_cov,'coverage_delta':coverage_delta,'departments_before':before_dep,'departments_after':after_dep,
+            'idempotency':load('phase3b-idempotency.json'),'recovery':load('recovery-report.json'),'important_product_lookups':load('important-product-lookups.json'),
+            'top_missing_delta':load('top-missing-delta.json'),'new_auto_review':{'sample_size':new_auto_count,'human_review':'PENDING' if new_auto_count else 'NOT_REQUIRED_NO_NEW_AUTO_APPROVED'},
+            'performance':{
+              'standalone_ingest_seconds':int(text('standalone-ingest-seconds.txt').strip() or 0),'second_ingest_seconds':int(text('second-standalone-ingest-seconds.txt').strip() or 0),
+              'index_load_seconds':perf.get('index_load_seconds'),'exact_lookup':perf.get('exact_lookup',{}),'fuzzy_lookup':perf.get('fuzzy_lookup',{}),'audit_seconds':perf.get('audit_seconds'),
+              'standalone_ingest_peak_rss_kb':rss('standalone-ingest-time.txt'),'second_ingest_peak_rss_kb':rss('second-standalone-ingest-time.txt'),'audit_peak_rss_kb':rss('after-analysis-time.txt'),
+              'phase3a_ingest_reference_seconds':514,'phase3a_index_load_reference_seconds':0.028297,'phase3a_audit_reference_seconds':0.125125,
+            },
+            'fresh_rebuild':load('fresh-rebuild-equivalence.json'),'fresh_rebuild_seconds':int(text('fresh-rebuild-seconds.txt').strip() or 0),
+            'merges_performed':False,
+          }
+          (art/'phase3b-summary.json').write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as f:
+            f.write('# Image DB Phase 3B Standalone Validation\n\n')
+            f.write(f"**SHA:** `{report['tested_sha']}`  \n**Run:** `{report['run_id']}`  \n**Status:** **{automated_status}**\n\n")
+            f.write('| Gate | Result |\n|---|---|\n')
+            for name,value in gates.items(): f.write(f"| {name} | {'PASS' if value else 'FAIL'} |\n")
+            asset=report['standalone_asset']; metrics=report['standalone_manifest_metrics']
+            f.write(f"\n## Standalone asset\n- asset id: {asset.get('asset_id')}\n- size: {asset.get('actual_size')}\n- sha256: `{asset.get('sha256')}`\n- verified: {asset.get('verified')}\n- files: {metrics.get('image_files')}\n- valid: {metrics.get('valid_images')}\n- candidate: {metrics.get('candidate_images')}\n- decorative/rejected: {metrics.get('decorative_rejected')}\n- exact duplicate observations: {metrics.get('exact_duplicate_observations')}\n- near duplicate groups: {metrics.get('near_duplicate_groups')}\n")
+            f.write(f"\n## Coverage 520\n- before: {before_cov.get('any_candidate_coverage_percent')}%\n- after: {after_cov.get('any_candidate_coverage_percent')}%\n- auto: {before_cov.get('auto_approved')} → {after_cov.get('auto_approved')}\n- likely: {before_cov.get('likely')} → {after_cov.get('likely')}\n- review: {before_cov.get('review_required')} → {after_cov.get('review_required')}\n- missing: {before_cov.get('missing')} → {after_cov.get('missing')}\n")
+            f.write(f"\n## New auto-approved\n- generated review sample: {new_auto_count}\n- human result: {report['new_auto_review']['human_review']}\n")
+            f.write(f"\n## Reproducibility\n- fresh rebuild equivalent: {report['fresh_rebuild'].get('pass')}\n")
+          PY
+          df -h . > "$ARTIFACT_DIR/disk-after.txt"
+
+      - name: Persist Phase 3B manifest and automated evidence on isolated branch
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          mkdir -p docs/parallel/phase3-evidence/phase3b
+          for file in standalone-manifest.json standalone-asset-verification.json phase3b-summary.json phase3b-idempotency.json fresh-rebuild-equivalence.json top-missing-delta.json new-auto-approved.json important-product-lookups.json; do
+            [ -f "$ARTIFACT_DIR/$file" ] && cp "$ARTIFACT_DIR/$file" "docs/parallel/phase3-evidence/phase3b/$file"
+          done
+          [ -f "$ARTIFACT_DIR/after/top-missing-100.csv" ] && cp "$ARTIFACT_DIR/after/top-missing-100.csv" docs/parallel/phase3-evidence/phase3b/top-missing-100.csv
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/parallel/phase3-evidence/phase3b
+          if ! git diff --cached --quiet; then
+            git commit -m 'image-db: persist Phase 3B standalone validation evidence [skip ci]'
+            for attempt in 1 2 3; do
+              if git push origin HEAD:g2/parallel-image-database; then break; fi
+              git pull --rebase origin g2/parallel-image-database
+            done
+          fi
+          exit 0
+
+      - name: Upload complete Phase 3B evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-db-phase3b-report
+          path: |
+            artifacts/image-db-phase3b
+            artifacts/phase3b-incremental-library/index.json
+            artifacts/phase3b-incremental-imports/*.json
+            artifacts/phase3b-fresh-library/index.json
+            artifacts/phase3b-fresh-imports/*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Final automated Phase 3B gate
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          report=json.load(open('artifacts/image-db-phase3b/phase3b-summary.json',encoding='utf-8'))
+          print('Phase 3B automated status:', report['status'])
+          raise SystemExit(0 if report.get('automated_pass') else 1)
+          PY
