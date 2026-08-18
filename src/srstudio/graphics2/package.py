@@ -146,11 +146,11 @@ def _validate_manifest_identity(manifest: dict[str, Any], document: GraphicsDocu
 def _validate_current_schema_roundtrip(scene_data: dict[str, Any], document: GraphicsDocument) -> None:
     """Recusa perda silenciosa de propriedades no schema canônico atual.
 
-    `load_package()` é usado por save verificado e autosave/recovery. Portanto,
-    aceitar um `scene.json` 2.0 que o modelo atual desserializa descartando ou
-    alterando algum campo transformaria um round-trip aparentemente válido em
-    perda silenciosa de projeto. Para o schema atual, a representação precisa
-    sobreviver exatamente à sequência dict -> model -> dict.
+    Todos os valores presentes num `scene.json` 2.0 precisam sobreviver à
+    sequência dict -> model -> dict. Campos-default que não existiam em um
+    arquivo 2.0 mais antigo podem ser acrescentados pelo modelo atual; o que não
+    é permitido é descartar uma chave existente, truncar uma lista ou modificar
+    seu valor sem uma migração explícita.
 
     O alias histórico `srscene/2` continua fora desta checagem estrita para não
     transformar normalizações deliberadas de compatibilidade em quebra retroativa.
@@ -159,8 +159,31 @@ def _validate_current_schema_roundtrip(scene_data: dict[str, Any], document: Gra
     if str(scene_data.get("schema") or "") != "srscene/2.0":
         return
     restored = document.to_dict()
-    if restored != scene_data:
-        raise ValueError("Round-trip canônico do SR Scene 2.0 perdeu ou alterou propriedades")
+    mismatch = _first_unpreserved_value(scene_data, restored, path="scene")
+    if mismatch:
+        raise ValueError(f"Round-trip canônico do SR Scene 2.0 perdeu ou alterou propriedades em {mismatch}")
+
+
+def _first_unpreserved_value(source: object, restored: object, *, path: str) -> str:
+    if isinstance(source, dict):
+        if not isinstance(restored, dict):
+            return path
+        for key, value in source.items():
+            if key not in restored:
+                return f"{path}.{key}"
+            mismatch = _first_unpreserved_value(value, restored[key], path=f"{path}.{key}")
+            if mismatch:
+                return mismatch
+        return ""
+    if isinstance(source, list):
+        if not isinstance(restored, list) or len(source) != len(restored):
+            return path
+        for index, value in enumerate(source):
+            mismatch = _first_unpreserved_value(value, restored[index], path=f"{path}[{index}]")
+            if mismatch:
+                return mismatch
+        return ""
+    return "" if source == restored else path
 
 
 def _write_assets(
