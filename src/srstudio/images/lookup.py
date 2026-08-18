@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from srstudio.images.association import measurement_signature, normalize_product_name, product_name_similarity
+from srstudio.images.quality import asset_quality_score
 
 
 @dataclass(frozen=True, slots=True)
@@ -12,6 +13,10 @@ class ProductImageCandidate:
     asset: Any
     score: float
     reason: str
+    match_type: str = ""
+    quality_score: float = 0.0
+    identity_score: float = 0.0
+    provenance: tuple[dict, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -19,10 +24,17 @@ class ProductImageLookupResult:
     best_match: ProductImageCandidate | None
     alternatives: tuple[ProductImageCandidate, ...]
     confidence: float
+    match_type: str = ""
+    quality_score: float = 0.0
+    provenance: tuple[dict, ...] = ()
 
 
 class ProductImageLookupService:
-    """Metadata-only interactive lookup facade for the product image bank."""
+    """Metadata-only interactive lookup facade for the product image bank.
+
+    Product identity always outranks aesthetics. Visual quality is used only as a
+    variant/tie-break signal after name/SKU compatibility has been established.
+    """
 
     def __init__(
         self,
@@ -75,12 +87,10 @@ class ProductImageLookupService:
             return ProductImageLookupResult(None, (), 0.0)
 
         candidate_assets: dict[str, Any] = {}
-        exact_hit = False
         for query in query_names:
             q = normalize_product_name(query)
             for asset in self._exact.get(q, ()):
                 candidate_assets[str(getattr(asset, "id", id(asset)))] = asset
-                exact_hit = True
 
         if not candidate_assets:
             token_sets = [
@@ -121,11 +131,17 @@ class ProductImageLookupService:
         scored: list[ProductImageCandidate] = []
         query_signature = measurement_signature(product_name)
         for asset in candidate_assets.values():
-            names = self._asset_names(asset)
+            primary_names = tuple(
+                value
+                for value in (getattr(asset, "product_key", ""), getattr(asset, "product_name", ""))
+                if value
+            )
+            alias_names = tuple(getattr(asset, "aliases", ()) or ())
+            names = (*primary_names, *alias_names)
             best_text = 0.0
-            exact_name = False
+            match_type = "fuzzy"
             compatible_name = False
-            for name in names:
+            for index, name in enumerate(names):
                 if not name:
                     continue
                 signature = measurement_signature(name)
@@ -135,36 +151,57 @@ class ProductImageLookupService:
                 normalized_name = normalize_product_name(name)
                 if normalized_name == normalized:
                     best_text = 1.0
-                    exact_name = True
+                    match_type = "exact-name" if index < len(primary_names) else "exact-alias"
                     break
-                best_text = max(best_text, product_name_similarity(product_name, name))
+                similarity = product_name_similarity(product_name, name)
+                if similarity > best_text:
+                    best_text = similarity
+                    match_type = "fuzzy"
             if not compatible_name or best_text < 0.48:
                 continue
 
-            score = best_text
-            score += 0.04 if bool(getattr(asset, "preferred", False)) else 0.0
-            score += 0.04 * max(0.0, min(1.0, float(getattr(asset, "confidence", 0.0))))
-            megapixels = float(getattr(asset, "megapixels", 0.0) or 0.0)
-            score += min(0.02, megapixels / 25.0)
-            score = min(1.0, score)
-            reason = "nome exato" if exact_name else ("alias exato" if exact_hit else "similaridade")
-            scored.append(ProductImageCandidate(asset, round(score, 6), reason))
+            confidence = max(0.0, min(1.0, float(getattr(asset, "confidence", 0.0))))
+            quality = asset_quality_score(asset)
+            # Candidate score remains identity-dominant. Quality is a separate
+            # sort field and cannot make a weaker SKU/name outrank a stronger one.
+            score = min(1.0, best_text + 0.015 * confidence)
+            reason = {
+                "exact-name": "nome exato",
+                "exact-alias": "alias exato",
+                "fuzzy": "similaridade",
+            }[match_type]
+            scored.append(
+                ProductImageCandidate(
+                    asset=asset,
+                    score=round(score, 6),
+                    reason=reason,
+                    match_type=match_type,
+                    quality_score=quality,
+                    identity_score=round(best_text, 6),
+                    provenance=self._asset_provenance(asset),
+                )
+            )
 
         scored.sort(
             key=lambda item: (
-                item.score,
+                item.identity_score,
                 bool(getattr(item.asset, "preferred", False)),
                 float(getattr(item.asset, "confidence", 0.0)),
+                item.quality_score,
                 int(getattr(item.asset, "usage_count", 0)),
             ),
             reverse=True,
         )
         if not scored or scored[0].score < self.minimum_score:
             return ProductImageLookupResult(None, tuple(scored[: max(0, alternatives)]), 0.0)
+        best = scored[0]
         return ProductImageLookupResult(
-            best_match=scored[0],
+            best_match=best,
             alternatives=tuple(scored[1 : 1 + max(0, alternatives)]),
-            confidence=scored[0].score,
+            confidence=best.score,
+            match_type=best.match_type,
+            quality_score=best.quality_score,
+            provenance=best.provenance,
         )
 
     def _ensure_fresh(self) -> None:
@@ -193,6 +230,28 @@ class ProductImageLookupService:
             )
             if value
         )
+
+    @staticmethod
+    def _asset_provenance(asset: Any) -> tuple[dict, ...]:
+        metadata = dict(getattr(asset, "metadata", {}) or {})
+        result: list[dict] = []
+        seen: set[str] = set()
+        for value in (metadata.get("source_provenance"), metadata.get("provenance")):
+            if isinstance(value, dict):
+                rows = (value,)
+            elif isinstance(value, (list, tuple)):
+                rows = value
+            else:
+                rows = ()
+            for row in rows:
+                if not isinstance(row, dict):
+                    continue
+                key = repr(sorted(row.items()))
+                if key in seen:
+                    continue
+                seen.add(key)
+                result.append(dict(row))
+        return tuple(result)
 
 
 def find_image(library: Any, product_name: str, *, alternatives: int = 3) -> ProductImageLookupResult:
