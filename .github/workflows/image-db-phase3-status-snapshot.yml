@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     env:
-      TARGET_SHA: 0409d702e8c3354b5287c6dd89f5305b45fb8723
+      TARGET_SHA: 3115a38b0d688d5b1118c9734583ceb1f11fd534
     steps:
       - uses: actions/checkout@v4
         with:
@@ -27,19 +27,19 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p docs/parallel/phase3-evidence/explicit-release
-          row=$(gh run list --workflow image-db-phase3.yml --branch g2/parallel-image-database --commit "$TARGET_SHA" --limit 5 --json databaseId,status,conclusion,headSha,url,createdAt,updatedAt,workflowName --jq '.[0] // empty' || true)
+          mkdir -p docs/parallel/phase3-evidence/phase3a-current
+          row=$(gh run list --workflow image-db-phase3a.yml --branch g2/parallel-image-database --commit "$TARGET_SHA" --limit 5 --json databaseId,status,conclusion,headSha,url,createdAt,updatedAt,workflowName --jq '.[0] // empty' || true)
           if [ -z "$row" ]; then
-            printf '{"target_sha":"%s","found":false}\n' "$TARGET_SHA" > docs/parallel/phase3-evidence/explicit-release/status-snapshot.json
+            printf '{"target_sha":"%s","found":false}\n' "$TARGET_SHA" > docs/parallel/phase3-evidence/phase3a-current/status-snapshot.json
           else
             run_id=$(printf '%s\n' "$row" | jq -r '.databaseId')
             gh run view "$run_id" --json databaseId,status,conclusion,headSha,headBranch,event,url,createdAt,updatedAt,workflowName,jobs > /tmp/run-view.json
-            jq --arg target "$TARGET_SHA" '{target_sha:$target,found:true,run:.}' /tmp/run-view.json > docs/parallel/phase3-evidence/explicit-release/status-snapshot.json
+            jq --arg target "$TARGET_SHA" '{target_sha:$target,found:true,run:.}' /tmp/run-view.json > docs/parallel/phase3-evidence/phase3a-current/status-snapshot.json
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add docs/parallel/phase3-evidence/explicit-release/status-snapshot.json
-          git commit -m 'image-db: snapshot Phase 3A run status [skip ci]'
+          git add docs/parallel/phase3-evidence/phase3a-current/status-snapshot.json
+          git commit -m 'image-db: snapshot corrected Phase 3A run status [skip ci]'
           for attempt in 1 2 3 4 5; do
             if git push origin HEAD:g2/parallel-image-database; then exit 0; fi
             git pull --rebase origin g2/parallel-image-database
