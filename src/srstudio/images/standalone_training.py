@@ -107,6 +107,16 @@ class StandaloneProductImageTrainer:
                     }
                 ],
             }
+
+            # Preserve the scalar legacy `source` when this standalone file is a
+            # duplicate of an existing Canva/manual asset. Complete origin history
+            # lives in metadata.provenance; a later observation must not rewrite
+            # where the canonical image originally came from.
+            prior = self.library.find_near_duplicate(path, match.product_name)
+            if prior is None:
+                prior = self.library.find_cross_product_visual_duplicate(path, match.product_name)
+            canonical_source = getattr(prior, "source", "") if prior is not None else ""
+
             asset = self.library.learn_product_image(
                 path,
                 match.product_name,
@@ -115,7 +125,7 @@ class StandaloneProductImageTrainer:
                 metadata=metadata,
             )
             changes = {
-                "source": "standalone-library",
+                "source": canonical_source or "standalone-library",
                 "metadata": metadata,
                 "confidence": match.confidence,
             }
