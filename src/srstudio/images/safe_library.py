@@ -8,6 +8,8 @@ from pathlib import Path
 from PIL import Image
 
 from srstudio.images.library import ImageAsset, ImageLibrary
+from srstudio.images.perceptual_index import HammingPerceptualIndex, PerceptualIndexEntry
+from srstudio.images.quality import ImageQualityAnalyzer
 from srstudio.images.visual_dedup import compact_rgb_signature, is_conservative_visual_duplicate
 
 
@@ -21,12 +23,12 @@ class SafeImageLibrary(ImageLibrary):
     The original library API is intentionally preserved. Persistence is hardened:
     existing JSON is validated before writes, a rolling logical backup is made,
     the replacement is validated, then atomically installed. Perceptual duplicate
-    checks require compatible dHash, geometry and coarse RGB content so a low-detail
-    hash collision cannot by itself merge unrelated assets.
+    checks use a metadata-only BK-tree to find nearby dHash candidates and then
+    require compatible geometry plus coarse RGB content before merging.
 
-    Legacy asset IDs remain compatible with ImageLibrary's 24-hex digest key. New
-    safe imports additionally preserve the complete SHA-256 in metadata so exact
-    identity/provenance can be audited without a destructive ID migration.
+    New imports also persist a lightweight product-image quality assessment once.
+    Interactive lookup can rank variants from metadata without reopening thousands
+    of image files.
     """
 
     @property
@@ -42,6 +44,16 @@ class SafeImageLibrary(ImageLibrary):
         rgb_signature = self._rgb_signature_for_path(source_path)
         if rgb_signature:
             merged_metadata.setdefault("rgb_signature", rgb_signature)
+
+        if "quality_score" not in merged_metadata:
+            try:
+                quality = ImageQualityAnalyzer().product_quality(source_path, metadata=merged_metadata).metadata()
+                for key, value in quality.items():
+                    merged_metadata.setdefault(key, value)
+            except (OSError, ValueError):
+                # A corrupt/unsupported raster will still fail in the base importer;
+                # quality analysis itself must not manufacture a different failure.
+                pass
 
         # Exact duplicates use the legacy 24-hex asset id. Merge provenance before
         # delegating so repeated observations cannot erase earlier source records.
@@ -104,6 +116,7 @@ class SafeImageLibrary(ImageLibrary):
             if not isinstance(check, dict):
                 raise ImageLibraryCorruptionError("Temporary image index is not a JSON object")
             tmp.replace(self.index_path)
+            self._invalidate_perceptual_cache()
         except Exception:
             try:
                 tmp.unlink(missing_ok=True)
@@ -151,12 +164,22 @@ class SafeImageLibrary(ImageLibrary):
             variants.discard(canonical_sha256)
             merged["variant_sha256"] = sorted(variants)
 
-        # rgb_signature belongs to the canonical stored asset. A recompressed
-        # near-duplicate must not replace that signature just because its metadata
-        # is merged later.
-        canonical_rgb = str(current.get("rgb_signature") or "")
-        if canonical_rgb:
-            merged["rgb_signature"] = canonical_rgb
+        # Canonical visual/quality metadata must not be overwritten by a later
+        # recompressed near-duplicate merely because its provenance is merged.
+        for key in (
+            "rgb_signature",
+            "quality_score",
+            "resolution_score",
+            "transparency_score",
+            "sharpness_score",
+            "border_cleanliness_score",
+            "transparent_ratio",
+            "edge_stddev",
+            "border_stddev",
+            "penalties",
+        ):
+            if key in current:
+                merged[key] = current[key]
 
         provenance = cls._merge_provenance_lists(
             current.get("provenance"),
@@ -164,6 +187,12 @@ class SafeImageLibrary(ImageLibrary):
         )
         if provenance:
             merged["provenance"] = provenance
+        source_provenance = cls._merge_provenance_lists(
+            current.get("source_provenance"),
+            incoming.get("source_provenance"),
+        )
+        if source_provenance:
+            merged["source_provenance"] = source_provenance
         return merged
 
     @staticmethod
@@ -241,6 +270,45 @@ class SafeImageLibrary(ImageLibrary):
             )
         )
 
+    def _invalidate_perceptual_cache(self) -> None:
+        self.__dict__.pop("_perceptual_cache_signature", None)
+        self.__dict__.pop("_perceptual_cache_index", None)
+        self.__dict__.pop("_perceptual_cache_payload", None)
+
+    def _perceptual_snapshot(self) -> tuple[HammingPerceptualIndex, dict]:
+        try:
+            stat = self.index_path.stat()
+            signature = (stat.st_mtime_ns, stat.st_size)
+        except OSError:
+            signature = None
+
+        cached_signature = self.__dict__.get("_perceptual_cache_signature")
+        cached_index = self.__dict__.get("_perceptual_cache_index")
+        cached_payload = self.__dict__.get("_perceptual_cache_payload")
+        if cached_index is not None and cached_payload is not None and cached_signature == signature:
+            return cached_index, cached_payload
+
+        payload = self._load()
+        entries = [
+            PerceptualIndexEntry(asset_id=str(asset_id), perceptual_hash=str(data.get("perceptual_hash") or ""))
+            for asset_id, data in payload.items()
+            if isinstance(data, dict) and data.get("perceptual_hash")
+        ]
+        index = HammingPerceptualIndex(entries)
+        self.__dict__["_perceptual_cache_signature"] = signature
+        self.__dict__["_perceptual_cache_index"] = index
+        self.__dict__["_perceptual_cache_payload"] = payload
+        return index, payload
+
+    def _perceptual_candidates(self, fingerprint: str, max_distance: int) -> list[ImageAsset]:
+        index, payload = self._perceptual_snapshot()
+        result: list[ImageAsset] = []
+        for _, entry in index.search(fingerprint, max_distance):
+            data = payload.get(entry.asset_id)
+            if isinstance(data, dict):
+                result.append(self._asset(data))
+        return result
+
     def find_near_duplicate(
         self,
         source: str | Path,
@@ -252,8 +320,7 @@ class SafeImageLibrary(ImageLibrary):
             return None
         fingerprint, source_size, source_rgb_signature = signature
         normalized_key = self.normalize_product_key(product_key)
-        for data in self._load().values():
-            asset = self._asset(data)
+        for asset in self._perceptual_candidates(fingerprint, max_distance):
             if normalized_key and asset.product_key and self.normalize_product_key(asset.product_key) != normalized_key:
                 continue
             if self._is_visual_duplicate(fingerprint, source_size, source_rgb_signature, asset, max_distance):
@@ -273,8 +340,7 @@ class SafeImageLibrary(ImageLibrary):
         normalized_key = self.normalize_product_key(product_key)
         if not normalized_key:
             return None
-        for data in self._load().values():
-            asset = self._asset(data)
+        for asset in self._perceptual_candidates(fingerprint, max_distance):
             asset_key = self.normalize_product_key(asset.product_key or asset.product_name)
             if not asset_key or asset_key == normalized_key:
                 continue
