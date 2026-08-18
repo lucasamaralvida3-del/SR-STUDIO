@@ -53,10 +53,10 @@ class StandaloneTrainingReport:
 class StandaloneProductImageTrainer:
     """Precision-first ingestion for product images that do not come from PPTX.
 
-    Standalone filenames/titles are evidence, not ground truth. Verified manifest
-    mappings can auto-accept. An exact normalized match to a known catalog product
-    can also auto-accept; strong fuzzy matches remain pending so packaging variants,
-    flavours and gramatures are never silently collapsed.
+    A filename/title is only a textual hint. It can produce a review candidate, but
+    it cannot auto-accept Product↔Image by itself. Automatic approval requires an
+    explicitly verified mapping or corroborating visual evidence from an already
+    accepted image for the same product.
     """
 
     def __init__(self, library, catalog_names: Iterable[str] = ()) -> None:
@@ -73,9 +73,7 @@ class StandaloneProductImageTrainer:
             path = Path(source.path)
             if not path.is_file():
                 warnings.append(f"Standalone image not found: {path}")
-                matches.append(
-                    StandaloneMatch(str(path), "", "", 0.0, "unknown", "missing-file")
-                )
+                matches.append(StandaloneMatch(str(path), "", "", 0.0, "unknown", "missing-file"))
                 unknown += 1
                 continue
 
@@ -84,6 +82,27 @@ class StandaloneProductImageTrainer:
                 unknown += 1
                 matches.append(match)
                 continue
+
+            # A same-product accepted visual duplicate is independent evidence. It
+            # can promote a filename/catalog review candidate without trusting the
+            # filename alone. Geometry-safe perceptual matching is supplied by
+            # SafeImageLibrary in the production batch path.
+            prior_same = self.library.find_near_duplicate(path, match.product_name)
+            if (
+                match.status == "review"
+                and prior_same is not None
+                and getattr(prior_same, "review_status", "") == "accepted"
+                and self._same_product(prior_same, match.product_name)
+            ):
+                match = StandaloneMatch(
+                    path=match.path,
+                    product_name=match.product_name,
+                    normalized_name=match.normalized_name,
+                    confidence=max(0.95, match.confidence),
+                    status="accepted",
+                    reason=f"{match.reason}+accepted-visual-consensus",
+                    alternatives=match.alternatives,
+                )
 
             confidence = match.confidence
             if match.status != "accepted":
@@ -112,7 +131,7 @@ class StandaloneProductImageTrainer:
             # duplicate of an existing Canva/manual asset. Complete origin history
             # lives in metadata.provenance; a later observation must not rewrite
             # where the canonical image originally came from.
-            prior = self.library.find_near_duplicate(path, match.product_name)
+            prior = prior_same
             if prior is None:
                 prior = self.library.find_cross_product_visual_duplicate(path, match.product_name)
             canonical_source = getattr(prior, "source", "") if prior is not None else ""
@@ -170,7 +189,9 @@ class StandaloneProductImageTrainer:
     def match(self, source: StandaloneImageSource) -> StandaloneMatch:
         path = Path(source.path)
         explicit = " ".join(str(source.product_name or "").split())
-        label = " ".join(str(source.label or "").split()) or self._label_from_filename(path)
+        explicit_label = " ".join(str(source.label or "").split())
+        filename_label = self._label_from_filename(path)
+        label = explicit_label or filename_label
 
         if source.verified and explicit:
             return StandaloneMatch(
@@ -211,16 +232,17 @@ class StandaloneProductImageTrainer:
         margin = best_score - second_score
 
         if normalized_query == best_normalized:
+            reason = "exact-catalog-explicit" if explicit else (
+                "exact-catalog-label" if explicit_label else "exact-catalog-filename"
+            )
+            confidence = 0.84 if explicit else 0.80
             return StandaloneMatch(
-                str(path), best_name, best_normalized, 0.92, "accepted", "exact-catalog-name", alternatives
+                str(path), best_name, best_normalized, confidence, "review", reason, alternatives
             )
 
-        # Strong fuzzy evidence still goes to review. This is intentional: a title
-        # such as TODDY 370G must never be promoted to TODDY 750G just because the
-        # package looks/name reads similarly.
         if best_score >= 0.94 and margin >= 0.08 and product_names_compatible(query, best_name):
             return StandaloneMatch(
-                str(path), best_name, best_normalized, 0.81, "review", "strong-catalog-fuzzy", alternatives
+                str(path), best_name, best_normalized, 0.79, "review", "strong-catalog-fuzzy", alternatives
             )
         if best_score >= 0.82 and margin >= 0.10:
             return StandaloneMatch(
@@ -229,6 +251,15 @@ class StandaloneProductImageTrainer:
         return StandaloneMatch(
             str(path), best_name, best_normalized, min(0.69, best_score), "review", "ambiguous-catalog-match", alternatives
         )
+
+    def _same_product(self, asset, product_name: str) -> bool:
+        target = normalize_product_name(product_name)
+        candidates = [
+            getattr(asset, "product_key", ""),
+            getattr(asset, "product_name", ""),
+            *(getattr(asset, "aliases", ()) or ()),
+        ]
+        return any(normalize_product_name(value) == target for value in candidates if value)
 
     @staticmethod
     def _catalog(names: Iterable[str]) -> dict[str, str]:
