@@ -201,7 +201,10 @@ def _dispatch_editable_selection(
     if not original_selection:
         return original_dispatch(self, command)
     editable = {node_id for node_id in original_selection if not session.effective_locked(node_id)}
-    blocked = len(original_selection - editable)
+    blocked_ids = original_selection - editable
+    blocked = len(blocked_ids)
+    if not blocked:
+        return original_dispatch(self, command)
     if not editable:
         return command_module.CommandResult(
             True,
@@ -215,11 +218,19 @@ def _dispatch_editable_selection(
     session.anchor_id = original_anchor if original_anchor in editable else next(iter(editable), None)
     try:
         result = original_dispatch(self, command)
+        post_selection = {node_id for node_id in session.selection if node_id in session.page.nodes}
+        post_anchor = session.anchor_id
     finally:
-        remaining = {node_id for node_id in original_selection if node_id in session.page.nodes}
-        session.selection = remaining
-        session.anchor_id = original_anchor if original_anchor in remaining else next(iter(remaining), None)
-    if blocked and result.ok:
+        blocked_remaining = {node_id for node_id in blocked_ids if node_id in session.page.nodes}
+        restored = post_selection | blocked_remaining if "post_selection" in locals() else blocked_remaining
+        session.selection = restored
+        if "post_anchor" in locals() and post_anchor in restored:
+            session.anchor_id = post_anchor
+        elif original_anchor in restored:
+            session.anchor_id = original_anchor
+        else:
+            session.anchor_id = next(iter(restored), None)
+    if result.ok:
         result.payload = dict(result.payload or {})
         result.payload["blocked"] = blocked
         result.message = f"{result.message} {blocked} elemento(s) bloqueado(s) preservado(s).".strip()
