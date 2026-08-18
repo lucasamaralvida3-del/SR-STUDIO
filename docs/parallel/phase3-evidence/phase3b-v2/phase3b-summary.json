@@ -1,8 +1,8 @@
 {
-  "status": "NOT READY",
-  "automated_pass": false,
-  "tested_sha": "e7c0d814b6770ffeff179c534bb1deead9041437",
-  "run_id": "32174335508",
+  "status": "READY FOR INTEGRATION — COVERAGE EXPANSION PENDING",
+  "automated_pass": true,
+  "tested_sha": "fe10326431a7d4e45e057d48ec3a2ee8d1137614",
+  "run_id": "32178496031",
   "gates": {
     "Environment": true,
     "Tests": true,
@@ -16,7 +16,7 @@
     "Recovery": true,
     "Audit/Catalog/Departments/TopMissing/FindImage/Performance": true,
     "Review evidence": true,
-    "Fresh rebuild equivalence": false
+    "Fresh rebuild equivalence": true
   },
   "phase3a_before_equivalence": {
     "method": "persisted Phase 3A index + physical byte materialization only; no rich-corpus training before standalone",
@@ -419,7 +419,8 @@
       "pending": 1026,
       "rejected": 0,
       "missing_provenance": 0,
-      "logical_signature_sha256": "31486bc363b325d8ce7f3f7ffa2e8ae96b907abd7208accd57586d59bb736191"
+      "logical_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0",
+      "semantic_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0"
     },
     "second": {
       "canonical": 1037,
@@ -428,7 +429,8 @@
       "pending": 1026,
       "rejected": 0,
       "missing_provenance": 0,
-      "logical_signature_sha256": "31486bc363b325d8ce7f3f7ffa2e8ae96b907abd7208accd57586d59bb736191"
+      "logical_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0",
+      "semantic_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0"
     },
     "second_metrics": {
       "discovered": 153,
@@ -541,23 +543,23 @@
   "performance": {
     "standalone_ingest_seconds": 1,
     "second_ingest_seconds": 0,
-    "index_load_seconds": 0.022193,
+    "index_load_seconds": 0.025893,
     "exact_lookup": {
-      "mean_ms": 0.045307,
-      "p50_ms": 0.021883,
-      "p95_ms": 0.200687,
-      "max_ms": 0.214968
+      "mean_ms": 0.054497,
+      "p50_ms": 0.025997,
+      "p95_ms": 0.231542,
+      "max_ms": 0.281936
     },
     "fuzzy_lookup": {
-      "mean_ms": 0.050037,
-      "p50_ms": 0.022168,
-      "p95_ms": 0.191033,
-      "max_ms": 0.204012
+      "mean_ms": 0.061658,
+      "p50_ms": 0.027592,
+      "p95_ms": 0.237776,
+      "max_ms": 0.310907
     },
-    "audit_seconds": 0.098717,
-    "standalone_ingest_peak_rss_kb": 80020,
-    "second_ingest_peak_rss_kb": 40448,
-    "audit_peak_rss_kb": 258968,
+    "audit_seconds": 0.112457,
+    "standalone_ingest_peak_rss_kb": 80100,
+    "second_ingest_peak_rss_kb": 40356,
+    "audit_peak_rss_kb": 258864,
     "phase3a_ingest_reference_seconds": 514,
     "phase3a_index_load_reference_seconds": 0.028297,
     "phase3a_audit_reference_seconds": 0.125125
@@ -570,7 +572,8 @@
       "pending": 1026,
       "rejected": 0,
       "missing_provenance": 0,
-      "logical_signature_sha256": "31486bc363b325d8ce7f3f7ffa2e8ae96b907abd7208accd57586d59bb736191"
+      "logical_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0",
+      "semantic_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0"
     },
     "right": {
       "canonical": 1037,
@@ -579,9 +582,11 @@
       "pending": 1026,
       "rejected": 0,
       "missing_provenance": 0,
-      "logical_signature_sha256": "c7cd14a792d8eb130f2df11c592a5892720d71ec0e18bc6cd2a7eff19f4ad4f5"
+      "logical_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0",
+      "semantic_signature_sha256": "fa857ef8df5230ecb24c9ee5a2ccd16c563c85546ae090a9812745c8e76e30a0"
     },
-    "logical_signature_equal": false,
+    "semantic_signature_equal": true,
+    "logical_signature_equal": true,
     "canonical_equal": true,
     "physical_equal": true,
     "coverage_equal": true,
@@ -606,8 +611,24 @@
       "any_candidate_coverage_percent": 9.8077,
       "auto_approved_coverage_percent": 0.3846
     },
-    "pass": false
+    "comparator_contract": {
+      "aliases": "normalize_product_name + unique set",
+      "semantic_fields_preserved": [
+        "product",
+        "sha256",
+        "review_status",
+        "confidence",
+        "perceptual_hash",
+        "variant_sha256",
+        "association_status",
+        "standalone",
+        "provenance"
+      ],
+      "coverage_required_equal": true,
+      "departments_required_equal": true
+    },
+    "pass": true
   },
-  "fresh_rebuild_seconds": 404,
+  "fresh_rebuild_seconds": 509,
   "merges_performed": false
 }
