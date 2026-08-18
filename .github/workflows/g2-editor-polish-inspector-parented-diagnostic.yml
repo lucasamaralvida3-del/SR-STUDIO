@@ -1,11 +1,9 @@
 name: G2 Editor Polish Inspector Parented Diagnostic
 
 on:
-  push:
+  pull_request:
     branches:
-      - g2/parallel-editor-polish-inspector-parented-base
-    paths:
-      - '.github/workflows/g2-editor-polish-inspector-parented-diagnostic.yml'
+      - g2/integration-beta
 
 permissions:
   contents: read
