@@ -45,3 +45,11 @@ def test_project_actions_exposes_standard_clipboard_shortcuts():
     assert '"name": "copy"' in source
     assert '"name": "cut"' in source
     assert '"name": "paste"' in source
+
+
+def test_project_actions_blocks_close_when_recovery_cannot_be_written():
+    source = _QML.read_text(encoding="utf-8")
+
+    assert "function onClosing(close)" in source
+    assert "sceneBridge.protectBeforeClose()" in source
+    assert "close.accepted = false" in source
