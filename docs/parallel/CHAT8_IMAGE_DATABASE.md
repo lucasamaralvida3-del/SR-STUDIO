@@ -4,428 +4,959 @@
 
 - Branch isolada: `g2/parallel-image-database`.
 - Worktree solicitado: `../SR-STUDIO-g2-image-database`.
-- O runtime desta sessão não expõe um checkout Git local do repositório, portanto `git status` e a lista de worktrees locais não puderam ser observados diretamente. As alterações desta sessão foram escritas exclusivamente na branch isolada via GitHub connector.
-- Nenhuma alteração foi feita em `main` ou `stable`.
-- `AGENTS.md`, `docs/SR_STUDIO_NEXT_ARCHITECTURE.md` e `docs/G2_CONTINUOUS_PROGRESS.md` foram lidos antes das alterações.
-- `docs/G2_CONTINUOUS_PROGRESS.md` permaneceu somente leitura.
 - BASE_SHA: `3b44feaf6480e286d3619d0a1c0c00a13a4f450c`.
+- Nenhuma alteração foi feita em `main` ou `stable`.
+- Nenhum merge, `reset --hard`, `clean` destrutivo ou descarte de trabalho existente foi executado.
+- `docs/G2_CONTINUOUS_PROGRESS.md` permaneceu somente leitura.
+- O runtime desta sessão não expõe checkout Git local do SR-STUDIO. Escritas foram feitas exclusivamente na branch isolada via GitHub connector.
+- Consequência: `git status`, `git worktree list` e `pytest` completo não puderam ser executados diretamente no worktree real.
 
-## Implementação existente auditada
+## Baseline anterior — não repetir
 
-A branch já possuía uma base relevante e foi fortalecida em vez de recriada:
+A auditoria anterior dos 15 PPTX continua válida e não foi refeita como fonte principal na FASE 2:
 
-- `src/srstudio/images/library.py`: persistência, hash, aliases, review status, preferência e busca.
-- `src/srstudio/images/canva_training.py`: treinamento Canva/PPTX anterior.
-- `src/srstudio/images/association.py`: normalização, proteção de gramatura, associação espacial, consenso e classificação decorativa.
-- `src/srstudio/images/corpus_training.py`: ingestão incremental por SHA-256, extração via `PptxImporter`, estado com backup e métricas.
-- `src/srstudio/images/precision_training.py`: política precision-first.
-- `src/srstudio/images/lookup.py`: contrato `find_image()` com best match, alternativas e confidence.
-- `src/srstudio/images/evidence_aliases.py`: aliases baseados em evidência e compatibilidade de SKU.
-- `src/srstudio/images/safe_library.py`: persistência fail-closed e biblioteca segura.
-- `src/srstudio/products/database.py` e `src/srstudio/products/sync.py`: consultados; nenhuma refatoração grande foi feita para não invadir o CHAT 4.
+- 15 PPTX reais;
+- 13 arquivos únicos exatos;
+- 11 documentos lógicos;
+- 295 slides;
+- 363 referências de imagem;
+- 545 ocorrências de texto candidato a produto;
+- 124 produtos normalizados;
+- 14 mídias embedded únicas;
+- as 14 mídias eram essencialmente logos, fundos, selos e template;
+- baseline segura: **0 fotos reais de SKU extraíveis desses 15 arquivos específicos**.
 
-## Corpus real acessível — baseline estrutural 2026-08-18
+Esses arquivos continuam úteis para nomenclatura, aliases, layout e coocorrência, mas não devem ser reprocessados repetidamente em busca de fotos que não existem no pacote.
 
-A Library acessível contém 19 PPTX. Quatro estão marcados como artefatos gerados pelo modelo e não foram usados como verdade de treinamento. Foram materializados e auditados 15 PPTX originais/operacionais do SR.
+---
 
-### Métricas dos 15 PPTX
+# FASE 2 — REAL IMAGE CORPUS
 
-- arquivos encontrados: **15**;
-- arquivos únicos exatos por SHA-256: **13**;
-- documentos lógicos únicos: **11**;
-- slides: **295**;
-- referências de imagem em shapes/slides: **363**;
-- mídias internas, somadas por pacote: **43**;
-- imagens únicas exatas por SHA-256: **14**;
-- ocorrências de texto candidato a produto: **545**;
-- produtos normalizados únicos observados: **124**;
-- decks `text-only`: **1**;
-- decks `template-heavy`: **5**;
-- decks `mixed`: **9**;
-- grupos de arquivos exatamente duplicados: **1**;
-- grupos adicionais de exportações logicamente duplicadas: **2**;
-- pares de mídia com dHash <= 4 e SHA diferente: **1**;
-- pares perceptuais rejeitados pelo gate de geometria: **1**.
+## Objetivo
 
-A auditoria estrutural equivalente executada localmente sobre os 15 PPTX levou aproximadamente **0,88–0,92 s** em três execuções. Esse número mede o inventário ZIP/XML/PIL no ambiente desta sessão, não a suíte completa do SR Studio.
+A FASE 2 mudou o foco de “como associar Produto↔Imagem” para:
 
-### Duplicatas exatas
+> onde estão as fotos reais já pertencentes ao acervo do SR e como transformá-las em um banco confiável, incremental e reutilizável sem trabalho manual.
 
-Os três arquivos abaixo são byte a byte equivalentes pelo SHA-256 do PPTX:
+A prioridade permanece **precisão antes de cobertura**. `wrong-auto-accept` continua sendo o pior erro possível.
 
-- `Cartazes Atacarejo SR (1).pptx`;
-- `Cartazes Atacarejo SR (1)(1).pptx`;
-- `Cartazes Atacarejo SR (1)(2).pptx`.
+## 1. Compactados encontrados na Library
 
-Eles devem representar uma única fonte documental para consenso.
+Foram encontrados 8 arquivos compactados não gerados pelo modelo:
 
-### Exportações logicamente duplicadas
+1. `Downloads(1)(1).zip` — 249.253.663 bytes;
+2. `Downloads(2)(1).zip` — 344.039.590 bytes;
+3. `Downloads(2).zip` — 344.039.590 bytes;
+4. `Downloads(1).zip` — 249.253.663 bytes;
+5. `modelos.zip` — 2.953.526 bytes;
+6. `publish_repository.zip` — 19.093.966 bytes;
+7. `Downloads.zip` — 1.577.959 bytes;
+8. `Downloads.rar` — 1.580.383 bytes.
 
-Foram encontrados dois grupos em que o SHA do arquivo muda, mas o conteúdo útil de slides/textos/mídias é equivalente:
+### 1.1 Duplicatas exatas de arquivos grandes
 
-1. `OFERTAS QUINTA FILÉ NOVO.pptx` ↔ `OFERTAS QUINTA FILÉ NOVO(1).pptx`;
-2. `SEGUNDA DA LIMPEZA 2 PRECO.pptx` ↔ `SEGUNDA DA LIMPEZA 2 PRECO COM LIMITE.pptx` no conteúdo estrutural relevante ao Produto↔Imagem disponível no pacote.
+SHA-256 confirmou:
 
-O consenso agora possui identidade lógica de documento para que exportações equivalentes não aumentem confiança artificialmente.
+- `Downloads(1)(1).zip` == `Downloads(1).zip`
+  - SHA-256: `aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba`
+- `Downloads(2)(1).zip` == `Downloads(2).zip`
+  - SHA-256: `035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86`
 
-### Característica decisiva do corpus atual
+Portanto apenas **2 arquivos grandes únicos** precisam representar esse corpus.
 
-`Cartazes Atacarejo SR (1).pptx` possui 93 slides e muitos nomes de produtos reais, mas apenas **1 mídia reutilizada nas 93 páginas**. Ele é excelente corpus de nomenclatura/layout, porém não contém uma foto diferente de produto por slide.
+### 1.2 Downloads.zip / Downloads.rar
 
-`OFERTAS QUINTA FILÉ NOVO.pptx` possui 3 slides, 9 mídias internas e 31 referências de imagem. A inspeção visual das mídias mostrou fundo, selo Quinta Filé, logo SR, Smart, Adeel, gradientes e elementos promocionais — não fotos das embalagens/SKUs.
+Os dois arquivos contêm os mesmos 6 JPGs da campanha de Dia dos Pais.
 
-A inspeção visual das **14 mídias únicas** de todos os PPTX materializados mostrou branding/template/decorativos. A baseline correta de **fotos de produto extraíveis desses PPTX específicos é 0**. O sistema não deve fabricar associações para aumentar cobertura.
+A equivalência foi confirmada pelos 6 pares de:
 
-## PDFs correlatos
+- nome interno;
+- tamanho;
+- CRC32.
 
-Foram auditados:
+Eles são artes compostas de campanha, não fotos standalone de SKU.
 
-- `atacado.PDF` — 26 páginas;
-- `atacado(1).PDF` — 26 páginas;
-- `ATACADO INICIO.PDF` — 26 páginas;
-- `CUSTO.PDF` — 616 páginas;
-- `SR_STUDIO_PROMOCOES.pdf` — 7 páginas.
+### 1.3 modelos.zip
 
-Os três PDFs de atacado e `CUSTO.PDF` não expõem imagens raster de produto; são predominantemente texto/vetor. `SR_STUDIO_PROMOCOES.pdf` contém raster, mas a inspeção mostra principalmente logos/QR/elementos do cartaz. PDFs permanecem úteis como referência visual/layout, não como substituto automático do asset original.
+`modelos.zip` contém 17 PPTX de uma página.
 
-## Imagens standalone disponíveis na Library
+Medição:
 
-A Library também contém imagens individuais de produtos enviados/criados anteriormente, por exemplo:
+- 17 slides;
+- 35 ocorrências de mídia;
+- somente 5 mídias únicas.
 
-- amaciante Smart 2L;
-- pão de queijo Rodrigues;
-- feijão Paraná 1kg;
-- papel higiênico;
-- hambúrguer em embalagem;
-- mandioca congelada;
-- farinha artesanal;
-- outros produtos recortados/fotografados.
+Inspeção visual: logos SR, QR, faixas e elementos de template. **0 fotos reais de SKU**.
 
-Esses arquivos podem alimentar uma segunda fonte de conhecimento com provenance explícito `standalone-library`. Eles não devem ser registrados como se tivessem sido aprendidos de PPTX e o nome do arquivo, sozinho, não deve autorizar um auto-accept inseguro.
+### 1.4 publish_repository.zip
 
-## Produtos reais observados no corpus
+O pacote publicado contém 126 entradas, incluindo:
 
-Exemplos estruturados já encontrados:
+- 17 `.pptx`;
+- 8 `.png`;
+- 17 `.py`;
+- 19 `.ps1`;
+- 7 `.xlsx`;
+- 1 SQLite `atacado_historico.db`;
+- executáveis/bibliotecas/scripts de publicação.
 
-- `MONSTER 473ML`;
-- `EXTRATO ELEFANTE 300G`;
-- `FEIJÃO PRETO DU BOM 1KG`;
-- `FEIJÃO VERMELHO PINK 1KG`;
-- `FEIJÃO CARIOCA DU BOM 1KG`;
-- `SPRITE ORIGINAL PET 2L`;
-- `SAB PROTEX 85G`;
-- `MARGARINA QUALY TK 1KG`;
-- `COXA SOBRECOXA DESOSSADA PERDIGÃO 1KG`;
-- `BATATA BEM BRASIL CANOA 1,05KG`;
-- `ASA DE FRANGO SADIA BANDEJA 1KG`;
-- `COXINHA DA ASA SADIA BANDEJA 1KG`;
-- `HAMBÚRGUER SADIA ANGUS 360G`;
-- `PÃO DE QUEIJO CONGELADO SR 1KG`.
+Os 8 PNGs são thumbnails de modelos + logo SR.
 
-O corpus de cartazes alimenta normalização/nomenclatura mesmo quando não contém foto. Isso é separado da evidência necessária para Produto↔Imagem.
+Os 17 PPTX possuem somente **10 hashes de PPTX únicos**, e o conjunto desses 10 hashes é exatamente igual ao conjunto lógico de `modelos.zip`.
 
-## Melhorias implementadas
+Resultado: `publish_repository.zip` **não adiciona nova fonte de foto de SKU**, mas trouxe um catálogo real de atacado muito valioso.
 
-### 1. Consenso por identidade real/lógica do documento
+---
 
-`association.py` não usa mais apenas o basename como `distinct_source_count`.
+## 2. Descoberta decisiva — dois ZIPs ricos em fotos reais
 
-Prioridade de identidade:
+Os dois arquivos grandes únicos contêm os encartes que faltavam na FASE 1.
 
-1. `metadata.source_document_id`;
-2. `metadata.source_sha256`;
-3. digest reconhecido no caminho `.../media/<digest>/...`;
-4. `source_file` como fallback compatível.
+### Downloads(1)(1).zip
 
-`PrecisionProductImageCorpusTrainer` agora cria `source_document_id` conservador usando:
+Contém 13 PPTX reais de campanhas, incluindo:
 
-- quantidade de slides;
-- quantidade de referências de mídia;
-- conjunto de SHA-256 das mídias;
-- nomes normalizados dos produtos;
-- pares `(slide, produto, image_sha256)`.
+- churrasco/açougue;
+- Ambev/Copa;
+- Relâmpago;
+- limpeza;
+- economia;
+- Terça Verde;
+- Quarta Café com Pão;
+- Quinta Filé;
+- Baby;
+- cervejas/bebidas;
+- especiais;
+- fim de semana;
+- hortifruti.
 
-Assim:
+Métricas aproximadas do pacote:
 
-- cópias exatas renomeadas não votam várias vezes;
-- exportações logicamente equivalentes também não votam várias vezes;
-- documentos realmente diferentes com o mesmo basename continuam independentes.
+- 13 PPTX;
+- 257 slides;
+- 1.059 entradas de mídia;
+- 892 mídias únicas exatas dentro do arquivo.
 
-### 2. Versionamento incremental da política de precisão
+### Downloads(2)(1).zip
 
-`PRECISION_TRAINER_VERSION = g2-image-precision-v2`.
+Contém 23 PPTX reais, incluindo materiais SANJU, bebidas, fim de semana, shampoo Siàge, mussarela, KitKat, pescados, sorvete, carnes, Heineken, Batata Bem Brasil, terça/hortifruti/limpeza etc.
 
-Records antigos sem a versão atual são reprocessados quando aquela fonte entra novamente no batch, sem transformar a atualização de algoritmo em reprocessamento global desnecessário.
+Métricas:
 
-### 3. Deduplicação perceptual conservadora
+- 23 PPTX;
+- 309 slides;
+- ~1.265 entradas de mídia.
 
-Foi criado `src/srstudio/images/visual_dedup.py`.
+### Corpus rico combinado
 
-SHA-256 permanece a identidade exata. dHash serve somente para levantar candidatos near-duplicate e precisa concordar também com:
+Os dois arquivos grandes únicos representam:
 
-- orientação;
-- aspect ratio dentro de tolerância conservadora.
+- **36 PPTX**;
+- **566 slides**;
+- **2.324 ocorrências/entradas de mídia**;
+- **1.910 mídias únicas exatas por SHA-256**;
+- **234 grupos de hash duplicado**;
+- **414 ocorrências duplicadas além dos canônicos**.
 
-O caso real encontrado no corpus tinha:
+A inspeção visual confirmou que esse corpus contém muitas fotos/cutouts reais de produto: arroz, feijão, flocão, tapioca, café, açúcar, leite, achocolatado, limpeza, fraldas, hortifruti, carnes, cervejas, vinhos e outros SKUs.
 
-- dHash: idêntico;
-- distância de Hamming: 0;
-- imagem A: 119×119;
-- imagem B: 2160×933;
-- diferença relativa de aspect ratio: ~56,8%.
+Este é o primeiro corpus encontrado nesta missão que realmente pode popular o banco em escala.
 
-Essas imagens visualmente diferentes agora são rejeitadas como duplicata.
+---
 
-### 4. SHA-256 completo + provenance sem migração destrutiva
+## 3. Frequência de produto no corpus rico
 
-O ID legado de `ImageLibrary` permanece compatível com 24 caracteres. `SafeImageLibrary` passou a preservar também o SHA-256 completo em metadata:
+O novo `product_priority.py` conta produtos pelo texto estruturado dos PPTX independentemente da associação de imagem.
 
-- `sha256`;
-- `sha256_full`.
+Ele:
 
-Ao consolidar uma near-duplicate recomprimida:
+- lê PPTX direto;
+- lê PPTX dentro de ZIP sem extração destrutiva;
+- deduplica inner PPTX por SHA-256;
+- deduplica exportações semanticamente equivalentes por fingerprint slide/produto;
+- não usa imagem encontrada como requisito para um produto entrar no ranking.
 
-- o SHA canônico não é trocado silenciosamente;
-- novos hashes exatos vão para `variant_sha256`;
-- provenance anterior e nova são unidas e deduplicadas.
+Baseline real atual dos dois ZIPs ricos, com o classificador atual:
 
-### 5. Aliases também funcionam em variantes visuais canônicas
+- 36 documentos estruturados;
+- **1.612 ocorrências de produto**;
+- **914 produtos normalizados úteis** na medição consolidada usada para coverage.
 
-`evidence_aliases.py` aceita evidência da imagem canônica ou de um hash conhecido em `variant_sha256`, mantendo a proteção contra gramaturas/SKUs diferentes.
+Produtos recorrentes observados incluem:
 
-### 6. Template/branding com conflito vira decorativo mais cedo
+- CERVEJA SKOL 18X350ML — 19;
+- CERVEJA AMSTEL 12X350ML — 18;
+- CERVEJA ANTARCTICA BOA PILSEN 18X350ML — 17;
+- CERVEJA BRAHMA 18X350ML — 16;
+- CERVEJA KAISER 12X350ML — 15;
+- CARNE MOIDA — 14;
+- BANANA NANICA — 14;
+- CERVEJA HEINEKEN SHOT 250ML — 13;
+- ARROZ PATOSUL 5KG — 13;
+- TOMATE PERA — 12;
+- MAMAO FORMOSA — 11;
+- ARROZ VASCONCELOS 5KG — 10;
+- BANANA PRATA — 10;
+- DETERGENTE YPE 500ML — 9;
+- ACUCAR DELTA 5KG — 8;
+- AMACIANTE YPE 2L — 8.
 
-O consenso agora usa `metadata.template_asset`.
+Prioridade conceitual:
 
-Uma mídia recorrente marcada como template, observada em pelo menos 3 associações e ligada a pelo menos 3 produtos diferentes com baixo consenso, é classificada `decorative` sem precisar contaminar uma fila enorme de revisão.
+`frequency + independent_sources + catalog_presence`
 
-Uma imagem repetida em vários documentos para o **mesmo produto** continua apta a aumentar confiança.
+---
 
-### 7. Inventário estrutural reexecutável
+## 4. Associação calibrada no corpus real
 
-Foi criado `src/srstudio/images/corpus_inventory.py`.
+A primeira calibração mostrou que centro geométrico puro podia trocar imagens entre linhas de grids repetidos.
 
-Ele lê o pacote PPTX diretamente, sem OCR e sem screenshot, e produz:
+`spatial_pair_score()` passou a usar:
 
+- overlap horizontal;
+- alinhamento horizontal de centros;
+- distância entre bordas verticais mais próximas;
+- proximidade geral;
+- área relativa da imagem;
+- product likelihood;
+- group signal;
+- z-order.
+
+Isso atende melhor aos templates reais em que o nome fica imediatamente acima ou abaixo da embalagem.
+
+### Gate de auto-accept
+
+Uma única fonte PPTX, mesmo com geometria local excelente, **não pode auto-aprovar** a imagem.
+
+Auto-accept exige também:
+
+- confiança suficiente;
+- consenso suficiente;
+- **pelo menos 2 documentos lógicos independentes**.
+
+Isso protege contra logo/selo/template que por acaso ocupe a mesma célula visual.
+
+### Baseline de decisões no corpus rico
+
+Protótipo calibrado sobre os dois ZIPs ricos:
+
+- 1.065 pares de evidência Produto↔Imagem;
+- 826 imagens com decisão;
+- 37 decisões de imagem `AUTO_APPROVED`;
+- 691 `LIKELY`;
+- 86 `REVIEW_REQUIRED`;
+- 12 `DECORATIVE`.
+
+No nível de produto contra os 914 nomes estruturados:
+
+- **35 AUTO_APPROVED — 3,83%**;
+- **527 LIKELY — 57,66%**;
+- **51 REVIEW_REQUIRED — 5,58%**;
+- **301 sem associação exata — 32,93%**.
+
+Ponderado pelas 1.612 ocorrências:
+
+- AUTO_APPROVED: 195 — 12,10%;
+- LIKELY: 946 — 58,68%;
+- REVIEW_REQUIRED: 105 — 6,51%;
+- sem candidato: 366 — 22,70%.
+
+Ou seja: aproximadamente **77,3% das ocorrências de produto do corpus rico já possuem algum candidato** na baseline calibrada.
+
+Esses números são baseline de engenharia do protótipo/calibração local; a execução oficial do pipeline completo no worktree ainda precisa ser feita quando houver checkout/CI disponível.
+
+---
+
+## 5. Precisão visual amostral
+
+Foi gerada uma contact sheet local com 30 auto-approvals do corpus rico.
+
+Amostra visual manual:
+
+- avaliados: **30**;
+- corretos: **30**;
+- `wrong-auto-accept`: **0/30**;
+- precisão amostral observada: **100%**.
+
+Exemplos verificados incluem:
+
+- ARROZ PATOSUL 5KG;
+- DETERGENTE YPE 500ML;
+- AMACIANTE SMART 2L;
+- LEITE TRIANGULO 1L;
+- PROTEX 85G;
+- BANANA NANICA;
+- TOMATE PERA;
+- carnes;
+- bebidas.
+
+Esse **100% é somente da amostra de 30**, não uma alegação de precisão absoluta do banco inteiro.
+
+A métrica crítica continua sendo `wrong-auto-accept`.
+
+---
+
+## 6. Catálogo real disponível
+
+`publish_repository.zip` contém:
+
+`publish_repository/beta/files/dados/atacado_historico.db`
+
+Tabelas relevantes:
+
+- `produtos` — 520 produtos;
+- `itens_relatorio` — 3.116 linhas históricas;
+- `cartazes_relatorio` — 1.553 linhas;
+- `regras_agrupamento` — 57 regras;
+- `membros_grupo` — 320 membros.
+
+A tabela `produtos` usa:
+
+- `codigo`;
+- `ultimo_nome`;
+- `unidade_preferida`;
+- flags de agrupamento/ignore;
+- atualização.
+
+`standalone_cli.catalog_names_from_sqlite()` foi fortalecido para descobrir schemas como:
+
+- `display_name`;
+- `name`;
+- `product_name`;
+- **`ultimo_nome`**;
+- `descricao`;
+- `description`.
+
+O SQLite é aberto em `mode=ro`; nenhum schema é alterado.
+
+### Coverage atual contra os 520 produtos desse catálogo de atacado
+
+Antes de consumir toda a Library standalone, a associação estruturada do corpus rico cobre:
+
+- AUTO_APPROVED: **8 / 520 — 1,54%**;
+- LIKELY por nome exato: **35 / 520 — 6,73%**;
+- REVIEW_REQUIRED: **3 / 520 — 0,58%**;
+- sem associação exata: **474 / 520 — 91,15%**.
+
+Uma equivalência extremamente conservadora por **mesmos tokens + mesma medida**, apenas reordenados, recupera mais 5 nomes como `LIKELY`:
+
+- LIKELY: **40 / 520 — 7,69%**;
+- sem candidato: **469 / 520 — 90,19%**.
+
+Exemplos de reordenação segura observados:
+
+- `CERVEJA HEINEKEN 250ML SHOT` ↔ `CERVEJA HEINEKEN SHOT 250ML`;
+- `AMACIANTE YPE 5L ACONCHEGO` ↔ `AMACIANTE YPE ACONCHEGO 5L`.
+
+O percentual baixo do catálogo de atacado não contradiz a cobertura de 77,3% das ocorrências dos encartes: o catálogo possui muitos produtos que simplesmente não aparecem nos 36 PPTX ricos atuais.
+
+---
+
+## 7. Library standalone real
+
+`files.list` encontrou **160 imagens não geradas pelo modelo** na Library acessível.
+
+A busca semântica do índice da Library falhou por autenticação do serviço de retrieval; isso não foi interpretado como corpus vazio. O inventário por metadata/list foi usado como fonte de verdade.
+
+### Imagens standalone já verificadas
+
+#### Flocão Sinhá 400g
+
+Arquivo:
+
+`Farinha-de-Milho-Flocao-Sinha-Pacote-400g.webp`
+
+- 1000×1000;
+- packshot limpo;
+- embalagem Sinhá Flocão 400g;
+- catálogo de atacado possui `FLOCAO DE MILHO SINHA 400G`.
+
+Candidato forte de identidade.
+
+#### Amaciante Smart 2L
+
+`discount_image_c576cca9e80f70b8.png`
+
+- packshot limpo;
+- Smart Carinho 2L;
+- útil no banco mesmo sem aparecer no catálogo de atacado atual.
+
+#### Feijão Paraná 1kg
+
+`discount_image_285d2c91df21481e (1).png`
+
+- packshot recortado;
+- Feijão Paraná 1kg;
+- catálogo contém `FEIJAO PARANA T1 1KG`.
+
+#### Mandioca 1kg
+
+`discount_image_bb4201d68b4dae2f.png`
+
+- 400×400 RGBA;
+- produto recortado;
+- possui cópia exata na Library.
+
+#### Carvão Gobbo 3kg
+
+`imagem carvao.jpg`
+
+- 1536×2048;
+- produto e 3kg claramente visíveis;
+- identidade forte;
+- qualidade visual inferior a um packshot por conter corredor/caixas/produtos ao fundo.
+
+Isso valida a separação:
+
+1. identidade correta;
+2. confiança;
+3. qualidade visual.
+
+#### Pão de Queijo Rodrigues 1kg
+
+`pão de queijo sr.png`
+
+A embalagem mostra SR Rodrigues, Pão de Queijo Tradicional, 1kg. O corpus possui grafias como `PAO DE QUEIJO CONGELADO SR TRADICIONAL 1KG`.
+
+Deve entrar por alias/evidência, sem fingir que os textos são idênticos.
+
+#### Hambúrguer Caseiro Gourmet SR 145g
+
+`discount_image_13069c053d510d0a.png`
+
+A embalagem mostra SR Rodrigues, Hambúrguer Caseiro Gourmet, 145g. O corpus possui variantes textuais de 145g. Gramaturas de 95g/360g não podem ser fundidas.
+
+#### Farinha Beiju 350g
+
+`farinha.png`
+
+A embalagem é `Farinha Artesanal Beiju Temperada com Pimenta 350g`.
+
+Não deve ser confundida com `FARINHA CASEIRINHA ... 350G` apenas porque ambas têm 350g.
+
+#### Ração Caramelo 15kg
+
+`RAÇÃO CARAMELO.jpg`
+
+Identidade de Caramelo Dog 15kg é visível, mas é fotografia com fundo/prateleira. Pode ser candidata de identidade com quality score inferior a packshot limpo.
+
+### Duplicatas standalone reais confirmadas
+
+SHA-256 byte a byte:
+
+`imagem carvao.jpg` == `imagem carvao(1).jpg`
+
+- SHA-256: `1b857a0e36a9e14f4df1d91a5a5ee2645c2a91ee3ea0f0f68fe036b0220fd1e0`
+
+`discount_image_bb4201d68b4dae2f.png` == cópia `(1)`
+
+- SHA-256: `2f9848e3ba1a973d553ac16432b72894c53d5088756bf2a679dc718d575db821`
+
+Isso valida a deduplicação exact duplicate com corpus real standalone.
+
+---
+
+## 8. Ingestão standalone incremental
+
+Foi corrigida uma inconsistência real da branch: `standalone_state.py` e o teste de recovery existiam, mas a versão corrente de `standalone_cli.py` não expunha `run_incremental_standalone()`.
+
+O fluxo incremental foi restaurado.
+
+Fingerprint contém:
+
+- caminho resolvido;
 - SHA-256 do arquivo;
-- identidade lógica do documento;
-- slides;
-- textos estruturados;
-- referências `a:blip`, inclusive imagens usadas como fill de shape;
-- mídia original do pacote;
-- SHA-256 completo da mídia;
-- dimensões, MIME e dHash;
-- recorrência/template;
-- produtos normalizados;
-- duplicatas exatas;
-- duplicatas lógicas;
-- near-duplicates;
-- colisões dHash rejeitadas pela geometria;
-- classificação `text-only`, `template-heavy` ou `mixed`.
+- label/mapping;
+- flag `verified`;
+- provenance;
+- versão de treino;
+- hash do catálogo.
 
-O near-duplicate inventory usa BK-tree de Hamming em vez de comparar toda imagem com toda imagem.
+Regras:
 
-Comando independente:
+- input idêntico → skip;
+- imagem alterada → reprocessa somente ela;
+- mapping alterado → reprocessa;
+- catálogo alterado → reprocessa;
+- state aponta para `image_id` removido → reprocessa e recupera;
+- state corrompido → fail-closed;
+- backup lógico permanece.
+
+Filename sozinho nunca auto-aprova.
+
+---
+
+## 9. Archive provenance
+
+`PrecisionProductImageCorpusTrainer` passou para:
+
+`PRECISION_TRAINER_VERSION = g2-image-precision-v3`
+
+Para PPTX dentro de ZIP, provenance registra:
+
+- `source_kind = archive-pptx`;
+- caminho do arquivo compactado;
+- SHA-256 do arquivo compactado;
+- caminho interno do PPTX;
+- tamanho do membro;
+- CRC32;
+- SHA-256 do PPTX interno.
+
+Importante:
+
+**archive provenance não cria voto extra de consenso.**
+
+O fingerprint lógico do PPTX ignora o caminho do ZIP, portanto copiar o mesmo inner PPTX para outro compactado não fabrica uma nova fonte independente.
+
+A extração usa diretório controlado e nome determinístico com hash do caminho interno, evitando colisões quando dois membros têm o mesmo basename.
+
+---
+
+## 10. Deduplicação e índice perceptual
+
+Foi encontrada uma inconsistência interna: testes já esperavam `_perceptual_snapshot()` / `_perceptual_candidates()`, mas a versão corrente de `SafeImageLibrary` ainda percorria linearmente todos os assets.
+
+Correção:
+
+`SafeImageLibrary` agora usa efetivamente `HammingPerceptualIndex`/BK-tree.
+
+Fluxo:
 
 ```text
-python -m srstudio.images.corpus_inventory --report corpus.json <PPTX/DIRETÓRIO...>
+nova imagem
+→ dHash
+→ BK-tree gera candidatos próximos
+→ filtro de product_key quando aplicável
+→ orientação/aspect ratio
+→ assinatura RGB compacta
+→ somente então near-duplicate
 ```
 
-### 8. Batch completo INVENTÁRIO → BANCO
+SHA-256 continua sendo identidade exata.
 
-`src/srstudio/images/batch_training.py` agora executa:
+dHash nunca é suficiente sozinho.
 
-```text
-INVENTÁRIO
-→ EXTRAÇÃO ESTRUTURADA
-→ SHA-256
-→ FILTRO DE TEMPLATE
-→ ASSOCIAÇÃO ESPACIAL
-→ CONSENSO
-→ CONFIDENCE
-→ SAFE IMAGE LIBRARY
-→ ALIASES
-→ LOOKUP
-→ RELATÓRIO JSON
-```
+O cache é invalidado:
 
-Exemplo:
+- em gravação própria;
+- quando mtime/tamanho do índice mudam externamente.
 
-```text
-python -m srstudio.images.batch_training \
-  --library <bank> \
-  --imports-root <imports> \
-  --report image-db-report.json \
-  --query "MONSTER 473ML" \
-  <corpus...>
-```
+---
 
-O relatório contém inventário, métricas de treino, decisões, ambiguidades, provenance, aliases e resultados de lookup.
+## 11. Ranking de qualidade da imagem
 
-## API futura para ProductCards
+O `ImageQualityAnalyzer` existente foi estendido em vez de duplicado.
 
-Já existe o contrato sem invadir o CHAT 4:
+A API histórica `inspect()` continua disponível.
+
+Foi adicionado `product_quality()` com score 0–1 calculado uma vez na ingestão a partir de:
+
+- resolução;
+- transparência útil;
+- sharpness/edge signal;
+- limpeza de borda/background;
+- penalidades conhecidas de texto/preço;
+- múltiplos produtos;
+- produto parcial;
+- watermark;
+- fundo poluído.
+
+`SafeImageLibrary` persiste esse score em metadata.
+
+O lookup não abre pixels para ranquear interativamente.
+
+### Regra de ranking
+
+**Identidade sempre vem antes de estética.**
+
+Ordenação conceitual:
+
+1. identity/name/SKU compatibility;
+2. manual preferred;
+3. confidence;
+4. visual quality;
+5. usage count.
+
+Uma foto perfeita de `TODDY 750G` jamais pode vencer uma foto inferior, porém correta, de `TODDY 370G`.
+
+---
+
+## 12. Contrato `find_image()`
+
+A API continua compatível:
 
 ```python
 result = find_image(library, product_name, alternatives=3)
 ```
 
-Resultado conceitual:
+Agora expõe também:
 
 - `best_match`;
 - `alternatives`;
-- `confidence`.
+- `confidence`;
+- `match_type`;
+- `quality_score`;
+- `provenance`.
 
-O lookup usa somente assets `accepted`, protege gramatura/volume e usa índice de tokens para limitar candidatos fuzzy.
+Cada candidato inclui:
 
-## P0/P1/P2/P3 — estado atual
+- `identity_score`;
+- `quality_score`;
+- `match_type`;
+- provenance;
+- score/reason.
+
+`batch_training.py` foi alinhado a esse contrato.
+
+---
+
+## 13. Raster/PPTX correlation
+
+Quatro arquivos opacos da Library:
+
+- `1000255371.jpg`;
+- `1000255372.jpg`;
+- `1000255373.jpg`;
+- `1000255374.jpg`;
+
+foram identificados como exports raster do deck:
+
+`OFERTAS QUINTA FILÉ NOVO (1).pptx`
+
+Eles correspondem aos slides **12–15**.
+
+O PPTX possui os assets embedded, portanto o raster é referência/QA e não fonte preferencial de crop.
+
+Foi criado `raster_correlation.py`.
+
+Regras:
+
+1. OCR opcional apenas encontra o slide equivalente;
+2. PPTX estruturado é autoridade de nomes/regiões;
+3. se o slide possui imagem embedded → `source_preference = embedded-original`;
+4. **nenhum crop raster é criado** nesse caso;
+5. se não houver asset embedded, pode existir crop de card;
+6. crop de card é sempre `review`;
+7. metadata marca `contains_text_probability = 1.0` e price probability quando aplicável;
+8. crop nunca é auto-aprovado como foto limpa de produto.
+
+Isso evita colocar nome/preço/fundo no banco como se fosse embalagem isolada.
+
+---
+
+## 14. Product coverage e Top Missing
+
+`library_audit.py` foi fortalecido com:
+
+- imagens físicas;
+- assets canônicos;
+- observações brutas/provenance;
+- exact duplicate observations;
+- near-duplicate variants;
+- accepted;
+- likely;
+- review-required;
+- rejected;
+- decorative;
+- imagens sem produto;
+- produtos com múltiplas imagens;
+- associações sem provenance;
+- associações de baixa confiança;
+- coverage do catálogo;
+- produtos sem accepted;
+- produtos sem qualquer candidato;
+- queries finais;
+- `priority_missing`.
+
+`products_without_image` mantém a semântica histórica “sem imagem accepted”.
+
+Novo campo:
+
+`products_without_any_image`
+
+significa que não existe accepted, likely ou review-required utilizável.
+
+### Top Missing
+
+`product_priority.py` alimenta `priority_missing` com produtos frequentes nos encartes mas sem candidato no banco.
+
+O objetivo é pedir/baixar externamente apenas o que realmente faltar em uma fase posterior.
+
+Exemplos importantes ainda faltantes/ambíguos na baseline exata incluem:
+
+- `PAO DE QUEIJO CONGELADO SR TRADICIONAL 1KG`;
+- `FARINHA CASEIRINHA TEMP C E S PIMENTA 350G`;
+- `HAMBURGUER CASEIRO GOURMET SR 145G`;
+- `CERVEJA PURO MALTE PILSEN 350ML`;
+- `QUEIJO CAIPIRA FAZENDA SAPECADO`;
+- `SURUBIM ARMAZEM DO PEIXE 800G`;
+- `SIDRA CERESER CELEBRATE 660ML`.
+
+Alguns desses já possuem standalone visualmente promissor e deverão sair do Top Missing quando a Library inteira for executada pelo pipeline oficial.
+
+---
+
+## 15. Review queue e contact sheet
+
+Foi criado `review_contact_sheet.py`.
+
+O dataset de revisão é **impact-first**:
+
+1. prioridade/frequência do produto;
+2. número de fontes;
+3. pending/ambiguidade;
+4. confidence;
+5. quality.
+
+Ele evita uma lista gigante.
+
+Regras:
+
+- rejected/decorative são excluídos;
+- um único accepted sem ambiguidade não entra;
+- múltiplas variantes accepted sem `preferred` podem entrar;
+- número de candidatos por produto é limitado;
+- thumbnails são abertas uma por vez;
+- JSON de dataset pode ser gerado sem UI do Studio;
+- PNG contact sheet é opcional.
+
+---
+
+## 16. Departamentos
+
+Foi criado `departments.py` com classificação lexical conservadora para:
+
+- hortifruti;
+- açougue;
+- bebidas;
+- limpeza;
+- padaria;
+- frios;
+- congelados;
+- mercearia;
+- outros.
+
+Quando a regra não é segura, retorna `outros` em vez de forçar categoria errada.
+
+---
+
+## 17. Testes novos/fortalecidos nesta FASE 2
+
+Além dos testes da FASE 1, foram adicionados ou fortalecidos:
+
+- `tests/test_image_archive_provenance.py`;
+- `tests/test_image_association.py` — grid pairing + cross-document auto-accept;
+- `tests/test_image_departments.py`;
+- `tests/test_image_library_audit_phase2.py`;
+- `tests/test_image_lookup.py` — identity-first quality ranking;
+- `tests/test_image_product_priority.py`;
+- `tests/test_image_quality_ranking.py`;
+- `tests/test_image_raster_correlation.py`;
+- `tests/test_image_review_contact_sheet.py`;
+- `tests/test_image_standalone_cli.py` — catálogo real + incremental;
+- `tests/test_image_standalone_recovery.py` já existente agora volta a ter o símbolo esperado no CLI;
+- `tests/test_image_safe_perceptual_index.py` agora corresponde ao BK-tree efetivamente ligado à biblioteca.
+
+Casos cobertos incluem:
+
+- PPTX/ZIP provenance;
+- duas fontes independentes para auto-accept;
+- grid row/column pairing;
+- gramatura incompatível;
+- qualidade não vencendo identidade;
+- multiple variants;
+- top missing;
+- coverage;
+- contact sheet;
+- raster com embedded original;
+- crop de fallback com texto/preço;
+- incremental standalone;
+- recovery de image_id removido;
+- SQLite `ultimo_nome` read-only.
+
+### Situação real de execução
+
+Até este checkpoint:
+
+- branch: confirmada;
+- compare: **85 commits à frente do BASE_SHA** antes do commit desta documentação;
+- combined CI statuses no HEAD anterior: vazio;
+- workflow runs associados ao HEAD anterior: vazio;
+- checkout local do repo: indisponível;
+- `pytest` completo: **não executado** neste runtime.
+
+Portanto esta documentação **não declara testes verdes sem evidência**.
+
+---
+
+## 18. Performance
+
+Lookup textual continua metadata-only.
+
+Microbenchmark anterior equivalente:
+
+### 5.000 assets
+
+- construção do índice: ~69 ms;
+- mediana de consulta: ~0,063 ms;
+- p95: ~0,071 ms.
+
+### 50.000 assets
+
+- construção do índice: ~730 ms;
+- mediana: ~0,066 ms;
+- p95: ~0,074 ms.
+
+O maior risco de escala na ingestão perceptual foi reduzido porque o BK-tree agora está realmente conectado à `SafeImageLibrary`.
+
+OCR continua opcional e não é executado indiscriminadamente.
+
+Contact sheet usa thumbnails sob demanda e número limitado de candidatos.
+
+---
+
+## 19. P0/P1/P2/P3 — FASE 2
 
 ### P0
 
-Nenhum P0 conhecido no caminho seguro.
+Nenhum P0 conhecido no caminho novo.
 
-- `CorpusStateStore` falha fechado se o JSON estiver corrompido e mantém `.bak`;
-- `SafeImageLibrary` valida antes de sobrescrever e mantém backup lógico;
-- nenhuma migração destrutiva do ID legado foi feita.
+Proteções:
 
-### P1
+- estado fail-closed;
+- backups lógicos;
+- nenhuma migração destrutiva;
+- archive extraction controlada;
+- SHA-256 canônico;
+- nenhuma associação inventada para aumentar coverage.
 
-1. **MITIGADO NO CAMINHO SEGURO** — dHash isolado poderia fundir imagens erradas; `SafeImageLibrary` agora exige geometria compatível.
-2. **CORRIGIDO** — consenso por basename podia superestimar cópias; agora usa identidade documental/lógica.
-3. **MITIGADO** — assets recorrentes de template em decks curtos agora podem ser classificados `decorative` com 3 produtos conflitantes.
-4. **ABERTO / INTEGRAÇÃO** — `src/srstudio/app/professional.py`, método `_attach_project`, ainda instancia `ImageLibrary` diretamente. A alteração mínima solicitada ao ponto de integração é usar `SafeImageLibrary(self.data_dir / "images")`. O batch desta branch já usa `SafeImageLibrary`.
-5. **ABERTO POR DADO, NÃO POR ALGORITMO** — os 15 PPTX reais materializados não contêm fotos de SKU. A biblioteca não deve marcar branding como produto apenas para parecer preenchida.
+### P1 corrigidos/mitigados
+
+- corpus real de fotos finalmente localizado;
+- grid pairing por centro simples;
+- auto-accept com uma única fonte;
+- archive copies inflando consenso;
+- dHash/BK-tree não conectado ao caminho seguro;
+- qualidade visual misturada com identidade;
+- raster page crop preferido apesar de asset embedded;
+- `standalone_cli` sem o incremental esperado pelos testes;
+- catálogo real `ultimo_nome` não reconhecido.
+
+### P1 ainda aberto por execução/dado
+
+- rodar o pipeline oficial da branch sobre os dois ZIPs ricos em um checkout real;
+- rodar ingestão sobre as 160 imagens standalone acessíveis;
+- persistir o banco real completo no diretório de dados do Studio;
+- executar ground truth maior do que a amostra 30/30.
+
+### P1 integração
+
+O shell principal ainda precisa consumir `SafeImageLibrary` no ponto mínimo de integração se ainda estiver construindo `ImageLibrary` diretamente.
+
+Essa mudança deve ser coordenada na integração final, sem invadir ProductCards/CHAT 4 durante o trabalho paralelo.
 
 ### P2
 
-- criar ingestão conservadora de imagens standalone com provenance `standalone-library` e correspondência com catálogo;
-- medir o lookup com banco real populado, além do teste sintético existente com 5.000 assets;
-- separar ainda mais explicitamente `naming/layout corpus` de `product-image corpus` na UI/relatório.
+- ampliar aliases seguros por evidência;
+- coverage por departamento sobre o catálogo final completo do SR, não apenas o DB de atacado disponível;
+- reduzir `LIKELY` para auto-approved somente quando surgirem fontes independentes reais;
+- executar benchmark de ingestão no banco completamente populado.
 
 ### P3
 
-- interface dedicada de revisão ambígua;
-- estatísticas de cobertura por categoria/marca;
-- ranking visual adicional para múltiplas fotos válidas do mesmo SKU.
+- UI futura de revisão;
+- package-age/newer/older quando houver evidência temporal real;
+- ranking visual por categoria;
+- dashboards de provenance/coverage.
 
-## Testes adicionados/fortalecidos
+---
 
-### `tests/test_image_association.py`
+## 20. Commits principais da FASE 2
 
-- normalização e gramatura;
-- mesmo basename com documentos diferentes;
-- cópias exatas renomeadas não contam como fontes novas;
-- identidade documental explícita;
-- asset global ligado a vários produtos vira decorativo;
-- template recorrente com 3 produtos diferentes vira decorativo;
-- repetição do mesmo SKU não é rejeitada.
+- `a9070641c71ffc0304d4e86a94c43ff1ff0a95f0` — grid spatial matching + gate de múltiplas fontes;
+- `17f7cd3e7e2f00a336ffb4d8575d8bb7fe8602ec` — regressões de grid/consenso;
+- `00ad517edf9b32b6c270f1cb74931b60e55dbe58` — archive provenance + precision-v3;
+- `5d7cd87fc088ad0365e12e41db9deb7708db437d` — testes archive provenance;
+- `bc64078c26f3b9914790b48b4291937937ffc229` — quality analyzer;
+- `ecbae82be915e228b20ecdade34ae3907739d813` — BK-tree ativo + quality metadata;
+- `f4171e7e488a386a6470f1154a3e2816964af366` — lookup quality/provenance;
+- `b55647319112ce9018e0229ddeccb928a525d391` — testes de lookup identity-first;
+- `cd1f8394304acef739789ed7ab156d72d52ef127` — testes de quality;
+- `1a2153e7696c4d0418e8926114fa19ff5f146b27` — product priority;
+- `353622d196ca95d4fb766a4ce0e99cbc6bc57bcc` — testes priority;
+- `27b2fd43e88445a0da74618347e5214870733cef` — coverage/top missing audit;
+- `f01587f79685e13ddb96d9eb4257705d393ed8e0` — testes audit fase 2;
+- `b186c1643e633fc8f55f99a0db3919680270f435` — review contact sheet;
+- `0fd82dbe3639437580343368c6485b15e048aa63` — testes contact sheet;
+- `87d945845a58c7450671bf51b46a8b32db6f1768` — PPTX/raster correlation;
+- `eaa5fcbc4c01f6af1025434635bc563e18404dfc` — testes raster correlation;
+- `359fbb5a70cdc5273e23fcc9e5108db2b45fecaf` — incremental standalone + real catalog schema;
+- `9b77484cd0f9a0115da985ee72a5a432e621849b` — testes standalone/catalog;
+- `a06fd977bc6e53c6fb821b3b88442391aa016726` — departamentos;
+- `82ee1cdb7ab2215c54d2fcd8280ac72fa2a5a354` — testes departamentos;
+- `b1b24229c800c6cb88248164bb90aac948ab8044` — batch lookup contract quality/provenance.
 
-### `tests/test_image_visual_dedup.py`
+---
 
-- colisão dHash com geometria incompatível;
-- resize de mesma proporção continua candidato near-duplicate;
-- SHA-256 completo é preservado;
-- ID legado continua compatível;
-- PNG/JPEG near-duplicate mantém SHA canônico;
-- `variant_sha256` é registrado;
-- provenance de origens diferentes é unida;
-- colisão cross-product não gera conflito falso.
+## 21. Estado de sucesso da FASE 2
 
-### `tests/test_image_evidence_aliases.py`
+### Já entregue em código/engenharia
 
-- alias equivalente;
-- gramatura diferente rejeitada;
-- alias de variante visual canônica;
-- SHA sem relação rejeitado.
+- fontes reais localizadas;
+- archives inventariados;
+- duplicatas de archive identificadas;
+- corpus de 36 PPTX rico em fotos reais localizado;
+- 1.910 mídias embedded únicas exatas descobertas;
+- association grid-aware;
+- consenso entre documentos;
+- archive provenance;
+- SHA-256 + dHash + geometria + RGB;
+- BK-tree efetivamente conectado;
+- qualidade visual persistida;
+- lookup identity-first;
+- contrato com `match_type`, `quality_score`, `provenance`;
+- catálogo real de atacado descoberto e suportado;
+- standalone incremental recuperado;
+- raster/PPTX correlation review-first;
+- product priority;
+- product coverage;
+- top missing;
+- contact sheet;
+- classificação de departamento;
+- wrong-auto-accept amostral medido.
 
-### `tests/test_image_precision_training.py`
+### Números reais deste checkpoint
 
-- shapes repetidos com mesmo SHA viram uma imagem lógica;
-- singleton fraco não cruza auto-accept;
-- fingerprint lógico colapsa export copies;
-- fingerprint muda se Produto↔Imagem muda;
-- record preserva raw SHA + logical source ID;
-- record de versão de precisão antiga é reprocessado incrementalmente.
+- compactados encontrados: **8**;
+- compactados grandes únicos relevantes a fotos: **2**;
+- PPTX ricos: **36**;
+- slides ricos: **566**;
+- mídias internas: **2.324 ocorrências**;
+- mídias únicas exatas: **1.910**;
+- imagens standalone não geradas pelo modelo na Library: **160**;
+- produtos estruturados usados na baseline de coverage: **914**;
+- ocorrências de produto: **1.612**;
+- decisões de imagem: **826**;
+- produtos AUTO_APPROVED na baseline estruturada: **35**;
+- produtos LIKELY: **527**;
+- produtos REVIEW_REQUIRED: **51**;
+- produtos sem associação exata: **301**;
+- cobertura por ocorrência com algum candidato: **~77,3%**;
+- catálogo de atacado disponível: **520 produtos**;
+- `wrong-auto-accept` na amostra visual: **0/30**;
+- precisão observada da amostra: **100% (30/30, não extrapolar para todo o banco)**.
 
-### `tests/test_image_corpus_inventory.py`
+### Ainda necessário para afirmar “banco real completamente populado”
 
-- texto estruturado + image fill;
-- arquivo exatamente duplicado;
-- export copy logicamente igual com bytes diferentes;
-- deck template-heavy;
-- colisão dHash 0 rejeitada por geometria;
-- fonte ausente gera warning não destrutivo.
+1. executar a branch em checkout real;
+2. rodar os dois ZIPs ricos pelo pipeline oficial persistente;
+3. rodar as 160 imagens standalone pelo pipeline incremental;
+4. gerar `library_audit` final do banco persistido;
+5. gerar Top Missing final;
+6. ampliar ground truth visual;
+7. executar pytest/CI;
+8. só então integrar com o Studio principal.
 
-### `tests/test_image_batch_training.py`
+**A branch não deve ser mergeada em `main/stable` ainda.**
 
-- inventário vem antes do treino;
-- uso da biblioteca segura;
-- relatório JSON contém inventário + métricas + decisões/lookup.
-
-O ambiente desta sessão não possui checkout local do repositório e não disparou workflow CI para os commits diretos da branch. Portanto os testes acima foram adicionados, mas a suíte `pytest` do repositório **não foi declarada como executada com sucesso**. Nenhum resultado foi inventado.
-
-## Fronteiras / dependências de outros agentes
-
-### CHAT 2 — importação PPTX/Canva
-
-Este trabalho consome `PptxImporter`. Nenhuma refatoração ampla do importador foi feita.
-
-### CHAT 4 — ProductCards/bindings
-
-Nenhuma alteração grande em ProductCards. O contrato `find_image()` está pronto para consumo futuro.
-
-### CHAT 5 — QA
-
-Pode consumir os novos testes, métricas do inventário e corpus real para regressão/performance.
-
-### Integração mínima necessária no shell
-
-Arquivo:
-
-- `src/srstudio/app/professional.py`
-
-Função:
-
-- `_attach_project`
-
-Interface necessária:
-
-```python
-self.image_library = SafeImageLibrary(self.data_dir / "images")
-```
-
-Motivo:
-
-- levar fail-closed persistence, full SHA/provenance e dedupe perceptual conservadora ao Studio visual principal sem mudar o contrato de `ImageBankView`/workflow.
-
-## Próximos ciclos independentes
-
-1. criar ingestão conservadora de standalone assets com catálogo + provenance explícita;
-2. executar todo o novo corpus pelo batch dentro de um checkout/CI que tenha o repositório e registrar as métricas finais de decisões `accepted/probable/review/decorative`;
-3. medir ingestão/hash/indexação/lookup em banco populado;
-4. validar buscas reais quando houver imagens aprovadas para os SKUs;
-5. depois da integração do `SafeImageLibrary` no shell, testar fluxo UI → banco → ProductCard sem alterar o domínio do CHAT 4.
-
-## Commits CHAT 8 desta sessão
-
-- `721ec2667c65fc9862a132d62e00dd094b94d0d1` — Recovery Audit + baseline inicial.
-- `8a204a5ae0fd8d456645f601071480a6904e7407` — consenso source-content-aware.
-- `2ed879feeab2e58ef275e37cdf4b3c34a8eb4ce2` — testes de identidade documental.
-- `da8da265c2e99cd491d701a2f25f45f89c0569b6` — gate perceptual conservador.
-- `fe62b485f241e777024826c34c176ab0aeec7aaa` — SafeImageLibrary com dedupe segura.
-- `41ffb0552f63e5daf0ca3b348dc0ebf95008ec52` — testes iniciais de colisão dHash.
-- `a658a407e2c5967a8ceb7a248da0951624ae3036` — comando batch inicial.
-- `97ded045b5f24b3a2a576317f274447671b3b517` — contrato/report batch.
-- `bc7ac2ce0a5b8c7b6496566e62ec2726be3f3aeb` — SHA-256 completo em provenance.
-- `273413635b0744f8aea073bd94587587312e99ce` — merge de provenance e SHA canônico de variantes.
-- `60ad35428fe96a4e4aad483f48e546a53ac427e6` — aliases por variantes visuais conhecidas.
-- `18077b5574155ecd3d4ad7eb910a7257ad28e955` — testes de provenance de near-duplicate.
-- `a09f4cfc2936c4be417d93ae14c42f7ee4b9d80a` — testes de aliases por variante SHA.
-- `606fcd62c17b30d31e25f9dc2ee0f5c0c619edb3` — fingerprint lógico + reprocessamento incremental por versão de precisão.
-- `5e0cb0386fc7d18d3753315704e15b03083ce4f4` — testes de fingerprint/upgrade incremental.
-- `fe9636a80abaa072b07d3bce02a7518fb85426b0` — template conflict → decorative.
-- `40cca733abc245ce623232b989006209b8ca4011` — testes de classificação de template.
-- `a181b64ac537d7be160ae30f842637ec3f538aaa` — inventário estruturado PPTX.
-- `65d769c861cf10c4c38c96f9dde9b473fee16774` — testes do inventário.
-- `c993a43d7b2595ff52ffa8bb88696cec23f13774` — inventário integrado ao batch.
-- `9349b11fa17cf4270f9ee418fffa164e25e480c3` — teste do batch inventory-first.
+O estágio atual é de engenharia de FASE 2 avançada, com a fonte real de fotos descoberta e o pipeline preparado para transformá-la em banco confiável assim que houver execução no worktree/CI real.
