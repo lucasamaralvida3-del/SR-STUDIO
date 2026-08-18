@@ -1,0 +1,46 @@
+{
+  "left": {
+    "canonical": 1037,
+    "physical": 1037,
+    "accepted": 11,
+    "pending": 1026,
+    "rejected": 0,
+    "missing_provenance": 0,
+    "logical_signature_sha256": "31486bc363b325d8ce7f3f7ffa2e8ae96b907abd7208accd57586d59bb736191"
+  },
+  "right": {
+    "canonical": 1037,
+    "physical": 1037,
+    "accepted": 11,
+    "pending": 1026,
+    "rejected": 0,
+    "missing_provenance": 0,
+    "logical_signature_sha256": "c7cd14a792d8eb130f2df11c592a5892720d71ec0e18bc6cd2a7eff19f4ad4f5"
+  },
+  "logical_signature_equal": false,
+  "canonical_equal": true,
+  "physical_equal": true,
+  "coverage_equal": true,
+  "departments_equal": true,
+  "left_coverage": {
+    "total": 520,
+    "auto_approved": 2,
+    "likely": 42,
+    "review_required": 7,
+    "missing": 469,
+    "any_candidate": 51,
+    "any_candidate_coverage_percent": 9.8077,
+    "auto_approved_coverage_percent": 0.3846
+  },
+  "right_coverage": {
+    "total": 520,
+    "auto_approved": 2,
+    "likely": 42,
+    "review_required": 7,
+    "missing": 469,
+    "any_candidate": 51,
+    "any_candidate_coverage_percent": 9.8077,
+    "auto_approved_coverage_percent": 0.3846
+  },
+  "pass": false
+}

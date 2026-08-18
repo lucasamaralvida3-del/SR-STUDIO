@@ -1,0 +1,22 @@
+{
+  "index_load_seconds": 0.022193,
+  "exact_lookup": {
+    "mean_ms": 0.045307,
+    "p50_ms": 0.021883,
+    "p95_ms": 0.200687,
+    "max_ms": 0.214968
+  },
+  "fuzzy_lookup": {
+    "mean_ms": 0.050037,
+    "p50_ms": 0.022168,
+    "p95_ms": 0.191033,
+    "max_ms": 0.204012
+  },
+  "audit_seconds": 0.098717,
+  "canonical_assets": 1037,
+  "exact_duplicate_observations": 1412,
+  "near_duplicate_variants": 146,
+  "ingest_seconds": null,
+  "standalone_ingest_seconds": 1,
+  "incremental_seconds": 0
+}

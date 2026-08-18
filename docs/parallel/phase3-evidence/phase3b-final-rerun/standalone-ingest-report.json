@@ -1,0 +1,1545 @@
+{
+  "metrics": {
+    "discovered": 153,
+    "processed": 153,
+    "skipped": 0,
+    "accepted": 0,
+    "review": 1,
+    "unknown": 152,
+    "imported": 1
+  },
+  "matches": [
+    {
+      "path": ".phase3-corpus/standalone/04978cb9-50a8-44c6-936d-2e6b6475bbc3.jpg",
+      "product_name": "",
+      "normalized_name": "04978CB9 50A8 44C6 936D 2E6B6475BBC3",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/089de6cc-b33a-4935-8031-084a56200b5d.png",
+      "product_name": "",
+      "normalized_name": "089DE6CC B33A 4935 8031 084A56200B5D",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/0ad774ea-758b-4c3d-bf0e-89548dd5b8d2.png",
+      "product_name": "",
+      "normalized_name": "0AD774EA 758B 4C3D BF0E 89548DD5B8D2",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1.PNG",
+      "product_name": "",
+      "normalized_name": "1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1.webp",
+      "product_name": "",
+      "normalized_name": "1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/10.jpg",
+      "product_name": "",
+      "normalized_name": "10",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000254329.jpg",
+      "product_name": "",
+      "normalized_name": "1000254329",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000254887.png",
+      "product_name": "",
+      "normalized_name": "1000254887",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000254888(1).png",
+      "product_name": "",
+      "normalized_name": "1000254888 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000254888.png",
+      "product_name": "",
+      "normalized_name": "1000254888",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000255371.jpg",
+      "product_name": "",
+      "normalized_name": "1000255371",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000255372(1).jpg",
+      "product_name": "",
+      "normalized_name": "1000255372 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000255372.jpg",
+      "product_name": "",
+      "normalized_name": "1000255372",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000255373(1).jpg",
+      "product_name": "",
+      "normalized_name": "1000255373 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000255373.jpg",
+      "product_name": "",
+      "normalized_name": "1000255373",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000255374.jpg",
+      "product_name": "",
+      "normalized_name": "1000255374",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1000255919.jpg",
+      "product_name": "",
+      "normalized_name": "1000255919",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/12345.PNG",
+      "product_name": "",
+      "normalized_name": "12345",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/1736805121119.webp",
+      "product_name": "",
+      "normalized_name": "1736805121119",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/2(1).PNG",
+      "product_name": "",
+      "normalized_name": "2 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/2.png",
+      "product_name": "",
+      "normalized_name": "2",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/2b2b4595-c0e4-4d00-a335-f01fc1b2cfa3.png",
+      "product_name": "",
+      "normalized_name": "2B2B4595 C0E4 4D00 A335 F01FC1B2CFA3",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/2ef35d3c-d9e4-4ec7-aade-3f43a8b3e6a8.png",
+      "product_name": "",
+      "normalized_name": "2EF35D3C D9E4 4EC7 AADE 3F43A8B3E6A8",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/5.jpg",
+      "product_name": "",
+      "normalized_name": "5",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/6.jpg",
+      "product_name": "",
+      "normalized_name": "6",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/7.jpg",
+      "product_name": "",
+      "normalized_name": "7",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/8(1).jpg",
+      "product_name": "",
+      "normalized_name": "8 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/8.jpg",
+      "product_name": "",
+      "normalized_name": "8",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/8a6a7386355251.Y3JvcCw3OTMsNjIwLDI5MCwxNTk.jpg",
+      "product_name": "",
+      "normalized_name": "8A6A7386355251.Y3JVCCW3OTMSNJIWLDI5MCWXNTK",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/9.jpg",
+      "product_name": "",
+      "normalized_name": "9",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/AAA.PNG",
+      "product_name": "",
+      "normalized_name": "AAA",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/CANVA(1).PNG",
+      "product_name": "",
+      "normalized_name": "CANVA 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/CANVA.PNG",
+      "product_name": "",
+      "normalized_name": "CANVA",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/CARTAO CHA.PNG",
+      "product_name": "",
+      "normalized_name": "CARTAO CHA",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(1).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(10).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 10",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(2).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 2",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260810-175527).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260810 175527",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260810-180237).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260810 180237",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260810-182628).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260810 182628",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260810-182954).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260810 182954",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260810-183535).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260810 183535",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260810-184958).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260810 184958",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260811-114117).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260811 114117",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260811-120345).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260811 120345",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260811-124832).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260811 124832",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260811-171026).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260811 171026",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260811-173708).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260811 173708",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260812-174418).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260812 174418",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260812-182548).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260812 182548",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260812-183957).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260812 183957",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260812-194034).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260812 194034",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260812-201746).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260812 201746",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260813-112533).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260813 112533",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260813-114150).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260813 114150",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260813-120737).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260813 120737",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260813-121256).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260813 121256",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260813-132701).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260813 132701",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260813-192834).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260813 192834",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260813-194128).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260813 194128",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260813-201205).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260813 201205",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260814-104506).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260814 104506",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260814-121920).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260814 121920",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260814-173015).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260814 173015",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260814-173257).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260814 173257",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260814-190022).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260814 190022",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260814-200553).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260814 200553",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260814-200722).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260814 200722",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260814-200906).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260814 200906",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260814-203416).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260814 203416",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260815-114043).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260815 114043",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260815-115840).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260815 115840",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260815-130908).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260815 130908",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260815-134707).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260815 134707",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260815-185209).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260815 185209",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260815-185218).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260815 185218",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260815-220838).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260815 220838",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260815-223556).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260815 223556",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260815-231607).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260815 231607",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260815-234450).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260815 234450",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260816-192615).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260816 192615",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260816-210859).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260816 210859",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260817-130545).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260817 130545",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(20260817-134021).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 20260817 134021",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(3).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 3",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(4).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 4",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(5).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 5",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(6).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 6",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(7).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 7",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(8).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 8",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar(9).PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR 9",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturar.PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURAR",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Capturaraa.PNG",
+      "product_name": "",
+      "normalized_name": "CAPTURARAA",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/ChatGPT Image 14 de ago. de 2026, 11_12_07(1).png",
+      "product_name": "",
+      "normalized_name": "CHATGPT IMAGE 14 DE AGO. DE 2026 11 12 07 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/ChatGPT Image 14 de ago. de 2026, 11_12_07.png",
+      "product_name": "",
+      "normalized_name": "CHATGPT IMAGE 14 DE AGO. DE 2026 11 12 07",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/ChatGPT Image 16 de mai. de 2026, 07_21_47.png",
+      "product_name": "",
+      "normalized_name": "CHATGPT IMAGE 16 DE MAI. DE 2026 07 21 47",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/ChatGPT Image 6 de ago. de 2026, 14_12_33.png",
+      "product_name": "",
+      "normalized_name": "CHATGPT IMAGE 6 DE AGO. DE 2026 14 12 33",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/ERRO 02.PNG",
+      "product_name": "",
+      "normalized_name": "ERRO 02",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/ERRO 1.PNG",
+      "product_name": "",
+      "normalized_name": "ERRO 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/Farinha-de-Milho-Flocao-Sinha-Pacote-400g.webp",
+      "product_name": "FLOCAO DE MILHO SINHA 400G",
+      "normalized_name": "FLOCAO DE MILHO SINHA 400G",
+      "confidence": 0.6785927505330491,
+      "status": "review",
+      "reason": "ambiguous-catalog-match",
+      "alternatives": [],
+      "image_id": "b6c9a3024f581af336ee19ae"
+    },
+    {
+      "path": ".phase3-corpus/standalone/LOAD.PNG",
+      "product_name": "",
+      "normalized_name": "LOAD",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/MENU.PNG",
+      "product_name": "",
+      "normalized_name": "MENU",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/MENUA.PNG",
+      "product_name": "",
+      "normalized_name": "MENUA",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/RAÇÃO CARAMELO.jpg",
+      "product_name": "",
+      "normalized_name": "RACAO CARAMELO",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "no-catalog-match",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-16 at 08.39.57 (1).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 16 AT 08.39.57 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-16 at 08.39.57 (2)(1).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 16 AT 08.39.57 2 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-16 at 08.39.57 (2).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 16 AT 08.39.57 2",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-16 at 08.39.57(1).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 16 AT 08.39.57 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-16 at 08.39.57.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 16 AT 08.39.57",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-25 at 16.27.04.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 25 AT 16.27.04",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-28 at 16.51.29.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 28 AT 16.51.29",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-28 at 16.51.30 (1).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 28 AT 16.51.30 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-28 at 16.51.30 (2).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 28 AT 16.51.30 2",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-28 at 16.51.30 (3).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 28 AT 16.51.30 3",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-28 at 16.51.30.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 28 AT 16.51.30",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-28 at 16.51.31 (1).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 28 AT 16.51.31 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-28 at 16.51.31 (2).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 28 AT 16.51.31 2",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-28 at 16.51.31 (3).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 28 AT 16.51.31 3",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-05-28 at 16.51.31.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 05 28 AT 16.51.31",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-06-10 at 12.00.17.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 06 10 AT 12.00.17",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-07-01 at 07.43.49.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 07 01 AT 07.43.49",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-07-01 at 07.46.20.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 07 01 AT 07.46.20",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-07-23 at 13.54.28.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 07 23 AT 13.54.28",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-07-27 at 14.09.44 (1)(1).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 07 27 AT 14.09.44 1 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-07-27 at 14.09.44 (1).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 07 27 AT 14.09.44 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-07-27 at 14.09.44 (2)(1).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 07 27 AT 14.09.44 2 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-07-27 at 14.09.44 (2).jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 07 27 AT 14.09.44 2",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-07-27 at 14.09.44.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 07 27 AT 14.09.44",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/WhatsApp Image 2026-07-29 at 15.31.45.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2026 07 29 AT 15.31.45",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/bbb.PNG",
+      "product_name": "",
+      "normalized_name": "BBB",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/cc.PNG",
+      "product_name": "",
+      "normalized_name": "CC",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/d1e74ed1-f98b-4857-823f-1adf88a7fce8.png",
+      "product_name": "",
+      "normalized_name": "D1E74ED1 F98B 4857 823F 1ADF88A7FCE8",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/discount_image_13069c053d510d0a.png",
+      "product_name": "",
+      "normalized_name": "DISCOUNT IMAGE 13069C053D510D0A",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/discount_image_285d2c91df21481e (1).png",
+      "product_name": "",
+      "normalized_name": "DISCOUNT IMAGE 285D2C91DF21481E 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/discount_image_bb4201d68b4dae2f(1).png",
+      "product_name": "",
+      "normalized_name": "DISCOUNT IMAGE BB4201D68B4DAE2F 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/discount_image_bb4201d68b4dae2f.png",
+      "product_name": "",
+      "normalized_name": "DISCOUNT IMAGE BB4201D68B4DAE2F",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/discount_image_c576cca9e80f70b8.png",
+      "product_name": "",
+      "normalized_name": "DISCOUNT IMAGE C576CCA9E80F70B8",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/farinha.png",
+      "product_name": "",
+      "normalized_name": "FARINHA",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/image-1786990165459.jpg",
+      "product_name": "",
+      "normalized_name": "IMAGE 1786990165459",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/image-1786990220944.jpg",
+      "product_name": "",
+      "normalized_name": "IMAGE 1786990220944",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/imagem carvao(1).jpg",
+      "product_name": "",
+      "normalized_name": "IMAGEM CARVAO 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/imagem carvao.jpg",
+      "product_name": "",
+      "normalized_name": "IMAGEM CARVAO",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/images (23).jpg",
+      "product_name": "",
+      "normalized_name": "IMAGES 23",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/images(1).jpg",
+      "product_name": "",
+      "normalized_name": "IMAGES 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/images.jpg",
+      "product_name": "",
+      "normalized_name": "IMAGES",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/pão de queijo sr.png",
+      "product_name": "",
+      "normalized_name": "PAO DE QUEIJO SR",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "no-catalog-match",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/teste.PNG",
+      "product_name": "",
+      "normalized_name": "TESTE",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/whatsapp_image_2025-04-07_at_07.27.48.jpeg",
+      "product_name": "",
+      "normalized_name": "WHATSAPP IMAGE 2025 04 07 AT 07.27.48",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/👨🏽_🍼🥰 Não importa o estilo do seu pai, aqui tem o combo perfeito para você surpreender aquel (1).jpg",
+      "product_name": "",
+      "normalized_name": "NAO IMPORTA O ESTILO DO SEU PAI AQUI TEM O COMBO PERFEITO PARA VOCE SURPREENDER AQUEL 1",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/👨🏽_🍼🥰 Não importa o estilo do seu pai, aqui tem o combo perfeito para você surpreender aquel (2).jpg",
+      "product_name": "",
+      "normalized_name": "NAO IMPORTA O ESTILO DO SEU PAI AQUI TEM O COMBO PERFEITO PARA VOCE SURPREENDER AQUEL 2",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/👨🏽_🍼🥰 Não importa o estilo do seu pai, aqui tem o combo perfeito para você surpreender aquel (3).jpg",
+      "product_name": "",
+      "normalized_name": "NAO IMPORTA O ESTILO DO SEU PAI AQUI TEM O COMBO PERFEITO PARA VOCE SURPREENDER AQUEL 3",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/👨🏽_🍼🥰 Não importa o estilo do seu pai, aqui tem o combo perfeito para você surpreender aquel (4).jpg",
+      "product_name": "",
+      "normalized_name": "NAO IMPORTA O ESTILO DO SEU PAI AQUI TEM O COMBO PERFEITO PARA VOCE SURPREENDER AQUEL 4",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    },
+    {
+      "path": ".phase3-corpus/standalone/👨🏽_🍼🥰 Não importa o estilo do seu pai, aqui tem o combo perfeito para você surpreender aquel (5).jpg",
+      "product_name": "",
+      "normalized_name": "NAO IMPORTA O ESTILO DO SEU PAI AQUI TEM O COMBO PERFEITO PARA VOCE SURPREENDER AQUEL 5",
+      "confidence": 0.0,
+      "status": "unknown",
+      "reason": "not-product-like",
+      "alternatives": [],
+      "image_id": ""
+    }
+  ],
+  "warnings": [],
+  "state_path": "artifacts/phase3b-incremental-imports/standalone-state.json"
+}

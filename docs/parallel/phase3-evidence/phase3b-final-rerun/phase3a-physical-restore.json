@@ -1,0 +1,14 @@
+{
+  "method": "materialize persisted Phase 3A index from exact embedded PPTX media; no training/association ingestion executed",
+  "canonical_index_entries": 1036,
+  "physical_materialized": 1036,
+  "unique_sha_requested": 1036,
+  "unique_sha_restored": 1036,
+  "scanned_pptx": 36,
+  "scanned_media_entries": 2324,
+  "assets_without_canonical_sha": [],
+  "missing_assets": [],
+  "hash_mismatch_assets": [],
+  "corrupt_pptx": [],
+  "pass": true
+}

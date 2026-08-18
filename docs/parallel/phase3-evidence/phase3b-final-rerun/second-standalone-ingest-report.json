@@ -1,0 +1,14 @@
+{
+  "metrics": {
+    "discovered": 153,
+    "processed": 0,
+    "skipped": 153,
+    "accepted": 0,
+    "review": 0,
+    "unknown": 0,
+    "imported": 0
+  },
+  "matches": [],
+  "warnings": [],
+  "state_path": "artifacts/phase3b-incremental-imports/standalone-state.json"
+}

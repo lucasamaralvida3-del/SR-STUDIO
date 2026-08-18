@@ -1,0 +1,89 @@
+{
+  "departments": [
+    {
+      "department": "bebidas",
+      "total": 176,
+      "auto_approved": 1,
+      "likely": 8,
+      "review_required": 0,
+      "without_any_image": 167,
+      "auto_approved_percent": 0.57,
+      "likely_percent": 4.55,
+      "review_required_percent": 0.0,
+      "without_any_image_percent": 94.89
+    },
+    {
+      "department": "outros",
+      "total": 158,
+      "auto_approved": 0,
+      "likely": 10,
+      "review_required": 2,
+      "without_any_image": 146,
+      "auto_approved_percent": 0.0,
+      "likely_percent": 6.33,
+      "review_required_percent": 1.27,
+      "without_any_image_percent": 92.41
+    },
+    {
+      "department": "hortifruti",
+      "total": 77,
+      "auto_approved": 1,
+      "likely": 1,
+      "review_required": 1,
+      "without_any_image": 74,
+      "auto_approved_percent": 1.3,
+      "likely_percent": 1.3,
+      "review_required_percent": 1.3,
+      "without_any_image_percent": 96.1
+    },
+    {
+      "department": "mercearia",
+      "total": 75,
+      "auto_approved": 0,
+      "likely": 22,
+      "review_required": 3,
+      "without_any_image": 50,
+      "auto_approved_percent": 0.0,
+      "likely_percent": 29.33,
+      "review_required_percent": 4.0,
+      "without_any_image_percent": 66.67
+    },
+    {
+      "department": "limpeza",
+      "total": 22,
+      "auto_approved": 0,
+      "likely": 1,
+      "review_required": 1,
+      "without_any_image": 20,
+      "auto_approved_percent": 0.0,
+      "likely_percent": 4.55,
+      "review_required_percent": 4.55,
+      "without_any_image_percent": 90.91
+    },
+    {
+      "department": "acougue",
+      "total": 6,
+      "auto_approved": 0,
+      "likely": 0,
+      "review_required": 0,
+      "without_any_image": 6,
+      "auto_approved_percent": 0.0,
+      "likely_percent": 0.0,
+      "review_required_percent": 0.0,
+      "without_any_image_percent": 100.0
+    },
+    {
+      "department": "frios",
+      "total": 6,
+      "auto_approved": 0,
+      "likely": 0,
+      "review_required": 0,
+      "without_any_image": 6,
+      "auto_approved_percent": 0.0,
+      "likely_percent": 0.0,
+      "review_required_percent": 0.0,
+      "without_any_image_percent": 100.0
+    }
+  ],
+  "catalog_products": 520
+}

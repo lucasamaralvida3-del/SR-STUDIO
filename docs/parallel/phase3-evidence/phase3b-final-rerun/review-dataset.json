@@ -1,0 +1,3480 @@
+{
+  "products": 100,
+  "candidates": 234,
+  "groups": [
+    {
+      "product_name": "BANANA \nNANICA",
+      "normalized_name": "BANANA NANICA",
+      "priority_score": 29.75,
+      "occurrence_count": 14,
+      "source_count": 9,
+      "candidates": [
+        {
+          "image_id": "0c60974890a666294e9cb172",
+          "product_name": "BANANA NANICA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.908081,
+          "quality_score": 0.691173,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0c60974890a666294e9cb172.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "08d179309fe66567f9b18074",
+          "product_name": "BANANA NANICA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.865209,
+          "quality_score": 0.695586,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/08d179309fe66567f9b18074.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "641dfe50524f2b65592c99ea",
+          "product_name": "BANANA NANICA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.821468,
+          "quality_score": 0.725223,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/641dfe50524f2b65592c99ea.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "69fa8da33ff2eaad38e72e62",
+          "product_name": "BANANA NANICA",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.817411,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/69fa8da33ff2eaad38e72e62.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ARROZ PATOSUL 5KG",
+      "normalized_name": "ARROZ PATOSUL 5KG",
+      "priority_score": 29.0,
+      "occurrence_count": 13,
+      "source_count": 8,
+      "candidates": [
+        {
+          "image_id": "050a70b77f497b92422704be",
+          "product_name": "ARROZ\nPATOSUL 5KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.938946,
+          "quality_score": 0.694075,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/050a70b77f497b92422704be.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "2695d295cca8c1d2bcdd561f",
+          "product_name": "ARROZ PATOSUL 5KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.93451,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/2695d295cca8c1d2bcdd561f.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "ec662ad12a1d472594fb9f13",
+          "product_name": "ARROZ PATOSUL 5KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.931113,
+          "quality_score": 0.861336,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/ec662ad12a1d472594fb9f13.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "a6ba765642337f602e2f28c2",
+          "product_name": "ARROZ PATOSUL 5KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.923152,
+          "quality_score": 0.820772,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/a6ba765642337f602e2f28c2.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA SKOL\nLATA 18X1 350ML",
+      "normalized_name": "CERVEJA SKOL LATA 18X1 350ML",
+      "priority_score": 25.25,
+      "occurrence_count": 20,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "86ea781baa65f5d44ea40c1e",
+          "product_name": "CERVEJA SKOL\nLATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.870747,
+          "quality_score": 0.774926,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/86ea781baa65f5d44ea40c1e.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "0182c21ae4d843e298662b86",
+          "product_name": "CERVEJA SKOL\nLATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.812606,
+          "quality_score": 0.922181,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0182c21ae4d843e298662b86.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "4ed66674bd2441e9d994a3df",
+          "product_name": "CERVEJA SKOL\nLATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.776025,
+          "quality_score": 0.716848,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4ed66674bd2441e9d994a3df.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "c78158bf125255d7f8f4592d",
+          "product_name": "CERVEJA SKOL\nLATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.732484,
+          "quality_score": 0.54715,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/c78158bf125255d7f8f4592d.jpeg",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ARROZ VASCONCELOS 5KG",
+      "normalized_name": "ARROZ VASCONCELOS 5KG",
+      "priority_score": 24.25,
+      "occurrence_count": 10,
+      "source_count": 7,
+      "candidates": [
+        {
+          "image_id": "58b4590de32474defa0eecc9",
+          "product_name": "ARROZ VASCONCELOS 5KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.925701,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/58b4590de32474defa0eecc9.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA ANTÁRCTICA BOA\nPILSEN LATA 18X1 350ML",
+      "normalized_name": "CERVEJA ANTARCTICA BOA PILSEN LATA 18X1 350ML",
+      "priority_score": 24.0,
+      "occurrence_count": 17,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "b7ee2d3a230761497e7d98cf",
+          "product_name": "CERVEJA ANTÁRCTICA BOA\nPILSEN LATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.908831,
+          "quality_score": 0.789097,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/b7ee2d3a230761497e7d98cf.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "7db9752e968aa9467cb2dbd6",
+          "product_name": "CERVEJA ANTÁRCTICA BOA\nPILSEN LATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.904282,
+          "quality_score": 0.72935,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7db9752e968aa9467cb2dbd6.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "075faf466355acc22a06d3ae",
+          "product_name": "CERVEJA ANTÁRCTICA BOA\nPILSEN LATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.892252,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/075faf466355acc22a06d3ae.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "0c04e4ca1c08a972cfa2637c",
+          "product_name": "CERVEJA ANTÁRCTICA BOA\nPILSEN LATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.837958,
+          "quality_score": 0.83212,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0c04e4ca1c08a972cfa2637c.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "Carne \nmoída",
+      "normalized_name": "CARNE MOIDA",
+      "priority_score": 23.5,
+      "occurrence_count": 13,
+      "source_count": 6,
+      "candidates": [
+        {
+          "image_id": "496b8cfd354a86e7948b66f3",
+          "product_name": "CARNE MOÍDA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.950573,
+          "quality_score": 0.816363,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/496b8cfd354a86e7948b66f3.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "4cc0eca13a7c18ca3a73433d",
+          "product_name": "CARNE MOÍDA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.921887,
+          "quality_score": 0.963469,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4cc0eca13a7c18ca3a73433d.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "73416b9ce3fddd51f1840532",
+          "product_name": "CARNE MOÍDA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.904133,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/73416b9ce3fddd51f1840532.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "eba9fa05a171c2d4c6b75436",
+          "product_name": "Carne \nmoída",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.871361,
+          "quality_score": 0.816363,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/eba9fa05a171c2d4c6b75436.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA AMSTEL\nLATA 12X1 350ML",
+      "normalized_name": "CERVEJA AMSTEL LATA 12X1 350ML",
+      "priority_score": 23.25,
+      "occurrence_count": 18,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "0b6bdc77bb21c1e58bb9168a",
+          "product_name": "CERVEJA AMSTEL\nLATA 12X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.916876,
+          "quality_score": 0.622086,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0b6bdc77bb21c1e58bb9168a.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "479fcf1dfe71627abbd547c7",
+          "product_name": "CERVEJA AMSTEL\nLATA 12X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.886665,
+          "quality_score": 0.781091,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/479fcf1dfe71627abbd547c7.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "c1600a1da0ac1ea9cb397a65",
+          "product_name": "CERVEJA AMSTEL\nLATA 12X1 350ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.828323,
+          "quality_score": 0.816363,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/c1600a1da0ac1ea9cb397a65.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA BRAHMA\nLATA 18X1 350ML",
+      "normalized_name": "CERVEJA BRAHMA LATA 18X1 350ML",
+      "priority_score": 23.0,
+      "occurrence_count": 16,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "0b7a6ddbdfcab64632898185",
+          "product_name": "CERVEJA BRAHMA\nLATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.964717,
+          "quality_score": 0.816363,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0b7a6ddbdfcab64632898185.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "3443ec4358347620f9d72472",
+          "product_name": "CERVEJA BRAHMA\nLATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.941927,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/3443ec4358347620f9d72472.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "7c4164c04ed11125316de57e",
+          "product_name": "CERVEJA BRAHMA\nLATA 18X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.855068,
+          "quality_score": 0.957454,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7c4164c04ed11125316de57e.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "0add5778aeb6e549eca19175",
+          "product_name": "CERVEJA BRAHMA\nLATA 18X1 350ML",
+          "review_status": "accepted",
+          "association_status": "accepted",
+          "confidence": 0.969241,
+          "quality_score": 0.781831,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0add5778aeb6e549eca19175.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "TOMATE PERA",
+      "normalized_name": "TOMATE PERA",
+      "priority_score": 22.5,
+      "occurrence_count": 12,
+      "source_count": 6,
+      "candidates": [
+        {
+          "image_id": "46c73b721086d9bbe8373709",
+          "product_name": "TOMATE PÊRA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.866716,
+          "quality_score": 0.751793,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/46c73b721086d9bbe8373709.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "f48925ee7527c62dd981143b",
+          "product_name": "TOMATE PERA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.828743,
+          "quality_score": 0.76463,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/f48925ee7527c62dd981143b.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "4088292755a7e25ce30e2a9a",
+          "product_name": "TOMATE PERA",
+          "review_status": "accepted",
+          "association_status": "accepted",
+          "confidence": 0.995,
+          "quality_score": 0.839305,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4088292755a7e25ce30e2a9a.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "AÇÚCAR\nDELTA 5KG",
+      "normalized_name": "ACUCAR DELTA 5KG",
+      "priority_score": 20.5,
+      "occurrence_count": 8,
+      "source_count": 6,
+      "candidates": [
+        {
+          "image_id": "3686bb0162c0fe94f769c54b",
+          "product_name": "AÇÚCAR\nDELTA 5KG",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.672514,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/3686bb0162c0fe94f769c54b.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA HEINEKEN\nSHOT GARRAFA 250ML",
+      "normalized_name": "CERVEJA HEINEKEN SHOT GARRAFA 250ML",
+      "priority_score": 20.0,
+      "occurrence_count": 13,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "630374a509303ee526a1a1f7",
+          "product_name": "CERVEJA HEINEKEN\nSHOT GARRAFA 250ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.934187,
+          "quality_score": 0.781831,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/630374a509303ee526a1a1f7.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "f4f1b398ea6b76a92e446bbf",
+          "product_name": "CERVEJA HEINEKEN\nSHOT GARRAFA 250ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.92281,
+          "quality_score": 0.781831,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/f4f1b398ea6b76a92e446bbf.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "823faf83ae0fb5cba5308521",
+          "product_name": "CERVEJA HEINEKEN\nSHOT GARRAFA 250ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.872164,
+          "quality_score": 0.742879,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/823faf83ae0fb5cba5308521.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "f745c3ac9373670e65879e68",
+          "product_name": "CERVEJA HEINEKEN\nSHOT GARRAFA 250ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.854216,
+          "quality_score": 0.768801,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/f745c3ac9373670e65879e68.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA KAISER\nLATA 12X1 350ML",
+      "normalized_name": "CERVEJA KAISER LATA 12X1 350ML",
+      "priority_score": 18.5,
+      "occurrence_count": 15,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "87719573f4c5867e0861c805",
+          "product_name": "CERVEJA KAISER\nLATA 12X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.941418,
+          "quality_score": 0.781091,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/87719573f4c5867e0861c805.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "02aa53225fa56418d34b8648",
+          "product_name": "CERVEJA KAISER\nLATA 12X1 350ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.718498,
+          "quality_score": 0.705626,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/02aa53225fa56418d34b8648.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "2a69894ac7aa436b94ac8bb4",
+          "product_name": "CERVEJA KAISER\n LATA 12X1 350ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.674222,
+          "quality_score": 0.747378,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/2a69894ac7aa436b94ac8bb4.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "AMACIANTE YPÊ 2LT",
+      "normalized_name": "AMACIANTE YPE 2L",
+      "priority_score": 18.5,
+      "occurrence_count": 8,
+      "source_count": 6,
+      "candidates": [
+        {
+          "image_id": "d017aeb49e7cc8520906e9e0",
+          "product_name": "AMACIANTE\nYPÊ 2L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.93292,
+          "quality_score": 0.755224,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/d017aeb49e7cc8520906e9e0.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "09adadf5cd0844a6ab33d3ff",
+          "product_name": "AMACIANTE YPÊ 2L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.921288,
+          "quality_score": 0.73406,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/09adadf5cd0844a6ab33d3ff.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "1e7ab994edd52a3515120581",
+          "product_name": "AMACIANTE YPÊ 2L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.849425,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/1e7ab994edd52a3515120581.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "d7296b154b43b128df63c14d",
+          "product_name": "AMACIANTE YPÊ 2LT",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.803178,
+          "quality_score": 0.786969,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/d7296b154b43b128df63c14d.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "MAMÃO\nFORMOSA",
+      "normalized_name": "MAMAO FORMOSA",
+      "priority_score": 18.0,
+      "occurrence_count": 11,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "ee0f8eb0d884288c9f1cf0ac",
+          "product_name": "MAMÃO FORMOSA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.939985,
+          "quality_score": 0.782416,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/ee0f8eb0d884288c9f1cf0ac.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "f00bb758b27d003fc39360a5",
+          "product_name": "MAMÃO FORMOSA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.853135,
+          "quality_score": 0.995307,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/f00bb758b27d003fc39360a5.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "8658b1d80305aac97634d00c",
+          "product_name": "MAMÃO FORMOSA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.837069,
+          "quality_score": 0.878688,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/8658b1d80305aac97634d00c.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "f918ce136faa325dae6a5fa0",
+          "product_name": "MAMÃO\nFORMOSA",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.817723,
+          "quality_score": 1.0,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/f918ce136faa325dae6a5fa0.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "BATATA INGLESA",
+      "normalized_name": "BATATA INGLESA",
+      "priority_score": 17.75,
+      "occurrence_count": 9,
+      "source_count": 5,
+      "candidates": [
+        {
+          "image_id": "a27f478db9027d712767e298",
+          "product_name": "BATATA INGLESA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.877041,
+          "quality_score": 0.68107,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/a27f478db9027d712767e298.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "1fa777ea0698b1bfa05f823e",
+          "product_name": "BATATA INGLESA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.845688,
+          "quality_score": 0.712639,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/1fa777ea0698b1bfa05f823e.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "2744b17d20765412dafe436a",
+          "product_name": "BATATA\nINGLESA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.826848,
+          "quality_score": 0.728866,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/2744b17d20765412dafe436a.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "b95101c0088eb74b8085f703",
+          "product_name": "BATATA INGLESA",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.793001,
+          "quality_score": 0.716368,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/b95101c0088eb74b8085f703.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "LEITE TRIANGULO 1L INTEGRAL",
+      "normalized_name": "LEITE TRIANGULO 1L INTEGRAL",
+      "priority_score": 17.75,
+      "occurrence_count": 7,
+      "source_count": 5,
+      "candidates": [
+        {
+          "image_id": "ff83a63f39ab4b4ca339f7b8",
+          "product_name": "LEITE TRIANGULO 1L INTEGRAL",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.925601,
+          "quality_score": 0.912689,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/ff83a63f39ab4b4ca339f7b8.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "9e674ee94da68263bb67ad0c",
+          "product_name": "LEITE TRIANGULO 1L INTEGRAL",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.898334,
+          "quality_score": 0.616481,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/9e674ee94da68263bb67ad0c.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "9fd2c97bb257e557da58cbed",
+          "product_name": "LEITE TRIANGULO \n1L INTEGRAL",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.854817,
+          "quality_score": 0.693039,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/9fd2c97bb257e557da58cbed.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "OVO BRANCO DE GALINHA\nCARTELA 30X1",
+      "normalized_name": "OVO BRANCO DE GALINHA CARTELA 30X1",
+      "priority_score": 17.5,
+      "occurrence_count": 7,
+      "source_count": 6,
+      "candidates": [
+        {
+          "image_id": "44a808d78d5b9e201ebde899",
+          "product_name": "OVO BRANCO DE GALINHA CARTELA 30X1",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.869047,
+          "quality_score": 0.806068,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/44a808d78d5b9e201ebde899.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "37d85cfffddbb730fd49fad0",
+          "product_name": "OVO BRANCO DE GALINHA\nCARTELA 30X1",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.867824,
+          "quality_score": 0.749204,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/37d85cfffddbb730fd49fad0.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "a5c5b7bc9564054175ae2b5b",
+          "product_name": "OVO BRANCO DE GALINHA\nCARTELA 30X1",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.68103,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/a5c5b7bc9564054175ae2b5b.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "5b64eb92a3d84e2c858d2baf",
+          "product_name": "OVO BRANCO DE GALINHA CARTELA 30X1",
+          "review_status": "accepted",
+          "association_status": "accepted",
+          "confidence": 0.966378,
+          "quality_score": 0.694414,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/5b64eb92a3d84e2c858d2baf.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "COXÃO MOLE",
+      "normalized_name": "COXAO MOLE",
+      "priority_score": 16.0,
+      "occurrence_count": 9,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "a0b3aa6694e1fc5d8f79d949",
+          "product_name": "COXÃO MOLE",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.956377,
+          "quality_score": 0.77546,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/a0b3aa6694e1fc5d8f79d949.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "741e547be30bdc7c362a5c0b",
+          "product_name": "COXÃO MOLE",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.903492,
+          "quality_score": 0.72655,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/741e547be30bdc7c362a5c0b.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "225eb51c82ed2089e38a138c",
+          "product_name": "COXÃO MOLE",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.889627,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/225eb51c82ed2089e38a138c.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "fa6469fdda36cd6e85454a9c",
+          "product_name": "COXÃO MOLE",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.860146,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/fa6469fdda36cd6e85454a9c.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "BANANA PRATA",
+      "normalized_name": "BANANA PRATA",
+      "priority_score": 16.0,
+      "occurrence_count": 9,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "475524be800eacc6804301c1",
+          "product_name": "BANANA PRATA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.950092,
+          "quality_score": 0.726544,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/475524be800eacc6804301c1.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "0e9f48d481f2b1de2d0e0703",
+          "product_name": "BANANA PRATA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.904297,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0e9f48d481f2b1de2d0e0703.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "3db76b7d4c513574130152ff",
+          "product_name": "BANANA\nPRATA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.882254,
+          "quality_score": 0.709812,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/3db76b7d4c513574130152ff.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "19888bac13b5712a7b6390db",
+          "product_name": "BANANA PRATA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.85274,
+          "quality_score": 0.865201,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/19888bac13b5712a7b6390db.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "DETERGENTE YPE 500ML",
+      "normalized_name": "DETERGENTE YPE 500ML",
+      "priority_score": 16.0,
+      "occurrence_count": 9,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "b3cfe5356ac3698ccb8242df",
+          "product_name": "DETERGENTE\nYPÊ 500ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.833153,
+          "quality_score": 0.720833,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/b3cfe5356ac3698ccb8242df.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "4495cee97ea7ffe71e57365c",
+          "product_name": "DETERGENTE YPÊ 500ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.722853,
+          "quality_score": 0.85395,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4495cee97ea7ffe71e57365c.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "e9e0b226057081173913c487",
+          "product_name": "DETERGENTE YPE 500ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.699684,
+          "quality_score": 0.763454,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/e9e0b226057081173913c487.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "49721fef0c0b432fe5fba5c4",
+          "product_name": "DETERGENTE\nYPÊ 500ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.653318,
+          "quality_score": 0.724654,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/49721fef0c0b432fe5fba5c4.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "BATATA DOCE",
+      "normalized_name": "BATATA DOCE",
+      "priority_score": 14.75,
+      "occurrence_count": 6,
+      "source_count": 5,
+      "candidates": [
+        {
+          "image_id": "2b241b05b3c3a4f9e7a2b20f",
+          "product_name": "BATATA DOCE",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.904555,
+          "quality_score": 0.72843,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/2b241b05b3c3a4f9e7a2b20f.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "7b5f0f15242140e0d5d0fe28",
+          "product_name": "BATATA DOCE",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.901111,
+          "quality_score": 0.73406,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7b5f0f15242140e0d5d0fe28.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "BATATA PALITO BEM BRASIL MAIS BATATA 2KG",
+      "normalized_name": "BATATA PALITO BEM BRASIL MAIS BATATA 2KG",
+      "priority_score": 14.75,
+      "occurrence_count": 6,
+      "source_count": 5,
+      "candidates": [
+        {
+          "image_id": "8466af00ed3c337373c6a04a",
+          "product_name": "BATATA PALITO BEM BRASIL MAIS BATATA 2KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.867663,
+          "quality_score": 0.904545,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/8466af00ed3c337373c6a04a.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "7dc23e4d18885a95206cb345",
+          "product_name": "BATATA PALITO BEM BRASIL MAIS BATATA 2KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.83609,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7dc23e4d18885a95206cb345.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "LINGUIÇA CALABRESA",
+      "normalized_name": "LINGUICA CALABRESA",
+      "priority_score": 14.0,
+      "occurrence_count": 7,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "e653b37c253b6c9f026d3af3",
+          "product_name": "LINGUIÇA CALABRESA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.935942,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/e653b37c253b6c9f026d3af3.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "1292fa633f2bc5fd36a4f73d",
+          "product_name": "LINGUIÇA CALABRESA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.922701,
+          "quality_score": 0.693086,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/1292fa633f2bc5fd36a4f73d.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "080278e826db4e8bef73c7fd",
+          "product_name": "LINGUIÇA\nCALABRESA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.874583,
+          "quality_score": 0.663825,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/080278e826db4e8bef73c7fd.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "6cd5072384457e63806b030d",
+          "product_name": "LINGUIÇA CALABRESA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.831238,
+          "quality_score": 0.663096,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/6cd5072384457e63806b030d.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "PÃO DE ALHO\nBRASA DE MINAS 440G",
+      "normalized_name": "PAO DE ALHO BRASA DE MINAS 440G",
+      "priority_score": 14.0,
+      "occurrence_count": 7,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "4c4480c9d0688d8661948a25",
+          "product_name": "PÃO DE ALHO\nBRASA DE MINAS 440G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.934026,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4c4480c9d0688d8661948a25.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "50c37bd053d882291faac87e",
+          "product_name": "PÃO DE ALHO\nBRASA DE MINAS 440G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.922635,
+          "quality_score": 0.746477,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/50c37bd053d882291faac87e.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "fdc23802fd0ae04ccb62b0d3",
+          "product_name": "PÃO DE ALHO\nBRASA DE MINAS 440G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.921622,
+          "quality_score": 0.774267,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/fdc23802fd0ae04ccb62b0d3.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "4861326945a2f9596e9449bb",
+          "product_name": "PÃO DE ALHO\nBRASA DE MINAS\n440G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.891883,
+          "quality_score": 0.778879,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4861326945a2f9596e9449bb.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "LOMBO SUÍNO",
+      "normalized_name": "LOMBO SUINO",
+      "priority_score": 14.0,
+      "occurrence_count": 7,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "131c8ab5adf38ab906f97f08",
+          "product_name": "LOMBO SUÍNO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.930696,
+          "quality_score": 0.8797,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/131c8ab5adf38ab906f97f08.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "MAÇÃ\nNACIONAL GALA",
+      "normalized_name": "MACA NACIONAL GALA",
+      "priority_score": 14.0,
+      "occurrence_count": 7,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "c70174a80561cebaa5a2ec67",
+          "product_name": "MAÇÃ NACIONAL GALA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.909986,
+          "quality_score": 0.733637,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/c70174a80561cebaa5a2ec67.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "27e5d4cf31392f3069ff282f",
+          "product_name": "MAÇÃ NACIONAL GALA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.85086,
+          "quality_score": 0.705764,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/27e5d4cf31392f3069ff282f.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "ddeb08b7aab014cde2599f4e",
+          "product_name": "MAÇÃ\nNACIONAL GALA",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.690779,
+          "quality_score": 0.592333,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/ddeb08b7aab014cde2599f4e.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "VINHO PERGOLA 1L TINTO SUAVE",
+      "normalized_name": "VINHO PERGOLA 1L TINTO SUAVE",
+      "priority_score": 14.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "29962d427b18ac61b329f2db",
+          "product_name": "VINHO PERGOLA 1L TINTO SUAVE",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.9858,
+          "quality_score": 0.781831,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/29962d427b18ac61b329f2db.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "1ddbe123ba25b5003505b174",
+          "product_name": "VINHO PERGOLA 1L TINTO SUAVE",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.723278,
+          "quality_score": 0.637945,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/1ddbe123ba25b5003505b174.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ACHOCOLATADO EM PÓ TODDY 750G",
+      "normalized_name": "ACHOCOLATADO EM PO TODDY 750G",
+      "priority_score": 14.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "65811b9fe210fec94b86ad02",
+          "product_name": "ACHOCOLATADO EM PÓ TODDY 750G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.930909,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/65811b9fe210fec94b86ad02.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "0412edf0fb0d7caa9573bce4",
+          "product_name": "ACHOCOLATADO EM PO TODDY 750G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.928455,
+          "quality_score": 0.781091,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0412edf0fb0d7caa9573bce4.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "FLOCAO DE MILHO SINHA 400G",
+      "normalized_name": "FLOCAO DE MILHO SINHA 400G",
+      "priority_score": 14.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "7238cfc926a25e85764de37b",
+          "product_name": "FLOCÃO DE MILHO\nSINHÁ 400G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.865056,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7238cfc926a25e85764de37b.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "6b481b4518597ec8b0e3d3ad",
+          "product_name": "FLOCÃO DE MILHO SINHÁ 400G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.861132,
+          "quality_score": 0.816363,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/6b481b4518597ec8b0e3d3ad.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "2f105530e573fca7f37952e5",
+          "product_name": "FLOCAO DE MILHO SINHA 400G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.719437,
+          "quality_score": 0.728189,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/2f105530e573fca7f37952e5.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "b6c9a3024f581af336ee19ae",
+          "product_name": "FLOCAO DE MILHO SINHA 400G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.6785927505330491,
+          "quality_score": 0.852939,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/b6c9a3024f581af336ee19ae.webp",
+          "source": "standalone-library"
+        }
+      ]
+    },
+    {
+      "product_name": "CAFÉ IRAÍ 500G",
+      "normalized_name": "CAFE IRAI 500G",
+      "priority_score": 13.75,
+      "occurrence_count": 5,
+      "source_count": 5,
+      "candidates": [
+        {
+          "image_id": "0d79624e5a99700583669ffb",
+          "product_name": "CAFÉ IRAÍ 500G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.931549,
+          "quality_score": 0.755481,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0d79624e5a99700583669ffb.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "MOELA DE FRANGO",
+      "normalized_name": "MOELA DE FRANGO",
+      "priority_score": 13.25,
+      "occurrence_count": 8,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "7a0d60b041fb9cd2866fef1d",
+          "product_name": "MOELA DE FRANGO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.948589,
+          "quality_score": 0.73588,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7a0d60b041fb9cd2866fef1d.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "3d70d72ed8d9bb3aa777a12f",
+          "product_name": "MOELA \nDE FRANGO",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.816579,
+          "quality_score": 0.905851,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/3d70d72ed8d9bb3aa777a12f.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CAFÉ VASCONCELOS 500G",
+      "normalized_name": "CAFE VASCONCELOS 500G",
+      "priority_score": 13.0,
+      "occurrence_count": 6,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "5cc8a76b29a7f597c6948f07",
+          "product_name": "CAFÉ VASCONCELOS 500G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.952327,
+          "quality_score": 0.933939,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/5cc8a76b29a7f597c6948f07.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "f3c8631910ec590cdd447d08",
+          "product_name": "CAFÉ VASCONCELOS 500G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.872798,
+          "quality_score": 0.816363,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/f3c8631910ec590cdd447d08.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "LINGUIÇA TOSCANA\nPARA CHURRASCO",
+      "normalized_name": "LINGUICA TOSCANA PARA CHURRASCO",
+      "priority_score": 13.0,
+      "occurrence_count": 6,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "d6e0394c0af45a4cdf2d0b06",
+          "product_name": "LINGUIÇA TOSCANA\nPARA CHURRASCO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.951628,
+          "quality_score": 0.747536,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/d6e0394c0af45a4cdf2d0b06.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "479875009f5d5b53bb398ba7",
+          "product_name": "LINGUIÇA TOSCANA\nPARA CHURRASCO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.929941,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/479875009f5d5b53bb398ba7.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "c70bacb5f3d7ae063ee18283",
+          "product_name": "LINGUIÇA TOSCANA PARA CHURRASCO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.926605,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/c70bacb5f3d7ae063ee18283.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "b9d747e9f3e16aeb4387cdaa",
+          "product_name": "LINGUIÇA TOSCANA PARA CHURRASCO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.925668,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/b9d747e9f3e16aeb4387cdaa.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "HAMBÚRGUER\nCASEIRO SR 145G",
+      "normalized_name": "HAMBURGUER CASEIRO SR 145G",
+      "priority_score": 13.0,
+      "occurrence_count": 6,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "912282598b75d90504d181e3",
+          "product_name": "HAMBÚRGUER\nCASEIRO SR 145G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.950451,
+          "quality_score": 0.710545,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/912282598b75d90504d181e3.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "5229773a8a84cc6167d6ac04",
+          "product_name": "HAMBÚRGUER\nCASEIRO SR 145G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.857527,
+          "quality_score": 0.836888,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/5229773a8a84cc6167d6ac04.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "COXA SOBRECOXA",
+      "normalized_name": "COXA SOBRECOXA",
+      "priority_score": 13.0,
+      "occurrence_count": 6,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "4257db9667e0b99d5223167f",
+          "product_name": "COXA SOBRECOXA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.944794,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4257db9667e0b99d5223167f.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "08efa60510799ff6436da84a",
+          "product_name": "COXA SOBRECOXA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.823086,
+          "quality_score": 0.816363,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/08efa60510799ff6436da84a.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "973c334b8c3c002078033a41",
+          "product_name": "COXA SOBRECOXA",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.732831,
+          "quality_score": 0.75502,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/973c334b8c3c002078033a41.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ENERGETICO EXTRA POWER 2L",
+      "normalized_name": "ENERGETICO EXTRA POWER 2L",
+      "priority_score": 13.0,
+      "occurrence_count": 4,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "e4cb72c406762f61e100ad44",
+          "product_name": "ENERGETICO EXTRA POWER 2L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.980353,
+          "quality_score": 0.765924,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/e4cb72c406762f61e100ad44.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "OLEO ABC PET 900ML SOJA",
+      "normalized_name": "OLEO ABC PET 900ML SOJA",
+      "priority_score": 13.0,
+      "occurrence_count": 4,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "3f41494e155c23d8f9f78b68",
+          "product_name": "OLEO ABC PET 900ML SOJA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.841905,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/3f41494e155c23d8f9f78b68.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "MASSA PARA TAPIOCA AMAFIL 500G",
+      "normalized_name": "MASSA PARA TAPIOCA AMAFIL 500G",
+      "priority_score": 12.25,
+      "occurrence_count": 5,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "8ccdd195c2c1db9929c9d010",
+          "product_name": "MASSA PARA TAPIOCA AMAFIL 500G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.90479,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/8ccdd195c2c1db9929c9d010.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "48688bd4edade05b7e45718e",
+          "product_name": "MASSA PARA TAPIOCA\nAMAFIL 500G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.904596,
+          "quality_score": 0.717057,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/48688bd4edade05b7e45718e.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "MAÇÃ DO PEITO NOVILHA",
+      "normalized_name": "MACA DO PEITO NOVILHA",
+      "priority_score": 12.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "7dfb986389f52b217f390dc0",
+          "product_name": "MAÇÃ DO PEITO NOVILHA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.934083,
+          "quality_score": 0.704183,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7dfb986389f52b217f390dc0.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "6549f3a3d150380015f1dbad",
+          "product_name": "MAÇA DO PEITO NOVILHA",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.763548,
+          "quality_score": 0.723291,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/6549f3a3d150380015f1dbad.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "LINGUIÇA MISTA\nCASEIRA SR",
+      "normalized_name": "LINGUICA MISTA CASEIRA SR",
+      "priority_score": 12.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "942224e20e6c0e90002ab3c5",
+          "product_name": "LINGUIÇA MISTA\nCASEIRA SR",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.93008,
+          "quality_score": 0.88582,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/942224e20e6c0e90002ab3c5.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "926c3a6fa04d173fe748ffab",
+          "product_name": "LINGUIÇA MISTA\nCASEIRA SR",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.903494,
+          "quality_score": 0.742879,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/926c3a6fa04d173fe748ffab.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "81adc4adb31784ad5c5f1176",
+          "product_name": "LINGUIÇA MISTA\nCASEIRA SR",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.85823,
+          "quality_score": 0.920563,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/81adc4adb31784ad5c5f1176.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "MORANGO TRADICIONAL BDJ",
+      "normalized_name": "MORANGO TRADICIONAL BDJ",
+      "priority_score": 12.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "94ee3f0107e1b8c366ff1167",
+          "product_name": "MORANGO TRADICIONAL BDJ",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.919336,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/94ee3f0107e1b8c366ff1167.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "62618b7ffb3d673e866409f7",
+          "product_name": "MORANGO TRADICIONAL BDJ",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.832958,
+          "quality_score": 0.807313,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/62618b7ffb3d673e866409f7.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "003dd6e6c96607a8c1c0c5c3",
+          "product_name": "MORANGO TRADICIONAL BDJ",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.81851,
+          "quality_score": 0.783119,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/003dd6e6c96607a8c1c0c5c3.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA HEINEKEN SHOT 250ML",
+      "normalized_name": "CERVEJA HEINEKEN SHOT 250ML",
+      "priority_score": 12.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "029975755c94c94d94293d55",
+          "product_name": "CERVEJA HEINEKEN SHOT 250ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.892339,
+          "quality_score": 0.781831,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/029975755c94c94d94293d55.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "1d7323aef77c3900835446de",
+          "product_name": "CERVEJA HEINEKEN SHOT 250ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.823448,
+          "quality_score": 0.775154,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/1d7323aef77c3900835446de.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "LASANHA SADIA 600G",
+      "normalized_name": "LASANHA SADIA 600G",
+      "priority_score": 12.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "4dbe05d0950dd2e7e3ec6cf4",
+          "product_name": "LASANHA\nSADIA 600G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.888521,
+          "quality_score": 0.933939,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4dbe05d0950dd2e7e3ec6cf4.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "566de7bd1d7734ea71125f1a",
+          "product_name": "LASANHA\nSADIA 600G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.862637,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/566de7bd1d7734ea71125f1a.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "70e83832abb3b71f0542fe6e",
+          "product_name": "LASANHA SADIA 600G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.819467,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/70e83832abb3b71f0542fe6e.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "1e2c909c5922b7669bd355d0",
+          "product_name": "LASANHA SADIA 600G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.737611,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/1e2c909c5922b7669bd355d0.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "PÃO DE QUEIJO\nCONGELADO SR\nTRADICIONAL 1KG",
+      "normalized_name": "PAO DE QUEIJO CONGELADO SR TRADICIONAL 1KG",
+      "priority_score": 12.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "f2ed45e765982a52e33e80f1",
+          "product_name": "PÃO DE QUEIJO\nCONGELADO SR\nTRADICIONAL 1KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.887256,
+          "quality_score": 0.913951,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/f2ed45e765982a52e33e80f1.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "9071ff58ae85cca1b7972e73",
+          "product_name": "PÃO DE QUEIJO\nCONGELADO SR\nTRADICIONAL 1KG",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.672751,
+          "quality_score": 0.898078,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/9071ff58ae85cca1b7972e73.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "SALSICHA AVIVAR",
+      "normalized_name": "SALSICHA AVIVAR",
+      "priority_score": 12.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "9d854c037c12a125eb14cc64",
+          "product_name": "SALSICHA AVIVAR",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.850478,
+          "quality_score": 0.717995,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/9d854c037c12a125eb14cc64.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "dd0a7c07a9e8c02766d95eb7",
+          "product_name": "SALSICHA AVIVAR",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.796717,
+          "quality_score": 0.677277,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/dd0a7c07a9e8c02766d95eb7.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "OVO DE GALINHA BRANCO 30X1",
+      "normalized_name": "OVO DE GALINHA BRANCO 30X1",
+      "priority_score": 12.0,
+      "occurrence_count": 5,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "385310733768ba443799b694",
+          "product_name": "OVO DE GALINHA BRANCO 30X1",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.825199,
+          "quality_score": 0.679089,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/385310733768ba443799b694.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "85dac34318512cf6b9b189f9",
+          "product_name": "OVO DE GALINHA BRANCO 30X1",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.707712,
+          "quality_score": 0.678722,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/85dac34318512cf6b9b189f9.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "COXA SOBRECOXA\n( PACOTE )",
+      "normalized_name": "COXA SOBRECOXA PACOTE",
+      "priority_score": 11.25,
+      "occurrence_count": 6,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "be49d3a4baad7aa851b95c88",
+          "product_name": "COXA SOBRECOXA\n( PACOTE )",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.922334,
+          "quality_score": 0.725131,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/be49d3a4baad7aa851b95c88.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "360f76142f1f3c459ee0c253",
+          "product_name": "COXA SOBRECOXA\n(PACOTE)",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.872166,
+          "quality_score": 0.875151,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/360f76142f1f3c459ee0c253.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA IMPÉRIO ULTRA PURO MALTE\nLONG NECK GARRAFA 275ML",
+      "normalized_name": "CERVEJA IMPERIO ULTRA PURO MALTE LONG NECK GARRAFA 275ML",
+      "priority_score": 11.25,
+      "occurrence_count": 6,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "bfebae2a6bb04b29fbeeb1e3",
+          "product_name": "CERVEJA IMPÉRIO ULTRA PURO MALTE\nLONG NECK GARRAFA 275ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.895106,
+          "quality_score": 0.788674,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/bfebae2a6bb04b29fbeeb1e3.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "5b41bd3303c82001cfc97e18",
+          "product_name": "CERVEJA IMPÉRIO ULTRA\nPURO MALTE LONG NECK\nGARRAFA 275ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.865782,
+          "quality_score": 0.747181,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/5b41bd3303c82001cfc97e18.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "1bea97bd14569e4966bb80c1",
+          "product_name": "CERVEJA IMPÉRIO ULTRA\nPURO MALTE LONG NECK GARRAFA 275ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.723668,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/1bea97bd14569e4966bb80c1.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "COSTELA RIPA",
+      "normalized_name": "COSTELA RIPA",
+      "priority_score": 11.25,
+      "occurrence_count": 6,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "ce251e47726d2226d280a95d",
+          "product_name": "COSTELA RIPA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.886715,
+          "quality_score": 0.66557,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/ce251e47726d2226d280a95d.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "e2c4742a39f61d05f24f3a2e",
+          "product_name": "COSTELA RIPA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.830479,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/e2c4742a39f61d05f24f3a2e.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ÓLEO MISTO QUINTA DOM PEDRO 500ML",
+      "normalized_name": "OLEO MISTO QUINTA DOM PEDRO 500ML",
+      "priority_score": 11.0,
+      "occurrence_count": 4,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "67c45a7af1c41db36d14c45c",
+          "product_name": "OLEO MISTO QUINTA DOM PEDRO 500ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.81827,
+          "quality_score": 0.7564,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/67c45a7af1c41db36d14c45c.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "d879a35dabfeaad6d2162890",
+          "product_name": "ÓLEO MISTO QUINTA DOM PEDRO 500ML",
+          "review_status": "accepted",
+          "association_status": "accepted",
+          "confidence": 0.974462,
+          "quality_score": 0.699656,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/d879a35dabfeaad6d2162890.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "LEITE CONDENSADO TRIANGULO 395G SEMIDESN",
+      "normalized_name": "LEITE CONDENSADO TRIANGULO 395G SEMIDESN",
+      "priority_score": 11.0,
+      "occurrence_count": 4,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "edac5a944feadc05bd22bc07",
+          "product_name": "LEITE CONDENSADO TRIANGULO 395G SEMIDESN",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.937173,
+          "quality_score": 0.710545,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/edac5a944feadc05bd22bc07.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "e3023b8e30c0b0720135c105",
+          "product_name": "LEITE CONDENSADO TRIANGULO 395G SEMIDESN",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.891755,
+          "quality_score": 0.675554,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/e3023b8e30c0b0720135c105.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "LEITE TRIANGULO\nINTEGRAL / DESNATADO 1L",
+      "normalized_name": "LEITE TRIANGULO INTEGRAL DESNATADO 1L",
+      "priority_score": 11.0,
+      "occurrence_count": 4,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "7eca5b51cba38155a8f4728c",
+          "product_name": "LEITE TRIANGULO\nINTEGRAL/DESNATADO 1L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.901155,
+          "quality_score": 0.520748,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7eca5b51cba38155a8f4728c.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "547cd07f2cdcfa5480a66ac9",
+          "product_name": "LEITE TRIANGULO\nINTEGRAL / DESNATADO 1L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.879587,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/547cd07f2cdcfa5480a66ac9.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "dc117b623d2e2d1f0e5d33b1",
+          "product_name": "LEITE TRIANGULO\nINTEGRAL / DESNATADO 1L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.849201,
+          "quality_score": 0.933939,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/dc117b623d2e2d1f0e5d33b1.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ÓLEO DE SOJA\nABC PET 900ML",
+      "normalized_name": "OLEO DE SOJA ABC PET 900ML",
+      "priority_score": 11.0,
+      "occurrence_count": 4,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "aa5239931848e75bcf0a5fd7",
+          "product_name": "ÓLEO DE SOJA\nABC PET 900ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.849311,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/aa5239931848e75bcf0a5fd7.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "FARINHA CASEIRINHA TEMP C/ E S/ PIMENTA 350G",
+      "normalized_name": "FARINHA CASEIRINHA TEMP C E S PIMENTA 350G",
+      "priority_score": 11.0,
+      "occurrence_count": 4,
+      "source_count": 4,
+      "candidates": [
+        {
+          "image_id": "ef80588bc4cf9157379a7d33",
+          "product_name": "FARINHA CASEIRINHA TEMP C/ E S/ PIMENTA 350G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.844745,
+          "quality_score": 0.678324,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/ef80588bc4cf9157379a7d33.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "BEBIDA CAMPARI\nBITTER MILANO 998ML",
+      "normalized_name": "BEBIDA CAMPARI BITTER MILANO 998ML",
+      "priority_score": 10.25,
+      "occurrence_count": 5,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "834558c084816c8a929e173b",
+          "product_name": "BEBIDA CAMPARI\nBITTER MILANO 998ML",
+          "review_status": "pending",
+          "association_status": "accepted",
+          "confidence": 0.995,
+          "quality_score": 0.713485,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/834558c084816c8a929e173b.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "69bea7983f19ae0c23f91a35",
+          "product_name": "BEBIDA CAMPARI BITTER MILANO 998ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.706874,
+          "quality_score": 0.781831,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/69bea7983f19ae0c23f91a35.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "COSTELA GAÚCHA",
+      "normalized_name": "COSTELA GAUCHA",
+      "priority_score": 10.25,
+      "occurrence_count": 5,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "542f106641d03d1a2ddf510b",
+          "product_name": "COSTELA GAÚCHA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.929597,
+          "quality_score": 0.667787,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/542f106641d03d1a2ddf510b.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "6b8e77febb73481b90c8e9d6",
+          "product_name": "COSTELA GAÚCHA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.8765,
+          "quality_score": 0.646042,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/6b8e77febb73481b90c8e9d6.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "HAMBÚRGUER CASEIRO GOURMET SR 145G",
+      "normalized_name": "HAMBURGUER CASEIRO GOURMET SR 145G",
+      "priority_score": 10.25,
+      "occurrence_count": 5,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "2cde989b4217be0af546115b",
+          "product_name": "HAMBÚRGUER CASEIRO GOURMET SR 145G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.868948,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/2cde989b4217be0af546115b.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA PURO MALTE PILSEN 350ML",
+      "normalized_name": "CERVEJA PURO MALTE PILSEN 350ML",
+      "priority_score": 10.25,
+      "occurrence_count": 5,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "0169259d7fc91eec47858e05",
+          "product_name": "CERVEJA PURO MALTE PILSEN 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.856362,
+          "quality_score": 0.781831,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0169259d7fc91eec47858e05.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "DUAL PACK 1 COCA 1 FANTA 2L 2X1",
+      "normalized_name": "DUAL PACK 1 COCA 1 FANTA 2L 2X1",
+      "priority_score": 10.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "62634da30b9a8da52316fc1e",
+          "product_name": "DUAL PACK 1 COCA + 1 FANTA 2L 2X1",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.925265,
+          "quality_score": 0.740233,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/62634da30b9a8da52316fc1e.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "829ada78be93e9881287fd2c",
+          "product_name": "DUAL PACK 1 COCA 1 FANTA 2L 2X1",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.722748,
+          "quality_score": 0.767605,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/829ada78be93e9881287fd2c.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ARROZ COCAL PREMIUM 5KG",
+      "normalized_name": "ARROZ COCAL PREMIUM 5KG",
+      "priority_score": 10.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "474b0097012710e553ffeea9",
+          "product_name": "ARROZ COCAL PREMIUM 5KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.912361,
+          "quality_score": 0.543345,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/474b0097012710e553ffeea9.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ROSQ COCO RANCHEIRO 500G",
+      "normalized_name": "ROSQ COCO RANCHEIRO 500G",
+      "priority_score": 10.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "037c3e8395f55e983ff73b17",
+          "product_name": "ROSQ COCO RANCHEIRO 500G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.900894,
+          "quality_score": 0.742879,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/037c3e8395f55e983ff73b17.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CREME DENTAL COLGATE 180G MPA",
+      "normalized_name": "CREME DENTAL COLGATE 180G MPA",
+      "priority_score": 10.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "e336812e3afe6271f362bb04",
+          "product_name": "CREME DENTAL COLGATE 180G MPA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.89793,
+          "quality_score": 0.626202,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/e336812e3afe6271f362bb04.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "c46fb6fe7770facba3257635",
+          "product_name": "CREME DENTAL COLGATE 180G MPA",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.78364,
+          "quality_score": 0.55666,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/c46fb6fe7770facba3257635.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "COPO AMERICANO 190ML",
+      "normalized_name": "COPO AMERICANO 190ML",
+      "priority_score": 10.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "52acd64b90c49938d4cda1d5",
+          "product_name": "COPO AMERICANO 190ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.890714,
+          "quality_score": 0.768449,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/52acd64b90c49938d4cda1d5.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "REFRIGERANTE COCA COLA 2L",
+      "normalized_name": "REFRIGERANTE COCA COLA 2L",
+      "priority_score": 10.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "2f218b2bd3c0c2c9be5ec38c",
+          "product_name": "REFRIGERANTE COCA COLA 2L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.883394,
+          "quality_score": 0.784605,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/2f218b2bd3c0c2c9be5ec38c.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "4ff2dd6a1b00bf1d6e64c39e",
+          "product_name": "REFRIGERANTE COCA COLA 2L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.863505,
+          "quality_score": 0.781831,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4ff2dd6a1b00bf1d6e64c39e.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "COSTELA\nGAÚCHA / RIPA",
+      "normalized_name": "COSTELA GAUCHA RIPA",
+      "priority_score": 9.5,
+      "occurrence_count": 6,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "7d4871a3618a918f2a206bcb",
+          "product_name": "COSTELA GAÚCHA / RIPA",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.814252,
+          "quality_score": 0.816363,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7d4871a3618a918f2a206bcb.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "976c37a7f8ddf573aa87e78d",
+          "product_name": "COSTELA\nGAÚCHA / RIPA",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.708015,
+          "quality_score": 0.886909,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/976c37a7f8ddf573aa87e78d.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "EXTRATO DE TOMATE ELEFANTE PT 300G",
+      "normalized_name": "EXTRATO DE TOMATE ELEFANTE PT 300G",
+      "priority_score": 9.5,
+      "occurrence_count": 4,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "dd24e6cf4a35501d5ac727b0",
+          "product_name": "EXTRATO DE TOMATE ELEFANTE PT 300G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.936613,
+          "quality_score": 0.73406,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/dd24e6cf4a35501d5ac727b0.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "aa72b3589a2fae4828e06b81",
+          "product_name": "EXTRATO DE TOMATE ELEFANTE PT 300G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.874335,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/aa72b3589a2fae4828e06b81.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "FRANGO\nINTEIRO",
+      "normalized_name": "FRANGO INTEIRO",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "83a0b18a3217d02114187c73",
+          "product_name": "FRANGO\nINTEIRO",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.764984,
+          "quality_score": 0.750139,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/83a0b18a3217d02114187c73.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "762f1c7d1a1be9856eed2f0b",
+          "product_name": "FRANGO INTEIRO",
+          "review_status": "accepted",
+          "association_status": "accepted",
+          "confidence": 0.985682,
+          "quality_score": 0.733219,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/762f1c7d1a1be9856eed2f0b.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "PERNIL SUÍNO SEM OSSO",
+      "normalized_name": "PERNIL SUINO SEM OSSO",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "9aa65c0b10638ae77c13cfd6",
+          "product_name": "PERNIL SUÍNO SEM OSSO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.935542,
+          "quality_score": 0.8797,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/9aa65c0b10638ae77c13cfd6.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "740c566a6638208592743f4c",
+          "product_name": "PERNIL SUÍNO SEM OSSO",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.784086,
+          "quality_score": 0.750139,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/740c566a6638208592743f4c.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "BATATA MCCAIN AIRFRYER FININHAS 600G",
+      "normalized_name": "BATATA MCCAIN AIRFRYER FININHAS 600G",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "a02b901d0e3a31fe5a022893",
+          "product_name": "BATATA MCCAIN AIRFRYER FININHAS 600G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.92855,
+          "quality_score": 0.713485,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/a02b901d0e3a31fe5a022893.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "5956d72b389a45e3a4cc04de",
+          "product_name": "BATATA MCCAIN AIRFRYER FININHAS 600G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.705039,
+          "quality_score": 0.766982,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/5956d72b389a45e3a4cc04de.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "6fe59d07f946eff50c96b8d5",
+          "product_name": "BATATA MCCAIN\nAIRFRYER FININHAS 600G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.676053,
+          "quality_score": 0.78382,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/6fe59d07f946eff50c96b8d5.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "SABONETE\nPROTEX 85G",
+      "normalized_name": "SABONETE PROTEX 85G",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "8258e24a1b1b5bf7dd8c3c50",
+          "product_name": "SABONETE\nPROTEX 85G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.914438,
+          "quality_score": 0.579607,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/8258e24a1b1b5bf7dd8c3c50.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "1f9835f860bc093839738e4f",
+          "product_name": "SABONETE\nPROTEX 85G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.844403,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/1f9835f860bc093839738e4f.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ESPETINHO\nDE FRANBACON",
+      "normalized_name": "ESPETINHO DE FRANBACON",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "2c59af14c46b1463375b761d",
+          "product_name": "ESPETINHO\nDE FRANBACON",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.89396,
+          "quality_score": 0.74386,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/2c59af14c46b1463375b761d.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "FRANGO\nA PASSARINHO",
+      "normalized_name": "FRANGO A PASSARINHO",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "66e99ba4f59010254a9a48f7",
+          "product_name": "FRANGO\nA PASSARINHO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.886338,
+          "quality_score": 0.856,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/66e99ba4f59010254a9a48f7.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "c09096f6f01c0b41bf80a911",
+          "product_name": "FRANGO A\nPASSARINHO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.885406,
+          "quality_score": 0.845757,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/c09096f6f01c0b41bf80a911.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "aba41d1151d5243af7066a14",
+          "product_name": "FRANGO A PASSARINHO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.857155,
+          "quality_score": 0.748,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/aba41d1151d5243af7066a14.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "d82e3d23aa6a872e229a57df",
+          "product_name": "FRANGO\nA PASSARINHO",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.714307,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/d82e3d23aa6a872e229a57df.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "MUSSARELA\nTRADICIONAL",
+      "normalized_name": "MUSSARELA TRADICIONAL",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "8bec92845846f5b8ea08c8a9",
+          "product_name": "MUSSARELA\nTRADICIONAL",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.883516,
+          "quality_score": 0.898994,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/8bec92845846f5b8ea08c8a9.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "56a9051155e3de991ea77214",
+          "product_name": "MUSSARELA TRADICIONAL",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.877508,
+          "quality_score": 0.649095,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/56a9051155e3de991ea77214.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "228961738bfab63754786159",
+          "product_name": "MUSSARELA TRADICIONAL",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.782432,
+          "quality_score": 0.62964,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/228961738bfab63754786159.jpeg",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "HAMBÚRGUER\nREZENDE 56G",
+      "normalized_name": "HAMBURGUER REZENDE 56G",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "075cb416182a91de8c0a91f1",
+          "product_name": "HAMBÚRGUER REZENDE 56G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.878687,
+          "quality_score": 0.73842,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/075cb416182a91de8c0a91f1.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "291949dedda4109a41bd364f",
+          "product_name": "HAMBÚRGUER\nREZENDE 56G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.874073,
+          "quality_score": 0.754636,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/291949dedda4109a41bd364f.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "DETERGENTE\nSMART 500ML",
+      "normalized_name": "DETERGENTE SMART 500ML",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "0bba13b6220d51c4001f3274",
+          "product_name": "DETERGENTE\nSMART 500ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.8645,
+          "quality_score": 0.63833,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0bba13b6220d51c4001f3274.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "QUEIJO CAIPIRA FAZENDA SAPECADO",
+      "normalized_name": "QUEIJO CAIPIRA FAZENDA SAPECADO",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "72f632ae76651ca492e5d91e",
+          "product_name": "QUEIJO CAIPIRA FAZENDA SAPECADO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.84349,
+          "quality_score": 0.8073,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/72f632ae76651ca492e5d91e.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "ef867e511bc3343e515b4703",
+          "product_name": "QUEIJO CAIPIRA FAZENDA SAPECADO",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.813409,
+          "quality_score": 0.885061,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/ef867e511bc3343e515b4703.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "PÃO DE FORMA SR TRADICIONAL 400G",
+      "normalized_name": "PAO DE FORMA SR TRADICIONAL 400G",
+      "priority_score": 9.25,
+      "occurrence_count": 4,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "84d7438abec3d1ddcf5f6bff",
+          "product_name": "PÃO DE FORMA SR TRADICIONAL 400G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.695496,
+          "quality_score": 0.808975,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/84d7438abec3d1ddcf5f6bff.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA EISENBAHN LATÃO 473ML",
+      "normalized_name": "CERVEJA EISENBAHN LATAO 473ML",
+      "priority_score": 8.5,
+      "occurrence_count": 5,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "0c9b4b8d57565a2af69b44bc",
+          "product_name": "cerveja eisenbahn\nlatão 473ml",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.905645,
+          "quality_score": 0.786969,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0c9b4b8d57565a2af69b44bc.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "721a25f1059af389a2c06ee0",
+          "product_name": "CERVEJA EISENBAHN LATÃO 473ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.835621,
+          "quality_score": 0.786969,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/721a25f1059af389a2c06ee0.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "6d071ef8a36a0c76a09faa1b",
+          "product_name": "CERVEJA EISENBAHN\nLATÃO 473ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.834152,
+          "quality_score": 0.781831,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/6d071ef8a36a0c76a09faa1b.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CERVEJA PURO MALTE\nPILSEN LATA 12X1 350ML",
+      "normalized_name": "CERVEJA PURO MALTE PILSEN LATA 12X1 350ML",
+      "priority_score": 8.5,
+      "occurrence_count": 5,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "ba9cc4384dec406b598368da",
+          "product_name": "CERVEJA PURO MALTE\nPILSEN LATA 12X1 350ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.883167,
+          "quality_score": 0.816363,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/ba9cc4384dec406b598368da.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "60767c471b7e8f099588cc6a",
+          "product_name": "CERVEJA PURO MALTE\nPILSEN LATA 12X1 350ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.843104,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/60767c471b7e8f099588cc6a.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "AÇÚCAR CORURIPE CRISTAL 5KG",
+      "normalized_name": "ACUCAR CORURIPE CRISTAL 5KG",
+      "priority_score": 8.5,
+      "occurrence_count": 3,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "959ab69ba36e6c429a9c306d",
+          "product_name": "AÇÚCAR CORURIPE CRISTAL 5KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.917017,
+          "quality_score": 0.904545,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/959ab69ba36e6c429a9c306d.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ARROZ PARANAIBA 5KG",
+      "normalized_name": "ARROZ PARANAIBA 5KG",
+      "priority_score": 8.5,
+      "occurrence_count": 3,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "0b2eb3b6199588ed89229b3a",
+          "product_name": "ARROZ PARANAIBA 5KG",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.914371,
+          "quality_score": 0.597633,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0b2eb3b6199588ed89229b3a.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "AGUA SANITARIA QBOA 2L CLORO ATIVO",
+      "normalized_name": "AGUA SANITARIA QBOA 2L CLORO ATIVO",
+      "priority_score": 8.5,
+      "occurrence_count": 3,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "900290292e379c4661bfd7c2",
+          "product_name": "AGUA SANITARIA QBOA 2L CLORO ATIVO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.896205,
+          "quality_score": 0.666076,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/900290292e379c4661bfd7c2.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "affd1165d2fdaf392c8fb0c3",
+          "product_name": "AGUA SANITARIA QBOA 2L CLORO ATIVO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.834909,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/affd1165d2fdaf392c8fb0c3.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "ROSQUINHA FLAMBOYANT COCO 600G",
+      "normalized_name": "ROSQUINHA FLAMBOYANT COCO 600G",
+      "priority_score": 8.5,
+      "occurrence_count": 3,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "c97a76a0eb515dc34c9be31f",
+          "product_name": "ROSQUINHA FLAMBOYANT COCO 600G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.883427,
+          "quality_score": 0.57998,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/c97a76a0eb515dc34c9be31f.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "3eb9ce436ded983da49d6b28",
+          "product_name": "ROSQUINHA FLAMBOYANT COCO 600G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.850331,
+          "quality_score": 0.583608,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/3eb9ce436ded983da49d6b28.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "MAIONESE HELLMANNS 500G TRADICIONAL",
+      "normalized_name": "MAIONESE HELLMANNS 500G TRADICIONAL",
+      "priority_score": 8.5,
+      "occurrence_count": 3,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "1b9fab1bf35e3f7182a0cc5d",
+          "product_name": "MAIONESE HELLMANNS 500G TRADICIONAL",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.835086,
+          "quality_score": 0.750815,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/1b9fab1bf35e3f7182a0cc5d.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "c065572fc16902b0331eeb93",
+          "product_name": "MAIONESE HELLMANNS 500G TRADICIONAL",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.680737,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/c065572fc16902b0331eeb93.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "SODA\nSOL 1KG",
+      "normalized_name": "SODA SOL 1KG",
+      "priority_score": 8.5,
+      "occurrence_count": 3,
+      "source_count": 2,
+      "candidates": [
+        {
+          "image_id": "482b985cbcfbdf851f8e435c",
+          "product_name": "SODA\nSOL 1KG",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.712093,
+          "quality_score": 0.713485,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/482b985cbcfbdf851f8e435c.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "BEB CAMPARI BITTER MILANO 998ML",
+      "normalized_name": "BEB CAMPARI BITTER MILANO 998ML",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "a6c1cb421ca43f67be5652cb",
+          "product_name": "BEB CAMPARI BITTER MILANO 998ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.939991,
+          "quality_score": 0.734687,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/a6c1cb421ca43f67be5652cb.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "051c4a933e243d1829148a4c",
+          "product_name": "BEB CAMPARI BITTER MILANO 998ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.714824,
+          "quality_score": 0.602957,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/051c4a933e243d1829148a4c.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "SHAMPOO\nSEDA 300ML",
+      "normalized_name": "SHAMPOO SEDA 300ML",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "a7754b55eb21026e77efc561",
+          "product_name": "SHAMPOO\nSEDA 300ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.938261,
+          "quality_score": 0.70027,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/a7754b55eb21026e77efc561.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "17df622f7ced9eb4f87dbe4e",
+          "product_name": "SHAMPOO\nSEDA 300ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.722713,
+          "quality_score": 0.596943,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/17df622f7ced9eb4f87dbe4e.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "BISCOITO SEMPRI 250G POLVILHO AZEDO",
+      "normalized_name": "BISCOITO SEMPRI 250G POLVILHO AZEDO",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "f948fcbe3f1d6c1d55158940",
+          "product_name": "BISCOITO SEMPRI 250G POLVILHO AZEDO",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.934679,
+          "quality_score": 0.710545,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/f948fcbe3f1d6c1d55158940.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "29057110190e3afb2f9ff7ac",
+          "product_name": "BISCOITO SEMPRI 250G POLVILHO AZEDO",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.763307,
+          "quality_score": 0.742879,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/29057110190e3afb2f9ff7ac.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "f509816cfccb5680cf715879",
+          "product_name": "BISCOITO SEMPRI 250G POLVILHO AZEDO",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.679419,
+          "quality_score": 0.959713,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/f509816cfccb5680cf715879.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "SUCO DE UVA AURORA 1,5L TP TINTO INTEGRAL",
+      "normalized_name": "SUCO DE UVA AURORA 1.5L TP TINTO INTEGRAL",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "1f1b1d862d5b771fe81a039e",
+          "product_name": "SUCO DE UVA AURORA 1,5L TP TINTO INTEGRAL",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.931299,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/1f1b1d862d5b771fe81a039e.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "FLOCÃO DE MILHO\nSINHÁ 500G",
+      "normalized_name": "FLOCAO DE MILHO SINHA 500G",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "ffb4ddee863b26af92a5f8d3",
+          "product_name": "FLOCÃO DE MILHO\nSINHÁ 500G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.92828,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/ffb4ddee863b26af92a5f8d3.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "8d113efd66de67cc72d11fe6",
+          "product_name": "FLOCAO DE MILHO SINHA 500G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.919654,
+          "quality_score": 0.732699,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/8d113efd66de67cc72d11fe6.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "EXTRATO DE TOMATE PREDILECTA 300G",
+      "normalized_name": "EXTRATO DE TOMATE PREDILECTA 300G",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "9ea29cbd8de4adf8b9903cb0",
+          "product_name": "EXTRATO DE TOMATE PREDILECTA 300G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.92391,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/9ea29cbd8de4adf8b9903cb0.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "BEB WHISKY JOHNNIE RED LABEL 1L",
+      "normalized_name": "BEB WHISKY JOHNNIE RED LABEL 1L",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "0294345a8722cd78b61b1e78",
+          "product_name": "BEB WHISKY JOHNNIE RED LABEL 1L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.911097,
+          "quality_score": 0.781831,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0294345a8722cd78b61b1e78.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "BANANA TERRA",
+      "normalized_name": "BANANA TERRA",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "e97af036097f87c4ab45174b",
+          "product_name": "BANANA TERRA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.89572,
+          "quality_score": 0.737125,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/e97af036097f87c4ab45174b.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "6b7fde6be13a0946f2722136",
+          "product_name": "BANANA TERRA",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.885259,
+          "quality_score": 0.785103,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/6b7fde6be13a0946f2722136.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "CHOCOLATE KIT\nKAT 41,5G",
+      "normalized_name": "CHOCOLATE KIT KAT 41.5G",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "a2cafabe4a0c913041bdad43",
+          "product_name": "CHOCOLATE KIT\nKAT 41,5G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.894785,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/a2cafabe4a0c913041bdad43.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "2ebf60239122b60353328285",
+          "product_name": "CHOCOLATE KIT KAT 41,5G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.819083,
+          "quality_score": 0.697603,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/2ebf60239122b60353328285.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "4d9fd491283a99247ce48eec",
+          "product_name": "CHOCOLATE KIT KAT 41,5G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.807187,
+          "quality_score": 0.757576,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4d9fd491283a99247ce48eec.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "SABONETE\nLUX 85G",
+      "normalized_name": "SABONETE LUX 85G",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "484c6e2cb75f6f432dc75109",
+          "product_name": "SABONETE\nLUX 85G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.8821,
+          "quality_score": 0.713485,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/484c6e2cb75f6f432dc75109.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "25407b2b83c52140194df40b",
+          "product_name": "SABONETE LUX 85G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.864852,
+          "quality_score": 0.698788,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/25407b2b83c52140194df40b.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "4417dd73ed515c0c8d9d5fda",
+          "product_name": "SABONETE LUX 85G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.8455,
+          "quality_score": 0.668995,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/4417dd73ed515c0c8d9d5fda.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "VINHO RESERVADO CONCHA Y TORO 750ML",
+      "normalized_name": "VINHO RESERVADO CONCHA Y TORO 750ML",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "efe46bc39a04700817259792",
+          "product_name": "VINHO RESERVADO CONCHA Y TORO 750ML",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.873611,
+          "quality_score": 0.679896,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/efe46bc39a04700817259792.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "0184b3f5fa3b7011217cc213",
+          "product_name": "VINHO RESERVADO CONCHA Y TORO 750ML",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.722134,
+          "quality_score": 0.781238,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0184b3f5fa3b7011217cc213.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "MAIONESE HELLMANNS\nTRADICIONAL 500G",
+      "normalized_name": "MAIONESE HELLMANNS TRADICIONAL 500G",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "f92d42cff897d476348b7721",
+          "product_name": "MAIONESE HELLMANNS\nTRADICIONAL 500G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.869721,
+          "quality_score": 0.619321,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/f92d42cff897d476348b7721.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "KIT COCA COLA 2L\n+ KUAT 2L",
+      "normalized_name": "KIT COCA COLA 2L KUAT 2L",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "7e4543ab042870cad98031ef",
+          "product_name": "KIT COCA COLA 2L\n+ KUAT 2L",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.868324,
+          "quality_score": 0.988979,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7e4543ab042870cad98031ef.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "PIZZA PIFPAF 460G",
+      "normalized_name": "PIZZA PIFPAF 460G",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "2fbd898ad037ba531a9abfb6",
+          "product_name": "PIZZA PIFPAF 460G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.864137,
+          "quality_score": 0.710545,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/2fbd898ad037ba531a9abfb6.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "7d71dad4b6e045f392efa55c",
+          "product_name": "PIZZA\nPIFPAF 460G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.841998,
+          "quality_score": 0.816363,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/7d71dad4b6e045f392efa55c.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "852d604bc99e2d17f8c3ca43",
+          "product_name": "PIZZA PIFPAF 460G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.827813,
+          "quality_score": 0.710545,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/852d604bc99e2d17f8c3ca43.png",
+          "source": "canva"
+        }
+      ]
+    },
+    {
+      "product_name": "SABONETE FLOR DE YPE 85G",
+      "normalized_name": "SABONETE FLOR DE YPE 85G",
+      "priority_score": 8.25,
+      "occurrence_count": 3,
+      "source_count": 3,
+      "candidates": [
+        {
+          "image_id": "0e6358fb83c24785eb864a4c",
+          "product_name": "SABONETE\nFLOR DE YPÊ 85G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.854367,
+          "quality_score": 0.745818,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/0e6358fb83c24785eb864a4c.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "32e5615a419619246c09ce05",
+          "product_name": "SABONETE FLOR\nDE YPÊ 85G",
+          "review_status": "pending",
+          "association_status": "probable",
+          "confidence": 0.836812,
+          "quality_score": 0.73406,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/32e5615a419619246c09ce05.png",
+          "source": "canva"
+        },
+        {
+          "image_id": "bcc005e1a9c9ef07f0bb5e6f",
+          "product_name": "SABONETE FLOR DE YPE 85G",
+          "review_status": "pending",
+          "association_status": "review",
+          "confidence": 0.813488,
+          "quality_score": 0.728182,
+          "preferred": false,
+          "path": "artifacts/phase3b-incremental-library/assets/bcc005e1a9c9ef07f0bb5e6f.png",
+          "source": "canva"
+        }
+      ]
+    }
+  ]
+}

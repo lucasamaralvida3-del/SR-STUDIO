@@ -1,0 +1,10 @@
+{
+  "total": 520,
+  "auto_approved": 2,
+  "likely": 42,
+  "review_required": 7,
+  "missing": 469,
+  "any_candidate": 51,
+  "any_candidate_coverage_percent": 9.8077,
+  "auto_approved_coverage_percent": 0.3846
+}
