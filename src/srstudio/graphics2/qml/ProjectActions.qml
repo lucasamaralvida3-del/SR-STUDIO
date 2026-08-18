@@ -43,9 +43,15 @@ Rectangle {
     Connections {
         target: sceneBridge
         function onSceneChanged() { panel.refreshScene() }
+        function onSaveAsRequested() { saveDialog.open() }
     }
 
     Component.onCompleted: refreshScene()
+
+    Shortcut {
+        sequence: StandardKey.Save
+        onActivated: sceneBridge.saveProject()
+    }
 
     RowLayout {
         anchors.fill: parent
@@ -101,11 +107,11 @@ Rectangle {
             color: "#E2E8F0"
         }
         ToolButton {
-            text: "💾 Salvar"
+            text: sceneBridge.dirty ? "● Salvar" : "💾 Salvar"
             enabled: !sceneBridge.busy
-            ToolTip.text: "Salvar projeto portátil .srscene"
+            ToolTip.text: sceneBridge.dirty ? "Salvar alterações (Ctrl+S)" : "Projeto salvo (Ctrl+S)"
             ToolTip.visible: hovered
-            onClicked: saveDialog.open()
+            onClicked: sceneBridge.saveProject()
         }
         ToolButton {
             text: "PDF"
@@ -123,7 +129,7 @@ Rectangle {
         }
         Item { Layout.fillWidth: true }
         BusyIndicator {
-            running: sceneBridge.busy
+            running: sceneBridge.busy || sceneBridge.autosaveBusy
             visible: running
             implicitWidth: 24
             implicitHeight: 24
