@@ -25,6 +25,7 @@ from srstudio.importers.pptx.package_order import ordered_slide_paths
 from .image_fill import has_drawingml_fill_rect, normalize_fill_rect
 from .model import GraphicsDocument, GraphicsNode, NodeKind
 from .pptx_artwork import recover_pptx_artwork
+from .pptx_compound_text import recover_pptx_compound_text
 from .pptx_image_transform import recover_pptx_image_transforms
 
 A_NS = "http://schemas.openxmlformats.org/drawingml/2006/main"
@@ -156,6 +157,9 @@ def recover_pptx_fill_rects(source: str | Path, document: GraphicsDocument) -> P
 
     document.metadata["pptx_fill_rect_recovery"] = report.to_dict()
     _recover_image_transform_contracts(path, document)
+    # Depois da geometria final das imagens, restaura texto de p:sp que também
+    # usa picture fill. O passe de grupos roda em seguida no import_bridge.
+    _recover_compound_text_contracts(path, document)
     return report
 
 
@@ -199,6 +203,23 @@ def _recover_image_transform_contracts(path: Path, document: GraphicsDocument) -
             "deferred_group_contracts": 0,
             "coverage": 0.0,
             "non_identity_coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
+
+
+def _recover_compound_text_contracts(path: Path, document: GraphicsDocument) -> None:
+    """Restaura texto de picture-filled shapes sem acoplar o contrato de crop."""
+
+    try:
+        recover_pptx_compound_text(path, document)
+    except Exception as exc:
+        document.metadata["pptx_compound_text_recovery"] = {
+            "source_shapes": 0,
+            "matched_images": 0,
+            "recovered_text_nodes": 0,
+            "existing_text_nodes": 0,
+            "coverage": 0.0,
             "issues": [],
             "error": str(exc),
         }
