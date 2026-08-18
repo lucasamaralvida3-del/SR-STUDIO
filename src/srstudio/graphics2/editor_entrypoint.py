@@ -40,23 +40,25 @@ def resolve_startup_args(argv: Sequence[str]) -> list[str]:
 
 
 def install_manual_save_recent_project_hook() -> None:
-    current = package_module.save_package
+    current = package_module.load_package
     if bool(getattr(current, "_sr_recent_project_hook", False)):
         return
 
     original = current
 
-    def save_package(document, path, *, embed_local_assets: bool = True):
-        final = original(document, path, embed_local_assets=embed_local_assets)
-        # Autosave importa sua referência histórica antes deste hook e, de todo
-        # modo, não deve virar "último projeto salvo". O job de save manual do
-        # host possui nome estável e só chega aqui depois de a gravação concluir.
+    def load_package(path, *, extract_assets_to=None):
+        document = original(path, extract_assets_to=extract_assets_to)
+        # O host reabre o arquivo no thread `sr-graphics2-save` somente depois
+        # de `save_package` concluir. Marcar aqui significa que o arquivo só
+        # vira "último projeto salvo" após a verificação pós-save passar.
+        # O AutosaveManager já capturou sua própria referência histórica ao
+        # loader antes deste hook, logo recoveries não viram projetos recentes.
         if current_thread().name == "sr-graphics2-save":
-            EditorRecentProject(default_autosave_root()).mark(final, document_id=document.id)
-        return final
+            EditorRecentProject(default_autosave_root()).mark(path, document_id=document.id)
+        return document
 
-    save_package._sr_recent_project_hook = True  # type: ignore[attr-defined]
-    package_module.save_package = save_package
+    load_package._sr_recent_project_hook = True  # type: ignore[attr-defined]
+    package_module.load_package = load_package
 
 
 def remember_explicit_saved_project(argv: Sequence[str]) -> None:
