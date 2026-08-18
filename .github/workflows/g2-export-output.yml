@@ -12,6 +12,7 @@ on:
       - "tests/test_graphics2_export_output.py"
       - "tests/test_graphics2_export_roundtrip.py"
       - "tests/test_graphics2_export_batch_transaction.py"
+      - "tests/test_graphics2_export_print_contract.py"
       - "tests/test_graphics2_qt_renderer.py"
       - "tests/benchmark_graphics2_export_output.py"
       - ".github/workflows/g2-export-output.yml"
@@ -60,9 +61,9 @@ jobs:
         run: |
           python -m compileall -q src/srstudio/graphics2/export_output.py src/srstudio/graphics2/export_batch.py src/srstudio/graphics2/qt_render_runtime.py src/srstudio/graphics2/qt_renderer.py tests/benchmark_graphics2_export_output.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m ruff check src/srstudio/graphics2/export_output.py src/srstudio/graphics2/export_batch.py src/srstudio/graphics2/qt_render_runtime.py tests/test_graphics2_export_output.py tests/test_graphics2_export_roundtrip.py tests/test_graphics2_export_batch_transaction.py tests/benchmark_graphics2_export_output.py
+          python -m ruff check src/srstudio/graphics2/export_output.py src/srstudio/graphics2/export_batch.py src/srstudio/graphics2/qt_render_runtime.py tests/test_graphics2_export_output.py tests/test_graphics2_export_roundtrip.py tests/test_graphics2_export_batch_transaction.py tests/test_graphics2_export_print_contract.py tests/benchmark_graphics2_export_output.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m pytest -q tests/test_graphics2_export_output.py tests/test_graphics2_export_roundtrip.py tests/test_graphics2_export_batch_transaction.py tests/test_graphics2_qt_renderer.py --junitxml=g2-export-output.xml
+          python -m pytest -q tests/test_graphics2_export_output.py tests/test_graphics2_export_roundtrip.py tests/test_graphics2_export_batch_transaction.py tests/test_graphics2_export_print_contract.py tests/test_graphics2_qt_renderer.py --junitxml=g2-export-output.xml
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python tests/benchmark_graphics2_export_output.py --output g2-export-benchmark.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
