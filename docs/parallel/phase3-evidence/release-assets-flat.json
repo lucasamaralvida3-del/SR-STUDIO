@@ -1,0 +1,740 @@
+[
+  {
+    "tag": "v5.0.0-hybrid.beta7.36",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.36 Professional - Graphics2 + Cartazes Orthography V2",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_36_PROFESSIONAL.zip",
+    "size": 309715580,
+    "digest": "sha256:2fbab6ee3d097284f11bbccf6215055ac01290c96d91b1940b2d026d524877b1",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.35",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.35 Professional - Graphics2 + Cartazes",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_35_PROFESSIONAL.zip",
+    "size": 307735310,
+    "digest": "sha256:d52d79f3506747cdaafaab35cebe9bd94752f2d6ab8a7adcd1b43f26608f9db9",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.34",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.34 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_34_PROFESSIONAL.zip",
+    "size": 29022759,
+    "digest": "sha256:70d386ff8daf5c638571b63bdb2c63f2b48960935d4e51f20d3061d52ec916eb",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.33",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.33 Professional - Graphics2 Path Safe",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_33_PROFESSIONAL.zip",
+    "size": 307708843,
+    "digest": "sha256:da0bbad156beab6cfcb4f8b7ee298120e117e8bf1f7f959ac926e870ae97ce6c",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.32",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.32 Professional - Studio de Encartes G2",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_32_PROFESSIONAL.zip",
+    "size": 308073915,
+    "digest": "sha256:03f5a98f9d70291920889e97c9e11c87895b7b0bae6d174cc414c799808f27d3",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.31",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.31 Professional - Graphics2 Test",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_31_PROFESSIONAL.zip",
+    "size": 308070746,
+    "digest": "sha256:c997f815f0dc64f1d9066e242e560d633a23ed74e6478596a6e81e528eec6dcd",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.30",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.30 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_30_PROFESSIONAL.zip",
+    "size": 28626530,
+    "digest": "sha256:da58aeff32032ba2611563cb8a532afca02d0c2a190c75fcd714dcee44fdec14",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.stable2",
+    "draft": false,
+    "release_name": "SR Studio Stable 2 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_stable2_PROFESSIONAL.zip",
+    "size": 28626694,
+    "digest": "sha256:9d8c4fd558df242c18bac9a55cf1f2ba9faf714eb69ee9178c511cd3768f1c93",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.29",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.29 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_29_PROFESSIONAL.zip",
+    "size": 28626438,
+    "digest": "sha256:4c5e4569913e6b46e65a1c64e3e9748f8a20bd6656f370af9f38555b119666bd",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.28",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.28 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_28_PROFESSIONAL.zip",
+    "size": 28625491,
+    "digest": "sha256:270a263b88b111be045a0073fb61778685a6b07b2268a37930f3c2b72c59217c",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.27",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.27 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_27_PROFESSIONAL.zip",
+    "size": 28619567,
+    "digest": "sha256:a7c89127057677966993eda49cf0d08e959f1d4213c601d718123126de78c651",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.26",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.26 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_26_PROFESSIONAL.zip",
+    "size": 28609977,
+    "digest": "sha256:f4520f608c99e62d69f90a73a172dce188f43851e36068f287f5c2aecc6f65a7",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.25",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.25 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_25_PROFESSIONAL.zip",
+    "size": 28606285,
+    "digest": "sha256:caf57abd3d9a219403d88b3bb2b753da1a07bd1677dd4196a02d0e47bbe7b144",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.24",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.24 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_24_PROFESSIONAL.zip",
+    "size": 28601970,
+    "digest": "sha256:ff6bdf4910e088f83158507aa924bdc1b5afb47f4a71f7eb332121c5d675a1ed",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.9",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.9 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_9_PROFESSIONAL.zip",
+    "size": 24326590,
+    "digest": "sha256:055cacfe8f2eeeda67563f0b6ff20daa347c25f190cca1101e35e0c3a7ed05e3",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.8",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.8 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_8_PROFESSIONAL.zip",
+    "size": 24317734,
+    "digest": "sha256:89e3df3f81c14234f7a22af4da411f8cae9639c514eccf699e619318c0cf8203",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.7",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.7 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_7_PROFESSIONAL.zip",
+    "size": 24310188,
+    "digest": "sha256:4ba981b515f6e664743ab44485522c436692cdf9e2be78960f7f738966a98393",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.6",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.6 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_6_PROFESSIONAL.zip",
+    "size": 24266724,
+    "digest": "sha256:0cb18b06a1f091c8057088386f39ceecd5c5f9db7615425fb637c6c5954b088c",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.5",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.5 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_5_PROFESSIONAL.zip",
+    "size": 24252139,
+    "digest": "sha256:b9a12282a1408427c75a6fc6b8a72e0cbb16a77bd692c879b17a70d81d021e97",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.4",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.4 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_4_PROFESSIONAL.zip",
+    "size": 24250141,
+    "digest": "sha256:f95d4617f41b7b251f137d53a34b6b9770bcac0b7ba236b6944bd4b8c16d96bd",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.3",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.3 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_3_PROFESSIONAL.zip",
+    "size": 23823349,
+    "digest": "sha256:ad6327220976a4c316c2632fd856a3e46e49908cc7b2e4bfb7f70bdacf459ef0",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.23",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.23 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_23_PROFESSIONAL.zip",
+    "size": 28587255,
+    "digest": "sha256:14bf1e010c7f7df77d705fe8d70787367d220c6b055a03b6ea5f104e7b133e2f",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.22",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.22 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_22_PROFESSIONAL.zip",
+    "size": 28571244,
+    "digest": "sha256:499325e9fe5f185a3dfa72439692fb58ad87f0045cac30bbcb4c880a774fe312",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.21",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.21 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_21_PROFESSIONAL.zip",
+    "size": 28560039,
+    "digest": "sha256:c39abe0f0da8af7b8af5c12c4bd6069a044d96418567f489d3e0b54fbd29e3ee",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.20",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.20 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_20_PROFESSIONAL.zip",
+    "size": 28549467,
+    "digest": "sha256:40e5d16b96c11a6e2baaddeb46acccb72bbda8da216c7597d389acb732ed87a9",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.2",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.2 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_2_PROFESSIONAL.zip",
+    "size": 23798114,
+    "digest": "sha256:0c51fbff596d63b38e54dece77c6f10cdee950d06fc84cfa439076b6676b1040",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.19",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.19 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_19_PROFESSIONAL.zip",
+    "size": 28533933,
+    "digest": "sha256:734d76d89a3f7cbacc26ff6cfca9c5bbc3d4c4a9e0c200ba1a1ccc68a2732eb3",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.18",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.18 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_18_PROFESSIONAL.zip",
+    "size": 28537329,
+    "digest": "sha256:088796be76f0900a9511200230f6e9f95be73881431f86bf248766e35b6a55d2",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.17",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.17 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_17_PROFESSIONAL.zip",
+    "size": 28530805,
+    "digest": "sha256:024dc3a3bb6a11537f8ef4a0f28a7a6029c1e0c2e4b4d2605863329d64e78ad5",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.16",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.16 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_16_PROFESSIONAL.zip",
+    "size": 28520819,
+    "digest": "sha256:ebee50908ac763cffbba6dcdb9838ec465dac399fef05689b97f6c03329ce367",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.15",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.15 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_15_PROFESSIONAL.zip",
+    "size": 28518432,
+    "digest": "sha256:2db8c11db72846b83ece68dc5900f9d32e13df4f15a8925ff75f8626681f03e3",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.14",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.14 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_14_PROFESSIONAL.zip",
+    "size": 28490967,
+    "digest": "sha256:2a0a7a5989d478f75afdcb9b13031d28374e8a3b5d5219a510c6d971558bba06",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.13",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.13 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_13_PROFESSIONAL.zip",
+    "size": 28490550,
+    "digest": "sha256:96513d6628386af1134358c49c55d8919cd9e01c19c60aba0d39863081e8300b",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.12",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.12 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_12_PROFESSIONAL.zip",
+    "size": 28368216,
+    "digest": "sha256:08f708937b5f4d289072c0f023f15e5b3481b81dcb5bca018401505b51556248",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.11",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.11 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_11_PROFESSIONAL.zip",
+    "size": 24333954,
+    "digest": "sha256:f79527b43f9f1bf9795a4a5a97c09457c83985e2bea52df655096fb7b19c7e08",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.10",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.10 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_10_PROFESSIONAL.zip",
+    "size": 24329417,
+    "digest": "sha256:ee38a1d43af85c0c2dc8157ba67a6884f248f2c01c72165eacfe547af604df58",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7.1",
+    "draft": false,
+    "release_name": "SR Studio Beta 7.1 Professional",
+    "name": "SR_STUDIO_5_0_0-hybrid_beta7_1_PROFESSIONAL.zip",
+    "size": 21492525,
+    "digest": "sha256:b5f0380aa400be4b4111cb059444a4defb80df2b9067f496d4c7cfcff8495179",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta7",
+    "draft": false,
+    "release_name": "SR Studio 5.0 Beta 7 Professional",
+    "name": "SR_STUDIO_5.0.0_BETA7_PROFESSIONAL.zip",
+    "size": 21487263,
+    "digest": "sha256:f28ad36765e42ce98d7235694a433fdc3356cf248192eb115c86968a39486ee6",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.stable1",
+    "draft": false,
+    "release_name": "SR Studio 5.0.0 Stable 1 - Oficial",
+    "name": "SR_STUDIO_5.0.0_STABLE1_OFICIAL.zip",
+    "size": 2665601,
+    "digest": "sha256:1083fe9c13076412013c60810391a3896c17e0512581daf4b53087af2ac59b5b",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta6.1",
+    "draft": false,
+    "release_name": "SR Studio 5.0.0 Beta 6.1 - Logo Oficial",
+    "name": "SR_STUDIO_5.0.0_BETA6_1_LOGO_OFICIAL.zip",
+    "size": 2665598,
+    "digest": "sha256:d2957c15674447364676fd8c0c1416203c4ee39951ed37d4e0f8425255c8bfc8",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta6",
+    "draft": false,
+    "release_name": "SR Studio 5.0.0 Beta 6 - Atualizacao Garantida",
+    "name": "SR_STUDIO_5.0.0_BETA6_ATUALIZACAO_GARANTIDA.zip",
+    "size": 2864058,
+    "digest": "sha256:844524741b0eda557da7b0d9a38517f792a0f9bb5ddc22b0209c0a493ed39110",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta5",
+    "draft": false,
+    "release_name": "SR Studio 5.0.0 Beta 5 - Menu e Revisao",
+    "name": "SR_STUDIO_5.0.0_BETA5_CORRECOES_VISUAIS.zip",
+    "size": 4259076,
+    "digest": "sha256:801871db43ab4d94ed5c8974aad74bd9e35b5b85596fccf101cf60c014439480",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta4",
+    "draft": false,
+    "release_name": "SR Studio 5.0.0 Beta 4 - Fidelidade Visual",
+    "name": "SR_STUDIO_5.0.0_BETA4_FIDELIDADE_VISUAL.zip",
+    "size": 4258522,
+    "digest": "sha256:d040084f30380351ba3884a08501c139be5cf682e6d927234d51c5ae5fb34004",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta3",
+    "draft": false,
+    "release_name": "SR Studio 5.0.0 Beta 3 - Abertura Animada",
+    "name": "SR_STUDIO_5.0.0_BETA3_ABERTURA_ANIMADA.zip",
+    "size": 3989345,
+    "digest": "sha256:7d55aa058c3cb525c98c61b0ba8d13e96e92cc50a24a50fc5078f16845c01979",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta2",
+    "draft": false,
+    "release_name": "SR Studio 5.0.0 Beta 2 - Nova Interface",
+    "name": "SR_STUDIO_5.0.0_BETA2_NOVA_INTERFACE.zip",
+    "size": 3984230,
+    "digest": "sha256:58f9f882119ba3c58ec2efd592b4c29293eb9c03251d20f074c121fb097e82be",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v5.0.0-hybrid.beta1",
+    "draft": false,
+    "release_name": "SR Studio 5.0.0 Beta 1 - Grande Salto",
+    "name": "SR_STUDIO_5.0.0_BETA1_GRANDE_SALTO.zip",
+    "size": 3972536,
+    "digest": "sha256:60b128b631efa8c1529569492850a6cc912732e4c6651979d9e7a276c3171d9b",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-runtime1",
+    "draft": false,
+    "release_name": "SR Studio Python Runtime 3.12.10 Runtime 1",
+    "name": "SR_STUDIO_PYTHON_3.12.10_RUNTIME1.zip",
+    "size": 125606812,
+    "digest": "sha256:80acc2aaffecb83a04cf60e7dc8a4b806124ee01e9f6f20a17fa2c439e65e0e9",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-installer5",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 - Instalador Python Portatil",
+    "name": "SR_STUDIO_SETUP_4.0.16_STABLE_PORTATIL.cmd",
+    "size": 3153,
+    "digest": "sha256:a3412d46b9d4a1e76c71a0fc639ff56939b0fc9d428f4b26e6aa3a4f4e4f982d",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-installer5",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 - Instalador Python Portatil",
+    "name": "SR_STUDIO_SETUP_4.0.16_STABLE_PORTATIL.zip",
+    "size": 1298,
+    "digest": "sha256:234fedc8ba727e09556aec2f143172e0d4620c70d13d7638368f2d25e7675490",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-installer4",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 - Instalador Corrigido",
+    "name": "SR_STUDIO_SETUP_4.0.16_STABLE_CORRIGIDO.cmd",
+    "size": 3111,
+    "digest": "sha256:a4d50953c19ed89e850e442dad02592409be6c6711dd25846c79639fd56b1424",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-installer4",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 - Instalador Corrigido",
+    "name": "SR_STUDIO_SETUP_4.0.16_STABLE_CORRIGIDO.zip",
+    "size": 1287,
+    "digest": "sha256:47f8783cbec20b44b230f74ac8ec9e741c54562445e65fe6a17938b8b953284d",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-installer3",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 - Instalador Limpo",
+    "name": "SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.cmd",
+    "size": 3063,
+    "digest": "sha256:1cf7103c0d949ae4696ed5af6e3d56164e92ad1d08be36f6d87926fa741f4e90",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-installer3",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 - Instalador Limpo",
+    "name": "SR_STUDIO_SETUP_4.0.16_STABLE_LIMPO.zip",
+    "size": 1261,
+    "digest": "sha256:5be15c33986a0488f84fb0e4fafdbd5d14446bcd885efdff2e5d29848aad52e3",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-installer2",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 - Instalador Zero Admin Setup 2",
+    "name": "SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd",
+    "size": 106428,
+    "digest": "sha256:b84cbc97521f3243fcd67989303c6f2011aebf65d8a03cb200f72a38800280ec",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-installer2",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 - Instalador Zero Admin Setup 2",
+    "name": "SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd",
+    "size": 106430,
+    "digest": "sha256:bd60f688c3a04c7db2ebd4b2ceb255ccca52d3dd222d10c55ea41ec4c973d385",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-hybrid.stable4",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 Stable 4 - Abertura Maximizada",
+    "name": "SR_STUDIO_4.0.16_STABLE4_MAXIMIZADO.zip",
+    "size": 2526714,
+    "digest": "sha256:4ac83d3e1a704caab3c77ae21270d74bbe56182d9b22c7ae1b445f83a30089d6",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-hybrid.stable4",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 Stable 4 - Abertura Maximizada",
+    "name": "SR_STUDIO_SETUP_4.0.16_STABLE_ZERO_ADMIN.cmd",
+    "size": 106430,
+    "digest": "sha256:bd60f688c3a04c7db2ebd4b2ceb255ccca52d3dd222d10c55ea41ec4c973d385",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-hybrid.stable3",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 Stable 3 - Logo Oficial",
+    "name": "SR_STUDIO_4.0.16_STABLE3_LOGO_OFICIAL.zip",
+    "size": 2526472,
+    "digest": "sha256:b30b03e45f9fdf85646a142e785f2d93aaa7d21f2ec12849885bb6699e1958cb",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-hybrid.stable2",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 Stable 2 - Versão Completa",
+    "name": "SR_STUDIO_4.0.16_STABLE2_COMPLETO.zip",
+    "size": 2567164,
+    "digest": "sha256:f79813c5606bfd7b56c415256b32b75b0286958a6649b065f05c941f4652d0aa",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-hybrid.beta19",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 Beta 19 - Abertura Maximizada",
+    "name": "SR_STUDIO_4.0.16_BETA19_MAXIMIZADO.zip",
+    "size": 2526702,
+    "digest": "sha256:954050b80ddd993a518edd42a9377933ed4e1def95abe0f286d722e48376e7fa",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-hybrid.beta19",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 Beta 19 - Abertura Maximizada",
+    "name": "SR_STUDIO_SETUP_4.0.16_BETA_ZERO_ADMIN.cmd",
+    "size": 106428,
+    "digest": "sha256:b84cbc97521f3243fcd67989303c6f2011aebf65d8a03cb200f72a38800280ec",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-hybrid.beta18",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 Beta 18 - Logo Oficial",
+    "name": "SR_STUDIO_4.0.16_BETA18_LOGO_OFICIAL.zip",
+    "size": 2526480,
+    "digest": "sha256:e2f8e85edffec4761b60b26c5af3d9d61f6b69edfc29f9124ddfe79b9ada5bcb",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.16-hybrid.beta17",
+    "draft": false,
+    "release_name": "SR Studio 4.0.16 Beta 17 - Sincronizada com Stable 2",
+    "name": "SR_STUDIO_4.0.16_BETA17_SYNC_STABLE2.zip",
+    "size": 2567153,
+    "digest": "sha256:e5bc76f779a4b7cc63b293937c89ac7d18b86f10f2d26cf87eea15553ffc3796",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.15-hybrid.beta16",
+    "draft": false,
+    "release_name": "SR Studio 4.0.15 Beta 16 - Editor Visual Canva-like",
+    "name": "SR_STUDIO_4.0.15_BETA16_EDITOR_CANVA_LIKE.zip",
+    "size": 2565151,
+    "digest": "sha256:60961a34cb2e62a6171ce3fda2860249765ba5f35f94b69354c4022163f9b5bd",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.14-hybrid.beta15",
+    "draft": false,
+    "release_name": "SR Studio 4.0.14 Beta 15 - Editor PRO",
+    "name": "SR_STUDIO_4.0.14_BETA15_EDITOR_PRO.zip",
+    "size": 2553431,
+    "digest": "sha256:6a541239b1049e50cb235648b40de0da9409e55bc43f3dce2a416507c2b1f8b2",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.13-hybrid.beta14",
+    "draft": false,
+    "release_name": "SR Studio 4.0.13 Beta 14 - Ajuste Visual Canva",
+    "name": "SR_STUDIO_4.0.13_BETA14_AJUSTE_VISUAL_CANVA.zip",
+    "size": 2543697,
+    "digest": "sha256:2f31013222bebf556a9e5a9b9f0d35d068845d5856dd26ad471e6103e545225d",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.12-hybrid.beta13",
+    "draft": false,
+    "release_name": "SR Studio 4.0.12 Beta 13 - Imagens Automáticas no PPTX Canva",
+    "name": "SR_STUDIO_4.0.12_BETA13_IMAGENS_CANVA.zip",
+    "size": 2541144,
+    "digest": "sha256:b57bbac0de7633d3b8762ab80b0f0557191a90b1b82fbdc93d5f56a3a3188c6b",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.11-hybrid.beta12",
+    "draft": false,
+    "release_name": "SR Studio 4.0.11 Beta 12 - PPTX Canva com Design Completo",
+    "name": "SR_STUDIO_4.0.11_BETA12_PPTX_DESIGN_COMPLETO.zip",
+    "size": 2539446,
+    "digest": "sha256:d3dce463710e3e9c8f3853e1e35a60fa39cf94450cc976d04bcf2775c08e5eb9",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.10-hybrid.beta11",
+    "draft": false,
+    "release_name": "SR Studio 4.0.10 Beta 11 - Novo Encartes + PPTX Canva",
+    "name": "SR_STUDIO_4.0.10_BETA11_NOVO_ENCARTES_PPTX_CANVA.zip",
+    "size": 2536458,
+    "digest": "sha256:09c4103608c46bbb4aa12ab93b4e8f32946f71d07561ca5309acf52de5661faf",
+    "state": "uploaded"
+  },
+  {
+    "tag": "stable-launcher-latest",
+    "draft": false,
+    "release_name": "SR Studio - Acesso Stable Universal",
+    "name": "SR_Studio_Stable.exe",
+    "size": 67584,
+    "digest": "sha256:5befe54910b5beb4df40479555ab78ee5095bf199a7228f4dcf8ac98e560024c",
+    "state": "uploaded"
+  },
+  {
+    "tag": "stable-launcher-latest",
+    "draft": false,
+    "release_name": "SR Studio - Acesso Stable Universal",
+    "name": "SR_Studio_Stable.sha256.txt",
+    "size": 88,
+    "digest": "sha256:0aca2bde5a2d2bf5b269f2a2e91aaab957d4ea532700dbd4725fa1fbd4d121f8",
+    "state": "uploaded"
+  },
+  {
+    "tag": "setup-latest",
+    "draft": false,
+    "release_name": "SR Studio - Instalador Oficial Online 1.1",
+    "name": "SR_Studio_Setup.exe",
+    "size": 53760,
+    "digest": "sha256:e259cd3a9238b6a9961627357658552cf34d145ffd3a30cc3a4caf11cdcbecbe",
+    "state": "uploaded"
+  },
+  {
+    "tag": "setup-latest",
+    "draft": false,
+    "release_name": "SR Studio - Instalador Oficial Online 1.1",
+    "name": "SR_Studio_Setup.sha256.txt",
+    "size": 87,
+    "digest": "sha256:0e3ef54f363ef73dd4bd83d953a265fb135a10ace4904934d98ecc679fcdc79f",
+    "state": "uploaded"
+  },
+  {
+    "tag": "beta-launcher-latest",
+    "draft": false,
+    "release_name": "SR Studio - Acesso Beta Universal",
+    "name": "SR_Studio_Beta.exe",
+    "size": 41984,
+    "digest": "sha256:cbf63e3553301d9af7d47939a31a33b919ef5e0cf939d4e89dedc15085a4315c",
+    "state": "uploaded"
+  },
+  {
+    "tag": "beta-launcher-latest",
+    "draft": false,
+    "release_name": "SR Studio - Acesso Beta Universal",
+    "name": "SR_Studio_Beta.sha256.txt",
+    "size": 86,
+    "digest": "sha256:416de32588638ecf806f92169f46fed366770659707cc934032b48307612f50e",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.9-hybrid.beta10",
+    "draft": false,
+    "release_name": "SR Studio 4.0.9 Beta 10 - Banco Automático",
+    "name": "SR_STUDIO_4.0.9_BETA10_BANCO_AUTOMATICO.zip",
+    "size": 2577365,
+    "digest": "sha256:b17ed08adcd127cb191e777540a75d6e253cc3c1a7ed7a1a5785215200d9fc6a",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.8-hybrid.beta9",
+    "draft": false,
+    "release_name": "SR Studio 4.0.8 Beta 9 - XLSX Local",
+    "name": "SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip",
+    "size": 2574927,
+    "digest": "sha256:b099775da55422f6d7d7d17b908a35180350e583f906771968013b84649085fe",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.7-hybrid.beta8",
+    "draft": false,
+    "release_name": "SR Studio 4.0.7 Beta 8 - Encartes Local",
+    "name": "SR_STUDIO_4.0.7_BETA8_ENCARTES_LOCAL.zip",
+    "size": 2239204,
+    "digest": "sha256:ce1b9716441e7a3d2bde9e0e845fd994d255a6bfdf3cbe88335a8765ef856637",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.6-hybrid.beta7",
+    "draft": false,
+    "release_name": "SR Studio 4.0.6 Beta 7 - Hotfix Encartes",
+    "name": "SR_STUDIO_4.0.6_BETA7_HOTFIX_ENCARTES.zip",
+    "size": 2238433,
+    "digest": "sha256:4573ddfa9ef9938f433f48251a51f3f11fc9aa53a349376e85a486ad41e8b8f3",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.5-hybrid.beta6.1",
+    "draft": false,
+    "release_name": "SR Studio 4.0.5 Beta 6.1",
+    "name": "SR_STUDIO_4.0.5_BETA6.1.zip",
+    "size": 2238440,
+    "digest": "sha256:738d5abdee68ed8dc5e7e20d24b6ea25f2ccdf73899ff32128cc561aed4483ea",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.5-hybrid.beta6",
+    "draft": false,
+    "release_name": "SR Studio 4.0.5 Beta 6 - Novo Editor de Encartes",
+    "name": "SR_STUDIO_4.0.5_BETA6_NOVO_EDITOR_ENCARTES.zip",
+    "size": 2238449,
+    "digest": "sha256:e9d806cec622789023de27851261040f94db579e2f372048e2f3f91b94c0e3bf",
+    "state": "uploaded"
+  },
+  {
+    "tag": "v4.0.4-hybrid.beta5",
+    "draft": false,
+    "release_name": "SR Studio 4.0.4 Beta 5 - SR IA Guard + Imagens Manuais",
+    "name": "SR_STUDIO_4.0.4_BETA5_SR_IA_GUARD_IMAGENS_MANUAIS.zip",
+    "size": 2229546,
+    "digest": "sha256:5493470cdca97500330fdfd6935a4a1f791fe8f7930a567019fd91c28fe713d7",
+    "state": "uploaded"
+  }
+]
