@@ -77,7 +77,19 @@ from .pptx_spacing import PptxSpacingIssue, PptxSpacingRecoveryReport, recover_p
 from .pptx_structure import PptxMappingAudit, PptxSlideStructure, PptxStructureReport, inspect_pptx_structure
 from .preflight import PreflightIssue, run_preflight
 from .quality import ProductionGateIssue, ProductionGateReport, inspect_production_gate, store_visual_fidelity
-from .qt_renderer import RenderReport, render_pdf, render_png
+from . import qt_renderer as _qt_renderer
+from .qt_render_runtime import install_headless_renderer_guard
+
+# CHAT 6 output hardening is installed on top of the current renderer rather
+# than replacing it. Existing visual semantics remain owned by qt_renderer;
+# this guard only adds QGuiApplication safety and durable output publication.
+install_headless_renderer_guard(_qt_renderer)
+RenderReport = _qt_renderer.RenderReport
+render_png = _qt_renderer.render_png
+render_pdf = _qt_renderer.render_pdf
+render_jpeg = _qt_renderer.render_jpeg
+render_raster_batch = _qt_renderer.render_raster_batch
+
 from .scene_fingerprint import PageFingerprint, SceneFingerprint, fingerprint_document, store_scene_fingerprint
 from .semantic_blocks import (
     SemanticBlock,
@@ -243,7 +255,9 @@ __all__ = [
     "recover_pptx_spacing",
     "render_pdf",
     "render_pdf_baselines",
+    "render_jpeg",
     "render_png",
+    "render_raster_batch",
     "resolve_legacy_merge_conflicts",
     "resolve_saved_session_merge",
     "run_preflight",
