@@ -7,10 +7,10 @@ The historical binding paths grew independently:
 - ``GraphicsSession.bind_product`` handled canonical ``BindingRole`` fields;
 - ``CanvaBindingService.bind`` handled Canva/PPTX composite tokens;
 - recovered complete prices are represented as ``retail_price``;
-- secondary/app fields can live in ``SmartSlot.metadata['extra_bindings']``.
+- secondary/app/wholesale fields can live in ``SmartSlot.metadata['extra_bindings']``.
 
 This module keeps those public APIs intact while making both paths share the
-same product-to-slot contract.  The installer is invoked by ``graphics2`` during
+same product-to-slot contract. The installer is invoked by ``graphics2`` during
 package import, before the command router is loaded.
 """
 
@@ -34,9 +34,13 @@ _OPTIONAL_TEXT_ROLES = {
     "app_price_cents",
     "app_unit",
     "wholesale_price",
+    "wholesale_price_currency",
+    "wholesale_unit",
     "retail_price",
     "quantity",
     "validity",
+    "description",
+    "product_description",
 }
 
 _IMAGE_ROLES = {"image"}
@@ -60,7 +64,7 @@ def install_template_aware_binding_guard(import_module: Any) -> None:
         if role_text in {"price_reais", "price_integer"}:
             return import_module._price_parts(_base_price(product))[0]
 
-        if role_text in {"price_cents"}:
+        if role_text == "price_cents":
             return import_module._price_parts(_base_price(product))[1]
 
         if role_text == "price_complete":
@@ -71,6 +75,10 @@ def install_template_aware_binding_guard(import_module: Any) -> None:
 
         if role_text == "wholesale_price":
             return _complete_price_text(import_module, product.get("wholesale_price"), template_text)
+
+        if role_text == "wholesale_price_currency":
+            whole, _ = import_module._price_parts(product.get("wholesale_price"))
+            return "R$" if whole else ""
 
         if role_text in {"app_price_complete", "app_price"}:
             return _complete_price_text(import_module, product.get("app_price"), template_text)
@@ -85,23 +93,23 @@ def install_template_aware_binding_guard(import_module: Any) -> None:
         if role_text == "app_price_cents":
             return import_module._price_parts(product.get("app_price"))[1]
 
-        if role_text in {"unit", "app_unit"}:
+        if role_text in {"unit", "app_unit", "wholesale_unit"}:
             if role_text == "app_unit" and not import_module._price_parts(product.get("app_price"))[0]:
                 return ""
-            unit = str(product.get("unit") or "UN").upper().strip().lstrip("/")
-            if not unit:
+            if role_text == "wholesale_unit" and not import_module._price_parts(product.get("wholesale_price"))[0]:
                 return ""
-            template = " ".join(str(template_text or "").upper().replace("\u00a0", " ").split())
-            if template == "CADA" and unit in {"UN", "UND", "UNID", "UNIDADE"}:
-                return "CADA"
-            prefix = "/" if not template or "/" in template else ""
-            return f"{prefix}{unit}"
+            return _unit_text(product.get("unit"), template_text)
 
         if role_text == "quantity":
             return str(product.get("quantity") or "").strip()
 
         if role_text == "validity":
             return str(product.get("validity") or "").strip()
+
+        if role_text in {"description", "product_description"}:
+            metadata = product.get("metadata")
+            metadata_description = metadata.get("description") if isinstance(metadata, dict) else ""
+            return str(product.get("description") or metadata_description or "").strip()
 
         return original(role_text, product, template_text=template_text)
 
@@ -126,6 +134,17 @@ def _complete_price_text(import_module: Any, value: object, template_text: str) 
     template = str(template_text or "").upper().replace("\u00a0", " ")
     include_currency = not template.strip() or "R$" in template
     return f"R$ {amount}" if include_currency else amount
+
+
+def _unit_text(value: object, template_text: str) -> str:
+    unit = str(value or "UN").upper().strip().lstrip("/")
+    if not unit:
+        return ""
+    template = " ".join(str(template_text or "").upper().replace("\u00a0", " ").split())
+    if template == "CADA" and unit in {"UN", "UND", "UNID", "UNIDADE"}:
+        return "CADA"
+    prefix = "/" if not template or "/" in template else ""
+    return f"{prefix}{unit}"
 
 
 def _base_price(product: dict[str, Any]) -> object:
@@ -288,6 +307,9 @@ def _install_binding_cleanup(import_module: Any) -> None:
             for key in (
                 "primary_price_node_id",
                 "secondary_price_node_id",
+                "wholesale_price_node_id",
+                "wholesale_currency_node_id",
+                "quantity_node_id",
                 "limit_node_id",
             ):
                 if str(slot.metadata.get(key) or "") in removed_ids:
@@ -348,7 +370,7 @@ def _bind_image(import_module: Any, session: Any, node: Any, product: dict[str, 
         node.visible = True
         return
 
-    # A slot is a product-owned image surface.  When a replacement product has
+    # A slot is a product-owned image surface. When a replacement product has
     # no usable image, retaining the previous product photo is a data error.
     node.asset_id = ""
     node.metadata.pop("bound_image_source", None)
@@ -359,8 +381,8 @@ def _assign_binding_role(import_module: Any, node: Any, role: str) -> None:
     try:
         node.binding_role = import_module.BindingRole(role)
     except (TypeError, ValueError):
-        # Composite Canva/PPTX tokens (e.g. price_complete/app_unit) are valid
-        # slot roles but intentionally do not expand the canonical enum.
+        # Composite Canva/PPTX tokens are valid slot roles without expanding
+        # the canonical enum or changing the SR Scene serializer schema.
         pass
 
 
