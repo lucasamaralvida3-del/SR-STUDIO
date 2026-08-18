@@ -1,6 +1,7 @@
 from srstudio.images.association import (
     AssociationEvidence,
     ProductImageAssociationEngine,
+    evidence_source_identity,
     is_likely_template_asset,
     is_product_text_candidate,
     measurement_signature,
@@ -10,8 +11,16 @@ from srstudio.images.association import (
 )
 
 
-def ev(product, sha="a" * 64, confidence=.90, source="a.pptx", slide=1):
-    return AssociationEvidence(product, sha, confidence, source, slide)
+def ev(product, sha="a" * 64, confidence=.90, source="a.pptx", slide=1, media="", metadata=None):
+    return AssociationEvidence(
+        product_name=product,
+        image_sha256=sha,
+        confidence=confidence,
+        source_file=source,
+        source_slide=slide,
+        media_path=media,
+        metadata=metadata or {},
+    )
 
 
 def test_normalization_preserves_identity_but_normalizes_accents_and_units():
@@ -46,6 +55,49 @@ def test_cross_document_consensus_boosts_same_product():
     assert result.source_count == 3
     assert result.consensus_ratio == 1.0
     assert result.status == "accepted"
+
+
+def test_consensus_distinguishes_same_basename_using_document_digest_path():
+    engine = ProductImageAssociationEngine()
+    rows = [
+        ev(
+            "CAFE VASCONCELOS 500G",
+            confidence=.88,
+            source="encarte.pptx",
+            media=f"/imports/media/{digit * 24}/image1.png",
+        )
+        for digit in ("1", "2", "3")
+    ]
+    result = engine.resolve(rows)[0]
+    assert result.distinct_source_count == 3
+    assert result.status == "accepted"
+
+
+def test_consensus_does_not_double_count_renamed_exact_file_copies():
+    digest = "a1" * 12
+    engine = ProductImageAssociationEngine()
+    rows = [
+        ev(
+            "MONSTER 473ML",
+            confidence=.91,
+            source=filename,
+            media=f"C:/srstudio/imports/media/{digest}/image7.png",
+        )
+        for filename in ("encarte.pptx", "encarte copia.pptx", "encarte final.pptx")
+    ]
+    result = engine.resolve(rows)[0]
+    assert result.source_count == 3
+    assert result.distinct_source_count == 1
+
+
+def test_explicit_document_identity_overrides_media_path_and_basename():
+    row = ev(
+        "DETERGENTE YPE 500ML",
+        source="encarte.pptx",
+        media="/imports/media/111111111111111111111111/image.png",
+        metadata={"source_sha256": "ABCDEF1234"},
+    )
+    assert evidence_source_identity(row) == "abcdef1234"
 
 
 def test_reused_asset_with_unrelated_products_becomes_decorative():
