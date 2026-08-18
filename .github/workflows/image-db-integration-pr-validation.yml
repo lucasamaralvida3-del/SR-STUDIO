@@ -84,11 +84,17 @@ jobs:
         run: |
           set -euo pipefail
           python scripts/ci/image_db_phase3_corpus.py > "$ARTIFACT_DIR/corpus-resolver.json"
+
+      - name: Confirm validated rich corpus and catalog
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "${CORPUS_INTEGRITY_PASS:-false}" = true
           test "${RICH_CORPUS_AVAILABLE:-false}" = true
           test "${CATALOG_AVAILABLE:-false}" = true
           test -n "${PRODUCT_DB:-}"
 
-      - name: Resolve and validate standalone corpus
+      - name: Resolve and inventory standalone corpus
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -96,6 +102,11 @@ jobs:
           set -euo pipefail
           python scripts/ci/image_db_phase3b.py inventory \
             --artifact-dir "$ARTIFACT_DIR" --corpus-dir "$CORPUS_DIR"
+
+      - name: Confirm standalone corpus exact reference
+        shell: bash
+        run: |
+          set -euo pipefail
           python - <<'PY'
           import json, os
           from pathlib import Path
@@ -106,6 +117,7 @@ jobs:
           checks = {
               'available': os.environ.get('STANDALONE_AVAILABLE') == 'true',
               'validated': os.environ.get('STANDALONE_CORPUS_VALIDATED') == 'true',
+              'manifest_present': bool(os.environ.get('STANDALONE_MANIFEST')),
               'verified': ver.get('verified') is True,
               'size': int(ver.get('actual_size') or 0) == int(os.environ['EXPECTED_STANDALONE_SIZE']),
               'sha256': str(ver.get('sha256') or '').lower() == os.environ['EXPECTED_STANDALONE_SHA256'],
