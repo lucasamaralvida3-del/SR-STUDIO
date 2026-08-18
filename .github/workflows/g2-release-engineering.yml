@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - g2/parallel-release-engineering
+      - g2/integration-beta
 
 permissions:
   contents: read
@@ -102,7 +103,8 @@ jobs:
         run: |
           $root = Join-Path $env:RUNNER_TEMP 'graphics2-host'
           $bundle = Join-Path $root 'SRGraphicsEngine2Host'
-          python -m srstudio.graphics2.host_runtime "$bundle" --full --engine-version 2.0.0-alpha.43
+          $engineVersion = python -c "from srstudio.graphics2 import ENGINE_VERSION; print(ENGINE_VERSION)"
+          python -m srstudio.graphics2.host_runtime "$bundle" --full --engine-version $engineVersion
 
       - name: Frozen Qt backend probe outside checkout
         shell: pwsh
