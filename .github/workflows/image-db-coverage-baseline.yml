@@ -233,44 +233,10 @@ jobs:
 
           snap=json.loads(snap_path.read_text())
           cov=json.loads(cov_path.read_text())
-          audit=json.loads(audit_path.read_text()).get('metrics',{})
+          audit_doc=json.loads(audit_path.read_text())
+          audit=audit_doc.get('metrics') if isinstance(audit_doc, dict) else None
           idem=json.loads(idem_path.read_text())
 
-          checks={
-            'catalog_520': int(cov.get('catalog_products') or cov.get('catalog') or 0)==520,
-            'physical_1037': int(snap.get('physical',-1))==1037,
-            'canonical_1037': int(snap.get('canonical',-1))==1037,
-            'auto_2': int(cov.get('auto_approved',-1))==2,
-            'likely_42': int(cov.get('likely',-1))==42,
-            'review_7': int(cov.get('review_required',-1))==7,
-            'missing_469': int(cov.get('missing',-1))==469,
-            'coverage_51': int(cov.get('any_candidate',-1))==51,
-            'coverage_pct': float(cov.get('any_candidate_coverage_percent',-1))==9.8077,
-            'physical_audit_1037': int(audit.get('physical_images',-1))==1037,
-            'canonical_audit_1037': int(audit.get('canonical_assets',-1))==1037,
-            'missing_provenance_0': int(audit.get('missing_provenance',0))==0,
-            'negative_invariants_0': int(audit.get('negative_invariant_violations',0))==0,
-            'duplicate_logical_0': int(audit.get('duplicate_logical_associations',0))==0,
-            'idempotency': idem.get('pass') is True,
-          }
-
-          actuals={
-            'catalog_520': int(cov.get('catalog_products') or cov.get('catalog') or 0),
-            'physical_1037': int(snap.get('physical',-1)),
-            'canonical_1037': int(snap.get('canonical',-1)),
-            'auto_2': int(cov.get('auto_approved',-1)),
-            'likely_42': int(cov.get('likely',-1)),
-            'review_7': int(cov.get('review_required',-1)),
-            'missing_469': int(cov.get('missing',-1)),
-            'coverage_51': int(cov.get('any_candidate',-1)),
-            'coverage_pct': float(cov.get('any_candidate_coverage_percent',-1)),
-            'physical_audit_1037': int(audit.get('physical_images',-1)),
-            'canonical_audit_1037': int(audit.get('canonical_assets',-1)),
-            'missing_provenance_0': int(audit.get('missing_provenance',0)),
-            'negative_invariants_0': int(audit.get('negative_invariant_violations',0)),
-            'duplicate_logical_0': int(audit.get('duplicate_logical_associations',0)),
-            'idempotency': idem.get('pass'),
-          }
           expected={
             'catalog_520': 520,
             'physical_1037': 1037,
@@ -288,45 +254,93 @@ jobs:
             'duplicate_logical_0': 0,
             'idempotency': True,
           }
-          sources={
-            'catalog_520': (str(cov_path), 'catalog_products || catalog'),
-            'physical_1037': (str(snap_path), 'physical'),
-            'canonical_1037': (str(snap_path), 'canonical'),
-            'auto_2': (str(cov_path), 'auto_approved'),
-            'likely_42': (str(cov_path), 'likely'),
-            'review_7': (str(cov_path), 'review_required'),
-            'missing_469': (str(cov_path), 'missing'),
-            'coverage_51': (str(cov_path), 'any_candidate'),
-            'coverage_pct': (str(cov_path), 'any_candidate_coverage_percent'),
-            'physical_audit_1037': (str(audit_path), 'metrics.physical_images'),
-            'canonical_audit_1037': (str(audit_path), 'metrics.canonical_assets'),
-            'missing_provenance_0': (str(audit_path), 'metrics.missing_provenance'),
-            'negative_invariants_0': (str(audit_path), 'metrics.negative_invariant_violations'),
-            'duplicate_logical_0': (str(audit_path), 'metrics.duplicate_logical_associations'),
-            'idempotency': (str(idem_path), 'pass'),
+
+          contracts={
+            'catalog_520': (cov, str(cov_path), 'total', 'number'),
+            'physical_1037': (snap, str(snap_path), 'physical', 'number'),
+            'canonical_1037': (snap, str(snap_path), 'canonical', 'number'),
+            'auto_2': (cov, str(cov_path), 'auto_approved', 'number'),
+            'likely_42': (cov, str(cov_path), 'likely', 'number'),
+            'review_7': (cov, str(cov_path), 'review_required', 'number'),
+            'missing_469': (cov, str(cov_path), 'missing', 'number'),
+            'coverage_51': (cov, str(cov_path), 'any_candidate', 'number'),
+            'coverage_pct': (cov, str(cov_path), 'any_candidate_coverage_percent', 'number'),
+            'physical_audit_1037': (audit, str(audit_path), 'physical_images', 'number'),
+            'canonical_audit_1037': (audit, str(audit_path), 'canonical_assets', 'number'),
+            'missing_provenance_0': (audit, str(audit_path), 'associations_without_provenance', 'number'),
+            'negative_invariants_0': (audit, str(audit_path), None, 'number'),
+            'duplicate_logical_0': (audit, str(audit_path), None, 'number'),
+            'idempotency': (idem, str(idem_path), 'pass', 'boolean'),
           }
 
+          source_labels={
+            'catalog_520': 'total',
+            'physical_1037': 'physical',
+            'canonical_1037': 'canonical',
+            'auto_2': 'auto_approved',
+            'likely_42': 'likely',
+            'review_7': 'review_required',
+            'missing_469': 'missing',
+            'coverage_51': 'any_candidate',
+            'coverage_pct': 'any_candidate_coverage_percent',
+            'physical_audit_1037': 'metrics.physical_images',
+            'canonical_audit_1037': 'metrics.canonical_assets',
+            'missing_provenance_0': 'metrics.associations_without_provenance',
+            'negative_invariants_0': 'SCHEMA FIELD MISSING',
+            'duplicate_logical_0': 'SCHEMA FIELD MISSING',
+            'idempotency': 'pass',
+          }
+
+          def read_contract(container, field, kind):
+            field_exists=isinstance(container, dict) and field is not None and field in container
+            if not field_exists:
+              return None, False, False, 'SCHEMA FIELD MISSING'
+            value=container[field]
+            if kind == 'boolean':
+              valid_type=type(value) is bool
+            else:
+              valid_type=type(value) in (int, float)
+            if not valid_type:
+              return value, True, False, 'INVALID FIELD TYPE'
+            return value, True, True, None
+
           invariants=[]
-          for name in checks:
-            exp=expected[name]
-            act=actuals[name]
-            delta=None if isinstance(exp, bool) else act-exp
-            source_file, source_field=sources[name]
+          checks={}
+          for name, exp in expected.items():
+            container, source_file, field, kind=contracts[name]
+            act, field_exists, valid_type, schema_error=read_contract(container, field, kind)
+            if kind == 'boolean':
+              passed=field_exists and valid_type and act is exp
+              delta=None
+            else:
+              passed=field_exists and valid_type and act == exp
+              delta=(act-exp) if field_exists and valid_type else None
+            checks[name]=bool(passed)
             item={
               'name': name,
               'expected': exp,
               'actual': act,
               'delta': delta,
-              'passed': bool(checks[name]),
+              'passed': bool(passed),
               'source_file': source_file,
-              'source_field': source_field,
+              'source_field': source_labels[name],
+              'field_exists': field_exists,
+              'schema_field_exists': field_exists,
+              'field_type_valid': valid_type,
             }
+            if schema_error:
+              item['schema_error']=schema_error
             if name == 'coverage_pct':
-              item['absolute_delta']=abs(act-exp)
+              item['absolute_delta']=abs(act-exp) if field_exists and valid_type else None
               item['comparison']='=='
               item['abs_tolerance']=None
             invariants.append(item)
-            print(f"BASELINE_GATE {name} expected={json.dumps(exp)} actual={json.dumps(act)} delta={json.dumps(delta)} pass={str(bool(checks[name])).lower()} source_file={source_file} source_field={source_field}")
+            print(
+              f"BASELINE_GATE {name} expected={json.dumps(exp)} actual={json.dumps(act)} "
+              f"delta={json.dumps(delta)} source_file={source_file} "
+              f"source_field={json.dumps(source_labels[name])} field_exists={str(field_exists).lower()} "
+              f"pass={str(bool(passed)).lower()}"
+            )
 
           def provenance(path, producer_step, consumed_by_gate):
             p=Path(path)
@@ -368,7 +382,14 @@ jobs:
           (art/'baseline-gate-diagnostic.json').write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
           print('BASELINE_GATE_DIAGNOSTIC '+json.dumps(diagnostic, ensure_ascii=False))
 
-          payload={'baseline_materialized':all(checks.values()),'source':'FRESH REBUILD','checks':checks,'snapshot':snap,'coverage':cov,'audit':audit}
+          payload={
+            'baseline_materialized': all(checks.values()),
+            'source': 'FRESH REBUILD',
+            'checks': checks,
+            'snapshot': snap,
+            'coverage': cov,
+            'audit': audit,
+          }
           (art/'baseline-gate.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2))
           print(json.dumps(payload,ensure_ascii=False,indent=2))
           raise SystemExit(0 if payload['baseline_materialized'] else 63)
