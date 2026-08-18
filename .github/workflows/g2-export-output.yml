@@ -7,6 +7,7 @@ on:
     paths:
       - "src/srstudio/graphics2/export_output.py"
       - "src/srstudio/graphics2/export_batch.py"
+      - "src/srstudio/graphics2/pdf_output_renderer.py"
       - "src/srstudio/graphics2/qt_render_runtime.py"
       - "src/srstudio/graphics2/qt_renderer.py"
       - "tests/test_graphics2_export_output.py"
@@ -57,7 +58,7 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          python -m compileall -q src/srstudio/graphics2/export_output.py src/srstudio/graphics2/export_batch.py src/srstudio/graphics2/qt_render_runtime.py src/srstudio/graphics2/qt_renderer.py tests/benchmark_graphics2_export_output.py
+          python -m compileall -q src/srstudio/graphics2/export_output.py src/srstudio/graphics2/export_batch.py src/srstudio/graphics2/pdf_output_renderer.py src/srstudio/graphics2/qt_render_runtime.py src/srstudio/graphics2/qt_renderer.py tests/benchmark_graphics2_export_output.py
           exit $LASTEXITCODE
 
       - name: Ruff execution errors
@@ -66,7 +67,7 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          python -m ruff check src/srstudio/graphics2/export_output.py src/srstudio/graphics2/export_batch.py src/srstudio/graphics2/qt_render_runtime.py tests/test_graphics2_export_output.py tests/test_graphics2_export_roundtrip.py tests/test_graphics2_export_batch_transaction.py tests/test_graphics2_export_print_contract.py tests/benchmark_graphics2_export_output.py
+          python -m ruff check src/srstudio/graphics2/export_output.py src/srstudio/graphics2/export_batch.py src/srstudio/graphics2/pdf_output_renderer.py src/srstudio/graphics2/qt_render_runtime.py tests/test_graphics2_export_output.py tests/test_graphics2_export_roundtrip.py tests/test_graphics2_export_batch_transaction.py tests/test_graphics2_export_print_contract.py tests/benchmark_graphics2_export_output.py
           exit $LASTEXITCODE
 
       - name: Core output contracts
@@ -238,6 +239,14 @@ jobs:
           $state = if ($ok) { "success" } else { "failure" }
           if ($ok -and (Test-Path "g2-export-benchmark.json")) {
             $bench = Get-Content "g2-export-benchmark.json" -Raw | ConvertFrom-Json
+            Publish-Status "g2/bench/first-png-$($bench.first_png_ms)ms" "success"
+            Publish-Status "g2/bench/png10-$($bench.png_batch_total_ms)ms" "success"
+            Publish-Status "g2/bench/png-per-page-$($bench.png_batch_per_page_ms)ms" "success"
+            Publish-Status "g2/bench/pdf10-$($bench.pdf_total_ms)ms" "success"
+            Publish-Status "g2/bench/pdf-per-page-$($bench.pdf_per_page_ms)ms" "success"
+            Publish-Status "g2/bench/a4-300-$($bench.a4_300_ms)ms" "success"
+            Publish-Status "g2/bench/png-rss-$($bench.png_batch_peak_rss_delta_mb)MB" "success"
+            Publish-Status "g2/bench/pdf-rss-$($bench.pdf_peak_rss_delta_mb)MB" "success"
             $description = "PASS PNG10 $($bench.png_batch_total_ms)ms PDF10 $($bench.pdf_total_ms)ms RSS+$($bench.png_batch_peak_rss_delta_mb)MB"
           } else {
             $description = "FAIL; inspect g2/export/* diagnostic statuses"
