@@ -16,6 +16,7 @@ import zipfile
 from srstudio.importers.pptx.package_order import ordered_slide_paths
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind, Rect, Transform
+from .pptx_group_transform import recover_pptx_group_member_transforms
 
 P_NS = "http://schemas.openxmlformats.org/presentationml/2006/main"
 
@@ -42,6 +43,7 @@ def rebuild_pptx_groups(source: str | Path, document: GraphicsDocument) -> PptxG
     report = PptxGroupReport()
     if path.suffix.lower() != ".pptx" or not path.is_file():
         return report
+    _recover_member_transforms(path, document)
     try:
         with zipfile.ZipFile(path) as archive:
             slides = ordered_slide_paths(archive)
@@ -59,6 +61,22 @@ def rebuild_pptx_groups(source: str | Path, document: GraphicsDocument) -> PptxG
         report.warnings.append(f"Não foi possível reconstruir grupos PPTX: {exc}")
     document.metadata["pptx_groups"] = report.to_dict()
     return report
+
+
+def _recover_member_transforms(path: Path, document: GraphicsDocument) -> None:
+    try:
+        recover_pptx_group_member_transforms(path, document)
+    except Exception as exc:
+        document.metadata["pptx_group_member_transform_recovery"] = {
+            "source_members": 0,
+            "mapped_members": 0,
+            "exact_members": 0,
+            "corrected_members": 0,
+            "deferred_shear_members": 0,
+            "coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
 
 
 def _rebuild_page_groups(page, root: ET.Element, report: PptxGroupReport) -> None:
@@ -112,16 +130,11 @@ def _build_group(
         name = _shape_name(child)
         node = _take_node(by_name, name, used)
         if node is None:
-            # graphicFrame e formas sem fill/text podem não existir no SR Scene.
-            # Só contabilizamos nomes reais para orientar diagnóstico.
             if name:
                 report.unmatched_members += 1
             continue
         used.add(node.id)
         child_ids.append(node.id)
-        # Um p:sp com picture fill + texto é um único membro OOXML, porém vira
-        # IMAGE + TEXT irmão na SR Scene para não perder nenhum dos dois
-        # contratos. O overlay deve acompanhar seu owner ao reconstruir grupos.
         for companion in _compound_companions(by_name, name, node.id, used):
             used.add(companion.id)
             child_ids.append(companion.id)
@@ -162,8 +175,6 @@ def _take_node(by_name: dict[str, list[GraphicsNode]], name: str, used: set[str]
     if not name:
         return None
     candidates = by_name.get(name) or []
-    # Compound-text overlays share source_name with their IMAGE owner; nunca
-    # devem ser consumidos no lugar do objeto OOXML principal.
     primary = next(
         (
             node
@@ -229,8 +240,6 @@ def _clear_generated_groups(page) -> None:
         node.children = [child for child in node.children if child not in generated]
     for node_id in generated:
         page.nodes.pop(node_id, None)
-    # Qualquer grupo gerado aninhado já foi removido; raízes são reconstruídas
-    # a partir da relação pai para tornar a operação idempotente.
     page.roots = [node.id for node in page.nodes.values() if not node.parent_id]
 
 
