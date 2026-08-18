@@ -374,3 +374,36 @@ def test_locked_text_and_geometry_commands_report_no_change():
     assert resized.ok and not resized.changed
     assert edited.ok and not edited.changed
     assert session.document.to_dict() == before
+
+
+def test_resize_handle_reports_no_change_when_lock_is_inherited_from_group():
+    session = GraphicsSession(GraphicsDocument(name="Inherited lock"))
+    group = GraphicsNode(
+        kind=NodeKind.GROUP,
+        name="Grupo bloqueado",
+        locked=True,
+        transform=Transform(x=0, y=0, width=300, height=220),
+    )
+    child = GraphicsNode(
+        kind=NodeKind.RECT,
+        name="Filho",
+        transform=Transform(x=20, y=30, width=100, height=80),
+    )
+    session.page.add_node(group)
+    session.page.add_node(child, parent_id=group.id)
+    session.select(child.id)
+    router = GraphicsCommandRouter(session)
+    before = child.transform.to_dict()
+
+    result = router.dispatch(
+        {
+            "name": "resize_handle",
+            "node_id": child.id,
+            "handle": "se",
+            "dx": 40,
+            "dy": 30,
+        }
+    )
+
+    assert result.ok and not result.changed
+    assert session.page.nodes[child.id].transform.to_dict() == before
