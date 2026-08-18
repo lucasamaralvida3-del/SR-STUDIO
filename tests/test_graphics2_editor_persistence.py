@@ -6,6 +6,7 @@ import os
 from srstudio.graphics2.autosave import AutosaveManager, RecoveryPoint
 from srstudio.graphics2.editor_persistence import (
     EditorPersistenceState,
+    EditorRecentProject,
     EditorRecoveryJournal,
     document_digest,
     newer_recovery_point,
@@ -126,3 +127,35 @@ def test_recovery_journal_does_not_resume_missing_or_unrelated_pointer(tmp_path)
 
     assert journal.current() is None
     assert journal.recovery_point(manager) is None
+
+
+def test_recent_project_is_separate_from_pending_recovery(tmp_path):
+    root = tmp_path / "autosave"
+    recent = EditorRecentProject(root)
+    recovery = EditorRecoveryJournal(root)
+    project = tmp_path / "campanha.srscene"
+    project.write_bytes(b"project-marker")
+
+    recent.mark(project, document_id="doc_123")
+
+    current = recent.current()
+    assert current is not None
+    assert current.document_id == "doc_123"
+    assert current.path == project.resolve()
+    assert recovery.current() is None
+
+
+def test_recent_project_ignores_non_project_files_and_missing_targets(tmp_path):
+    recent = EditorRecentProject(tmp_path / "state")
+    pptx = tmp_path / "modelo.pptx"
+    pptx.write_bytes(b"pptx-marker")
+
+    recent.mark(pptx, document_id="doc_ignored")
+    assert recent.current() is None
+
+    project = tmp_path / "campanha.srscene"
+    project.write_bytes(b"project-marker")
+    recent.mark(project, document_id="doc_real")
+    project.unlink()
+
+    assert recent.current() is None
