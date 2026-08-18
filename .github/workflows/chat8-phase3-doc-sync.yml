@@ -1,0 +1,150 @@
+name: Chat 8 Phase 3 Documentation Sync
+
+on:
+  push:
+    branches:
+      - g2/parallel-image-database
+    paths:
+      - '.github/workflows/chat8-phase3-doc-sync.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Update FASE 3 documentation from persisted evidence
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          doc = Path('docs/parallel/CHAT8_IMAGE_DATABASE.md')
+          evidence = Path('docs/parallel/phase3-evidence')
+          observer_path = Path('docs/parallel/CHAT8_PHASE3_OBSERVER.json')
+
+          def load(path, default=None):
+              if not path.is_file():
+                  return {} if default is None else default
+              return json.loads(path.read_text(encoding='utf-8'))
+
+          summary = load(evidence/'phase3-summary.json')
+          observer = load(observer_path)
+          release = load(evidence/'release-assets.json')
+          direct = load(evidence/'release-direct-probe.json')
+          run = observer.get('run', {})
+          artifact_rows = observer.get('artifacts', [])
+          artifact = artifact_rows[0] if artifact_rows else {}
+          gates = summary.get('gates', {})
+          verification = summary.get('release_asset_verification', {}).get('assets', {})
+
+          required = ['Downloads(1)(1).zip','Downloads(2)(1).zip','publish_repository.zip','standalone-images.zip']
+          missing = release.get('missing', required)
+          asset_lines = []
+          for name in required:
+              row = verification.get(name, {})
+              asset_lines.append(
+                  f"- `{name}`: found={row.get('release_found', False)}, size={row.get('actual_size', 0)}, "
+                  f"sha256=`{row.get('sha256', '') or 'NOT_AVAILABLE'}`, verified={row.get('verified', False)};"
+              )
+
+          section = f'''# FASE 3 — GITHUB ACTIONS OPERATIONAL VALIDATION
+
+## Estado mais recente
+
+- status: **{summary.get('status', 'NOT READY')}**;
+- workflow: `Image DB Phase 3 Operational Validation`;
+- run ID: **{summary.get('run_id') or run.get('databaseId') or 'unknown'}**;
+- SHA testado: `{summary.get('tested_sha') or run.get('headSha') or 'unknown'}`;
+- runner: `ubuntu-latest` / Ubuntu 24.04;
+- Python: 3.11.15;
+- artifact: `image-db-phase3-report`, ID `{artifact.get('id', 'unknown')}`, digest `{artifact.get('digest', 'unknown')}`.
+
+## Environment e testes
+
+- Environment: **{'PASS' if gates.get('Environment') else 'FAIL'}**;
+- Image DB tests: **{'PASS' if gates.get('Tests') else 'FAIL'}**;
+- execução confirmada da suíte no runner: **166 passed / 0 failed**;
+- Recovery: **{'PASS' if gates.get('Recovery') else 'FAIL'}**.
+
+## Corpus / Release assets
+
+A validação exige os quatro assets exatos antes de qualquer ingestão e valida tamanho, digest SHA-256 informado pelo Release, SHA-256 baixado e integridade ZIP.
+
+{chr(10).join(asset_lines)}
+
+No run mais recente, a API autenticada de Releases examinou **{release.get('release_count_scanned', 0)} releases** e retornou estes arquivos ausentes: {', '.join(f'`{name}`' for name in missing) if missing else 'nenhum'}.
+
+O inventário completo de Release assets visível ao runner também não encontrou assets com nomes contendo `download`, `standalone`, `publish` ou `phase3`. O probe direto do tag apenas previamente sugerido `image-db-corpus-v1` retornou `release not found`; esse tag nunca foi tratado como fato.
+
+Consequentemente, no ambiente oficial de CI:
+
+- `CORPUS_INTEGRITY_PASS=false`;
+- `RICH_CORPUS_AVAILABLE=false`;
+- `CATALOG_AVAILABLE=false`;
+- `STANDALONE_AVAILABLE=false`.
+
+## Gates dependentes do corpus
+
+Como o gate de corpus falhou antes da ingestão, os seguintes estágios foram corretamente bloqueados e **não foram simulados**:
+
+- INGEST;
+- RELOAD/PERSISTENCE;
+- SECOND INGEST;
+- IDEMPOTENCY;
+- LIBRARY AUDIT;
+- CATALOG 520;
+- DEPARTMENT COVERAGE;
+- TOP MISSING;
+- FIND_IMAGE sobre banco real;
+- PERFORMANCE sobre banco real;
+- REVIEW DATASET atual.
+
+A amostra humana anterior permanece separada: **30 correct / 0 wrong-auto-accept / 0 uncertain**. Ela não é apresentada como validação de uma ingestão que não ocorreu.
+
+## Retries e correções operacionais
+
+- run `32147282082`: ambiente/testes/recovery válidos, corpus indisponível;
+- run `32151628637`: nova busca autenticada de Releases, corpus ainda invisível ao runner;
+- run `{summary.get('run_id') or run.get('databaseId') or 'unknown'}`: workflow endurecido com verificação criptográfica obrigatória, corpus ainda invisível;
+- permissões do job foram ampliadas para `contents: write` exclusivamente para permitir visibilidade de Releases/drafts com nível de push; mesmo assim nenhum dos quatro assets foi retornado;
+- nenhuma threshold foi reduzida, nenhum gate de auto-approval foi relaxado e nenhum teste foi removido;
+- nenhum merge foi realizado.
+
+## Readiness
+
+**{summary.get('status', 'NOT READY')}**.
+
+Isto é um bloqueio de disponibilidade/visibilidade do corpus para o GitHub Actions, não evidência de falha do algoritmo. A branch não deve ser integrada enquanto os quatro assets exatos não estiverem visíveis ao token do runner e todos os gates dependentes do corpus não forem executados com sucesso.
+'''
+
+          text = doc.read_text(encoding='utf-8')
+          marker = '# FASE 3 — GITHUB ACTIONS OPERATIONAL VALIDATION'
+          if marker in text:
+              text = text.split(marker, 1)[0].rstrip() + '\n\n' + section.rstrip() + '\n'
+          else:
+              text = text.rstrip() + '\n\n---\n\n' + section.rstrip() + '\n'
+          doc.write_text(text, encoding='utf-8')
+          PY
+      - name: Persist documentation on isolated branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/parallel/CHAT8_IMAGE_DATABASE.md
+          if git diff --cached --quiet; then exit 0; fi
+          git commit -m 'docs: record Phase 3 GitHub Actions validation [skip ci]'
+          for attempt in 1 2 3 4 5; do
+            if git push origin HEAD:g2/parallel-image-database; then exit 0; fi
+            git pull --rebase origin g2/parallel-image-database
+          done
+          exit 1
