@@ -6,6 +6,10 @@ on:
     branches:
       - g2/parallel-release-engineering
       - g2/integration-beta
+  pull_request:
+    branches:
+      - g2/parallel-release-engineering
+      - g2/integration-beta
 
 permissions:
   contents: read
