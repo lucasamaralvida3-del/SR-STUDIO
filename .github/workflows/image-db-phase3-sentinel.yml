@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-      - name: Record workflow runs for tested SHA
+      - name: Record workflow runs for Phase 3
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
@@ -32,13 +32,22 @@ jobs:
           mkdir -p docs/parallel
           gh run list --branch g2/parallel-image-database --commit "$GITHUB_SHA" --limit 20 \
             --json databaseId,workflowName,status,conclusion,event,headSha,url,createdAt \
-            > docs/parallel/CHAT8_PHASE3_RUNS.json
+            > /tmp/current-sha-runs.json
+          gh run list --workflow image-db-phase3.yml --branch g2/parallel-image-database --limit 20 \
+            --json databaseId,workflowName,status,conclusion,event,headSha,url,createdAt \
+            > /tmp/validation-runs.json || echo '[]' > /tmp/validation-runs.json
           python - <<'PY'
           import json, os
           from pathlib import Path
-          p=Path('docs/parallel/CHAT8_PHASE3_RUNS.json')
-          rows=json.loads(p.read_text(encoding='utf-8'))
-          p.write_text(json.dumps({'observed_from_sentinel_run_id': os.environ.get('GITHUB_RUN_ID'), 'tested_sha': os.environ.get('GITHUB_SHA'), 'runs': rows}, indent=2, ensure_ascii=False), encoding='utf-8')
+          current=json.loads(Path('/tmp/current-sha-runs.json').read_text(encoding='utf-8'))
+          validation=json.loads(Path('/tmp/validation-runs.json').read_text(encoding='utf-8'))
+          payload={
+              'observed_from_sentinel_run_id': os.environ.get('GITHUB_RUN_ID'),
+              'tested_sha': os.environ.get('GITHUB_SHA'),
+              'current_sha_runs': current,
+              'phase3_validation_runs': validation,
+          }
+          Path('docs/parallel/CHAT8_PHASE3_RUNS.json').write_text(json.dumps(payload, indent=2, ensure_ascii=False), encoding='utf-8')
           PY
       - name: Persist sentinel result on isolated branch
         shell: bash
