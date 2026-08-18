@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from copy import deepcopy
+from hashlib import sha256
 
 from srstudio.graphics2.model import AssetRef, BindingRole, GraphicsDocument, GraphicsNode, NodeKind, SmartSlot, Transform
 from srstudio.graphics2.scene_fingerprint import fingerprint_document, store_scene_fingerprint
@@ -60,6 +61,24 @@ def test_asset_cache_directory_does_not_change_hash_when_content_hash_is_equal()
     first = fingerprint_document(_scene(asset_root="C:/users/a/cache"))
     second = fingerprint_document(_scene(asset_root="D:/temp/other-cache"))
     assert first.sha256 == second.sha256
+
+
+def test_unhashed_local_asset_uses_content_identity_before_packaging(tmp_path):
+    asset_path = tmp_path / "image.png"
+    asset_path.write_bytes(b"same-image-content")
+
+    document = _scene(asset_root=str(tmp_path))
+    asset = next(iter(document.assets.values()))
+    asset.source = str(asset_path)
+    asset.sha256 = ""
+    before = fingerprint_document(document)
+
+    asset.sha256 = sha256(asset_path.read_bytes()).hexdigest()
+    asset.source = "assets/image.png"
+    after = fingerprint_document(document)
+
+    assert before.sha256 == after.sha256
+    assert before.pages[0].sha256 == after.pages[0].sha256
 
 
 def test_store_scene_fingerprint_writes_serializable_metadata_without_self_affecting_hash():
