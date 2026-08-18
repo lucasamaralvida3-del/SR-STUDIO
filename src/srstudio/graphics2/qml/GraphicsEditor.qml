@@ -25,6 +25,22 @@ ApplicationWindow {
     property real productDragX: 0
     property real productDragY: 0
     property string dragHoverSlotId: ""
+    readonly property bool textEditingActive: isEditableTextControl(activeFocusItem)
+
+    function isEditableTextControl(item) {
+        var current = item
+        while (current) {
+            if (current instanceof TextInput || current instanceof TextEdit)
+                return true
+            current = current.parent
+        }
+        return false
+    }
+
+    function restoreCanvasFocus() {
+        if (sheet)
+            sheet.forceActiveFocus()
+    }
 
     function activePage() {
         if (!scene.pages || !scene.pages.length)
@@ -297,8 +313,12 @@ ApplicationWindow {
     }
 
     function refreshScene() {
+        var previousPageId = page ? String(page.id || "") : ""
         scene = JSON.parse(sceneBridge.sceneJson)
         page = activePage()
+        var nextPageId = page ? String(page.id || "") : ""
+        if (previousPageId && nextPageId !== previousPageId)
+            Qt.callLater(restoreCanvasFocus)
         var availableSlots = slots()
         var stillExists = false
         for (var i = 0; i < availableSlots.length; ++i)
@@ -319,13 +339,14 @@ ApplicationWindow {
         syncInspector()
     }
 
-    Shortcut { sequence: StandardKey.Undo; onActivated: sceneBridge.undo() }
-    Shortcut { sequence: StandardKey.Redo; onActivated: sceneBridge.redo() }
-    Shortcut { sequence: StandardKey.Delete; onActivated: sceneBridge.dispatch('{"name":"delete"}') }
-    Shortcut { sequence: "Ctrl+D"; onActivated: sceneBridge.dispatch('{"name":"duplicate"}') }
-    Shortcut { sequence: "Ctrl+G"; onActivated: sceneBridge.dispatch('{"name":"group"}') }
-    Shortcut { sequence: "Ctrl+Shift+G"; onActivated: sceneBridge.dispatch('{"name":"ungroup"}') }
-    Shortcut { sequence: "G"; onActivated: showGrid = !showGrid }
+    Shortcut { sequence: StandardKey.Undo; enabled: !window.textEditingActive; onActivated: sceneBridge.undo() }
+    Shortcut { sequence: StandardKey.Redo; enabled: !window.textEditingActive; onActivated: sceneBridge.redo() }
+    Shortcut { sequence: StandardKey.Delete; enabled: !window.textEditingActive; onActivated: sceneBridge.dispatch('{"name":"delete"}') }
+    Shortcut { sequence: "Ctrl+D"; enabled: !window.textEditingActive; onActivated: sceneBridge.dispatch('{"name":"duplicate"}') }
+    Shortcut { sequence: "Ctrl+G"; enabled: !window.textEditingActive; onActivated: sceneBridge.dispatch('{"name":"group"}') }
+    Shortcut { sequence: "Ctrl+Shift+G"; enabled: !window.textEditingActive; onActivated: sceneBridge.dispatch('{"name":"ungroup"}') }
+    Shortcut { sequence: "G"; enabled: !window.textEditingActive; onActivated: showGrid = !showGrid }
+    Shortcut { sequence: "Escape"; enabled: window.textEditingActive; onActivated: window.restoreCanvasFocus() }
 
     header: ToolBar {
         implicitHeight: 58
@@ -611,6 +632,8 @@ ApplicationWindow {
 
                         Rectangle {
                             id: sheet
+                            objectName: "editorCanvasFocusTarget"
+                            focus: true
                             x: 140
                             y: 90
                             width: (page ? page.width : 1080) * zoom
@@ -761,7 +784,10 @@ ApplicationWindow {
                                         drag.target: parent
                                         enabled: !effectiveLocked(modelData)
                                         preventStealing: true
-                                        onPressed: sceneBridge.selectNodeAdvanced(modelData.id, (mouse.modifiers & Qt.ShiftModifier) !== 0, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                                        onPressed: {
+                                            window.restoreCanvasFocus()
+                                            sceneBridge.selectNodeAdvanced(modelData.id, (mouse.modifiers & Qt.ShiftModifier) !== 0, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                                        }
                                         onReleased: {
                                             var dx = (parent.x / zoom) - Number(modelData.transform.x)
                                             var dy = (parent.y / zoom) - Number(modelData.transform.y)
@@ -933,7 +959,7 @@ ApplicationWindow {
                             rowSpacing: 7
                             Layout.fillWidth: true
                             Label { text: "X"; color: "#64748B" }
-                            TextField { id: xField; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                            TextField { id: xField; objectName: "editorGeometryXField"; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
                             Label { text: "Y"; color: "#64748B" }
                             TextField { id: yField; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
                             Label { text: "Largura"; color: "#64748B" }
@@ -961,7 +987,7 @@ ApplicationWindow {
                             visible: anchorNode && anchorNode.kind === "text"
                             Layout.fillWidth: true
                             Label { text: "Texto"; color: "#475569"; font.bold: true }
-                            TextArea { id: textEditor; Layout.fillWidth: true; Layout.preferredHeight: 90; wrapMode: TextEdit.Wrap }
+                            TextArea { id: textEditor; objectName: "editorTextArea"; Layout.fillWidth: true; Layout.preferredHeight: 90; wrapMode: TextEdit.Wrap }
                             Button { text: "Aplicar texto"; Layout.fillWidth: true; onClicked: if (anchorNode) sceneBridge.editText(anchorNode.id, textEditor.text) }
                         }
 
@@ -1022,7 +1048,10 @@ ApplicationWindow {
                         text: modelData.name || ("Página " + (index + 1))
                         checked: modelData.id === scene.active_page_id
                         checkable: true
-                        onClicked: sceneBridge.dispatch(JSON.stringify({"name":"select_page","page_id":modelData.id}))
+                        onClicked: {
+                            window.restoreCanvasFocus()
+                            sceneBridge.dispatch(JSON.stringify({"name":"select_page","page_id":modelData.id}))
+                        }
                     }
                 }
                 Button { text: "+"; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
