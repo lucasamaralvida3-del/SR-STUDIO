@@ -1,4 +1,4 @@
-# CHAT 7 — Build/Release e Integração Segura do Studio de Encartes G2
+# CHAT 7 — Build/Release, Integração e Baseline Visual do Studio de Encartes G2
 
 Atualizado: 2026-08-18
 
@@ -6,77 +6,22 @@ Atualizado: 2026-08-18
 
 Esta missão é **exclusivamente do NOVO STUDIO DE ENCARTES G2**.
 
-O Gerador de Cartazes legado é um produto separado. Seus módulos, UI, exportadores, templates funcionais e os Golden Masters `CARTAZ_VENDA`, `SEGUNDA_DA_LIMPEZA*`, `CLUBE_EXCLUSIVO*` e `ATACADO` não fazem parte do critério de aceitação do Studio.
+O Gerador de Cartazes legado é um produto separado. Seus módulos, UI, exportadores, templates e Golden Masters `CARTAZ_VENDA`, `SEGUNDA_DA_LIMPEZA*`, `CLUBE_EXCLUSIVO*` e `ATACADO` estão fora do critério de aceitação do Studio. Nenhum desenvolvimento do Gerador legado foi realizado nesta integração.
 
-Artefatos históricos só podem ser usados como referência estática ou regression gate compartilhado quando necessário. Nenhum desenvolvimento do Gerador legado foi realizado nesta integração.
+CHAT 8 permanece isolado e não foi integrado. `main` e `stable` não foram alteradas.
 
-CHAT 8 permanece isolado e não foi integrado.
-
-## Branch e HEAD funcional
+## HEAD funcional
 
 - branch: `g2/integration-beta`
-- base original da integração: `15dbce6742066783c46db5599926f359cd125493`
+- base original: `15dbce6742066783c46db5599926f359cd125493`
 - HEAD funcional validado: `d14dc5bed4bf4f7402f4668eb66a63823f48a35a`
-- `main`: não alterada
-- `stable`: não alterada
+- commits posteriores desta rodada: documentação/manifests/baseline visual; nenhum código funcional do produto foi alterado
 
-## Branches incorporadas na Fase B
+## Integração funcional
 
-- `g2/parallel-import-office` — CHAT 2
-- `g2/parallel-render-fidelity` — CHAT 1
-- `g2/parallel-product-system` — CHAT 4
-- `g2/parallel-editor-production` — CHAT 3, port semântico
-- `g2/parallel-export-output` — CHAT 6, port semântico
-- `g2/parallel-qa-performance` — CHAT 5, QA/test tooling
+Branches CHAT 1–6 foram incorporadas de forma controlada; CHAT 3 e CHAT 6 foram portados semanticamente por terem linhagem antiga. CHAT 8 não foi incorporado.
 
-CHAT 8 não foi incorporado.
-
-## Commits principais da integração controlada
-
-Entre os checkpoints documentados:
-
-- CHAT 1: `b4a398881b7acd6795fdcb74b5a0c9c5717d6d57`
-- CHAT 4: `dfd75b532ace3c85cfeb33f924d510937a403223`
-- Product compatibility estabilizada: `515651d3e79b6e9bf08b891799491b04d7240044`
-- CHAT 3 persistence/autosave: `24e608ff69c77b7a7a9bac6fb3958ba5d6efc79e`
-- CHAT 3 package/round-trip: `b9b7fc08ffa0229c2036d154d6f826dea66fec88`
-- CHAT 3 QML/multipage/close guard: `bf7996d9ae183658123933be89342373668c0256`
-- CHAT 3 validation tests: `b9d63020cd1aaa3715db1c64db4ddc67c15aec6d`
-- CHAT 6 export modules: `03857fa1fde8844a4879b944cf15d54c5a1e5a8c`
-- CHAT 6 output guard/bootstrap: `d972163397146a62181fce589f2badc5333edabf`
-- CHAT 5 QA tooling: `6d11f34af248e448da5f85aee0f675464285848c`
-- Gate global integrado: `d14dc5bed4bf4f7402f4668eb66a63823f48a35a`
-
-## Auditoria de escopo
-
-A comparação `15dbce6...d14dc5b` não contém alterações em arquivos exclusivos do Gerador de Cartazes.
-
-### G2 direto
-
-- `.github/workflows/g2-*`
-- `build/*graphics2*`
-- `src/srstudio/graphics2/**`
-- `tests/test_graphics2_*`
-- `tests/benchmark_graphics2_*`
-- `tools/g2_*`
-
-### Infraestrutura compartilhada usada pelo G2
-
-- `pyproject.toml`
-- `src/srstudio/diagnostics/crash_guard.py`
-- `src/srstudio/importers/pptx/package_order.py`
-- `src/srstudio/importers/pptx/reader.py`
-- `tests/test_pptx_presentation_order.py`
-
-Esses pontos compartilhados foram alterados somente por necessidade do G2 e passaram regressão.
-
-### LEGACY
-
-**0 arquivos exclusivos do Gerador de Cartazes modificados pela integração.**
-
-O PR #42, aberto apenas para transportar o corpus dos Golden Masters posteriormente reconhecidos como fora de escopo, foi fechado sem merge e não introduziu código na integração.
-
-## Gate funcional final do G2
+Gates finais do Studio:
 
 | Área | Estado |
 |---|---|
@@ -97,76 +42,116 @@ O PR #42, aberto apenas para transportar o corpus dos Golden Masters posteriorme
 | Bindings | PASS |
 | PNG | PASS |
 | JPEG | PASS |
-| PDF single | PASS |
-| PDF multipage | PASS |
+| PDF single/multipage | PASS |
 | E2E | PASS |
-| Performance smoke | PASS |
+| Performance | PASS |
 | Crash safety | PASS |
 
-### CHAT 6
+CHAT 5: Linux focado 34/34 PASS; Windows/Qt 60/60 PASS. CHAT 6: Linux + Windows/Qt PASS, 49 testes do contrato de export/regressão no Windows, frozen install/rollback PASS.
 
-- Linux export: PASS
-- Windows/Qt export: PASS
-- Windows contract/regression: 49 tests PASS
-- PNG/JPEG/PDF/batch/repeat/output-path/error handling: PASS
-- frozen startup/install/rollback: PASS
+## Auditoria de escopo
 
-### CHAT 5
+A comparação `15dbce6...d14dc5b` contém G2 direto (`src/srstudio/graphics2/**`, workflows/testes/build Graphics2) e infraestrutura compartilhada necessária ao G2 (`pyproject.toml`, `diagnostics/crash_guard.py`, reader/order PPTX). **0 arquivos exclusivos do Gerador de Cartazes foram modificados.**
 
-- Linux focado: 34/34 PASS
-- Windows/Qt focado: 60/60 PASS
-- long-run save/load: sem crescimento material observado
-- performance smoke: PASS
+O PR #42, criado antes da correção de escopo para transportar os oito Golden Masters do Gerador legado, foi fechado sem merge e não introduziu código.
 
-## Gate visual correto do G2
+## Corpus visual próprio do G2
 
-O gate visual do Studio está em `visual-fidelity/` e testa o **Graphics Engine 2**, não o Gerador de Cartazes.
+A baseline própria foi construída com **3 documentos reais / 11 páginas**, sem usar Golden Master do Gerador de Cartazes:
 
-Fluxo:
+1. Quinta Filé — slides 12–15
+   - PPTX SHA `7c45cfa205c7e14af69e41c8d63b1c6a9d1a06df3cf9d0131ed612029884e536`
+   - Canva doc id `DAHMLMj6EH8`
+2. Terça Verde — slides 5, 6 e 8
+   - PPTX SHA `6e186a90c5591da2801d9049d5357755ab323f8d76b373104cbf757b0bc9c920`
+   - Canva doc id `DAHMAeLZD3Q`
+3. Quarta Café com Pão — slides 7–10
+   - PPTX SHA `df20e5650711755cd9655b33eab2f72f0d7588f95c06bb34dca161dee2eae395`
+   - Canva doc id `DAHMFY898gM`
 
-`PPTX/Canva real do encarte -> importador G2 -> SR Scene 2 -> qt_renderer G2 -> referência oficial estática -> Fidelity Lab/Triage`
+Arquivos versionados:
 
-O caso real versionado atual é `visual-fidelity/quinta-file-13-08-2026.json`, com quatro referências oficiais de Canva e SHA explícito do PPTX.
+- `visual-fidelity/g2-studio-corpus-v1.json`
+- `visual-fidelity/g2-studio-corpus-v1-baseline.json`
+- `visual-fidelity/g2-terca-verde-2026-08-11.json`
+- `visual-fidelity/g2-quarta-cafe-2026-08-12.json`
+- manifesto Quinta existente `visual-fidelity/quinta-file-13-08-2026.json`
 
-Testes pertencentes ao gate visual G2 incluem:
+### Imutabilidade / hash validation
 
-- `tests/test_graphics2_reference_suite.py`
-- `tests/test_graphics2_fidelity_corpus.py`
-- `tests/test_graphics2_fidelity_impact.py`
-- renderer micro-fixtures de font-weight/group-opacity/transparency
-- testes PPTX G2 de group transform, source crop, shape visual e text recovery
+Os 3 PPTX e as 11 referências recuperadas passaram SHA-256 e dimensões. Foi executado também um controle negativo: substituir a referência de Terça s05 pelos bytes de s06 produz `SHA-256 divergente` e o caso é rejeitado.
 
-### Estado do corpus privado
+## Restrição de formato da referência
 
-O manifesto espera o PPTX SHA `7c45cfa205c7e14af69e41c8d63b1c6a9d1a06df3cf9d0131ed612029884e536`.
+Os exports oficiais recuperados são **JPEGs diretos do Canva**, não PNGs. Os JPEGs Quarta e Terça s08 preservam XMP com `CreatorTool=Canva (Renderer)`, doc id coincidente com o PPTX e título da página. O Quinta bate exatamente com os hashes do manifesto G2 já versionado.
 
-As duas cópias homônimas disponíveis na Biblioteca nesta auditoria produziram SHA diferentes (`8f57f0...` e `0353b8...`). Portanto elas não foram aceitas como substitutas silenciosas. As quatro referências oficiais hashadas também não foram recuperadas como conjunto completo nesta execução.
+A regra atual exige PNG direto para aprovação final. Portanto nenhum JPEG foi convertido/renomeado para PNG e o corpus está versionado como:
 
-Resultado: **fidelidade visual G2 não classificada quantitativamente nesta rodada**. Isso não equivale a FAIL e não reutiliza os scores 83–93% do Gerador legado.
+`baseline_established_pending_png_reference`
 
-## P0 / P1 / P2 / P3 — somente Studio G2
+Isso não invalida a medição quantitativa, mas impede chamar as referências atuais de corpus oficial v1 **aprovado**.
+
+## Baseline quantitativa
+
+Executada sobre o HEAD funcional congelado `d14dc5b...`:
+
+- casos: 11
+- hash validation: PASS
+- min: **94,4183%**
+- max: **97,7681%**
+- mean: **95,9754%**
+- median: **96,3717%**
+- pixel pass médio: **87,0328%**
+- changed area média: **12,9672%**
+- render médio: **~601,9 ms/caso**
+- regressões funcionais: **0**
+
+Nenhum threshold do Gerador de Cartazes foi herdado. A baseline registra distribuição; acceptance threshold oficial do G2 continua **UNSET** até análise do corpus próprio.
+
+### Finding sistêmico de dimensão
+
+11/11 candidates saíram 1 px mais baixos que a referência:
+
+- 1229×1535 vs 1229×1536; ou
+- 1080×1349 vs 1080×1350.
+
+Para calcular métricas sem modificar o renderer no meio da baseline, o laboratório apenas completou/cortou canvas até o tamanho da referência, **sem rescale**, mantendo `dimension_delta=[0,-1]` no relatório. O finding deve ser isolado entre page geometry do import e rounding do renderer antes de qualquer correção.
+
+## Atribuição granular
+
+Segunda passagem somente de laboratório: tile 32 px, hot-tile ≥10%, máximo 20 regiões; score/candidate não foram alterados.
+
+Participação aproximada do gap visual:
+
+- LAYERS: **53,18%**
+- CROP: **30,13%**
+- MASK: **12,45%**
+- TEXT: **4,23%**
+
+FONT/IMAGE/GROUP/SHAPE não receberam contribuição isolada pelo classificador atual. `WORDART`, `PRICE`, `PRODUCT` e `IMPORT` não são separados como classes independentes pelo classificador scene-aware atual e não devem ser tratados como ausentes. IMPORT/RENDER têm o finding transversal de 1 px em 11/11 casos.
+
+## P0 / P1 / P2 / P3 — somente G2
 
 - P0: **0**
-- P1 funcional impeditivo: **0**
-- P2: **1** — executar o corpus visual G2 correto com o PPTX e referências privadas exatamente hashados, ou criar um novo manifesto para um encarte G2 real atual
-- P3: **0 confirmados nesta auditoria**
+- P1 funcional: **0**
+- P2: **3**
+  1. obter PNGs diretos para promover o corpus candidato a oficial v1 aprovado;
+  2. isolar/corrigir o delta sistêmico de 1 px de altura;
+  3. atacar sistemicamente LAYERS/CROP/MASK, que somam ~95,77% do gap atribuído
+- P3: **0 confirmados**
 
-## Classificação final desta integração
+## Classificação
 
-### Functional readiness
+- Functional readiness: **BETA FUNCIONAL — SIM**
+- Visual readiness: **BASELINE ESTABLISHED**
+- Corpus oficial v1 aprovado: **PENDENTE dos PNGs diretos exigidos pela regra atual**
 
-**BETA FUNCIONAL: SIM.**
+## Próxima rodada recomendada
 
-A matriz funcional principal está verde em Linux e Windows/Qt e não há P0/P1 funcional conhecido.
+1. exportar/recuperar os mesmos 11 casos como PNG direto Canva/PowerPoint e registrar novos hashes sem sobrescrever os JPEGs históricos;
+2. repetir a baseline com os PNGs oficiais;
+3. isolar o rounding de altura 11/11;
+4. corrigir por ordem sistêmica LAYERS → CROP → MASK;
+5. expandir depois para transparência/rotação/grupos/fontes não instaladas/ProductCards quando houver referência oficial pareada.
 
-### Visual readiness
-
-**PENDENTE DE EVIDÊNCIA QUANTITATIVA PRÓPRIA DO STUDIO.**
-
-Não usar os oito Golden Masters do Gerador de Cartazes para promoção ou bloqueio do G2.
-
-## Próximo bloqueador exclusivamente do Studio
-
-Restaurar o corpus privado do gate `Quinta Filé` exatamente hashado — ou estabelecer um novo corpus oficial de Encartes G2 com PPTX/Canva + exportações de referência — e executar `reference_suite` para criar a baseline visual própria do Studio.
-
-Nenhuma nova funcionalidade do Gerador de Cartazes deve ser desenvolvida como parte dessa rodada.
+Gerador de Cartazes e CHAT 8 permanecem fora desta rodada.
