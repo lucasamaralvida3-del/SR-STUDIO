@@ -12,8 +12,10 @@ on:
       - "tests/test_graphics2_product_card_creation.py"
       - "tests/test_graphics2_product_data_cascade.py"
       - "tests/test_graphics2_product_command_compat.py"
+      - "tests/test_graphics2_product_page_duplicate.py"
       - "tests/test_graphics2_slot_detach.py"
       - "tests/test_graphics2_wholesale_price_slot.py"
+      - "tests/test_graphics2_canonical_commercial_priceblocks.py"
       - "tests/test_graphics2_binding_integrity.py"
       - "tests/test_graphics2_named_slot_v2_migration.py"
       - "tests/test_graphics2_semantic_product_card.py"
@@ -75,8 +77,10 @@ jobs:
           tests/test_graphics2_product_card_creation.py
           tests/test_graphics2_product_data_cascade.py
           tests/test_graphics2_product_command_compat.py
+          tests/test_graphics2_product_page_duplicate.py
           tests/test_graphics2_slot_detach.py
           tests/test_graphics2_wholesale_price_slot.py
+          tests/test_graphics2_canonical_commercial_priceblocks.py
           tests/test_graphics2_binding_integrity.py
           tests/test_graphics2_named_slot_v2_migration.py
 
@@ -93,8 +97,10 @@ jobs:
           tests/test_graphics2_product_card_creation.py
           tests/test_graphics2_product_data_cascade.py
           tests/test_graphics2_product_command_compat.py
+          tests/test_graphics2_product_page_duplicate.py
           tests/test_graphics2_slot_detach.py
           tests/test_graphics2_wholesale_price_slot.py
+          tests/test_graphics2_canonical_commercial_priceblocks.py
           tests/test_graphics2_binding_integrity.py
           tests/test_graphics2_named_slot_v2_migration.py
           tests/test_graphics2_semantic_product_card.py
