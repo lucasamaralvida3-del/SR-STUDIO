@@ -9,7 +9,10 @@ on:
       - "tests/test_graphics2_core.py"
       - "tests/test_graphics2_complete_price_recovery.py"
       - "tests/test_graphics2_product_system.py"
+      - "tests/test_graphics2_product_card_creation.py"
       - "tests/test_graphics2_wholesale_price_slot.py"
+      - "tests/test_graphics2_binding_integrity.py"
+      - "tests/test_graphics2_named_slot_v2_migration.py"
       - "tests/test_graphics2_semantic_product_card.py"
       - "tests/test_graphics2_named_multi_price_slot.py"
       - "tests/test_graphics2_named_limit_slot.py"
@@ -54,14 +57,20 @@ jobs:
         shell: pwsh
         run: >-
           python -m ruff check
+          src/srstudio/graphics2/__init__.py
           src/srstudio/graphics2/binding_runtime.py
           src/srstudio/graphics2/commercial_price_runtime.py
+          src/srstudio/graphics2/product_card_runtime.py
+          src/srstudio/graphics2/preflight.py
           src/srstudio/graphics2/semantic_named_slot_runtime.py
           src/srstudio/graphics2/semantic_runtime.py
           tests/test_graphics2_core.py
           tests/test_graphics2_complete_price_recovery.py
           tests/test_graphics2_product_system.py
+          tests/test_graphics2_product_card_creation.py
           tests/test_graphics2_wholesale_price_slot.py
+          tests/test_graphics2_binding_integrity.py
+          tests/test_graphics2_named_slot_v2_migration.py
 
       - name: Product system contracts
         shell: pwsh
@@ -73,7 +82,10 @@ jobs:
           tests/test_graphics2_core.py
           tests/test_graphics2_complete_price_recovery.py
           tests/test_graphics2_product_system.py
+          tests/test_graphics2_product_card_creation.py
           tests/test_graphics2_wholesale_price_slot.py
+          tests/test_graphics2_binding_integrity.py
+          tests/test_graphics2_named_slot_v2_migration.py
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_named_multi_price_slot.py
           tests/test_graphics2_named_limit_slot.py
