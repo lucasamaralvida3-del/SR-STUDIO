@@ -1,0 +1,53 @@
+name: G2 Source Snapshot
+
+on:
+  push:
+    branches:
+      - integration/sr-studio-next
+    paths:
+      - '.github/workflows/g2-source-snapshot.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: integration/sr-studio-next
+          fetch-depth: 0
+      - name: Package source snapshot
+        run: tar --exclude=.git --exclude=build --exclude=.pytest_cache -czf /tmp/g2-source-snapshot.tgz .
+      - name: Upload source snapshot
+        uses: actions/upload-artifact@v4
+        with:
+          name: g2-source-snapshot
+          path: /tmp/g2-source-snapshot.tgz
+          if-no-files-found: error
+          retention-days: 1
+      - name: Record snapshot run
+        env:
+          SNAPSHOT_SHA: ${{ github.sha }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          git pull --rebase origin integration/sr-studio-next
+          mkdir -p diagnostic
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          payload = {
+              'snapshot_sha': os.environ['SNAPSHOT_SHA'],
+              'workflow_run_id': int(os.environ['RUN_ID']),
+              'recorded_at_utc': datetime.now(timezone.utc).isoformat(),
+          }
+          with open('diagnostic/g2_source_snapshot.json', 'w', encoding='utf-8') as f:
+              json.dump(payload, f, ensure_ascii=False, indent=2)
+              f.write('\n')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add diagnostic/g2_source_snapshot.json
+          git commit -m 'ci: record G2 source snapshot' || exit 0
+          git push origin HEAD:integration/sr-studio-next
