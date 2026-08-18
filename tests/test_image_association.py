@@ -114,6 +114,35 @@ def test_reused_asset_with_unrelated_products_becomes_decorative():
     assert result.distinct_product_count == 5
 
 
+def test_recurring_template_with_three_unrelated_products_is_decorative():
+    engine = ProductImageAssociationEngine()
+    rows = [
+        ev("LOMBO SUINO KG", confidence=.86, slide=1, metadata={"template_asset": True}),
+        ev("BATATA BEM BRASIL CANOA 1.05KG", confidence=.86, slide=2, metadata={"template_asset": True}),
+        ev("PAO DE QUEIJO CONGELADO SR 1KG", confidence=.86, slide=3, metadata={"template_asset": True}),
+    ]
+    result = engine.resolve(rows)[0]
+    assert result.status == "decorative"
+    assert result.distinct_product_count == 3
+
+
+def test_recurring_template_signal_does_not_reject_same_product_consensus():
+    engine = ProductImageAssociationEngine()
+    rows = [
+        ev(
+            "CAFE VASCONCELOS 500G",
+            confidence=.91,
+            source=f"week-{index}.pptx",
+            slide=index,
+            metadata={"template_asset": True, "source_document_id": f"week-{index}"},
+        )
+        for index in range(1, 4)
+    ]
+    result = engine.resolve(rows)[0]
+    assert result.status == "accepted"
+    assert result.distinct_product_count == 1
+
+
 def test_conflicting_product_names_are_not_silently_accepted():
     engine = ProductImageAssociationEngine()
     rows = [
