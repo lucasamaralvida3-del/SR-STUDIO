@@ -17,7 +17,11 @@ from xml.etree import ElementTree as ET
 from PIL import Image
 
 from srstudio.images.association import is_product_text_candidate, normalize_product_name
-from srstudio.images.visual_dedup import is_conservative_visual_duplicate
+from srstudio.images.visual_dedup import (
+    compact_rgb_signature,
+    is_conservative_visual_duplicate,
+    visual_duplicate_signals,
+)
 
 
 _SLIDE_RE = re.compile(r"^ppt/slides/slide(\d+)\.xml$")
@@ -38,6 +42,7 @@ class MediaInventory:
     height: int = 0
     mime_type: str = ""
     perceptual_hash: str = ""
+    rgb_signature: str = ""
 
     @property
     def aspect_ratio(self) -> float:
@@ -76,6 +81,7 @@ class CorpusInventoryMetrics:
     logical_duplicate_groups: int = 0
     near_duplicate_pairs: int = 0
     geometry_rejected_dhash_pairs: int = 0
+    content_rejected_dhash_pairs: int = 0
     text_only_files: int = 0
     template_heavy_files: int = 0
     mixed_files: int = 0
@@ -133,7 +139,7 @@ class PptxCorpusInventory:
             for group in by_logical_sha.values()
             if len({row.file_sha256 for row in group}) > 1
         ]
-        near_pairs, rejected_geometry = self._near_duplicate_pairs(media_by_sha.values())
+        near_pairs, geometry_rejected, content_rejected = self._near_duplicate_pairs(media_by_sha.values())
 
         media_reuse = [
             {
@@ -162,7 +168,8 @@ class PptxCorpusInventory:
             exact_duplicate_file_groups=len(exact_groups),
             logical_duplicate_groups=len(logical_groups),
             near_duplicate_pairs=len(near_pairs),
-            geometry_rejected_dhash_pairs=rejected_geometry,
+            geometry_rejected_dhash_pairs=geometry_rejected,
+            content_rejected_dhash_pairs=content_rejected,
             text_only_files=sum(item.content_mode == "text-only" for item in files),
             template_heavy_files=sum(item.content_mode == "template-heavy" for item in files),
             mixed_files=sum(item.content_mode == "mixed" for item in files),
@@ -286,10 +293,14 @@ class PptxCorpusInventory:
         return result
 
     @staticmethod
-    def _near_duplicate_pairs(media: Iterable[MediaInventory], max_distance: int = 4) -> tuple[list[dict], int]:
+    def _near_duplicate_pairs(
+        media: Iterable[MediaInventory],
+        max_distance: int = 4,
+    ) -> tuple[list[dict], int, int]:
         tree = _HammingBKTree()
         result: list[dict] = []
-        rejected_geometry = 0
+        geometry_rejected = 0
+        content_rejected = 0
         seen_pairs: set[tuple[str, str]] = set()
         for item in sorted(media, key=lambda row: row.sha256):
             if not item.perceptual_hash:
@@ -300,26 +311,52 @@ class PptxCorpusInventory:
                 if pair in seen_pairs:
                     continue
                 seen_pairs.add(pair)
+                signals = visual_duplicate_signals(
+                    item.perceptual_hash,
+                    other.perceptual_hash,
+                    (item.width, item.height),
+                    (other.width, other.height),
+                    left_rgb_signature=item.rgb_signature,
+                    right_rgb_signature=other.rgb_signature,
+                )
+                geometry_ok = signals.same_orientation and signals.aspect_delta <= 0.08
+                content_ok = signals.content_distance is None or signals.content_distance <= 0.12
                 compatible = is_conservative_visual_duplicate(
                     item.perceptual_hash,
                     other.perceptual_hash,
                     (item.width, item.height),
                     (other.width, other.height),
+                    left_rgb_signature=item.rgb_signature,
+                    right_rgb_signature=other.rgb_signature,
                     max_hamming_distance=max_distance,
                 )
-                if not compatible:
-                    rejected_geometry += 1
+                rejection_reason = ""
+                if not geometry_ok:
+                    geometry_rejected += 1
+                    rejection_reason = "geometry"
+                elif not content_ok:
+                    content_rejected += 1
+                    rejection_reason = "content"
                 result.append(
                     {
                         "left_sha256": pair[0],
                         "right_sha256": pair[1],
                         "dhash_distance": distance,
-                        "geometry_compatible": compatible,
+                        "aspect_delta": round(signals.aspect_delta, 6),
+                        "content_distance": (
+                            round(signals.content_distance, 6)
+                            if signals.content_distance is not None
+                            else None
+                        ),
+                        "geometry_compatible": geometry_ok,
+                        "content_compatible": content_ok,
+                        "duplicate_compatible": compatible,
+                        "rejection_reason": rejection_reason,
                     }
                 )
             tree.add(value, item)
         result.sort(key=lambda row: (row["dhash_distance"], row["left_sha256"], row["right_sha256"]))
-        return result, rejected_geometry
+        return result, geometry_rejected, content_rejected
 
 
 @dataclass
@@ -409,6 +446,7 @@ def _media_inventory(package_path: str, blob: bytes, sha256: str, warnings: list
                 height=int(height),
                 mime_type=mime,
                 perceptual_hash=_dhash(image),
+                rgb_signature=compact_rgb_signature(image),
             )
     except Exception as exc:
         warnings.append(f"{package_path}: image metadata unavailable: {exc}")
