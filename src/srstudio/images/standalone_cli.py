@@ -65,8 +65,8 @@ def catalog_names_from_sqlite(path: str | Path) -> list[str]:
     """Read names from an existing products table in strict read-only mode.
 
     Supports both SR Studio schemas (`name`/`display_name`) and the real historical
-    atacado database (`ultimo_nome`). No schema mutation or temporary table is
-    performed.
+    atacado database (`ultimo_nome`). Empty preferred columns fall through to the
+    next supported name column; no schema mutation or temporary table is performed.
     """
     database = Path(path)
     if not database.is_file():
@@ -81,7 +81,8 @@ def catalog_names_from_sqlite(path: str | Path) -> list[str]:
         if not selected:
             raise ValueError("products table has no supported product-name column")
         identifiers = [_quote_identifier(column) for column in selected]
-        expression = "COALESCE(" + ", ".join(identifiers) + ", '')"
+        nullable = [f"NULLIF(TRIM({identifier}), '')" for identifier in identifiers]
+        expression = "COALESCE(" + ", ".join(nullable) + ", '')"
         rows = connection.execute(
             f"SELECT {expression} FROM products WHERE {expression} <> ''"
         ).fetchall()
