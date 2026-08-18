@@ -1,3 +1,4 @@
+# Explicit rerun after staging the exact semantic patch.
 name: Apply G2 Complete Price Recovery
 
 on:
