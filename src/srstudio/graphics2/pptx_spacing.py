@@ -26,10 +26,11 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 import math
-import re
 import zipfile
 
 from xml.etree import ElementTree as ET
+
+from srstudio.importers.pptx.package_order import ordered_slide_paths
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind
 from .pptx_text_content import recover_pptx_text_content
@@ -37,7 +38,6 @@ from .pptx_text_content import recover_pptx_text_content
 _A = "http://schemas.openxmlformats.org/drawingml/2006/main"
 _P = "http://schemas.openxmlformats.org/presentationml/2006/main"
 _NS = {"a": _A, "p": _P}
-_SLIDE_RE = re.compile(r"^ppt/slides/slide(\d+)\.xml$")
 _PT_TO_PX = 96.0 / 72.0
 
 
@@ -112,10 +112,9 @@ def recover_pptx_spacing(source: str | Path, document: GraphicsDocument) -> Pptx
     if path.suffix.lower() != ".pptx":
         raise ValueError("Recuperação de spacing requer um arquivo .pptx.")
 
-    # O leitor legado normaliza texto antes da SR Scene existir. O passe de
-    # spacing já é executado para toda importação PPTX, portanto é o ponto mais
-    # estreito para restaurar o contrato textual OOXML sem duplicar o pipeline.
-    recover_pptx_text_content(path, document)
+    # Conteúdo e spacing são contratos independentes. Uma falha diagnóstica na
+    # restauração de caracteres não deve impedir a recuperação tipográfica.
+    _recover_text_content_contracts(path, document)
 
     contracts = _read_contracts(path)
     report = PptxSpacingRecoveryReport(source_shapes=len(contracts))
@@ -204,15 +203,28 @@ def recover_pptx_spacing(source: str | Path, document: GraphicsDocument) -> Pptx
     return report
 
 
+def _recover_text_content_contracts(path: Path, document: GraphicsDocument) -> None:
+    try:
+        recover_pptx_text_content(path, document)
+    except Exception as exc:
+        document.metadata["pptx_text_content_recovery"] = {
+            "source_contracts": 0,
+            "mapped_contracts": 0,
+            "exact_contracts": 0,
+            "corrected_contracts": 0,
+            "contracts_with_empty_paragraphs": 0,
+            "contracts_with_inline_breaks": 0,
+            "contracts_with_boundary_whitespace": 0,
+            "coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
+
+
 def _read_contracts(path: Path) -> list[_ShapeSpacing]:
     contracts: list[_ShapeSpacing] = []
     with zipfile.ZipFile(path) as archive:
-        entries: list[tuple[int, str]] = []
-        for name in archive.namelist():
-            match = _SLIDE_RE.match(name)
-            if match:
-                entries.append((int(match.group(1)), name))
-        for slide, name in sorted(entries):
+        for slide, name in enumerate(ordered_slide_paths(archive), start=1):
             root = ET.fromstring(archive.read(name))
             for shape in root.findall(".//p:sp", _NS):
                 tx_body = shape.find("./p:txBody", _NS)
