@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from srstudio.graphics2.qt_host import main
+from srstudio.graphics2.entrypoint import main
 
 
 if __name__ == "__main__":
