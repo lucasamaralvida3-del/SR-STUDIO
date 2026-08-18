@@ -9,6 +9,7 @@ on:
       - "tests/test_graphics2_core.py"
       - "tests/test_graphics2_complete_price_recovery.py"
       - "tests/test_graphics2_product_system.py"
+      - "tests/test_graphics2_wholesale_price_slot.py"
       - "tests/test_graphics2_semantic_product_card.py"
       - "tests/test_graphics2_named_multi_price_slot.py"
       - "tests/test_graphics2_named_limit_slot.py"
@@ -45,7 +46,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,graphics2]"
 
-      - name: Compile binding runtime
+      - name: Compile Graphics2
         shell: pwsh
         run: python -m compileall -q src/srstudio/graphics2
 
@@ -54,9 +55,13 @@ jobs:
         run: >-
           python -m ruff check
           src/srstudio/graphics2/binding_runtime.py
+          src/srstudio/graphics2/commercial_price_runtime.py
+          src/srstudio/graphics2/semantic_named_slot_runtime.py
+          src/srstudio/graphics2/semantic_runtime.py
           tests/test_graphics2_core.py
           tests/test_graphics2_complete_price_recovery.py
           tests/test_graphics2_product_system.py
+          tests/test_graphics2_wholesale_price_slot.py
 
       - name: Product system contracts
         shell: pwsh
@@ -68,6 +73,7 @@ jobs:
           tests/test_graphics2_core.py
           tests/test_graphics2_complete_price_recovery.py
           tests/test_graphics2_product_system.py
+          tests/test_graphics2_wholesale_price_slot.py
           tests/test_graphics2_semantic_product_card.py
           tests/test_graphics2_named_multi_price_slot.py
           tests/test_graphics2_named_limit_slot.py
