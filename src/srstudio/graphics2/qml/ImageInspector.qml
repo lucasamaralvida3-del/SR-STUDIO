@@ -29,7 +29,10 @@ Rectangle {
             return false
         }
     }
+    property string observedSceneJson: sceneBridge.sceneJson
     property bool syncing: false
+
+    onObservedSceneJsonChanged: Qt.callLater(panel.refresh)
 
     function activePage(sourceScene) {
         var currentScene = sourceScene || scene
@@ -143,11 +146,6 @@ Rectangle {
         var command = ({})
         command["crop_" + edge] = value
         cropCommand(command)
-    }
-
-    Connections {
-        target: sceneBridge
-        function onSceneChanged() { panel.refresh() }
     }
 
     Component.onCompleted: refresh()
