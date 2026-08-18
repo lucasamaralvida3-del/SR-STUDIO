@@ -100,6 +100,9 @@ class UnifiedImportPipeline:
         media_dir = Path.home() / ".srstudio5" / "imports" / digest
         parsed = self.pptx_importer.import_file(path, media_dir=media_dir)
         summary = ImportSummary(str(path), warnings=list(parsed.warnings))
+        canvas_metadata = dict(parsed.metadata or {})
+        pptx_physical_page_size = dict(canvas_metadata.get("pptx_physical_page_size") or {})
+        intended_canvas_size = canvas_metadata.get("intended_canvas_size")
         learned_profiles: list[str] = []
         slot_stats: list[dict[str, int]] = []
 
@@ -108,8 +111,12 @@ class UnifiedImportPipeline:
                 project.pages.append(Page(name=f"Página {len(project.pages) + 1}"))
             page = project.pages[slide.index - 1]
             page.name = f"Slide {slide.index}"
-            page.width = 1080.0
-            page.height = 1080.0 * (slide.height / max(slide.width, 1))
+            if isinstance(intended_canvas_size, dict) and intended_canvas_size.get("width") and intended_canvas_size.get("height"):
+                page.width = float(intended_canvas_size["width"])
+                page.height = float(intended_canvas_size["height"])
+            else:
+                page.width = 1080.0
+                page.height = 1080.0 * (slide.height / max(slide.width, 1))
             if str(slide.background).startswith("#"):
                 page.background = slide.background
             page.cards.clear()
@@ -270,6 +277,11 @@ class UnifiedImportPipeline:
             page.elements.extend(synthetic_image_slots)
 
         project.settings["pptx_source"] = str(path)
+        project.settings["pptx_physical_page_size"] = pptx_physical_page_size
+        project.settings["intended_canvas_size"] = intended_canvas_size
+        project.settings["pptx_canvas_size_source"] = str(canvas_metadata.get("source_kind") or "office-generic")
+        project.settings["pptx_canvas_size_preset"] = canvas_metadata.get("preset")
+        project.settings["pptx_canvas_size_evidence"] = list(canvas_metadata.get("source_evidence") or ())
         project.settings["pptx_media_dir"] = str(media_dir)
         project.settings["canva_import_version"] = 7
         project.settings["canva_native_visual"] = True

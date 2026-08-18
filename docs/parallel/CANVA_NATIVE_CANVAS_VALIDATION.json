@@ -1,0 +1,26 @@
+{
+  "status": "PASS",
+  "tested_sha_before_patch_commit": "60a38375673ef759d9cb2c06f791b7c3672ed695",
+  "branch": "g2/import-canva-native-canvas",
+  "architecture": {
+    "pptx_physical_page_size": "preserved from presentation.xml in EMU/pt",
+    "intended_canvas_size": "separate optional pixel size; used only with safe source/preset evidence",
+    "renderer_plus_one_px_hack": false
+  },
+  "upstream_evidence": {
+    "Canva 4:5 native": [
+      1080,
+      1350
+    ],
+    "Canva PPTX physical points": [
+      810,
+      1012
+    ],
+    "designs": [
+      "DAHMLMj6EH8",
+      "DAHMAeLZD3Q",
+      "DAHMFY898gM"
+    ]
+  },
+  "pixel_gate": "WAITING_FOR_LOSSLESS_PNGS"
+}

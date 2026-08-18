@@ -9,6 +9,7 @@ from pathlib import Path
 from xml.etree import ElementTree as ET
 
 from srstudio.assets.font_fallbacks import preferred_windows_display_family
+from srstudio.importers.pptx.canvas_size import resolve_canvas_size
 from srstudio.importers.pptx.package_order import ordered_slide_paths
 from srstudio.importers.pptx.shape_geometry import shape_geometry_metadata
 
@@ -69,6 +70,7 @@ class PptxSlide:
 class PptxImportResult:
     slides: list[PptxSlide] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
 
 
 class PptxImporter:
@@ -82,6 +84,9 @@ class PptxImporter:
             target_media.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(source) as zf:
             slide_width, slide_height = self._presentation_size(zf)
+            result.metadata.update(
+                resolve_canvas_size(zf, slide_width, slide_height).to_metadata()
+            )
             media_map = self._extract_media(zf, target_media) if target_media else {}
             slides = ordered_slide_paths(zf)
             for idx, slide_path in enumerate(slides, start=1):
