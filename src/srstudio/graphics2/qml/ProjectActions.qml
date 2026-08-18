@@ -5,7 +5,7 @@ import QtQuick.Dialogs
 
 Rectangle {
     id: panel
-    width: 520
+    width: 790
     height: 42
     anchors.left: parent ? parent.left : undefined
     anchors.top: parent ? parent.top : undefined
@@ -17,24 +17,81 @@ Rectangle {
     border.width: 1
     border.color: "#CBD5E1"
 
+    property var scene: ({})
+
+    function refreshScene() {
+        try {
+            scene = JSON.parse(sceneBridge.sceneJson)
+        } catch (error) {
+            scene = ({})
+        }
+    }
+
+    function pageCount() {
+        return scene.pages ? scene.pages.length : 0
+    }
+
+    function activePageIndex() {
+        if (!scene.pages)
+            return -1
+        for (var i = 0; i < scene.pages.length; ++i)
+            if (String(scene.pages[i].id) === String(scene.active_page_id || ""))
+                return i
+        return scene.pages.length ? 0 : -1
+    }
+
+    Connections {
+        target: sceneBridge
+        function onSceneChanged() { panel.refreshScene() }
+    }
+
+    Component.onCompleted: refreshScene()
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: 5
         spacing: 5
 
+        Label {
+            text: "Página"
+            color: "#475569"
+            font.bold: true
+            font.pixelSize: 10
+        }
+        ComboBox {
+            id: pageCombo
+            Layout.preferredWidth: 150
+            enabled: !sceneBridge.busy && panel.pageCount() > 0
+            model: panel.scene.pages || []
+            textRole: "name"
+            currentIndex: panel.activePageIndex()
+            ToolTip.text: "Navegar entre páginas do encarte"
+            ToolTip.visible: hovered
+            onActivated: {
+                if (currentIndex >= 0 && panel.scene.pages && currentIndex < panel.scene.pages.length)
+                    sceneBridge.dispatch(JSON.stringify({"name": "select_page", "page_id": panel.scene.pages[currentIndex].id}))
+            }
+        }
         ToolButton {
-            text: "+ Página"
+            text: "+"
             enabled: !sceneBridge.busy
             ToolTip.text: "Adicionar uma nova página ao encarte"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch(JSON.stringify({"name": "add_page"}))
         }
         ToolButton {
-            text: "Duplicar pág."
+            text: "⧉"
             enabled: !sceneBridge.busy
-            ToolTip.text: "Duplicar a página atual preservando o layout com identidades internas seguras"
+            ToolTip.text: "Duplicar a página atual com identidades internas seguras"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch(JSON.stringify({"name": "duplicate_page"}))
+        }
+        ToolButton {
+            text: "🗑"
+            enabled: !sceneBridge.busy && panel.pageCount() > 1
+            ToolTip.text: panel.pageCount() > 1 ? "Remover a página atual" : "O projeto precisa manter pelo menos uma página"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.dispatch(JSON.stringify({"name": "remove_page", "page_id": panel.scene.active_page_id || ""}))
         }
         Rectangle {
             Layout.preferredWidth: 1
