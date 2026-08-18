@@ -51,12 +51,12 @@ jobs:
           src/srstudio/graphics2/editor_commands_runtime.py
           src/srstudio/graphics2/editor_persistence.py
           src/srstudio/graphics2/autosave.py
-          src/srstudio/graphics2/image_replace_runtime.py
           src/srstudio/graphics2/qt_host.py
           tests/test_graphics2_editor_commands_runtime.py
           tests/test_graphics2_editor_multipage_qml.py
           tests/test_graphics2_editor_persistence.py
           tests/test_graphics2_editor_host_recovery.py
+          tests/test_graphics2_editor_roundtrip.py
           tests/test_graphics2_autosave.py
 
       - name: Editor production contracts
@@ -70,10 +70,13 @@ jobs:
           tests/test_graphics2_editor_multipage_qml.py
           tests/test_graphics2_editor_persistence.py
           tests/test_graphics2_editor_host_recovery.py
+          tests/test_graphics2_editor_roundtrip.py
           tests/test_graphics2_autosave.py
           tests/test_graphics2_page_duplicate.py
           tests/test_graphics2_command_router.py
           tests/test_graphics2_project_actions_qml.py
           tests/test_graphics2_image_replace.py
           tests/test_graphics2_core.py
+          tests/test_graphics2_qt_host_cli.py
+          tests/test_graphics2_qml_load.py
           tests/test_graphics2_real_qml_host_preview.py
