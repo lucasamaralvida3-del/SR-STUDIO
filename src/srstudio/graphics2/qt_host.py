@@ -113,7 +113,11 @@ def load_launch_context(
         saved_document = load_package(path, extract_assets_to=cache_dir / "assets")
         saved_digest = document_digest(saved_document)
         autosave_manager = AutosaveManager(default_autosave_root())
-        recovery_point = newer_recovery_point(autosave_manager, saved_document, path)
+        recovery_point = _journal_recovery_for_saved_project(
+            autosave_manager,
+            saved_document,
+            path,
+        )
         document = saved_document
         if recovery_point is not None:
             document = autosave_manager.recover(
@@ -145,6 +149,36 @@ def load_launch_context(
     )
 
 
+def _journal_recovery_for_saved_project(
+    manager: AutosaveManager,
+    saved_document: GraphicsDocument,
+    saved_path: Path,
+) -> RecoveryPoint | None:
+    """Recovery automático só é autorizado pelo journal da sessão pendente.
+
+    Autosaves antigos continuam retidos para diagnóstico, mas não podem ganhar
+    precedência apenas porque o mtime do arquivo é mais recente. Journals novos
+    carregam o digest do save-base; journals legados mantêm a regra histórica de
+    mtime como fallback de compatibilidade.
+    """
+
+    journal = EditorRecoveryJournal(default_autosave_root())
+    current = journal.current()
+    point = journal.recovery_point(manager)
+    if current is None or point is None or current.document_id != saved_document.id:
+        return None
+    if current.source_path is not None:
+        try:
+            if current.source_path.resolve() != saved_path.resolve():
+                return None
+        except OSError:
+            return None
+    saved_digest = document_digest(saved_document)
+    if current.base_saved_digest is not None:
+        return point if current.base_saved_digest == saved_digest else None
+    return newer_recovery_point(manager, saved_document, saved_path)
+
+
 def _resume_pending_session(*, project_name: str = "") -> GraphicsLaunchContext | None:
     root = default_autosave_root()
     manager = AutosaveManager(root)
@@ -155,6 +189,7 @@ def _resume_pending_session(*, project_name: str = "") -> GraphicsLaunchContext 
         return None
 
     source = current.source_path if current.source_path and current.source_path.is_file() else None
+    saved_digest = ""
     if source is not None and source.suffix.lower() in {".srscene", ".zip"}:
         try:
             from .package import load_package
@@ -168,20 +203,25 @@ def _resume_pending_session(*, project_name: str = "") -> GraphicsLaunchContext 
                 # projeto no destino implícito de um save futuro.
                 source = None
             else:
-                try:
-                    source_mtime = source.stat().st_mtime
-                except OSError:
-                    source_mtime = 0.0
-                if source_mtime and point.saved_at.timestamp() <= source_mtime:
-                    # O save manual já é tão novo quanto (ou mais novo que) o
-                    # recovery apontado. Preferir o arquivo salvo evita reabrir
-                    # uma geração antiga e "voltar no tempo" após um crash.
-                    journal.clear(current.document_id)
-                    return load_launch_context(source, project_name=project_name, resume_last=False)
+                saved_digest = document_digest(saved_document)
+                if current.base_saved_digest is not None:
+                    if current.base_saved_digest != saved_digest:
+                        # O recovery foi criado contra outro save-base. O disco
+                        # já avançou; reabrir esse recovery seria voltar no tempo.
+                        journal.clear(current.document_id)
+                        return load_launch_context(source, project_name=project_name, resume_last=False)
+                else:
+                    try:
+                        source_mtime = source.stat().st_mtime
+                    except OSError:
+                        source_mtime = 0.0
+                    if source_mtime and point.saved_at.timestamp() <= source_mtime:
+                        # Compatibilidade com journals antigos sem digest-base.
+                        journal.clear(current.document_id)
+                        return load_launch_context(source, project_name=project_name, resume_last=False)
 
     cache_dir = _runtime_cache_dir(point.path)
     document = manager.recover(point, extract_assets_to=cache_dir / "recovery-assets")
-    saved_digest = _saved_package_digest(source)
     if project_name:
         document.name = project_name
     gate = inspect_production_gate(document, require_visual_fidelity=False)
@@ -421,8 +461,6 @@ def launch_qt_quick_editor(
                 persistence.mark_saved(digest, final)
                 recent_project.mark(final, document_id=session.document.id)
                 # Todo recovery anterior ao save recém-confirmado fica obsoleto.
-                # Mantê-lo quando houve edição durante o worker poderia fazer o
-                # próximo boot preferir uma geração mais velha que o disco.
                 recovery_journal.clear(session.document.id)
                 refresh_recovery = persistence.is_dirty(session.document)
             self._status = message if ok else f"Falha: {message}"
@@ -442,13 +480,25 @@ def launch_qt_quick_editor(
                 return
             if digest == persistence.saved_digest or digest == persistence.autosave_digest:
                 return
-            self._autosave_base_saved_digest = persistence.saved_digest
+            base_saved_digest = persistence.saved_digest
+            source_path_at_start = context.source
+            self._autosave_base_saved_digest = base_saved_digest
             self._autosave_busy = True
             self.statusChanged.emit()
 
             def worker() -> None:
                 try:
                     path = autosave_manager.save(snapshot, embed_local_assets=True)
+                    # Grave o journal no worker, antes do callback Qt. Assim um
+                    # hard kill depois do ZIP íntegro, mas antes da UI processar
+                    # o signal, ainda deixa uma sessão recuperável. O digest-base
+                    # permite invalidar este ponteiro se um save concorrente avançou.
+                    recovery_journal.mark(
+                        snapshot.id,
+                        path,
+                        source_path=source_path_at_start,
+                        base_saved_digest=base_saved_digest,
+                    )
                     self.autosaveDone.emit(True, str(path), digest, f"Autosave protegido · {path.name}")
                 except Exception as exc:
                     self.autosaveDone.emit(False, "", digest, f"{type(exc).__name__}: {exc}")
@@ -462,21 +512,16 @@ def launch_qt_quick_editor(
             refresh_recovery = False
             if ok and base_saved_digest == persistence.saved_digest:
                 persistence.mark_autosaved(digest)
-                recovery_journal.mark(
-                    session.document.id,
-                    target,
-                    source_path=context.source,
-                )
                 self._status = message
             elif ok:
                 # O autosave começou antes de um save manual que já avançou o
                 # estado confirmado. Nunca deixe o callback tardio recolocar um
                 # snapshot antigo no journal e sobrescrever a precedência do disco.
+                recovery_journal.clear(session.document.id)
                 if persistence.is_dirty(session.document):
                     refresh_recovery = True
                     self._status = "Autosave anterior ao último save descartado; protegendo alterações atuais."
                 else:
-                    recovery_journal.clear(session.document.id)
                     self._status = "Autosave anterior ao último save descartado; projeto salvo preservado."
             else:
                 self._status = f"Falha no autosave: {message}"
@@ -493,6 +538,9 @@ def launch_qt_quick_editor(
                 verified = load_package(final)
                 if verified.id != snapshot.id or len(verified.pages) != len(snapshot.pages):
                     raise ValueError("Verificação pós-save não corresponde ao documento salvo")
+                # O ponteiro de projeto recente faz parte da durabilidade do
+                # save, não apenas da UI. Grave-o antes de sinalizar conclusão.
+                recent_project.mark(final, document_id=snapshot.id)
                 return f"Projeto salvo e verificado · {final.name}"
 
             self._start_file_job("save", target, task)
@@ -577,6 +625,7 @@ def launch_qt_quick_editor(
                     snapshot.id,
                     recovery_path,
                     source_path=context.source,
+                    base_saved_digest=persistence.saved_digest,
                 )
                 self._status = "Alterações protegidas no recovery antes de fechar."
                 self.statusChanged.emit()
@@ -689,6 +738,7 @@ def launch_qt_quick_editor(
                     snapshot.id,
                     recovery_path,
                     source_path=context.source,
+                    base_saved_digest=persistence.saved_digest,
                 )
                 return
             if not persistence.is_dirty(snapshot):
