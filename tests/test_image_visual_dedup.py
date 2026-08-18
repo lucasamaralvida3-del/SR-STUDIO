@@ -1,3 +1,5 @@
+import hashlib
+
 from PIL import Image
 
 from srstudio.images.safe_library import SafeImageLibrary
@@ -32,6 +34,19 @@ def test_resized_same_aspect_candidate_can_still_be_near_duplicate():
         (1000, 2000),
         max_hamming_distance=2,
     )
+
+
+def test_safe_library_preserves_complete_sha256_without_breaking_legacy_id(tmp_path):
+    library = SafeImageLibrary(tmp_path / "bank")
+    source = tmp_path / "product.png"
+    Image.new("RGB", (320, 480), (20, 80, 160)).save(source)
+    expected = hashlib.sha256(source.read_bytes()).hexdigest()
+
+    asset = library.learn_product_image(source, "LEITE TRIANGULO 1L", confidence=.95)
+
+    assert len(asset.id) == 24
+    assert asset.metadata["sha256"] == expected
+    assert asset.metadata["sha256_full"] == expected
 
 
 def test_safe_library_does_not_merge_realistic_dhash_collision_shape(tmp_path):
