@@ -1,0 +1,86 @@
+name: Image DB Phase 3B V2 Observer
+
+on:
+  push:
+    branches:
+      - g2/parallel-image-database
+    paths:
+      - '.github/workflows/image-db-phase3b-v2-observer.yml'
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  observe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 125
+    env:
+      TARGET_SHA: 7e26118de0407c24d8d9739a43a4fb52a1ee39cd
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Wait for exact Phase 3B V2 run and persist evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/phase3b-v2-observer docs/parallel/phase3-evidence/phase3b-v2-observer
+          run_id=''
+          for attempt in $(seq 1 240); do
+            row=$(gh run list --workflow image-db-phase3b-v2.yml --branch g2/parallel-image-database --commit "$TARGET_SHA" --limit 5 --json databaseId,status,conclusion,headSha,url,createdAt,updatedAt,workflowName --jq '.[0] // empty' || true)
+            if [ -n "$row" ]; then
+              printf '%s\n' "$row" > /tmp/phase3b-v2-observer/run.json
+              run_id=$(printf '%s\n' "$row" | jq -r '.databaseId')
+              status=$(printf '%s\n' "$row" | jq -r '.status')
+              echo "Observed run $run_id status=$status target=$TARGET_SHA"
+              if [ "$status" = completed ]; then break; fi
+            fi
+            sleep 30
+          done
+          if [ -z "$run_id" ]; then echo 'No Phase 3B V2 run found.' >&2; exit 2; fi
+          status=$(jq -r '.status' /tmp/phase3b-v2-observer/run.json)
+          if [ "$status" != completed ]; then echo 'Phase 3B V2 run did not complete before observer timeout.' >&2; exit 3; fi
+          gh run view "$run_id" --json databaseId,status,conclusion,headSha,headBranch,event,url,createdAt,updatedAt,workflowName,jobs > /tmp/phase3b-v2-observer/run-view.json
+          gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${run_id}/artifacts" > /tmp/phase3b-v2-observer/artifacts.json
+          gh run download "$run_id" -n image-db-phase3b-v2-report -D /tmp/phase3b-v2-observer/artifact || true
+          cp /tmp/phase3b-v2-observer/run-view.json docs/parallel/phase3-evidence/phase3b-v2-observer/run.json
+          cp /tmp/phase3b-v2-observer/artifacts.json docs/parallel/phase3-evidence/phase3b-v2-observer/artifacts.json
+          python - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          src=Path('/tmp/phase3b-v2-observer/artifact'); dst=Path('docs/parallel/phase3-evidence/phase3b-v2-observer')
+          wanted={
+            'phase3b-summary.json','standalone-manifest.json','standalone-asset-verification.json','standalone-reference-gate.json',
+            'phase3a-physical-restore.json','phase3a-before-equivalence.json','phase3b-idempotency.json','fresh-rebuild-equivalence.json',
+            'top-missing-delta.json','new-auto-approved.json','important-product-lookups.json','standalone-ingest-report.json',
+            'second-standalone-ingest-report.json','recovery-report.json','test-results.xml','pytest.log'
+          }
+          copied=[]
+          if src.exists():
+            for name in sorted(wanted):
+              path=next(src.rglob(name),None)
+              if path and path.is_file(): shutil.copy2(path,dst/name); copied.append(name)
+            sheet=next(src.rglob('new-auto-approved-contact-sheet.png'),None)
+            if sheet and sheet.is_file(): shutil.copy2(sheet,dst/'new-auto-approved-contact-sheet.png'); copied.append('new-auto-approved-contact-sheet.png')
+            review=next((p for p in src.rglob('after/review') if p.is_dir()),None)
+            if review:
+              target=dst/'review'
+              if target.exists(): shutil.rmtree(target)
+              shutil.copytree(review,target); copied.append('review/')
+          run=json.loads(Path('/tmp/phase3b-v2-observer/run-view.json').read_text(encoding='utf-8'))
+          arts=json.loads(Path('/tmp/phase3b-v2-observer/artifacts.json').read_text(encoding='utf-8'))
+          payload={'target_sha':os.environ['TARGET_SHA'],'run':run,'artifacts':arts.get('artifacts',[]),'copied_evidence':copied}
+          (dst/'observer-result.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2),encoding='utf-8')
+          PY
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/parallel/phase3-evidence/phase3b-v2-observer
+          git commit -m 'image-db: persist Phase 3B V2 observer evidence [skip ci]' || exit 0
+          for attempt in 1 2 3; do
+            if git push origin HEAD:g2/parallel-image-database; then exit 0; fi
+            git pull --rebase origin g2/parallel-image-database
+          done
+          exit 1
