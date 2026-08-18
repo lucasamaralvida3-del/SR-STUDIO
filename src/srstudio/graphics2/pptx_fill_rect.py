@@ -95,17 +95,23 @@ class PptxFillRectRecoveryReport:
         }
 
 
-def recover_pptx_fill_rects(source: str | Path, document: GraphicsDocument) -> PptxFillRectRecoveryReport:
+def recover_pptx_fill_rects(
+    source: str | Path,
+    document: GraphicsDocument,
+    *,
+    recover_artwork: bool = True,
+) -> PptxFillRectRecoveryReport:
     path = Path(source)
     if not path.is_file():
         raise FileNotFoundError(path)
     if path.suffix.lower() != ".pptx":
         raise ValueError("Recuperação de fillRect requer um arquivo .pptx.")
 
-    # Artwork é recuperado antes dos contratos geométricos. Assim uma faixa,
-    # fundo ou banner que tenha sido descartado na primeira passagem volta à SR
-    # Scene a tempo de receber fillRect e rotação/flip exatos logo abaixo.
-    _recover_artwork_contracts(path, document)
+    # O contrato standalone mantém a recuperação de artwork por padrão. No
+    # import_bridge do G2 ela já ocorre antes do passe de fidelidade, para que
+    # custGeom possa gerar clip_path sem repetir a leitura do artwork aqui.
+    if recover_artwork:
+        _recover_artwork_contracts(path, document)
 
     contracts = _read_contracts(path)
     report = PptxFillRectRecoveryReport(
