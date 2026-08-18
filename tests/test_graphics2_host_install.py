@@ -2,13 +2,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import srstudio.graphics2.host_install as host_install_module
 from srstudio.graphics2.host_install import (
     INSTALL_RECEIPT_SCHEMA,
     install_verified_host,
     read_install_receipt,
     rollback_host_install,
 )
-from srstudio.graphics2.host_runtime import DEFAULT_HOST_EXE, write_runtime_manifest
+from srstudio.graphics2.host_runtime import DEFAULT_HOST_EXE, RuntimeHostValidation, write_runtime_manifest
 from srstudio.settings.features import FeatureFlagStore
 
 
@@ -76,6 +77,50 @@ def test_second_install_keeps_previous_and_rollback_restores_it(tmp_path):
 
     rolled = rollback_host_install(install_dir)
     assert rolled.ok
+    assert (install_dir / DEFAULT_HOST_EXE).read_bytes() == first_bytes
+
+
+def test_discard_previous_waits_until_new_host_passes_final_validation(tmp_path, monkeypatch):
+    version = "2.0.0-alpha.install"
+    install_dir = tmp_path / "Graphics2Host"
+    first_source = _bundle(tmp_path / "one", version=version, marker=b"one")
+    second_source = _bundle(tmp_path / "two", version=version, marker=b"two")
+
+    first = install_verified_host(first_source, install_dir=install_dir, expected_engine_version=version)
+    assert first.ok
+    first_bytes = (install_dir / DEFAULT_HOST_EXE).read_bytes()
+    original_validate = host_install_module.validate_runtime_host
+
+    def validate_with_forced_final_failure(bundle, *, full=False, expected_engine_version=None):
+        path = Path(bundle).resolve()
+        if path == install_dir.resolve() and not full:
+            return RuntimeHostValidation(
+                ok=False,
+                manifest_path=path / "graphics2-host-runtime.json",
+                bundle_dir=path,
+                executable=path / DEFAULT_HOST_EXE,
+                engine_version=version,
+                checked_files=1,
+                total_files=3,
+                errors=("falha final forçada",),
+            )
+        return original_validate(
+            bundle,
+            full=full,
+            expected_engine_version=expected_engine_version,
+        )
+
+    monkeypatch.setattr(host_install_module, "validate_runtime_host", validate_with_forced_final_failure)
+    result = install_verified_host(
+        second_source,
+        install_dir=install_dir,
+        expected_engine_version=version,
+        keep_previous=False,
+    )
+
+    assert not result.ok
+    assert "falha final forçada" in result.message
+    assert install_dir.is_dir()
     assert (install_dir / DEFAULT_HOST_EXE).read_bytes() == first_bytes
 
 
