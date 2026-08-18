@@ -1,0 +1,205 @@
+{
+  "target_sha": "3115a38b0d688d5b1118c9734583ceb1f11fd534",
+  "found": true,
+  "run": {
+    "conclusion": "",
+    "createdAt": "2026-08-18T17:28:08Z",
+    "databaseId": 32165757884,
+    "event": "push",
+    "headBranch": "g2/parallel-image-database",
+    "headSha": "3115a38b0d688d5b1118c9734583ceb1f11fd534",
+    "jobs": [
+      {
+        "completedAt": "0001-01-01T00:00:00Z",
+        "conclusion": "",
+        "databaseId": 95804837911,
+        "name": "Validate Image Database Phase 3A",
+        "startedAt": "2026-08-18T17:28:12Z",
+        "status": "in_progress",
+        "steps": [
+          {
+            "completedAt": "2026-08-18T17:28:14Z",
+            "conclusion": "success",
+            "name": "Set up job",
+            "number": 1,
+            "startedAt": "2026-08-18T17:28:13Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-18T17:28:17Z",
+            "conclusion": "success",
+            "name": "Checkout tested SHA",
+            "number": 2,
+            "startedAt": "2026-08-18T17:28:14Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-18T17:28:17Z",
+            "conclusion": "success",
+            "name": "Prepare evidence directories",
+            "number": 3,
+            "startedAt": "2026-08-18T17:28:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-18T17:28:19Z",
+            "conclusion": "success",
+            "name": "Setup Python",
+            "number": 4,
+            "startedAt": "2026-08-18T17:28:17Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-18T17:28:28Z",
+            "conclusion": "success",
+            "name": "Install official project dependencies",
+            "number": 5,
+            "startedAt": "2026-08-18T17:28:19Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-18T17:28:33Z",
+            "conclusion": "success",
+            "name": "Run complete Image DB test suite",
+            "number": 6,
+            "startedAt": "2026-08-18T17:28:28Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-18T17:28:54Z",
+            "conclusion": "success",
+            "name": "Resolve explicit Release image-db-corpus-v1 and verify Phase 3A assets",
+            "number": 7,
+            "startedAt": "2026-08-18T17:28:33Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-18T17:28:54Z",
+            "conclusion": "success",
+            "name": "Phase 3A corpus gate — rich corpus plus catalog",
+            "number": 8,
+            "startedAt": "2026-08-18T17:28:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "2026-08-18T17:28:54Z",
+            "conclusion": "success",
+            "name": "Record BEFORE state",
+            "number": 9,
+            "startedAt": "2026-08-18T17:28:54Z",
+            "status": "completed"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "INGEST — rich PPTX corpus",
+            "number": 10,
+            "startedAt": "2026-08-18T17:28:54Z",
+            "status": "in_progress"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Validate measured rich-corpus package baseline",
+            "number": 11,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "STANDALONE — deferred to incremental Phase 3B",
+            "number": 12,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "RELOAD — persistence and field invariants",
+            "number": 13,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "SECOND INGEST — replay exact same rich corpus",
+            "number": 14,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "IDEMPOTENCY — compare before and after second ingest",
+            "number": 15,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "RECOVERY — stale processed state with missing image_id",
+            "number": 16,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "LIBRARY AUDIT → CATALOG 520 → DEPARTMENTS → TOP MISSING → FIND_IMAGE → PERFORMANCE → REVIEW DATASET",
+            "number": 17,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Build memory and Phase 3A summary",
+            "number": 18,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Upload complete Phase 3A evidence",
+            "number": 19,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Final Phase 3A operational gate",
+            "number": 20,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Post Setup Python",
+            "number": 39,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          },
+          {
+            "completedAt": "0001-01-01T00:00:00Z",
+            "conclusion": "",
+            "name": "Post Checkout tested SHA",
+            "number": 40,
+            "startedAt": "0001-01-01T00:00:00Z",
+            "status": "pending"
+          }
+        ],
+        "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32165757884/job/95804837911"
+      }
+    ],
+    "status": "in_progress",
+    "updatedAt": "2026-08-18T17:28:13Z",
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/actions/runs/32165757884",
+    "workflowName": "Image DB Phase 3A Operational Validation"
+  }
+}
