@@ -11,6 +11,9 @@ on:
       - ".github/workflows/g2-qa-performance.yml"
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   qa-performance:
     runs-on: ubuntu-latest
@@ -42,6 +45,8 @@ jobs:
         run: python -m ruff check tools/g2_qa_baseline.py tests/test_graphics2_qa_longrun.py
 
       - name: Focused production-flow regressions
+        id: focused
+        continue-on-error: true
         run: |
           mkdir -p artifacts
           python -m pytest -q \
@@ -57,6 +62,9 @@ jobs:
             --junitxml=artifacts/g2-qa-focused.xml
 
       - name: Performance and RSS baseline
+        id: baseline
+        if: always()
+        continue-on-error: true
         run: >-
           python tools/g2_qa_baseline.py
           --output artifacts/g2-qa-baseline.json
@@ -64,7 +72,56 @@ jobs:
           | tee artifacts/g2-qa-baseline.log
 
       - name: Full Graphics2 regression suite
+        id: full
+        if: always()
+        continue-on-error: true
         run: python -m pytest -q tests -k graphics2 --junitxml=artifacts/g2-qa-full.xml
+
+      - name: Record QA run metadata
+        if: always()
+        env:
+          FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
+          BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          FULL_OUTCOME: ${{ steps.full.outcome }}
+          RUN_ID: ${{ github.run_id }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          VALIDATED_SHA: ${{ github.sha }}
+        run: |
+          mkdir -p artifacts
+          python - <<'PY'
+          import json
+          import os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          payload = {
+              "validated_sha": os.environ["VALIDATED_SHA"],
+              "workflow_run_id": int(os.environ["RUN_ID"]),
+              "workflow_run_attempt": int(os.environ["RUN_ATTEMPT"]),
+              "focused": os.environ["FOCUSED_OUTCOME"],
+              "baseline": os.environ["BASELINE_OUTCOME"],
+              "full_graphics2": os.environ["FULL_OUTCOME"],
+              "recorded_at_utc": datetime.now(timezone.utc).isoformat(),
+          }
+          Path("artifacts/g2-qa-run.json").write_text(
+              json.dumps(payload, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8",
+          )
+          PY
+
+      - name: Persist latest QA evidence on isolated branch
+        if: always() && github.event_name == 'push'
+        run: |
+          mkdir -p docs/parallel/evidence
+          cp artifacts/g2-qa-run.json docs/parallel/evidence/g2-qa-run.json
+          if [ -f artifacts/g2-qa-baseline.json ]; then
+            cp artifacts/g2-qa-baseline.json docs/parallel/evidence/g2-qa-baseline.json
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/parallel/evidence/g2-qa-run.json docs/parallel/evidence/g2-qa-baseline.json || true
+          git commit -m "qa(g2): record latest performance evidence [skip ci]" || exit 0
+          git push origin HEAD:g2/parallel-qa-performance
 
       - name: Upload QA evidence
         if: always()
@@ -73,3 +130,14 @@ jobs:
           name: g2-qa-performance-evidence
           path: artifacts/
           if-no-files-found: warn
+
+      - name: Enforce QA gate result
+        if: always()
+        env:
+          FOCUSED_OUTCOME: ${{ steps.focused.outcome }}
+          BASELINE_OUTCOME: ${{ steps.baseline.outcome }}
+          FULL_OUTCOME: ${{ steps.full.outcome }}
+        run: |
+          test "$FOCUSED_OUTCOME" = "success"
+          test "$BASELINE_OUTCOME" = "success"
+          test "$FULL_OUTCOME" = "success"
