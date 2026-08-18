@@ -1,11 +1,10 @@
-name: Apply G2 Alpha 43 QML Payload Fix
+name: Apply G2 Alpha 43 QML Direct Visibility Fix
 
 on:
   push:
     branches:
       - integration/sr-studio-next
     paths:
-      - 'tools/apply_g2_alpha43_qml_payload_sync.py'
       - '.github/workflows/g2-alpha43-qml-payload-fix.yml'
 
 permissions:
@@ -19,17 +18,50 @@ jobs:
         with:
           ref: integration/sr-studio-next
           fetch-depth: 0
-      - name: Apply exact QML patch
-        run: python tools/apply_g2_alpha43_qml_payload_sync.py
+      - name: Apply direct sceneBridge visibility binding
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/srstudio/graphics2/qml/ImageInspector.qml')
+          text = path.read_text(encoding='utf-8')
+
+          old = '''    visible: hasImageSelection
+
+    property var scene: ({})
+    property var imageNode: null
+    property bool hasImageSelection: false
+    property bool syncing: false
+'''
+          new = '''    visible: bridgeHasImageSelection
+
+    property var scene: ({})
+    property var imageNode: null
+    property bool hasImageSelection: false
+    readonly property bool bridgeHasImageSelection: {
+        try {
+            var parsedScene = JSON.parse(sceneBridge.sceneJson)
+            return selectedImage(parsedScene) !== null
+        } catch (error) {
+            return false
+        }
+    }
+    property bool syncing: false
+'''
+          if text.count(old) != 1:
+              raise RuntimeError('expected exactly one ImageInspector visibility block')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
       - name: Check patch
         run: |
           git diff --check
-          grep -F 'function selectedImage(sourceScene)' src/srstudio/graphics2/qml/ImageInspector.qml
-          grep -F 'var selected = selectedImage(parsedScene)' src/srstudio/graphics2/qml/ImageInspector.qml
+          grep -F 'visible: bridgeHasImageSelection' src/srstudio/graphics2/qml/ImageInspector.qml
+          grep -F 'readonly property bool bridgeHasImageSelection' src/srstudio/graphics2/qml/ImageInspector.qml
+          grep -F 'return selectedImage(parsedScene) !== null' src/srstudio/graphics2/qml/ImageInspector.qml
       - name: Commit product fix
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add src/srstudio/graphics2/qml/ImageInspector.qml
-          git commit -m "fix: resolve ImageInspector selection from fresh payload"
+          git commit -m "fix: bind ImageInspector visibility to bridge selection"
           git push origin HEAD:integration/sr-studio-next
