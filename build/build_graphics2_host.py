@@ -29,6 +29,11 @@ QT_RUNTIME_MODULES = (
     "PySide6.QtQml",
     "PySide6.QtQuick",
 )
+FORBIDDEN_QT_RUNTIME_FILES = (
+    "Qt6WebEngineCore.dll",
+    "Qt6WebEngineQuick.dll",
+    "Qt6WebEngineWidgets.dll",
+)
 QT_BUILD_ARTIFACT_PREFIXES = (
     "objects-Debug",
     "objects-RelWithDebInfo",
@@ -98,14 +103,7 @@ def pyinstaller_args(
 
 
 def prune_qt_build_artifacts(bundle_dir: str | Path) -> tuple[Path, ...]:
-    """Remove artefatos de build do Qt que não pertencem ao runtime distribuível.
-
-    Algumas versões do PySide6 incluem diretórios ``objects-*`` usados para
-    compilação de componentes Qt. Eles não são carregados pelo host em runtime
-    e podem ultrapassar os limites de caminho do Launcher/Windows. A poda é
-    executada antes da criação do catálogo SHA-256, portanto o manifesto final
-    continua descrevendo exatamente o payload distribuído.
-    """
+    """Remove artefatos de build do Qt que não pertencem ao runtime distribuível."""
 
     root = Path(bundle_dir).resolve()
     if not root.is_dir():
@@ -127,6 +125,24 @@ def prune_qt_build_artifacts(bundle_dir: str | Path) -> tuple[Path, ...]:
         shutil.rmtree(path)
         removed.append(path)
     return tuple(removed)
+
+
+def reject_unexpected_qt_payload(bundle_dir: str | Path) -> None:
+    """Impede que módulos Qt pesados e não usados voltem ao host por acidente."""
+
+    root = Path(bundle_dir).resolve()
+    if not root.is_dir():
+        raise NotADirectoryError(root)
+    forbidden = {name.casefold() for name in FORBIDDEN_QT_RUNTIME_FILES}
+    found = sorted(
+        path.relative_to(root).as_posix()
+        for path in root.rglob("*")
+        if path.is_file() and path.name.casefold() in forbidden
+    )
+    if found:
+        raise RuntimeError(
+            "Payload Qt não utilizado entrou no Graphics2Host: " + ", ".join(found)
+        )
 
 
 def build(
@@ -183,6 +199,7 @@ def build(
         print(f"Qt build artifacts removidos: {len(removed)}")
         for path in removed:
             print(f"  - {path.relative_to(bundle)}")
+    reject_unexpected_qt_payload(bundle)
 
     # O manifesto de runtime vive dentro do próprio bundle e cataloga todas as
     # DLLs/plugins/QML. O manifesto de build externo referencia esse catálogo.
