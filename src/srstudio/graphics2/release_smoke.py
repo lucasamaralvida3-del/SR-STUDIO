@@ -13,7 +13,7 @@ import srstudio
 from . import ENGINE_VERSION
 from .model import GraphicsDocument, GraphicsNode, NodeKind, Transform
 from .package import load_package, save_package
-from .qt_host import probe_graphics_api
+from .qt_host import launch_qt_quick_editor, probe_graphics_api
 from .qt_renderer import render_pdf, render_png
 
 
@@ -55,7 +55,7 @@ def _sha256_file(path: Path) -> str:
 def run_release_smoke(output_dir: str | Path) -> dict[str, object]:
     try:
         import PySide6
-        from PySide6.QtCore import QLibraryInfo
+        from PySide6.QtCore import QLibraryInfo, QTimer
         from PySide6.QtGui import QGuiApplication
     except Exception as exc:
         raise RuntimeError(
@@ -100,6 +100,16 @@ def run_release_smoke(output_dir: str | Path) -> dict[str, object]:
     if not qml_import_path.is_dir():
         raise RuntimeError(f"Diretório de imports QML ausente: {qml_import_path}")
 
+    # Este é o gate que transforma "arquivos QML existem" em "o editor real
+    # carregou". O load do GraphicsEditor e das ferramentas contextuais ocorre
+    # sincronamente dentro de launch_qt_quick_editor; o timer apenas fecha o
+    # event loop logo depois, para manter o smoke não interativo.
+    os.environ["SR_STUDIO_G2_AUTOSAVE_ROOT"] = str(root / "autosave")
+    QTimer.singleShot(750, app.quit)
+    editor_exit_code = launch_qt_quick_editor(reopened, graphics_api="software")
+    if editor_exit_code != 0:
+        raise RuntimeError(f"Editor Qt Quick encerrou o release smoke com código {editor_exit_code}.")
+
     artifacts = {}
     for path in (project_path, png.output, pdf.output):
         artifacts[path.name] = {
@@ -108,7 +118,7 @@ def run_release_smoke(output_dir: str | Path) -> dict[str, object]:
         }
 
     result: dict[str, object] = {
-        "schema": "srstudio/g2-release-smoke-1",
+        "schema": "srstudio/g2-release-smoke-2",
         "ok": True,
         "srstudio_version": srstudio.__version__,
         "graphics2_version": ENGINE_VERSION,
@@ -119,6 +129,8 @@ def run_release_smoke(output_dir: str | Path) -> dict[str, object]:
         "frozen": bool(getattr(sys, "frozen", False)),
         "graphics_api_requested": probe.requested,
         "graphics_api_resolved": probe.resolved,
+        "editor_qml_startup": True,
+        "editor_exit_code": editor_exit_code,
         "qml_dir": str(qml_dir.resolve()),
         "qt_plugins": str(plugin_path.resolve()),
         "qt_qml_imports": str(qml_import_path.resolve()),
