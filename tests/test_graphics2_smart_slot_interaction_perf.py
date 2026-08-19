@@ -46,6 +46,7 @@ def _document() -> GraphicsDocument:
 
 
 def _node_snapshot(document: GraphicsDocument) -> dict:
+    """Snapshot only properties that affect rendered visual output."""
     return {
         node.id: (
             node.kind.value,
@@ -62,7 +63,6 @@ def _node_snapshot(document: GraphicsDocument) -> dict:
             node.text,
             node.asset_id,
             dict(node.style),
-            dict(node.metadata),
         )
         for node in document.active_page.nodes.values()
     }
