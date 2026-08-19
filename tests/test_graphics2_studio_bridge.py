@@ -122,19 +122,28 @@ def test_gpu_flag_uses_automatic_accelerated_backend_selection(tmp_path, monkeyp
     assert captured["args"][captured["args"].index("--graphics-api") + 1] == "auto"
 
 
-def test_turbo_shell_exposes_engine2_only_through_feature_flagged_launcher_and_keeps_beta727_cartazes():
+def test_turbo_shell_promotes_engine2_to_primary_encartes_route_and_keeps_legacy_fallback():
     source = (Path(srstudio.__file__).with_name("app") / "turbo_posters.py").read_text(encoding="utf-8")
 
+    # Promoções/Atacado keep their certified productivity modules.  Only the
+    # Encartes Studio destination changes in this integration mission.
     assert "import srstudio.app.cartazes_productivity as cartazes_productivity" in source
-    assert "from srstudio.graphics2.saved_merge import analyze_saved_session_merge, resolve_saved_session_merge" in source
-    assert 'if name == "Encartes Studio":' in source
-    assert "self._attach_graphics2_launcher()" in source
-    assert "engine_enabled, gpu_enabled = bridge_flags(self.data_dir)" in source
-    assert "if not engine_enabled:" in source
-    assert 'label = "ENGINE 2 · GPU" if gpu_enabled else "ENGINE 2 · TESTE"' in source
-    assert "launch_studio_project_if_enabled(self.project, self.data_dir)" in source
-    assert "ask_graphics2_merge_resolutions(self, analysis.report)" in source
-    assert "resolve_saved_session_merge(" in source
     assert "cartazes_productivity.CartazesProductivityPromotionPosterModule" in source
     assert "cartazes_productivity.CartazesProductivityWholesalePosterModule" in source
-    assert "advanced.base.PromotionPosterModule = responsive.ResponsivePromotionPosterModule" not in source
+
+    # The primary route is now the G2 full-studio landing and no longer depends
+    # on the historical feature-flagged launcher.
+    assert 'if name == "Encartes Studio":' in source
+    assert "self._show_graphics2_studio_entrypoint()" in source
+    assert "launch_graphics_source" in source
+    assert "launch_studio_project(self.project, self.data_dir)" in source
+    assert "launch_studio_project_if_enabled" not in source
+    assert "bridge_flags(self.data_dir)" not in source
+
+    # Compatibility merge/sync and the legacy editor remain available, but the
+    # legacy editor can only be reached through an explicit fallback action.
+    assert "from srstudio.graphics2.saved_merge import analyze_saved_session_merge, resolve_saved_session_merge" in source
+    assert "ask_graphics2_merge_resolutions(self, analysis.report)" in source
+    assert "resolve_saved_session_merge(" in source
+    assert 'super().navigate("Encartes Studio")' in source
+    assert "Abrir editor legado (fallback)" in source
