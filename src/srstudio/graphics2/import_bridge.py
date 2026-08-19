@@ -22,7 +22,7 @@ from .pptx_structure import PptxMappingAudit, PptxStructureReport, inspect_pptx_
 from .scene_fingerprint import store_scene_fingerprint
 from .semantic_blocks import build_semantic_blocks
 from .semantic_recovery import recover_canva_semantic_cards
-from .smart_slot_import_reset import mark_slot_product_filled, reset_new_pptx_import_product_content
+from .smart_slot_import_reset import reset_new_pptx_import_product_content
 
 _SLOT_ROLE_MAP: dict[str, BindingRole] = {
     "name": BindingRole.NAME,
@@ -466,11 +466,15 @@ class CanvaBindingService:
         with session.transaction("Preencher produto Canva"):
             slot.product_id = str(product.get("id") or product.get("product_id") or "")
             slot.metadata["product_snapshot"] = dict(product)
+            slot.metadata["product_binding_state"] = "filled"
+            slot.metadata["product_content_empty"] = False
+            slot.metadata.pop("product_reset_reason", None)
             for role, node_ids in bindings.items():
                 for node_id in node_ids:
                     node = session.page.node(node_id)
                     if node is None:
                         continue
+                    node.metadata["product_binding_empty"] = False
                     if role in {"image", BindingRole.IMAGE.value}:
                         source = str(product.get("image_path") or product.get("image") or "")
                         if source:
@@ -495,11 +499,6 @@ class CanvaBindingService:
                         node.visible = bool(value)
                     elif value:
                         node.visible = True
-            mark_slot_product_filled(
-                slot,
-                node_ids=[node_id for node_ids in bindings.values() for node_id in node_ids],
-                page=session.page,
-            )
         return True
 
 

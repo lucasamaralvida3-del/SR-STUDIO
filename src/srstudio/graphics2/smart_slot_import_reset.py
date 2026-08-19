@@ -173,15 +173,3 @@ def _is_synthetic_product_image(node) -> bool:
     if source_name == "sr smart image slot" and bool(metadata.get("template_hidden", False)):
         return True
     return False
-
-
-def mark_slot_product_filled(slot: SmartSlot, *, node_ids: list[str], page) -> None:
-    """Marca o inverso do reset quando o usuário realmente preenche um slot."""
-
-    slot.metadata["product_binding_state"] = "filled"
-    slot.metadata["product_content_empty"] = False
-    slot.metadata.pop("product_reset_reason", None)
-    for node_id in node_ids:
-        node = page.node(node_id)
-        if node is not None:
-            node.metadata["product_binding_empty"] = False
