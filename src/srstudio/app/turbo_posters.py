@@ -62,8 +62,8 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
 
     def navigate(self, name: str) -> None:
         # Encartes Studio is intercepted before the inherited navigation can
-        # instantiate the legacy Tk canvas.  The old implementation remains in
-        # the parent class and is available through an explicit fallback button.
+        # instantiate the legacy Tk canvas.  G2 is the primary route and the
+        # legacy editor is never opened automatically.
         if name == "Encartes Studio":
             self._set_active_navigation(name)
             self._clear()
@@ -113,110 +113,10 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             self.topbar_subtitle.configure(text="Graphics Engine 2 · importação, edição e exportação")
 
     def _show_graphics2_studio_entrypoint(self) -> None:
-        """Primary human entrypoint for the full Studio de Encartes G2 flow."""
+        """Launch the primary G2 editor directly; never fall back to legacy silently."""
 
-        root = tk.Frame(self.content, bg="#F4F7FB")
-        root.pack(fill="both", expand=True, padx=28, pady=24)
-
-        hero = tk.Frame(
-            root,
-            bg="white",
-            highlightbackground="#D9E2EF",
-            highlightthickness=1,
-        )
-        hero.pack(fill="x")
-        title = tk.Frame(hero, bg="white")
-        title.pack(fill="x", padx=26, pady=(24, 8))
-        tk.Label(
-            title,
-            text="STUDIO DE ENCARTES G2",
-            bg="white",
-            fg="#0F5BD8",
-            font=("Segoe UI", 10, "bold"),
-        ).pack(anchor="w")
-        tk.Label(
-            title,
-            text="Novo editor oficial de encartes do SR Studio",
-            bg="white",
-            fg="#111827",
-            font=("Segoe UI", 19, "bold"),
-        ).pack(anchor="w", pady=(3, 0))
-        tk.Label(
-            title,
-            text=(
-                "Importe o PPTX exportado do Canva pelo pipeline real do SR Studio e abra o documento "
-                "diretamente no editor Graphics Engine 2."
-            ),
-            bg="white",
-            fg="#64748B",
-            font=("Segoe UI", 10),
-            justify="left",
-            wraplength=940,
-        ).pack(anchor="w", pady=(8, 4))
-
-        actions = tk.Frame(hero, bg="white")
-        actions.pack(fill="x", padx=26, pady=(12, 26))
-        self._g2_action_button(
-            actions,
-            "IMPORTAR CANVA / PPTX",
-            "Abrir um .pptx e converter pelo import bridge real",
-            self._choose_graphics2_pptx,
-            primary=True,
-        ).pack(side="left", fill="x", expand=True, padx=(0, 7))
-        self._g2_action_button(
-            actions,
-            "ABRIR PROJETO G2",
-            "Reabrir um .srscene/.zip salvo pelo editor",
-            self._choose_graphics2_project,
-        ).pack(side="left", fill="x", expand=True, padx=7)
-        self._g2_action_button(
-            actions,
-            "PROJETO ATUAL",
-            "Levar o projeto atual do SR Studio ao G2",
-            self._launch_current_project_in_graphics2,
-        ).pack(side="left", fill="x", expand=True, padx=(7, 0))
-
-        flow = tk.Frame(root, bg="#EAF2FF")
-        flow.pack(fill="x", pady=(16, 0))
-        tk.Label(
-            flow,
-            text="FLUXO ATIVO",
-            bg="#EAF2FF",
-            fg="#0F5BD8",
-            font=("Segoe UI", 8, "bold"),
-        ).pack(anchor="w", padx=18, pady=(14, 2))
-        tk.Label(
-            flow,
-            text="PPTX / Canva  →  Import Bridge / Office Layout  →  SR Scene 2  →  Editor G2",
-            bg="#EAF2FF",
-            fg="#1E3A5F",
-            font=("Segoe UI", 10, "bold"),
-        ).pack(anchor="w", padx=18, pady=(0, 14))
-
-        compatibility = tk.Frame(root, bg="#F4F7FB")
-        compatibility.pack(fill="x", pady=(18, 0))
-        tk.Label(
-            compatibility,
-            text="Compatibilidade",
-            bg="#F4F7FB",
-            fg="#64748B",
-            font=("Segoe UI", 9, "bold"),
-        ).pack(side="left")
-        tk.Button(
-            compatibility,
-            text="Abrir editor legado (fallback)",
-            command=self._open_legacy_encartes_fallback,
-            bg="#E2E8F0",
-            fg="#334155",
-            activebackground="#CBD5E1",
-            activeforeground="#0F172A",
-            relief="flat",
-            bd=0,
-            padx=12,
-            pady=7,
-            font=("Segoe UI", 8),
-            cursor="hand2",
-        ).pack(side="left", padx=(12, 0))
+        result = launch_studio_project(self.project, self.data_dir)
+        self._show_graphics2_launch_result(result)
 
     @staticmethod
     def _g2_action_button(parent, title: str, detail: str, command, *, primary: bool = False) -> tk.Frame:
@@ -279,14 +179,17 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
         if result.launched:
             self.toast.show(result.message, "success", 5600)
             return
-        tone = "warning" if result.ok else "danger"
-        self.toast.show(result.message, tone, 7600)
-        if not result.ok:
-            messagebox.showerror("Studio de Encartes G2", result.message, parent=self)
+        detail = str(result.message or "Falha desconhecida ao iniciar o host G2.")
+        message = (
+            "FALHA AO INICIAR STUDIO DE ENCARTES G2\n\n"
+            f"{detail}\n\n"
+            "O editor legado não foi aberto automaticamente."
+        )
+        self.toast.show("FALHA AO INICIAR STUDIO DE ENCARTES G2", "danger", 9000)
+        messagebox.showerror("FALHA AO INICIAR STUDIO DE ENCARTES G2", message, parent=self)
 
     def _open_legacy_encartes_fallback(self) -> None:
-        # Intentionally bypass this class' route override.  This keeps the old
-        # editor available while G2 is being certified, but never as the default.
+        # Explicit compatibility action only. The primary route never calls this.
         super().navigate("Encartes Studio")
         self.toast.show("Editor legado aberto em modo de compatibilidade.", "warning", 4800)
 
