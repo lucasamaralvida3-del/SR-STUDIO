@@ -67,10 +67,13 @@ jobs:
           if ($sha -ne $expected) { throw "Exact SHA mismatch" }
           "SOURCE_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "SOURCE SHA: $sha"
+          Write-Host "CHECKED OUT SHA: $sha"
+          Write-Host "SHA MATCH: PASS"
 
       - name: Focused integration and Image DB tests
         shell: pwsh
         run: |
+          $env:PYTHONPATH = Join-Path $env:GITHUB_WORKSPACE "src"
           python -m pytest -q tests/test_graphics2_full_studio_entrypoint.py tests/test_graphics2_studio_bridge.py tests/test_graphics2_existing_image_database.py tests/test_graphics2_template_product_workflow.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m compileall -q src/srstudio/app/turbo_posters.py src/srstudio/graphics2/full_studio_bridge.py src/srstudio/graphics2/image_database_runtime.py src/srstudio/graphics2/qt_host.py
@@ -79,6 +82,7 @@ jobs:
       - name: Real PPTX import bridge smoke
         shell: pwsh
         run: |
+          $env:PYTHONPATH = Join-Path $env:GITHUB_WORKSPACE "src"
           $pptx = "src/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
           if (!(Test-Path $pptx)) { throw "PPTX real de smoke não encontrado: $pptx" }
           @'
@@ -132,7 +136,11 @@ jobs:
             $actual = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
             if ($actual -ne $entry.Value) { throw "Image DB corpus SHA mismatch: $($entry.Key)" }
           }
-          python scripts/ci/image_db_build_distribution_seed.py `
+          $builder = Join-Path $env:RUNNER_TEMP "image_db_build_distribution_seed.py"
+          $builderUrl = "https://raw.githubusercontent.com/${{ github.repository }}/$env:SOURCE_SHA/scripts/ci/image_db_build_distribution_seed.py"
+          Invoke-WebRequest -Uri $builderUrl -OutFile $builder
+          if (!(Test-Path $builder)) { throw "Exact-SHA Image DB seed builder unavailable" }
+          python $builder `
             --index image-db-approved/image-db-coverage-library/index.json `
             --catalog-report image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json `
             --audit-report image-db-approved/image-db-coverage-baseline/final/library-audit.json `
@@ -169,6 +177,7 @@ jobs:
       - name: Verify packaged host runtime and frozen Image DB without checkout
         shell: pwsh
         run: |
+          $env:PYTHONPATH = Join-Path $env:GITHUB_WORKSPACE "src"
           @'
           from pathlib import Path
           import json
@@ -202,6 +211,7 @@ jobs:
           if (!(Test-Path $index)) { throw "Official AppData/data-root Image DB was not bootstrapped" }
           if ((Get-Content $index -Raw).Contains($env:GITHUB_WORKSPACE)) { throw "Developer checkout path leaked into Image DB" }
           Write-Host "FROZEN_IMAGE_DB_LOOKUP=PASS"
+          Write-Host "NO_DEV_PATH=PASS"
 
       - name: Verify full-package layout
         shell: pwsh
