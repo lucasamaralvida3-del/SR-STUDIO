@@ -263,7 +263,10 @@ def test_manual_slot_move_does_not_change_export_pixels(tmp_path):
     before_nodes = _node_snapshot(document)
     before_png = tmp_path / "before.png"
     after_png = tmp_path / "after.png"
-    render_png(document, before_png, page_index=0, dpi=96)
+    # This fixture intentionally uses synthetic IMAGE nodes without local
+    # assets. Asset strictness is covered by export tests; here the invariant is
+    # that semantic Smart Slot geometry cannot change rendered pixels.
+    render_png(document, before_png, page_index=0, dpi=96, strict_assets=False)
 
     session = GraphicsSession(document)
     slot = document.active_page.slots["slot-real-1"]
@@ -276,7 +279,7 @@ def test_manual_slot_move_does_not_change_export_pixels(tmp_path):
         width=auto["width"],
         height=auto["height"],
     )
-    render_png(document, after_png, page_index=0, dpi=96)
+    render_png(document, after_png, page_index=0, dpi=96, strict_assets=False)
 
     with Image.open(before_png) as before_image, Image.open(after_png) as after_image:
         assert before_image.size == after_image.size
