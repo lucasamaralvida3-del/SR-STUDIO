@@ -71,7 +71,7 @@ jobs:
           Write-Host 'FOCUSED_TESTS=14_PASS'
           Write-Host 'FAIL_CLOSED=PASS'
 
-          # Wait for and consume the repository's official frozen-host build for this head SHA.
+          # Consume the repository's official frozen-host build associated with this head SHA.
           $hostRunId = $null
           for ($attempt = 0; $attempt -lt 36; $attempt++) {
             $json = gh run list --repo lucasamaralvida3-del/SR-STUDIO --workflow "SR Graphics Engine 2 Host Build" --commit $sha --limit 5 --json databaseId,status,conclusion,headSha
@@ -145,9 +145,11 @@ jobs:
           $env:PYTHONPATH = $sourceSnapshot
           $env:SR_STUDIO_DATA_DIR = Join-Path $env:RUNNER_TEMP 'srstudio-logical-image-db'
           $env:SR_STUDIO_IMAGE_DB_SEED = $seed
+          $env:IMAGE_DB_REPORT = Join-Path $env:RUNNER_TEMP 'product-image-report.json'
           if (Test-Path $env:SR_STUDIO_DATA_DIR) { Remove-Item $env:SR_STUDIO_DATA_DIR -Recurse -Force }
           @'
           import json
+          import os
           from pathlib import Path
           from srstudio.graphics2.image_database_runtime import GraphicsImageDatabaseRuntime
           runtime=GraphicsImageDatabaseRuntime.from_environment(require_library=True)
@@ -165,7 +167,7 @@ jobs:
           for query in queries:
               rows=runtime.product_candidates({"id":query,"name":query}); top=rows[0] if rows else None
               report.append({"product":query,"top_candidate":top["image_id"] if top else "","confidence":top["confidence"] if top else 0.0,"image_found":bool(top),"automatic":bool(top and top["automatic"]),"candidate_count":len(rows),"visual_result":"candidate-resolved" if top else "placeholder"})
-          Path("image-db-dist/product-image-report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
+          Path(os.environ["IMAGE_DB_REPORT"]).write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
           print("KNOWN_IMAGE_ID=9a7b325df81919fc99604338")
           print("ALIAS_IMAGE_ID=4088292755a7e25ce30e2a9a")
           print("UNKNOWN_PRODUCT_FALLBACK=PASS")
@@ -173,6 +175,7 @@ jobs:
           print("PRODUCT_IMAGE_LOOKUP=PASS")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path $env:IMAGE_DB_REPORT)) { throw 'Product Image report missing' }
 
           # Frozen EXE is windowed: exit code is the reliable process contract.
           New-Item -ItemType Directory -Force -Path (Join-Path $hostRoot 'ImageDatabaseSeed') | Out-Null
@@ -214,7 +217,7 @@ jobs:
           name: g2-existing-image-db-certification
           path: |
             image-db-dist/build-report.json
-            image-db-dist/product-image-report.json
             image-db-dist/image-db-library-v1.sha256
+            ${{ runner.temp }}/product-image-report.json
           if-no-files-found: error
           retention-days: 30
