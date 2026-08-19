@@ -98,11 +98,20 @@ def _logical_reset_fixture() -> tuple[GraphicsDocument, StudioProject, SmartSlot
 
     nodes = [
         _node("name", NodeKind.TEXT, 120, 220, 200, 42, text="PRODUTO ORIGINAL"),
-        _node("image", NodeKind.IMAGE, 130, 280, 160, 150, asset_id="asset-original", metadata={
-            "bound_image_source": "C:/original.png",
-            "template_path": "C:/original.png",
-            "template_hidden": False,
-        }),
+        _node(
+            "image",
+            NodeKind.IMAGE,
+            130,
+            280,
+            160,
+            150,
+            asset_id="asset-original",
+            metadata={
+                "bound_image_source": "C:/original.png",
+                "template_path": "C:/original.png",
+                "template_hidden": False,
+            },
+        ),
         _node("currency", NodeKind.TEXT, 140, 450, 32, 28, text="R$"),
         _node("reais", NodeKind.TEXT, 175, 440, 70, 44, text="9"),
         _node("cents", NodeKind.TEXT, 245, 445, 45, 30, text=",99"),
@@ -179,8 +188,6 @@ def test_new_import_reset_preserves_slot_structure_and_original_visuals() -> Non
     assert slot.metadata["effective_bounds"] == before_bounds
     assert slot.product_id == ""
     assert slot.metadata["product_snapshot"] == {}
-    assert slot.metadata["product_binding_state"] == "empty"
-    assert slot.metadata["product_content_empty"] is True
     assert document.metadata["products"] == []
     assert document.metadata["smart_slot_import_started_empty"] is True
     assert legacy.products == []
@@ -201,16 +208,13 @@ def test_new_import_reset_preserves_slot_structure_and_original_visuals() -> Non
         for node in page.nodes.values()
     }
     assert after_visual == before_visual
-    # A imagem visual original continua via AssetRef; apenas o marcador de
-    # produto vinculado é removido.
     assert page.nodes["image"].asset_id == "asset-original"
     assert "bound_image_source" not in page.nodes["image"].metadata
 
 
 def test_synthetic_autofill_image_is_emptied_but_geometry_remains() -> None:
     document, legacy, slot = _logical_reset_fixture()
-    page = document.active_page
-    image = page.nodes["image"]
+    image = document.active_page.nodes["image"]
     image.metadata["semantic_synthetic_image_slot"] = True
     image.metadata["template_hidden"] = True
     image.name = "SR Smart Image Slot"
@@ -242,14 +246,13 @@ def test_import_a_fill_then_import_b_starts_with_empty_product_state() -> None:
 
     imported_a = service.import_file(IMPORT_A, project_name="Import A")
     slots_a = list(imported_a.document.active_page.slots.values())
-    assert slots_a, "Import A precisa detectar pelo menos um Smart Slot"
+    assert slots_a
     assert all(slot.product_id == "" for slot in slots_a)
-    assert all(slot.metadata.get("product_content_empty") is True for slot in slots_a)
+    assert all(slot.metadata.get("product_snapshot") == {} for slot in slots_a)
 
-    session_a = GraphicsSession(imported_a.document)
     first_a = slots_a[0]
     assert CanvaBindingService.bind(
-        session_a,
+        GraphicsSession(imported_a.document),
         first_a.id,
         {
             "id": "chosen-a",
@@ -259,17 +262,15 @@ def test_import_a_fill_then_import_b_starts_with_empty_product_state() -> None:
         },
     )
     assert first_a.product_id == "chosen-a"
-    assert first_a.metadata["product_binding_state"] == "filled"
+    assert first_a.metadata["product_snapshot"]["id"] == "chosen-a"
 
     imported_b = service.import_file(IMPORT_B, project_name="Import B")
     slots_b = [slot for page in imported_b.document.pages for slot in page.slots.values()]
-    assert slots_b, "Import B precisa detectar pelo menos um Smart Slot"
+    assert slots_b
     assert imported_b.document.metadata["products"] == []
     assert imported_b.legacy_project.products == []
     assert all(slot.product_id == "" for slot in slots_b)
     assert all(slot.metadata.get("product_snapshot") == {} for slot in slots_b)
-    assert all(slot.metadata.get("product_binding_state") == "empty" for slot in slots_b)
-    assert all(slot.metadata.get("product_content_empty") is True for slot in slots_b)
     assert all(slot.product_id != "chosen-a" for slot in slots_b)
 
 
@@ -277,12 +278,6 @@ def test_import_b_fill_save_close_reopen_preserves_b_content(tmp_path) -> None:
     imported_b = GraphicsImportService().import_file(IMPORT_B, project_name="Import B")
     page = imported_b.document.active_page
     slot = next(iter(page.slots.values()))
-    image_id = slot.node_by_role.get(BindingRole.IMAGE.value, "")
-    image_source = ""
-    if image_id:
-        image_node = page.node(image_id)
-        if image_node is not None and image_node.asset_id in imported_b.document.assets:
-            image_source = imported_b.document.assets[image_node.asset_id].source
 
     chosen_b = {
         "id": "chosen-b",
@@ -290,13 +285,15 @@ def test_import_b_fill_save_close_reopen_preserves_b_content(tmp_path) -> None:
         "price": "27.49",
         "unit": "KG",
     }
-    if image_source:
-        chosen_b["image_path"] = image_source
+    image_id = slot.node_by_role.get(BindingRole.IMAGE.value, "")
+    if image_id:
+        image_node = page.node(image_id)
+        if image_node is not None and image_node.asset_id in imported_b.document.assets:
+            chosen_b["image_path"] = imported_b.document.assets[image_node.asset_id].source
 
     assert CanvaBindingService.bind(GraphicsSession(imported_b.document), slot.id, chosen_b)
     assert slot.product_id == "chosen-b"
-    assert slot.metadata["product_binding_state"] == "filled"
-    assert slot.metadata["product_content_empty"] is False
+    assert slot.metadata["product_snapshot"]["id"] == "chosen-b"
 
     package = save_package(imported_b.document, tmp_path / "import-b-filled.srscene", embed_local_assets=False)
     reopened_context = load_launch_context(package)
@@ -305,13 +302,9 @@ def test_import_b_fill_save_close_reopen_preserves_b_content(tmp_path) -> None:
 
     assert reopened.product_id == "chosen-b"
     assert reopened.metadata["product_snapshot"]["display_name"] == "PRODUTO ESCOLHIDO B"
-    assert reopened.metadata["product_binding_state"] == "filled"
-    assert reopened.metadata["product_content_empty"] is False
     name_id = reopened.node_by_role.get(BindingRole.NAME.value, "")
     if name_id:
         assert reopened_page.nodes[name_id].text == "PRODUTO ESCOLHIDO B"
-    # O marcador histórico de que o arquivo nasceu vazio pode persistir como
-    # provenance; o conteúdo atual, porém, permanece preenchido após reopen.
     assert reopened_context.document.metadata["smart_slot_import_started_empty"] is True
 
 
@@ -333,9 +326,8 @@ def test_open_current_project_path_never_calls_fresh_import_reset(tmp_path, monk
     monkeypatch.setattr(full_studio_bridge, "_host_command", lambda: ["SRGraphicsEngine2Host.exe"])
     monkeypatch.setattr(full_studio_bridge, "_uses_current_python", lambda _command: False)
 
-    project = StudioProject(name="Projeto atual preenchido")
     result = full_studio_bridge.launch_studio_project(
-        project,
+        StudioProject(name="Projeto atual preenchido"),
         tmp_path / "data",
         process_factory=lambda *_args, **_kwargs: _FakeProcess(),
     )
