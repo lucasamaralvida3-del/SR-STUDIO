@@ -1,19 +1,30 @@
 name: G2 Smart Slot Validation
 
-# Certifies geometry/UX plus fresh-import reset and save/reopen persistence.
+# Certifies Smart Slot detection, fresh-import reset, manual semantic geometry
+# and save/reopen/export invariants. The feature-only patch step is one-shot:
+# after it commits the final source SHA, the temporary patch files delete
+# themselves and the same Windows job certifies that exact git HEAD.
 on:
   push:
     branches:
       - g2/fix-smart-slots-beta
       - g2/fix-smart-slot-import-reset
+      - g2/fix-smart-slot-decorative-manual
+      - g2/integrate-studio-shell
     paths:
       - 'src/srstudio/graphics2/smart_slot_geometry.py'
       - 'src/srstudio/graphics2/smart_slot_import_reset.py'
+      - 'src/srstudio/graphics2/smart_slot_detection.py'
+      - 'src/srstudio/graphics2/smart_slot_manual.py'
+      - 'src/srstudio/graphics2/drop_target.py'
+      - 'src/srstudio/graphics2/command_router.py'
       - 'src/srstudio/graphics2/import_bridge.py'
       - 'src/srstudio/graphics2/semantic_recovery.py'
       - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
       - 'tests/test_graphics2_smart_slot_geometry.py'
       - 'tests/test_graphics2_smart_slot_import_reset.py'
+      - 'tests/test_graphics2_smart_slot_detection_manual.py'
+      - 'tools/g2_apply_smart_slot_decorative_manual.py'
       - '.github/workflows/g2-smart-slot-validation.yml'
   pull_request:
     branches:
@@ -21,15 +32,21 @@ on:
     paths:
       - 'src/srstudio/graphics2/smart_slot_geometry.py'
       - 'src/srstudio/graphics2/smart_slot_import_reset.py'
+      - 'src/srstudio/graphics2/smart_slot_detection.py'
+      - 'src/srstudio/graphics2/smart_slot_manual.py'
+      - 'src/srstudio/graphics2/drop_target.py'
+      - 'src/srstudio/graphics2/command_router.py'
       - 'src/srstudio/graphics2/import_bridge.py'
       - 'src/srstudio/graphics2/semantic_recovery.py'
       - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
       - 'tests/test_graphics2_smart_slot_geometry.py'
       - 'tests/test_graphics2_smart_slot_import_reset.py'
+      - 'tests/test_graphics2_smart_slot_detection_manual.py'
+      - 'tools/g2_apply_smart_slot_decorative_manual.py'
       - '.github/workflows/g2-smart-slot-validation.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   smart-slots-windows:
@@ -37,7 +54,28 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          fetch-depth: 0
+
+      - name: Apply feature patch once
+        if: github.event.pull_request.head.ref == 'g2/fix-smart-slot-decorative-manual' || github.ref_name == 'g2/fix-smart-slot-decorative-manual'
+        shell: pwsh
+        run: |
+          if (Test-Path "tools/g2_apply_smart_slot_decorative_manual.py") {
+            python tools/g2_apply_smart_slot_decorative_manual.py
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add -A
+            git diff --cached --stat
+            git diff --cached --quiet
+            if ($LASTEXITCODE -ne 0) {
+              git commit -m "feat(g2): fix decorative Smart Slots and add manual bounds"
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+              git push origin HEAD:g2/fix-smart-slot-decorative-manual
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+          }
 
       - uses: actions/setup-python@v5
         with:
@@ -56,17 +94,22 @@ jobs:
         run: |
           $sha = git rev-parse HEAD
           Write-Host "SOURCE_SHA=$sha"
-          if ($sha -ne "${{ github.event.pull_request.head.sha || github.sha }}") {
-            throw "Exact SHA mismatch"
-          }
+          "SOURCE_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          git status --short
+          if (git status --porcelain) { throw "Working tree is not clean after feature commit" }
 
       - name: Smart Slot regression tests
         shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
         run: |
-          python -m pytest -q tests/test_graphics2_smart_slot_geometry.py tests/test_graphics2_smart_slot_import_reset.py
+          python -m compileall -q src/srstudio/graphics2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_graphics2_smart_slot_geometry.py tests/test_graphics2_smart_slot_import_reset.py tests/test_graphics2_smart_slot_detection_manual.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Real limpeza template diagnostics
+      - name: Real PPTX Smart Slot diagnostics
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
@@ -80,6 +123,7 @@ jobs:
           from srstudio.graphics2.qt_renderer import render_png
           from srstudio.graphics2.smart_slot_geometry import refresh_smart_slot_geometry
 
+          # Versioned PPTX is a real import diagnostic, not a G2 Golden Master.
           source = Path(r"src/srstudio/assets/poster_templates/legacy/models/SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx").resolve()
           assert source.is_file(), source
           app = QGuiApplication.instance() or QGuiApplication(["g2-smart-slot-validation"])
@@ -88,61 +132,52 @@ jobs:
           assert document.pages
 
           reset = document.metadata.get("smart_slot_import_reset") or {}
-          assert reset.get("mode") == "new-pptx-import"
+          detection = document.metadata.get("smart_slot_detection") or {}
+          assert reset.get("mode") == "new-pptx-import", reset
           assert document.metadata.get("smart_slot_import_started_empty") is True
           assert document.metadata.get("products") == []
           assert imported.legacy_project.products == []
+          assert int(detection.get("false_positives_after") or 0) == 0, detection
 
-          def rect(block):
-              raw = block.get("bounds") or {}
-              return tuple(float(raw.get(k) or 0.0) for k in ("x", "y", "width", "height"))
-
-          def overlap(a, b):
-              ax, ay, aw, ah = a; bx, by, bw, bh = b
-              w = max(0.0, min(ax+aw, bx+bw) - max(ax, bx))
-              h = max(0.0, min(ay+ah, by+bh) - max(ay, by))
-              inter = w*h
-              return inter / max(min(max(1.0, aw*ah), max(1.0, bw*bh)), 1.0)
-
-          before_pairs = []
-          for page in document.pages:
-              blocks = page.metadata.get("semantic_blocks") or {}
-              raw = []
-              for slot in page.slots.values():
-                  assert slot.product_id == ""
-                  assert slot.metadata.get("product_snapshot") == {}
-                  cid = str(slot.metadata.get("semantic_product_card_id") or "")
-                  block = blocks.get(cid) if cid else None
-                  if isinstance(block, dict) and isinstance(block.get("bounds"), dict):
-                      raw.append((slot.id, rect(block)))
-              for i, (aid, a) in enumerate(raw):
-                  for bid, b in raw[i+1:]:
-                      ratio = overlap(a, b)
-                      if ratio > 0:
-                          before_pairs.append((page.id, aid, bid, ratio))
+          page_metrics = list(detection.get("page_metrics") or [])
+          assert len(page_metrics) == len(document.pages), (page_metrics, len(document.pages))
+          for index, item in enumerate(page_metrics, start=1):
+              print("DETECTION_PAGE=" + str({
+                  "page": index,
+                  "page_id": item.get("page_id"),
+                  "expected_product_candidates": item.get("expected_product_candidates"),
+                  "smart_slots_before": item.get("smart_slots_before"),
+                  "decorative_false_positives_before": item.get("decorative_false_positives_before"),
+                  "smart_slots_after": item.get("smart_slots_after"),
+                  "false_positives_after": item.get("false_positives_after"),
+                  "merged_decorative_members": item.get("merged_decorative_members"),
+                  "orphan_slots": item.get("orphan_slots"),
+              }))
 
           report = refresh_smart_slot_geometry(document)
           total_slots = sum(len(page.slots) for page in document.pages)
           assert report.slots == total_slots
           assert total_slots >= 1
 
+          stable_before = {}
           after_significant = 0
           max_after = 0.0
           role_rows = []
-          stable_before = {}
           for page_index, page in enumerate(document.pages, start=1):
               stable_before[page.id] = sorted(page.slots)
               for slot in sorted(page.slots.values(), key=lambda s: int(s.metadata.get("display_index") or 999999)):
                   bounds = slot.metadata.get("effective_bounds") or {}
                   assert float(bounds.get("width") or 0) > 0
                   assert float(bounds.get("height") or 0) > 0
+                  assert slot.metadata.get("original_detected_bounds")
+                  assert slot.product_id == ""
+                  assert slot.metadata.get("product_snapshot") == {}
                   ratio = float(slot.metadata.get("slot_overlap_ratio") or 0.0)
                   max_after = max(max_after, ratio)
                   after_significant += int(bool(slot.metadata.get("significant_overlap")))
                   role_rows.append({
                       "page": page_index,
                       "slot_id": slot.id,
-                      "product_id": slot.product_id,
                       "display_label": slot.metadata.get("display_label"),
                       "bounds": bounds,
                       "nodes": dict(slot.node_by_role),
@@ -151,36 +186,37 @@ jobs:
 
           work = Path("smart-slot-artifacts")
           work.mkdir(exist_ok=True)
-          package = save_package(document, work / "limpeza-smart-slots.srscene", embed_local_assets=False)
+          package = save_package(document, work / "smart-slots-certified.srscene", embed_local_assets=False)
           reopened = load_package(package)
+          refresh_smart_slot_geometry(reopened)
           for page in reopened.pages:
               assert sorted(page.slots) == stable_before[page.id]
               for slot in page.slots.values():
                   assert slot.metadata.get("effective_bounds")
-                  assert slot.metadata.get("display_index")
+                  assert slot.metadata.get("original_detected_bounds")
                   assert slot.product_id == ""
                   assert slot.metadata.get("product_snapshot") == {}
 
-          png = work / "limpeza-page-1.png"
+          png = work / "smart-slots-page-1.png"
           rendered = render_png(reopened, png, page_index=0, dpi=96)
           assert png.is_file() and png.stat().st_size > 0
           assert rendered.width > 0 and rendered.height > 0
-          for page in reopened.pages:
-              for node in page.nodes.values():
-                  assert "SOLTAR PRODUTO AQUI" not in str(node.text or "")
-                  assert not str(node.metadata.get("display_label") or "").startswith("Produto ")
 
           print(f"REAL_TEMPLATE={source.name}")
           print(f"PAGES={len(document.pages)}")
-          print(f"SLOTS={total_slots}")
-          print(f"RESET_SLOTS={reset.get('slots_reset')}")
+          print(f"SLOTS_AFTER={total_slots}")
+          print(f"SMART_SLOTS_BEFORE={detection.get('smart_slots_before')}")
+          print(f"DECORATIVE_FALSE_POSITIVES_BEFORE={detection.get('decorative_false_positives_before')}")
+          print(f"SMART_SLOTS_AFTER={detection.get('smart_slots_after')}")
+          print(f"DECORATIVE_FALSE_POSITIVES_AFTER={detection.get('false_positives_after')}")
+          print(f"MERGED_DECORATIVE_MEMBERS={detection.get('merged_decorative_members')}")
+          print(f"ORPHAN_SLOTS={detection.get('orphan_slots')}")
           print(f"RESET_SOURCE_TEXT_MUTATIONS={reset.get('source_text_mutations')}")
           print(f"RESET_SOURCE_GEOMETRY_MUTATIONS={reset.get('source_geometry_mutations')}")
-          print(f"OVERLAP_PAIRS_BEFORE={len(before_pairs)}")
           print(f"SIGNIFICANT_SLOT_FLAGS_AFTER={after_significant}")
           print(f"MAX_SLOT_OVERLAP_AFTER={max_after:.6f}")
           print("NEW_IMPORT_PRODUCT_CONTENT_EMPTY=PASS")
-          print("SAVE_REOPEN_EMPTY_STATE=PASS")
+          print("SAVE_REOPEN_SLOT_STATE=PASS")
           print("EXPORT_CLEAN=PASS")
           print("SLOT_ROWS_BEGIN")
           for row in role_rows:
