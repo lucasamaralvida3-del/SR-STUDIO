@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import ctypes
+import inspect
 import json
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import time
@@ -36,6 +38,25 @@ def _window_for_process(pid: int, *, timeout: float = 25.0):
         return windows[0] if windows else None
 
     return _wait_until(locate, timeout=timeout, detail=f"visible window for pid={pid}")
+
+
+def _failure_window_for_process(pid: int, *, timeout: float = 12.0):
+    def locate():
+        for backend in ("win32", "uia"):
+            try:
+                windows = Desktop(backend=backend).windows(process=pid, visible_only=True)
+            except Exception:
+                continue
+            for window in windows:
+                try:
+                    title = str(window.window_text() or "")
+                except Exception:
+                    continue
+                if "Studio de Encartes G2" in title and "erro" in title.casefold():
+                    return window
+        return None
+
+    return _wait_until(locate, timeout=timeout, detail="visible G2 startup error dialog")
 
 
 def _win32_rect(handle: int) -> tuple[int, int, int, int]:
@@ -134,20 +155,17 @@ def _click_shell_studio(shell_window, output_dir: Path) -> str:
     width = right - left
     height = bottom - top
     assert width >= 800 and height >= 500, (left, top, right, bottom)
-    ctypes.windll.user32.ShowWindow(handle, 9)  # SW_RESTORE
+    ctypes.windll.user32.ShowWindow(handle, 9)
     ctypes.windll.user32.SetForegroundWindow(handle)
     time.sleep(0.35)
 
-    # SRStudioProfessional uses a fixed 244px sidebar. The WORKSPACE section is
-    # below the two primary workflow cards; Encartes Studio is its second row.
-    # Use a relative coordinate so DPI/window origin changes do not matter.
     x = left + min(122, max(70, width // 12))
     y = top + min(314, max(250, int(height * 0.39)))
     mouse.click(button="left", coords=(x, y))
     return f"physical-win32-coordinate:{x},{y}"
 
 
-def _descendant_process(parent_pid: int, name: str):
+def _descendant_process(parent_pid: int, name: str, *, not_before: float = 0.0):
     target = name.casefold()
     try:
         parent = psutil.Process(parent_pid)
@@ -157,14 +175,19 @@ def _descendant_process(parent_pid: int, name: str):
     for process in descendants:
         try:
             if process.name().casefold() == target and process.is_running():
+                if not_before and process.create_time() < not_before:
+                    continue
                 return process
         except psutil.Error:
             continue
     for process in psutil.process_iter(["pid", "name", "create_time"]):
         try:
-            if str(process.info.get("name") or "").casefold() == target:
-                return process
-        except psutil.Error:
+            if str(process.info.get("name") or "").casefold() != target:
+                continue
+            if not_before and float(process.info.get("create_time") or 0) < not_before:
+                continue
+            return process
+        except (psutil.Error, TypeError, ValueError):
             continue
     return None
 
@@ -240,26 +263,82 @@ def _kill_process_tree(pid: int) -> None:
             pass
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--package-root", required=True)
-    parser.add_argument("--output-dir", required=True)
-    args = parser.parse_args()
+def _assert_official_source_has_no_alternative_encartes_route() -> None:
+    from srstudio.app.turbo_posters import SRStudioTurboPosters
 
-    package_root = Path(args.package_root).resolve()
-    output_dir = Path(args.output_dir).resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
-    shell_exe = package_root / "SR Studio 5.exe"
-    child_exe = package_root / "Graphics2Host" / "SRGraphicsEngine2Host.exe"
-    assert shell_exe.is_file(), shell_exe
-    assert child_exe.is_file(), child_exe
+    source = inspect.getsource(SRStudioTurboPosters)
+    assert '_open_legacy_encartes_fallback' not in source
+    assert 'super().navigate("Encartes Studio")' not in source
+    assert "Abrir editor legado" not in source
+    assert "StudioEditorExperience" not in source
 
-    result: dict[str, object] = {
-        "package_root": str(package_root),
-        "shell_exe": str(shell_exe),
-        "child_exe": str(child_exe),
-    }
-    shell_process = subprocess.Popen([str(shell_exe)], cwd=str(package_root))
+
+def _run_missing_host_gate(
+    *,
+    package_root: Path,
+    output_dir: Path,
+    shell_exe: Path,
+    host_dir: Path,
+    result: dict[str, object],
+) -> None:
+    disabled_host_dir = package_root / "Graphics2Host.e2e-disabled"
+    if disabled_host_dir.exists():
+        shutil.rmtree(disabled_host_dir)
+    host_dir.rename(disabled_host_dir)
+    shell_process = None
+    started = time.time()
+    try:
+        env = os.environ.copy()
+        failure_local = output_dir / "failure-localappdata"
+        failure_local.mkdir(parents=True, exist_ok=True)
+        env["LOCALAPPDATA"] = str(failure_local)
+        env["SR_GRAPHICS_ENGINE_2_HOST"] = str(package_root / "definitely-missing-G2-host.exe")
+        shell_process = subprocess.Popen([str(shell_exe)], cwd=str(package_root), env=env)
+        shell_window = _window_for_process(shell_process.pid)
+        time.sleep(1.5)
+        _save_window(shell_window, output_dir / "failure-shell-before-click.png")
+        result["failure_click_method"] = _click_shell_studio(shell_window, output_dir)
+        result["failure_studio_nav_clicked"] = True
+
+        error_window = _failure_window_for_process(shell_process.pid)
+        _save_window(error_window, output_dir / "g2-error-visible.png")
+        result["g2_error_visible"] = True
+        result["g2_error_title"] = str(error_window.window_text() or "")
+
+        spawned = _descendant_process(
+            shell_process.pid,
+            "SRGraphicsEngine2Host.exe",
+            not_before=started,
+        )
+        assert spawned is None, f"G2 child unexpectedly spawned during missing-host gate: {spawned}"
+        result["g2_child_opened_on_failure"] = False
+        result["legacy_studio_opened"] = False
+        result["legacy_route_contract"] = True
+    finally:
+        if shell_process is not None:
+            _kill_process_tree(shell_process.pid)
+        if host_dir.exists():
+            shutil.rmtree(host_dir)
+        if disabled_host_dir.exists():
+            disabled_host_dir.rename(host_dir)
+    assert host_dir.is_dir(), "Graphics2Host was not restored after failure gate"
+
+
+def _run_success_gate(
+    *,
+    package_root: Path,
+    output_dir: Path,
+    shell_exe: Path,
+    result: dict[str, object],
+) -> None:
+    env = os.environ.copy()
+    success_local = output_dir / "success-localappdata"
+    success_local.mkdir(parents=True, exist_ok=True)
+    env["LOCALAPPDATA"] = str(success_local)
+    env.pop("SR_GRAPHICS_ENGINE_2_HOST", None)
+
+    started = time.time()
+    shell_process = subprocess.Popen([str(shell_exe)], cwd=str(package_root), env=env)
     child_pid = 0
     try:
         shell_window = _window_for_process(shell_process.pid)
@@ -275,7 +354,11 @@ def main() -> int:
         result["studio_nav_clicked"] = True
 
         child = _wait_until(
-            lambda: _descendant_process(shell_process.pid, "SRGraphicsEngine2Host.exe"),
+            lambda: _descendant_process(
+                shell_process.pid,
+                "SRGraphicsEngine2Host.exe",
+                not_before=started,
+            ),
             timeout=30,
             detail="SRGraphicsEngine2Host.exe after Studio de Encartes click",
         )
@@ -331,13 +414,61 @@ def main() -> int:
         assert visual["diff_bbox"] is not None, "no visual change inside canvas region"
         assert int(visual["changed_pixels"]) >= 800, visual
         result["simples_visible"] = True
+    finally:
+        if child_pid:
+            _kill_process_tree(child_pid)
+        _kill_process_tree(shell_process.pid)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--package-root", required=True)
+    parser.add_argument("--output-dir", required=True)
+    args = parser.parse_args()
+
+    package_root = Path(args.package_root).resolve()
+    output_dir = Path(args.output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+    shell_exe = package_root / "SR Studio 5.exe"
+    host_dir = package_root / "Graphics2Host"
+    child_exe = host_dir / "SRGraphicsEngine2Host.exe"
+    assert shell_exe.is_file(), shell_exe
+    assert child_exe.is_file(), child_exe
+
+    result: dict[str, object] = {
+        "package_root": str(package_root),
+        "shell_exe": str(shell_exe),
+        "child_exe": str(child_exe),
+    }
+    try:
+        _assert_official_source_has_no_alternative_encartes_route()
+        result["legacy_route_contract"] = True
+
+        _run_missing_host_gate(
+            package_root=package_root,
+            output_dir=output_dir,
+            shell_exe=shell_exe,
+            host_dir=host_dir,
+            result=result,
+        )
+        assert result.get("g2_error_visible") is True
+        assert result.get("legacy_studio_opened") is False
+
+        _run_success_gate(
+            package_root=package_root,
+            output_dir=output_dir,
+            shell_exe=shell_exe,
+            result=result,
+        )
 
         result["pass"] = True
         (output_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print("FULL FROZEN PACKAGE E2E: PASS")
-        print(f"G2_IDENTITY={g2_title}")
+        print("G2_ERROR_VISIBLE=PASS")
+        print("LEGACY_STUDIO_OPENED=FALSE")
+        print(f"G2_IDENTITY={result['g2_title']}")
         print(f"SHELL_CLICK_METHOD={result['studio_nav_click_method']}")
-        print(f"CHANGED_PIXELS={visual['changed_pixels']}")
+        print(f"CHANGED_PIXELS={result['visual']['changed_pixels']}")
         print("SIMPLES_VISIBLE=PASS")
         return 0
     except Exception as exc:
@@ -346,10 +477,6 @@ def main() -> int:
         (output_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print(f"FULL FROZEN PACKAGE E2E: FAIL: {type(exc).__name__}: {exc}", file=sys.stderr)
         raise
-    finally:
-        if child_pid:
-            _kill_process_tree(child_pid)
-        _kill_process_tree(shell_process.pid)
 
 
 if __name__ == "__main__":
