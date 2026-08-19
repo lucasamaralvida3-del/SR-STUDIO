@@ -86,7 +86,7 @@ def main() -> int:
 
     from shiboken6 import Shiboken
     from PySide6.QtCore import QEventLoop, QObject, Property, QMetaObject, QPoint, QPointF, Qt, QTimer, QUrl, Signal, Slot
-    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
     from PySide6.QtQuick import QQuickItem
     from PySide6.QtTest import QTest
@@ -159,6 +159,11 @@ def main() -> int:
             return None
 
     app = QGuiApplication.instance() or QGuiApplication(["frozen-smart-slot-ui-evidence"])
+    installed_families = set(QFontDatabase.families())
+    preferred_font = next((family for family in ("Arial", "Segoe UI", "Tahoma") if family in installed_families), "")
+    if preferred_font:
+        app.setFont(QFont(preferred_font, 9))
+
     engine = QQmlApplicationEngine()
     bridge = SceneBridge()
     engine.rootContext().setContextProperty("sceneBridge", bridge)
@@ -252,6 +257,7 @@ def main() -> int:
         "delete_slot_visible": bool(delete.property("visible")),
         "resize_handles_verified": 8,
         "screenshot_capture": "QQuickItem.grabToImage via Shiboken typed wrapper",
+        "screenshot_font_family": preferred_font,
         "screenshot": screenshot_path.name,
     }
     evidence_path = output_dir / "frozen-smart-slot-ui.json"
