@@ -20,7 +20,7 @@ from srstudio.posters import PosterKind
 
 
 class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
-    """Official SR Studio shell with Studio de Encartes G2 as primary editor."""
+    """Official SR Studio shell with Studio de Encartes G2 as the only editor route."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -61,9 +61,8 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             )
 
     def navigate(self, name: str) -> None:
-        # Encartes Studio is intercepted before the inherited navigation can
-        # instantiate the legacy Tk canvas.  G2 is the primary route and the
-        # legacy editor is never opened automatically.
+        # The official product has one Encartes destination. Intercept it before
+        # inherited Tk editor factories can instantiate any historical editor.
         if name == "Encartes Studio":
             self._set_active_navigation(name)
             self._clear()
@@ -113,10 +112,10 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             self.topbar_subtitle.configure(text="Graphics Engine 2 · importação, edição e exportação")
 
     def _show_graphics2_studio_entrypoint(self) -> None:
-        """Launch the primary G2 editor directly; never fall back to legacy silently."""
+        """Launch the only Studio de Encartes destination: Graphics Engine 2."""
 
         result = launch_studio_project(self.project, self.data_dir)
-        self._show_graphics2_launch_result(result)
+        self._show_graphics2_launch_result(result, retry=self._show_graphics2_studio_entrypoint)
 
     @staticmethod
     def _g2_action_button(parent, title: str, detail: str, command, *, primary: bool = False) -> tk.Frame:
@@ -169,32 +168,130 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
 
     def _launch_graphics2_source(self, source: Path) -> None:
         result = launch_graphics_source(source, self.data_dir)
-        self._show_graphics2_launch_result(result)
+        self._show_graphics2_launch_result(result, retry=lambda: self._launch_graphics2_source(source))
 
     def _launch_current_project_in_graphics2(self) -> None:
         result = launch_studio_project(self.project, self.data_dir)
-        self._show_graphics2_launch_result(result)
+        self._show_graphics2_launch_result(result, retry=self._launch_current_project_in_graphics2)
 
-    def _show_graphics2_launch_result(self, result) -> None:
+    def _show_graphics2_launch_result(self, result, *, retry=None) -> None:
         if result.launched:
             self.toast.show(result.message, "success", 5600)
             return
-        detail = str(result.message or "Falha desconhecida ao iniciar o host G2.")
-        message = (
-            "FALHA AO INICIAR STUDIO DE ENCARTES G2\n\n"
-            f"{detail}\n\n"
-            "O editor legado não foi aberto automaticamente."
-        )
-        self.toast.show("FALHA AO INICIAR STUDIO DE ENCARTES G2", "danger", 9000)
-        messagebox.showerror("FALHA AO INICIAR STUDIO DE ENCARTES G2", message, parent=self)
+        self.toast.show("Não foi possível iniciar o Studio de Encartes G2", "danger", 9000)
+        self._show_graphics2_launch_error(result, retry=retry)
 
-    def _open_legacy_encartes_fallback(self) -> None:
-        # Explicit compatibility action only. The primary route never calls this.
-        super().navigate("Encartes Studio")
-        self.toast.show("Editor legado aberto em modo de compatibilidade.", "warning", 4800)
+    def _show_graphics2_launch_error(self, result, *, retry=None) -> None:
+        existing = getattr(self, "_g2_launch_error_dialog", None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.destroy()
+            except tk.TclError:
+                pass
+
+        dialog = tk.Toplevel(self)
+        self._g2_launch_error_dialog = dialog
+        dialog.title("Studio de Encartes G2 — erro")
+        dialog.transient(self)
+        dialog.resizable(False, False)
+        dialog.configure(bg="#F8FAFC")
+
+        body = tk.Frame(dialog, bg="#F8FAFC", padx=24, pady=20)
+        body.pack(fill="both", expand=True)
+        tk.Label(
+            body,
+            text="Não foi possível iniciar o Studio de Encartes G2.",
+            bg="#F8FAFC",
+            fg="#991B1B",
+            font=("Segoe UI", 13, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            body,
+            text="O Studio de Encartes não foi substituído por outro editor. Corrija a falha do G2 ou tente novamente.",
+            bg="#F8FAFC",
+            fg="#475569",
+            font=("Segoe UI", 9),
+            justify="left",
+            wraplength=560,
+        ).pack(anchor="w", pady=(8, 14))
+
+        detail = str(result.message or "Falha desconhecida ao iniciar o G2.")
+        summary = tk.Label(
+            body,
+            text=detail.splitlines()[0],
+            bg="#FFF1F2",
+            fg="#7F1D1D",
+            font=("Segoe UI", 9),
+            justify="left",
+            wraplength=560,
+            padx=12,
+            pady=10,
+        )
+        summary.pack(fill="x")
+
+        actions = tk.Frame(body, bg="#F8FAFC")
+        actions.pack(fill="x", pady=(16, 0))
+
+        def try_again() -> None:
+            dialog.destroy()
+            if retry is not None:
+                self.after(50, retry)
+
+        def show_details() -> None:
+            details = tk.Toplevel(dialog)
+            details.title("Detalhes — Studio de Encartes G2")
+            details.transient(dialog)
+            details.geometry("760x460")
+            text = tk.Text(details, wrap="word", font=("Consolas", 9), padx=12, pady=12)
+            text.pack(fill="both", expand=True)
+            text.insert("1.0", detail)
+            text.configure(state="disabled")
+
+        retry_button = tk.Button(
+            actions,
+            text="Tentar novamente",
+            command=try_again,
+            bg="#0F5BD8",
+            fg="white",
+            activebackground="#0B4AB5",
+            activeforeground="white",
+            bd=0,
+            padx=16,
+            pady=9,
+            font=("Segoe UI", 9, "bold"),
+        )
+        retry_button.pack(side="left")
+        if retry is None:
+            retry_button.configure(state="disabled")
+        tk.Button(
+            actions,
+            text="Ver detalhes",
+            command=show_details,
+            bg="#E2E8F0",
+            fg="#0F172A",
+            activebackground="#CBD5E1",
+            bd=0,
+            padx=16,
+            pady=9,
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side="left", padx=(8, 0))
+        tk.Button(
+            actions,
+            text="Fechar",
+            command=dialog.destroy,
+            bg="#F8FAFC",
+            fg="#475569",
+            bd=0,
+            padx=14,
+            pady=9,
+            font=("Segoe UI", 9),
+        ).pack(side="right")
+        dialog.update_idletasks()
+        dialog.grab_set()
 
     def import_source(self, _event=None) -> str:
-        """Route PPTX directly to G2 while preserving Excel legacy import."""
+        """Route PPTX directly to G2 while preserving Excel import."""
 
         path = filedialog.askopenfilename(
             parent=self,
@@ -236,8 +333,6 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             self.toast.show(analysis.message, "danger", 7600)
             return
         if not analysis.report.conflict:
-            # A análise detalhada pode concluir que só existem mudanças
-            # independentes. Nesse caso o merge seguro resolve sem diálogo.
             merged = sync_saved_session_to_project(
                 self.project,
                 self.data_dir,
@@ -342,8 +437,6 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
 
 
 def run() -> None:
-    # Encartes Studio now routes to Graphics Engine 2.  Promoções/Atacado keep
-    # their current productivity modules until their own migration is certified.
     advanced.base.PromotionPosterModule = cartazes_productivity.CartazesProductivityPromotionPosterModule
     advanced.base.WholesalePosterModule = cartazes_productivity.CartazesProductivityWholesalePosterModule
     app = SRStudioTurboPosters()
