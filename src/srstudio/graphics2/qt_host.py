@@ -66,6 +66,12 @@ def build_parser() -> ArgumentParser:
     )
     parser.add_argument("--project-name", default="", help="Nome opcional para o projeto importado.")
     parser.add_argument(
+        "--image-db-probe",
+        default="",
+        metavar="PRODUCT",
+        help="Valida o Image Database existente no runtime/frozen e imprime o match em JSON.",
+    )
+    parser.add_argument(
         "--probe-graphics-api",
         action="store_true",
         help="Inicializa uma janela mínima, informa o backend Qt Quick realmente resolvido e encerra.",
@@ -461,7 +467,10 @@ def launch_qt_quick_editor(
 
         @Slot(str, result=str)
         def dispatch(self, payload: str) -> str:
-            result_raw = router.dispatch_json(payload)
+            # sceneChanged publishes the canonical scene once after commit. Avoid
+            # embedding a second full-scene serialization in the synchronous QML
+            # command response, which is latency-sensitive on mouse release.
+            result_raw = router.dispatch_json(payload, include_scene_payload=False)
             try:
                 result_data = json.loads(result_raw)
                 self._status = str(result_data.get("message") or "")
@@ -700,6 +709,31 @@ def _startup_status(context: GraphicsLaunchContext, gate: ProductionGateReport, 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.image_db_probe:
+            runtime = GraphicsImageDatabaseRuntime.from_environment(require_library=True)
+            product = {"id": "probe", "name": str(args.image_db_probe), "display_name": str(args.image_db_probe)}
+            candidates = runtime.product_candidates(product)
+            automatic = next((row for row in candidates if row.get("automatic") is True), None)
+            top = candidates[0] if candidates else None
+            manifest = dict(runtime.seed_manifest)
+            report = {
+                "available": runtime.available,
+                "status": runtime.status,
+                "library_root": str(runtime.library_root),
+                "product": str(args.image_db_probe),
+                "candidate_count": len(candidates),
+                "top_candidate": str(top.get("image_id") or "") if top else "",
+                "confidence": float(top.get("confidence") or 0.0) if top else 0.0,
+                "found": automatic is not None,
+                "automatic_image_id": str(automatic.get("image_id") or "") if automatic else "",
+                "catalog_version": manifest.get("catalog_version"),
+                "total_products": manifest.get("total_products"),
+                "total_images": manifest.get("total_images"),
+                "provenance_status": manifest.get("provenance_status"),
+                "dedup_status": manifest.get("dedup_status"),
+            }
+            print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+            return 0 if automatic is not None else 3
         if args.probe_graphics_api:
             probe = probe_graphics_api(args.graphics_api)
             print(f"SR Graphics Engine 2 GPU: solicitado={probe.requested} | resolvido={probe.resolved}")

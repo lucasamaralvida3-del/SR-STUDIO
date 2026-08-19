@@ -321,7 +321,7 @@ class GraphicsImageDatabaseRuntime:
             rows.append(self._candidate_dict(candidate, automatic=automatic))
 
         if lookup.best_match is not None:
-            add(lookup.best_match, automatic=True)
+            add(lookup.best_match, automatic=False)
         for candidate in lookup.alternatives:
             add(candidate, automatic=False)
 
@@ -341,7 +341,37 @@ class GraphicsImageDatabaseRuntime:
                 provenance=ProductImageLookupService._asset_provenance(asset),
             )
             add(candidate, automatic=False)
-        return rows[:limit]
+        limited = rows[:limit]
+        automatic_id, automatic_reason = self._automatic_selection(limited)
+        for row in limited:
+            row["automatic"] = bool(automatic_id and row["image_id"] == automatic_id)
+            row["auto_selection_reason"] = automatic_reason if row["automatic"] else ""
+        return limited
+
+    @staticmethod
+    def _automatic_selection(rows: list[dict[str, Any]]) -> tuple[str, str]:
+        """Gate auto-apply using the existing lookup ranking; never re-ranks candidates."""
+        if not rows:
+            return "", "no-candidates"
+        top = rows[0]
+        if str(top.get("review_status") or "") != "accepted":
+            return "", "top-not-accepted"
+        top_confidence = float(top.get("confidence") or 0.0)
+        top_identity = float(top.get("identity_score") or 0.0)
+        if top_confidence < 0.67:
+            return "", "below-existing-threshold"
+        for candidate in rows[1:]:
+            if str(candidate.get("review_status") or "") != "accepted":
+                continue
+            if str(candidate.get("image_id") or "") == str(top.get("image_id") or ""):
+                continue
+            confidence = float(candidate.get("confidence") or 0.0)
+            identity = float(candidate.get("identity_score") or 0.0)
+            same_identity_band = identity >= max(0.72, top_identity - 0.08)
+            score_close = confidence >= max(0.67, top_confidence - 0.06)
+            if same_identity_band and score_close:
+                return "", "ambiguous-existing-ranking"
+        return str(top.get("image_id") or ""), "unambiguous-existing-ranking"
 
     def augment_payload(self, payload: dict[str, Any]) -> None:
         editor = payload.get("editor")
@@ -391,7 +421,7 @@ class GraphicsImageDatabaseRuntime:
         def bind_product(instance: Any, slot_id: str, product: dict[str, Any]) -> bool:
             prepared, selected = self.prepare_product_for_binding(product)
             changed = original_bind(slot_id, prepared)
-            if selected is not None and self.library is not None:
+            if selected is not None and selected.get("image_id") and self.library is not None:
                 self.library.record_use(selected["image_id"])
             slot = instance.page.slots.get(str(slot_id))
             if slot is not None:
@@ -433,6 +463,14 @@ class GraphicsImageDatabaseRuntime:
         if confident is None:
             for key in ("image_path", "image", "image_uri", "image_asset_id"):
                 prepared.pop(key, None)
+            if candidates:
+                return prepared, {
+                    "status": "candidates",
+                    "normalized_name": normalize_product_name(self._product_name(product)),
+                    "candidate_ids": [str(row.get("image_id") or "") for row in candidates],
+                    "confidence": float(candidates[0].get("confidence") or 0.0),
+                    "reason": "ambiguous-existing-ranking",
+                }
             return prepared, None
         prepared["image_path"] = confident["path"]
         prepared["image_db_image_id"] = confident["image_id"]

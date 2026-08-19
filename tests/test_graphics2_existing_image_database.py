@@ -279,3 +279,19 @@ def test_payload_preview_is_suggestion_only_and_does_not_fill_slots(tmp_path: Pa
     assert slot.metadata.get("product_snapshot") in (None, {})
     assert image.asset_id == ""
     assert image.visible is False
+
+def test_ambiguous_existing_matches_require_manual_choice(tmp_path: Path) -> None:
+    runtime, _, assets = _runtime(tmp_path, [("BATATA INGLESA", (), True), ("BATATA INGLESA", (), True)])
+    candidates = runtime.product_candidates({"id": "p", "name": "BATATA INGLESA"})
+    assert len(candidates) >= 2
+    assert {row["image_id"] for row in candidates[:2]} == {assets[0].id, assets[1].id}
+    assert not any(row["automatic"] for row in candidates)
+    document, slot, image = _document("BATATA INGLESA")
+    session, _ = _attach(runtime, document)
+    transform_before = deepcopy(image.transform)
+    session.bind_product(slot.id, document.metadata["products"][0])
+    assert image.asset_id == ""
+    assert image.visible is False
+    assert image.transform == transform_before
+    assert slot.metadata["image_db_lookup"]["status"] == "candidates"
+    assert len(slot.metadata["image_db_lookup"]["candidate_ids"]) >= 2
