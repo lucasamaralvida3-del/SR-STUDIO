@@ -34,8 +34,20 @@ def _walk_items(item):
 
 def _find_text_object(root, text: str):
     from PySide6.QtCore import QObject
+    from PySide6.QtGui import QGuiApplication
 
-    candidates = [root, *root.findChildren(QObject)]
+    search_roots = [root, *QGuiApplication.allWindows()]
+    seen: set[int] = set()
+    candidates = []
+    for search_root in search_roots:
+        if search_root is None:
+            continue
+        pointer = id(search_root)
+        if pointer in seen:
+            continue
+        seen.add(pointer)
+        candidates.append(search_root)
+        candidates.extend(search_root.findChildren(QObject))
     for obj in candidates:
         try:
             value = obj.property("text")
@@ -312,7 +324,7 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
     add_button = _find_text_object(root, "+ SLOT DE ITEM")
     add_clicked_by = _click(add_button)
     app.processEvents()
-    QTest.qWait(80)
+    QTest.qWait(120)
     app.processEvents()
 
     preset_control = _find_text_object(root, preset_label)
@@ -350,7 +362,6 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
         for role, node_id in visual_ids.items()
     }
 
-    # The visual proof must survive without the blue selection outline.
     bridge.dispatch('{"name":"clear_selection"}')
     app.processEvents()
     QTest.qWait(120)
