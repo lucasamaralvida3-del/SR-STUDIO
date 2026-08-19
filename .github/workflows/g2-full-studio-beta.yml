@@ -140,6 +140,7 @@ jobs:
           $builderUrl = "https://raw.githubusercontent.com/${{ github.repository }}/$env:SOURCE_SHA/scripts/ci/image_db_build_distribution_seed.py"
           Invoke-WebRequest -Uri $builderUrl -OutFile $builder
           if (!(Test-Path $builder)) { throw "Exact-SHA Image DB seed builder unavailable" }
+          $workspaceSeed = Join-Path $env:GITHUB_WORKSPACE "image-db-dist/image-db-library-v1.zip"
           python $builder `
             --index image-db-approved/image-db-coverage-library/index.json `
             --catalog-report image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json `
@@ -148,10 +149,14 @@ jobs:
             --pptx-archive image-db-corpus/Downloads.2.1.zip `
             --image-archive image-db-corpus/standalone-images.zip `
             --source-artifact "image-db-coverage-baseline-32197750743 / artifact 9346445276" `
-            --output image-db-dist/image-db-library-v1.zip
+            --output $workspaceSeed
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          if (!(Test-Path "image-db-dist/image-db-library-v1.zip")) { throw "Image DB seed missing" }
+          if (!(Test-Path $workspaceSeed)) { throw "Image DB seed missing" }
+          $seedSnapshot = Join-Path $env:RUNNER_TEMP "image-db-library-v1.zip"
+          Copy-Item $workspaceSeed $seedSnapshot -Force
+          if (!(Test-Path $seedSnapshot)) { throw "Image DB seed runner-temp snapshot failed" }
           Write-Host "IMAGE_DB_SEED=PASS"
+          Write-Host "IMAGE_DB_SEED_RUNNER_TEMP=PASS"
 
       - name: Build full SR Studio shell
         shell: pwsh
@@ -169,8 +174,10 @@ jobs:
           if (!(Test-Path "$source/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host não foi gerado" }
           New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
           Copy-Item "$source/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          $seedSnapshot = Join-Path $env:RUNNER_TEMP "image-db-library-v1.zip"
+          if (!(Test-Path $seedSnapshot)) { throw "Image DB seed snapshot ausente" }
           New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host/ImageDatabaseSeed" | Out-Null
-          Copy-Item "image-db-dist/image-db-library-v1.zip" "dist/SR Studio 5/Graphics2Host/ImageDatabaseSeed/image-db-library-v1.zip" -Force
+          Copy-Item $seedSnapshot "dist/SR Studio 5/Graphics2Host/ImageDatabaseSeed/image-db-library-v1.zip" -Force
           if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host não foi incorporado" }
           if (!(Test-Path "dist/SR Studio 5/Graphics2Host/ImageDatabaseSeed/image-db-library-v1.zip")) { throw "Image DB seed não foi incorporado" }
 
