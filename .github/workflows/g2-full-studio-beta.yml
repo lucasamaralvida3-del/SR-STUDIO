@@ -193,25 +193,34 @@ jobs:
           $hostExe = Join-Path $env:GITHUB_WORKSPACE "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe"
           $process = Start-Process -FilePath $hostExe -ArgumentList "--version" -Wait -PassThru -NoNewWindow
           if ($process.ExitCode -ne 0) { throw "Graphics2Host --version failed" }
-          $env:SR_STUDIO_DATA_DIR = Join-Path $env:RUNNER_TEMP "g2-beta-clean-user-data"
+          Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
           Remove-Item Env:SR_STUDIO_IMAGE_DB_SEED -ErrorAction SilentlyContinue
+          $env:SR_STUDIO_DATA_DIR = Join-Path $env:RUNNER_TEMP "g2-beta-clean-user-data"
           if (Test-Path $env:SR_STUDIO_DATA_DIR) { Remove-Item $env:SR_STUDIO_DATA_DIR -Recurse -Force }
-          Push-Location $env:RUNNER_TEMP
-          try {
-            $probe = & $hostExe --image-db-probe "BATATA INGLESA"
-            $probeExit = $LASTEXITCODE
-          } finally { Pop-Location }
-          if ($probeExit -notin @(0,3)) { throw "Frozen Image DB probe failed: $probeExit" }
-          $db = $probe | ConvertFrom-Json
-          if ($db.available -ne $true) { throw "Frozen Image DB unavailable" }
-          if ([int]$db.candidate_count -lt 1) { throw "Known product returned no candidate" }
-          if ([int]$db.total_products -ne 520 -or [int]$db.total_images -ne 1037) { throw "Frozen Image DB metrics diverge" }
-          if ([string]$db.provenance_status -ne "PASS" -or [string]$db.dedup_status -ne "PASS") { throw "Frozen Image DB integrity diverges" }
-          $index = Join-Path $env:SR_STUDIO_DATA_DIR "images/index.json"
-          if (!(Test-Path $index)) { throw "Official AppData/data-root Image DB was not bootstrapped" }
-          if ((Get-Content $index -Raw).Contains($env:GITHUB_WORKSPACE)) { throw "Developer checkout path leaked into Image DB" }
+          function Probe([string]$product,[int]$expectedExit) {
+            Push-Location $env:RUNNER_TEMP
+            try { & $hostExe --image-db-probe $product | Out-Null; $code=$LASTEXITCODE } finally { Pop-Location }
+            if ($code -ne $expectedExit) { throw "Frozen Image DB lookup mismatch '$product': expected $expectedExit got $code" }
+          }
+          Probe "BATATA INGLESA" 0
+          Probe "TOMATE PÊRA" 0
+          Probe "PRODUTO TOTALMENTE INEXISTENTE XYZ 987ML" 3
+          Probe "BATATA INGLESA" 0
           Write-Host "FROZEN_IMAGE_DB_LOOKUP=PASS"
+          Write-Host "FROZEN_IMAGE_DB_REOPEN=PASS"
+          $imageRoot = Join-Path $env:SR_STUDIO_DATA_DIR "images"
+          $index = Join-Path $imageRoot "index.json"
+          $manifestPath = Join-Path $imageRoot "seed-manifest.json"
+          if (!(Test-Path $index) -or !(Test-Path $manifestPath)) { throw "Official AppData/data-root Image DB was not bootstrapped" }
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          if ([int]$manifest.total_products -ne 520 -or [int]$manifest.total_images -ne 1037) { throw "Frozen Image DB metrics diverge" }
+          if ([string]$manifest.provenance_status -ne "PASS" -or [string]$manifest.dedup_status -ne "PASS") { throw "Frozen Image DB integrity diverges" }
+          if ((Get-Content $index -Raw).Contains($env:GITHUB_WORKSPACE)) { throw "Developer checkout path leaked into Image DB" }
+          foreach ($parallel in @("image-db-beta","graphics2-images","image-db-temp")) {
+            if (Test-Path (Join-Path $env:SR_STUDIO_DATA_DIR $parallel)) { throw "Parallel Image DB detected: $parallel" }
+          }
           Write-Host "NO_DEV_PATH=PASS"
+          Write-Host "IMAGE_DB_PERSISTENCE=PASS"
 
       - name: Verify full-package layout
         shell: pwsh
