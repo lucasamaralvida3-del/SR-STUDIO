@@ -2,9 +2,7 @@ name: G2 Existing Image DB Integration
 
 on:
   push:
-    branches:
-      - g2/image-db-current-clean
-      - g2/integrate-existing-image-db
+    branches: [g2/image-db-current-clean, g2/integrate-existing-image-db]
     paths:
       - 'src/srstudio/graphics2/image_database_runtime.py'
       - 'src/srstudio/graphics2/full_studio_bridge.py'
@@ -15,8 +13,7 @@ on:
       - '.github/workflows/g2-existing-image-db-integration.yml'
       - '.github/workflows/g2-full-studio-beta.yml'
   pull_request:
-    branches:
-      - g2/integrate-studio-shell
+    branches: [g2/integrate-studio-shell]
     paths:
       - 'src/srstudio/graphics2/image_database_runtime.py'
       - 'src/srstudio/graphics2/full_studio_bridge.py'
@@ -46,65 +43,64 @@ jobs:
           python-version: '3.11'
           cache: pip
 
-      - name: Exact SHA focused tests seed logical report and official frozen probe
+      - name: Exact SHA focused tests existing corpus and official frozen host
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $expectedSha = "${{ github.event.pull_request.head.sha || github.sha }}"
-          $actualSha = git rev-parse HEAD
-          if ($actualSha -ne $expectedSha) { throw 'Exact SHA mismatch' }
-          Write-Host "SOURCE_SHA=$actualSha"
-          Write-Host "CHECKED_OUT_SHA=$actualSha"
+          $sha = git rev-parse HEAD
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          if ($sha -ne $expected) { throw 'Exact SHA mismatch' }
+          Write-Host "SOURCE_SHA=$sha"
+          Write-Host "CHECKED_OUT_SHA=$sha"
           Write-Host 'SHA_MATCH=PASS'
+
+          # Preserve exact source before any tool/test can mutate runner topology.
+          $sourceSnapshot = Join-Path $env:RUNNER_TEMP 'g2-image-db-source'
+          New-Item -ItemType Directory -Force -Path $sourceSnapshot | Out-Null
+          Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'src/srstudio') (Join-Path $sourceSnapshot 'srstudio') -Recurse -Force
+          if (!(Test-Path (Join-Path $sourceSnapshot 'srstudio/graphics2/image_database_runtime.py'))) { throw 'Exact source snapshot failed' }
+          Write-Host 'SOURCE_SNAPSHOT=PASS'
 
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,graphics2-build]" pyinstaller
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest -q tests/test_graphics2_existing_image_database.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Write-Host 'FOCUSED_TESTS=PASS'
+          Write-Host 'FOCUSED_TESTS=14_PASS'
           Write-Host 'FAIL_CLOSED=PASS'
 
-          # Preserve the exact feature source before downloading any external artifacts.
-          $sourceSnapshot = Join-Path $env:RUNNER_TEMP 'g2-image-db-source'
-          New-Item -ItemType Directory -Force -Path $sourceSnapshot | Out-Null
-          Copy-Item 'src/srstudio' (Join-Path $sourceSnapshot 'srstudio') -Recurse -Force
-          if (!(Test-Path (Join-Path $sourceSnapshot 'srstudio/graphics2/image_database_runtime.py'))) { throw 'Source snapshot failed' }
-
-          # Consume the repository's official host build associated with the same PR head SHA.
+          # Wait for and consume the repository's official frozen-host build for this head SHA.
           $hostRunId = $null
           for ($attempt = 0; $attempt -lt 36; $attempt++) {
-            $runsJson = gh run list --repo lucasamaralvida3-del/SR-STUDIO --workflow "SR Graphics Engine 2 Host Build" --commit $actualSha --limit 5 --json databaseId,status,conclusion,headSha
-            if ($LASTEXITCODE -ne 0) { throw 'Unable to query official Host Build workflow' }
-            $runs = @($runsJson | ConvertFrom-Json)
-            $candidate = $runs | Where-Object { $_.headSha -eq $actualSha } | Select-Object -First 1
+            $json = gh run list --repo lucasamaralvida3-del/SR-STUDIO --workflow "SR Graphics Engine 2 Host Build" --commit $sha --limit 5 --json databaseId,status,conclusion,headSha
+            if ($LASTEXITCODE -ne 0) { throw 'Host Build query failed' }
+            $candidate = @($json | ConvertFrom-Json) | Where-Object { $_.headSha -eq $sha } | Select-Object -First 1
             if ($null -ne $candidate -and $candidate.status -eq 'completed') {
-              if ($candidate.conclusion -ne 'success') { throw "Official same-head Host Build failed: $($candidate.databaseId)" }
+              if ($candidate.conclusion -ne 'success') { throw "Official Host Build failed: $($candidate.databaseId)" }
               $hostRunId = [string]$candidate.databaseId
               break
             }
             Start-Sleep -Seconds 10
           }
-          if ([string]::IsNullOrWhiteSpace($hostRunId)) { throw 'Official same-head Host Build did not complete in time' }
+          if ([string]::IsNullOrWhiteSpace($hostRunId)) { throw 'Official same-head Host Build timeout' }
           Write-Host "HOST_BUILD_RUN=$hostRunId"
           Write-Host 'HOST_BUILD_SAME_HEAD=PASS'
 
-          New-Item -ItemType Directory -Force -Path host-official | Out-Null
+          New-Item -ItemType Directory -Force -Path host-official,host-expanded | Out-Null
           gh run download $hostRunId --repo lucasamaralvida3-del/SR-STUDIO --name graphics2-host-component --dir host-official
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to download official frozen host artifact' }
-          $componentZip = Get-ChildItem host-official -Recurse -File -Filter 'graphics2-host-component.zip' | Select-Object -First 1
-          if ($null -eq $componentZip) { throw 'Official frozen host component missing' }
-          New-Item -ItemType Directory -Force -Path host-expanded | Out-Null
-          Expand-Archive -Path $componentZip.FullName -DestinationPath host-expanded -Force
-          $hostExeItem = Get-ChildItem host-expanded -Recurse -File -Filter 'SRGraphicsEngine2Host.exe' | Select-Object -First 1
-          if ($null -eq $hostExeItem) { throw 'Official frozen host executable missing' }
-          $hostExe = $hostExeItem.FullName
-          $hostRoot = $hostExeItem.Directory.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'Official host artifact download failed' }
+          $component = Get-ChildItem host-official -Recurse -File -Filter 'graphics2-host-component.zip' | Select-Object -First 1
+          if ($null -eq $component) { throw 'Official host component missing' }
+          Expand-Archive $component.FullName host-expanded -Force
+          $hostItem = Get-ChildItem host-expanded -Recurse -File -Filter 'SRGraphicsEngine2Host.exe' | Select-Object -First 1
+          if ($null -eq $hostItem) { throw 'Frozen host executable missing' }
+          $hostExe = $hostItem.FullName
+          $hostRoot = $hostItem.Directory.FullName
           Write-Host 'FROZEN_HOST_ARTIFACT=PASS'
 
-          # Materialize a transport seed from the approved existing Image DB corpus.
+          # Build a transport seed from the already-approved SR Image Database corpus.
           New-Item -ItemType Directory -Force -Path image-db-approved,image-db-corpus,image-db-dist | Out-Null
           gh run download 32197750743 --repo lucasamaralvida3-del/SR-STUDIO --name image-db-coverage-baseline-32197750743 --dir image-db-approved
           if ($LASTEXITCODE -ne 0) { throw 'Approved Image DB baseline unavailable' }
@@ -112,29 +108,23 @@ jobs:
             'image-db-approved/image-db-coverage-library/index.json',
             'image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json',
             'image-db-approved/image-db-coverage-baseline/final/library-audit.json'
-          )) { if (!(Test-Path $path)) { throw "Approved baseline file missing: $path" } }
+          )) { if (!(Test-Path $path)) { throw "Approved baseline missing: $path" } }
 
-          foreach ($asset in @('Downloads.1.1.zip','Downloads.2.1.zip','standalone-images.zip')) {
-            gh release download image-db-corpus-v1 --repo lucasamaralvida3-del/SR-STUDIO --pattern $asset --dir image-db-corpus
-            if ($LASTEXITCODE -ne 0) { throw "Approved corpus asset unavailable: $asset" }
+          $hashes = @{
+            'Downloads.1.1.zip'='aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba'
+            'Downloads.2.1.zip'='035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86'
+            'standalone-images.zip'='9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff'
           }
-          $corpusHashes = @{
-            'Downloads.1.1.zip' = 'aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba'
-            'Downloads.2.1.zip' = '035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86'
-            'standalone-images.zip' = '9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff'
-          }
-          foreach ($entry in $corpusHashes.GetEnumerator()) {
-            $path = Join-Path 'image-db-corpus' $entry.Key
-            if (!(Test-Path $path)) { throw "Corpus file missing: $path" }
-            $hash = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
-            if ($hash -ne $entry.Value) { throw "Corpus SHA mismatch: $($entry.Key)" }
+          foreach ($entry in $hashes.GetEnumerator()) {
+            gh release download image-db-corpus-v1 --repo lucasamaralvida3-del/SR-STUDIO --pattern $entry.Key --dir image-db-corpus
+            if ($LASTEXITCODE -ne 0) { throw "Corpus asset unavailable: $($entry.Key)" }
+            $path = Join-Path image-db-corpus $entry.Key
+            if ((Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant() -ne $entry.Value) { throw "Corpus SHA mismatch: $($entry.Key)" }
           }
           Write-Host 'CORPUS_HASHES=PASS'
 
           $builder = Join-Path $env:RUNNER_TEMP 'image_db_build_distribution_seed.py'
-          $builderUrl = "https://raw.githubusercontent.com/${{ github.repository }}/$actualSha/scripts/ci/image_db_build_distribution_seed.py"
-          Invoke-WebRequest -Uri $builderUrl -OutFile $builder
-          if (!(Test-Path $builder)) { throw 'Exact-SHA seed builder unavailable' }
+          Invoke-WebRequest "https://raw.githubusercontent.com/${{ github.repository }}/$sha/scripts/ci/image_db_build_distribution_seed.py" -OutFile $builder
           python $builder `
             --index image-db-approved/image-db-coverage-library/index.json `
             --catalog-report image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json `
@@ -143,7 +133,7 @@ jobs:
             --pptx-archive image-db-corpus/Downloads.2.1.zip `
             --image-archive image-db-corpus/standalone-images.zip `
             --source-artifact 'image-db-coverage-baseline-32197750743 / artifact 9346445276' `
-            --output image-db-dist/image-db-library-v1.zip | Tee-Object -FilePath image-db-dist/build-report.json
+            --output image-db-dist/image-db-library-v1.zip | Tee-Object image-db-dist/build-report.json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $seed = Join-Path $env:GITHUB_WORKSPACE 'image-db-dist/image-db-library-v1.zip'
           if (!(Test-Path $seed)) { throw 'Image DB seed missing' }
@@ -151,7 +141,7 @@ jobs:
           "$seedSha  image-db-library-v1.zip" | Out-File image-db-dist/image-db-library-v1.sha256 -Encoding ascii
           Write-Host "SEED_SHA256=$seedSha"
 
-          # Detailed lookup/candidate report uses the exact G2 adapter source and real seed.
+          # Detailed Product -> Image report using exact adapter source + real approved seed.
           $env:PYTHONPATH = $sourceSnapshot
           $env:SR_STUDIO_DATA_DIR = Join-Path $env:RUNNER_TEMP 'srstudio-logical-image-db'
           $env:SR_STUDIO_IMAGE_DB_SEED = $seed
@@ -160,45 +150,22 @@ jobs:
           import json
           from pathlib import Path
           from srstudio.graphics2.image_database_runtime import GraphicsImageDatabaseRuntime
-
-          runtime = GraphicsImageDatabaseRuntime.from_environment(require_library=True)
-          metrics = runtime.validate_full()
-          manifest = runtime.seed_manifest
-          assert manifest["total_products"] == 520
-          assert manifest["total_images"] == 1037
-          assert manifest["provenance_status"] == "PASS"
-          assert manifest["dedup_status"] == "PASS"
-          assert metrics["total_images"] == 1037
-
-          known = runtime.product_candidates({"id":"known","name":"BATATA INGLESA"})
-          assert known and known[0]["image_id"] == "9a7b325df81919fc99604338"
-          assert any(row["automatic"] for row in known)
-          alias = runtime.product_candidates({"id":"alias","name":"TOMATE PÊRA"})
-          assert alias and alias[0]["image_id"] == "4088292755a7e25ce30e2a9a"
-          assert any(row["automatic"] for row in alias)
-          unknown = runtime.product_candidates({"id":"unknown","name":"PRODUTO TOTALMENTE INEXISTENTE XYZ 987ML"})
-          assert unknown == []
-
-          queries = [
-              "ARROZ PATOSUL 5KG", "ARROZ VASCONCELOS 5KG", "CAFE VASCONCELOS 500G",
-              "LEITE TRIANGULO 1L", "DETERGENTE YPE 500ML", "ENERGETICO MONSTER 473ML",
-              "TODDY 750G", "ACUCAR DELTA 5KG", "EXTRATO DE TOMATE ELEFANTE 300G",
-              "Detergente Ypê Neutro 500ml",
-          ]
+          runtime=GraphicsImageDatabaseRuntime.from_environment(require_library=True)
+          metrics=runtime.validate_full(); manifest=runtime.seed_manifest
+          assert manifest["total_products"]==520 and manifest["total_images"]==1037
+          assert manifest["provenance_status"]=="PASS" and manifest["dedup_status"]=="PASS"
+          assert metrics["total_images"]==1037
+          known=runtime.product_candidates({"id":"known","name":"BATATA INGLESA"})
+          assert known and known[0]["image_id"]=="9a7b325df81919fc99604338" and any(x["automatic"] for x in known)
+          alias=runtime.product_candidates({"id":"alias","name":"TOMATE PÊRA"})
+          assert alias and alias[0]["image_id"]=="4088292755a7e25ce30e2a9a" and any(x["automatic"] for x in alias)
+          assert runtime.product_candidates({"id":"unknown","name":"PRODUTO TOTALMENTE INEXISTENTE XYZ 987ML"})==[]
+          queries=["ARROZ PATOSUL 5KG","ARROZ VASCONCELOS 5KG","CAFE VASCONCELOS 500G","LEITE TRIANGULO 1L","DETERGENTE YPE 500ML","ENERGETICO MONSTER 473ML","TODDY 750G","ACUCAR DELTA 5KG","EXTRATO DE TOMATE ELEFANTE 300G","Detergente Ypê Neutro 500ml"]
           report=[]
           for query in queries:
-              rows=runtime.product_candidates({"id":query,"name":query})
-              top=rows[0] if rows else None
-              report.append({
-                  "product": query,
-                  "top_candidate": top["image_id"] if top else "",
-                  "confidence": top["confidence"] if top else 0.0,
-                  "image_found": bool(top),
-                  "automatic": bool(top and top["automatic"]),
-                  "candidate_count": len(rows),
-                  "visual_result": "candidate-resolved" if top else "placeholder",
-              })
-          Path("image-db-dist/product-image-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+              rows=runtime.product_candidates({"id":query,"name":query}); top=rows[0] if rows else None
+              report.append({"product":query,"top_candidate":top["image_id"] if top else "","confidence":top["confidence"] if top else 0.0,"image_found":bool(top),"automatic":bool(top and top["automatic"]),"candidate_count":len(rows),"visual_result":"candidate-resolved" if top else "placeholder"})
+          Path("image-db-dist/product-image-report.json").write_text(json.dumps(report,ensure_ascii=False,indent=2),encoding="utf-8")
           print("KNOWN_IMAGE_ID=9a7b325df81919fc99604338")
           print("ALIAS_IMAGE_ID=4088292755a7e25ce30e2a9a")
           print("UNKNOWN_PRODUCT_FALLBACK=PASS")
@@ -207,44 +174,32 @@ jobs:
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-          # Frozen host is windowed; validate lookup by exit code, not stdout.
+          # Frozen EXE is windowed: exit code is the reliable process contract.
           New-Item -ItemType Directory -Force -Path (Join-Path $hostRoot 'ImageDatabaseSeed') | Out-Null
           Copy-Item $seed (Join-Path $hostRoot 'ImageDatabaseSeed/image-db-library-v1.zip') -Force
           Remove-Item Env:SR_STUDIO_IMAGE_DB_SEED -ErrorAction SilentlyContinue
           Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
           $env:SR_STUDIO_DATA_DIR = Join-Path $env:RUNNER_TEMP 'srstudio-frozen-image-db'
           if (Test-Path $env:SR_STUDIO_DATA_DIR) { Remove-Item $env:SR_STUDIO_DATA_DIR -Recurse -Force }
-
-          function Invoke-FrozenProbe([string]$Product, [int]$ExpectedExit) {
+          function Probe([string]$product,[int]$expectedExit) {
             Push-Location $env:RUNNER_TEMP
-            try {
-              & $hostExe --image-db-probe $Product | Out-Null
-              $code = $LASTEXITCODE
-            } finally { Pop-Location }
-            if ($code -ne $ExpectedExit) { throw "Frozen lookup exit mismatch for '$Product': expected $ExpectedExit got $code" }
+            try { & $hostExe --image-db-probe $product | Out-Null; $code=$LASTEXITCODE } finally { Pop-Location }
+            if ($code -ne $expectedExit) { throw "Frozen lookup mismatch '$product': expected $expectedExit got $code" }
           }
+          Probe 'BATATA INGLESA' 0
+          Probe 'TOMATE PÊRA' 0
+          Probe 'PRODUTO TOTALMENTE INEXISTENTE XYZ 987ML' 3
+          Probe 'BATATA INGLESA' 0
+          Write-Host 'FROZEN_KNOWN_ALIAS_UNKNOWN_REOPEN=PASS'
 
-          Invoke-FrozenProbe 'BATATA INGLESA' 0
-          Write-Host 'FROZEN_KNOWN_PRODUCT=PASS'
-          Invoke-FrozenProbe 'TOMATE PÊRA' 0
-          Write-Host 'FROZEN_ALIAS=PASS'
-          Invoke-FrozenProbe 'PRODUTO TOTALMENTE INEXISTENTE XYZ 987ML' 3
-          Write-Host 'FROZEN_UNKNOWN_NO_AUTO_APPLY=PASS'
-          # Reopen the same persistent database in a fresh frozen process.
-          Invoke-FrozenProbe 'BATATA INGLESA' 0
-          Write-Host 'FROZEN_REOPEN_LOOKUP=PASS'
-
-          $imageRoot = Join-Path $env:SR_STUDIO_DATA_DIR 'images'
-          $index = Join-Path $imageRoot 'index.json'
-          $manifestPath = Join-Path $imageRoot 'seed-manifest.json'
-          if (!(Test-Path $index) -or !(Test-Path $manifestPath)) { throw 'Official SR Studio Image DB was not persisted' }
-          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
-          if ([int]$manifest.total_products -ne 520 -or [int]$manifest.total_images -ne 1037) { throw 'Persisted catalog metrics diverge' }
-          if ([string]$manifest.provenance_status -ne 'PASS' -or [string]$manifest.dedup_status -ne 'PASS') { throw 'Persisted integrity status invalid' }
-          if ((Get-Content $index -Raw).Contains($env:GITHUB_WORKSPACE)) { throw 'Developer checkout path leaked into Image DB' }
-          foreach ($parallel in @('image-db-beta','graphics2-images','image-db-temp')) {
-            if (Test-Path (Join-Path $env:SR_STUDIO_DATA_DIR $parallel)) { throw "Parallel Image DB detected: $parallel" }
-          }
+          $root=Join-Path $env:SR_STUDIO_DATA_DIR 'images'
+          $index=Join-Path $root 'index.json'; $manifestPath=Join-Path $root 'seed-manifest.json'
+          if (!(Test-Path $index) -or !(Test-Path $manifestPath)) { throw 'Official Image DB persistence missing' }
+          $manifest=Get-Content $manifestPath -Raw | ConvertFrom-Json
+          if ([int]$manifest.total_products -ne 520 -or [int]$manifest.total_images -ne 1037) { throw 'Persisted metrics diverge' }
+          if ([string]$manifest.provenance_status -ne 'PASS' -or [string]$manifest.dedup_status -ne 'PASS') { throw 'Persisted integrity invalid' }
+          if ((Get-Content $index -Raw).Contains($env:GITHUB_WORKSPACE)) { throw 'Developer checkout path leaked' }
+          foreach($parallel in @('image-db-beta','graphics2-images','image-db-temp')) { if(Test-Path (Join-Path $env:SR_STUDIO_DATA_DIR $parallel)){ throw "Parallel Image DB detected: $parallel" } }
           Write-Host "CATALOG_VERSION=$($manifest.catalog_version)"
           Write-Host 'TOTAL_PRODUCTS=520'
           Write-Host 'TOTAL_IMAGES=1037'
