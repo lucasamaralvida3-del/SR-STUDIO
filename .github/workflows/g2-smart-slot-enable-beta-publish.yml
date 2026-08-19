@@ -1,5 +1,6 @@
 name: G2 Smart Slot Enable Beta Publish
 
+# One-shot publisher patch; self-removes after the first successful run.
 on:
   push:
     branches:
