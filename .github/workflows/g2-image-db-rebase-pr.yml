@@ -1,0 +1,25 @@
+name: G2 Image DB Rebase PR
+
+on:
+  pull_request:
+    branches:
+      - g2/integrate-studio-shell
+    paths:
+      - 'scripts/ci/g2_image_db_rebase_current.py'
+      - '.github/workflows/g2-image-db-rebase-pr.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  rebase-current:
+    if: github.event.pull_request.head.ref == 'g2/integrate-existing-image-db'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/integrate-existing-image-db
+          fetch-depth: 0
+      - name: Reconcile existing Image DB implementation with current G2 integration head
+        run: python scripts/ci/g2_image_db_rebase_current.py
