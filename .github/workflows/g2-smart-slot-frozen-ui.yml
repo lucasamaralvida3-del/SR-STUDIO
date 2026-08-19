@@ -102,7 +102,7 @@ jobs:
       - name: Prove frozen UI command is visible and clickable
         shell: pwsh
         env:
-          QT_QPA_PLATFORM: offscreen
+          QT_QPA_PLATFORM: windows
           QSG_RHI_BACKEND: software
         run: |
           python tools/verify_frozen_smart_slot_ui.py --runtime-root "dist/graphics2-host/SRGraphicsEngine2Host" --output-dir smart-slot-frozen-evidence
@@ -128,6 +128,7 @@ jobs:
           if (-not [bool]$ui.restore_auto_visible) { throw "Restaurar Auto is not visible" }
           if (-not [bool]$ui.non_product_visible) { throw "Não-produto is not visible" }
           if (-not [bool]$ui.delete_slot_visible) { throw "Excluir Slot is not visible" }
+          if ([string]::IsNullOrWhiteSpace([string]$ui.screenshot_font_family)) { throw "Frozen UI screenshot has no resolved system font" }
           if (!(Test-Path "smart-slot-frozen-evidence/frozen-smart-slot-ui.png")) { throw "Frozen UI screenshot missing" }
 
           Write-Host "FROZEN_UI_VERIFIED=true"
@@ -137,6 +138,7 @@ jobs:
           Write-Host "FALSE_POSITIVES_AFTER=$($multi.false_positives_after)"
           Write-Host "UI_COMMAND=$($ui.ui_command_text)"
           Write-Host "UI_CLICKED_BY=$($ui.ui_command_clicked_by)"
+          Write-Host "SCREENSHOT_FONT=$($ui.screenshot_font_family)"
           $shotHash = (Get-FileHash "smart-slot-frozen-evidence/frozen-smart-slot-ui.png" -Algorithm SHA256).Hash.ToLowerInvariant()
           Write-Host "SCREENSHOT_SHA256=$shotHash"
 
