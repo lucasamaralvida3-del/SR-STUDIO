@@ -20,7 +20,7 @@ def _wait_until(predicate, *, timeout: float, detail: str, interval: float = 0.2
             value = predicate()
             if value:
                 return value
-        except Exception as exc:  # diagnostics are emitted after timeout
+        except Exception as exc:
             last_error = exc
         time.sleep(interval)
     suffix = f"; last_error={last_error}" if last_error else ""
@@ -96,6 +96,38 @@ def _click_named(window, text: str):
     return control
 
 
+def _click_shell_studio(shell_window, output_dir: Path) -> str:
+    """Click the real Tk sidebar button without calling navigate() directly.
+
+    Tk controls on GitHub-hosted Windows runners do not expose their button text
+    through UIA. Prefer semantic UIA/Win32 discovery when available; otherwise
+    click the deterministic second WORKSPACE row inside the 244px sidebar.
+    Child-host creation is required immediately afterwards, so a wrong physical
+    click cannot create a false positive.
+    """
+
+    try:
+        _click_named(shell_window, "Studio de Encartes")
+        return "uia-name"
+    except Exception:
+        pass
+
+    try:
+        win32_window = Desktop(backend="win32").window(handle=shell_window.handle)
+        _dump_controls(win32_window, output_dir / "shell-controls-win32.json")
+        _click_named(win32_window, "Studio de Encartes")
+        return "win32-name"
+    except Exception:
+        pass
+
+    # Sidebar geometry is deterministic in SRStudioProfessional._build_sidebar:
+    # brand -> two primary workflow cards -> WORKSPACE label -> Início ->
+    # Encartes Studio. The click remains a physical click on SR Studio 5.exe.
+    shell_window.set_focus()
+    shell_window.click_input(coords=(122, 314))
+    return "physical-sidebar-coordinate"
+
+
 def _descendant_process(parent_pid: int, name: str):
     target = name.casefold()
     try:
@@ -109,8 +141,6 @@ def _descendant_process(parent_pid: int, name: str):
                 return process
         except psutil.Error:
             continue
-    # PyInstaller/process-group behavior can detach ancestry quickly. Fall back
-    # to an executable-name match created after the shell launch.
     for process in psutil.process_iter(["pid", "name", "create_time"]):
         try:
             if str(process.info.get("name") or "").casefold() == target:
@@ -144,9 +174,6 @@ def _canvas_change(before: Path, after: Path) -> dict:
     with Image.open(before).convert("RGB") as first, Image.open(after).convert("RGB") as second:
         assert first.size == second.size, (first.size, second.size)
         width, height = first.size
-        # Ignore the top action/menu strip and outer frame. The remaining region
-        # is where the actual page/canvas is drawn. Popup is closed before the
-        # second capture, so it cannot satisfy this gate by itself.
         crop_box = (
             max(150, int(width * 0.10)),
             max(170, int(height * 0.18)),
@@ -213,12 +240,15 @@ def main() -> int:
     child_pid = 0
     try:
         shell_window = _window_for_process(shell_process.pid)
+        time.sleep(1.5)
         result["shell_pid"] = shell_process.pid
         result["shell_title"] = shell_window.window_text()
+        result["shell_rect"] = list(shell_window.rectangle())
         shell_controls = _dump_controls(shell_window, output_dir / "shell-controls.json")
         result["shell_controls"] = len(shell_controls)
+        _save_window(shell_window, output_dir / "shell-before-studio-click.png")
 
-        _click_named(shell_window, "Studio de Encartes")
+        result["studio_nav_click_method"] = _click_shell_studio(shell_window, output_dir)
         result["studio_nav_clicked"] = True
 
         child = _wait_until(
@@ -245,9 +275,6 @@ def main() -> int:
         _click_named(g2_window, "+ SLOT DE ITEM")
         result["slot_button_clicked"] = True
 
-        # MenuItem is normally exposed to Windows UI Automation by Qt Quick.
-        # Search all visible UIA windows because Qt menus may live in a popup
-        # window instead of the ApplicationWindow accessibility subtree.
         desktop = Desktop(backend="uia")
 
         def click_simples():
@@ -269,8 +296,6 @@ def main() -> int:
         _wait_until(click_simples, timeout=12, detail="SIMPLES preset menu item")
         result["simples_clicked"] = True
 
-        # addPreset opens the editing popup. Close it so the visual assertion is
-        # about the canvas, not about the popup changing pixels.
         time.sleep(1.0)
         g2_window.set_focus()
         g2_window.type_keys("{ESC}")
@@ -288,6 +313,7 @@ def main() -> int:
         (output_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
         print("FULL FROZEN PACKAGE E2E: PASS")
         print(f"G2_IDENTITY={g2_title}")
+        print(f"SHELL_CLICK_METHOD={result['studio_nav_click_method']}")
         print(f"CHANGED_PIXELS={visual['changed_pixels']}")
         print("SIMPLES_VISIBLE=PASS")
         return 0
