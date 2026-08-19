@@ -56,6 +56,7 @@ class GraphicsImageDatabaseRuntime:
         self.error = ""
         self.seed_manifest: dict[str, Any] = {}
         self._lookup_cache: dict[tuple[str, tuple[str, ...]], ProductImageLookupResult] = {}
+        self._validated_assets: dict[str, tuple[int, int, str]] = {}
         self._session = None
         self._original_bind_product = None
         self._original_dispatch = None
@@ -558,8 +559,13 @@ class GraphicsImageDatabaseRuntime:
             raise ImageDatabaseIntegrityError(f"Imagem fora do Banco SR: {image_id}") from exc
         if not path.is_file():
             raise ImageDatabaseIntegrityError(f"Arquivo de imagem ausente: {image_id}")
-        if verify_hash and self._sha256_file(path) != canonical_sha:
-            raise ImageDatabaseIntegrityError(f"Hash da imagem diverge: {image_id}")
+        if verify_hash:
+            stat = path.stat()
+            validation_stamp = (stat.st_mtime_ns, stat.st_size, canonical_sha)
+            if self._validated_assets.get(image_id) != validation_stamp:
+                if self._sha256_file(path) != canonical_sha:
+                    raise ImageDatabaseIntegrityError(f"Hash da imagem diverge: {image_id}")
+                self._validated_assets[image_id] = validation_stamp
 
     @staticmethod
     def _candidate_dict(candidate: ProductImageCandidate, *, automatic: bool) -> dict[str, Any]:

@@ -14,6 +14,7 @@ import threading
 from .autosave import AutosaveManager
 from .command_router import GraphicsCommandRouter
 from .fonts import register_qt_document_fonts
+from .image_database_runtime import GraphicsImageDatabaseRuntime
 from .model import GraphicsDocument
 from .operations import GraphicsSession
 from .quality import ProductionGateReport, inspect_production_gate
@@ -212,6 +213,8 @@ def launch_qt_quick_editor(
         context = GraphicsLaunchContext(document=document, source=launch_context.source, cache_dir=launch_context.cache_dir)
     session = GraphicsSession(context.document)
     router = GraphicsCommandRouter(session)
+    image_database = GraphicsImageDatabaseRuntime.from_environment()
+    image_database.attach(session, router)
     gate = context.gate or inspect_production_gate(session.document, require_visual_fidelity=False)
     preview_provider = create_live_scene_image_provider()
 
@@ -245,7 +248,15 @@ def launch_qt_quick_editor(
         def sceneJson(self) -> str:
             preview_provider.sync_document(session.document)
             payload = inject_preview_image_urls(router.payload(), session.document)
+            image_database.augment_payload(payload)
             editor = payload.setdefault("editor", {})
+            editor["image_database"] = {
+                "available": image_database.available,
+                "status": image_database.status,
+                "root": str(image_database.library_root),
+                "error": image_database.error,
+                "seed_manifest": dict(image_database.seed_manifest),
+            }
             editor["diagnostics"] = build_editor_diagnostics(
                 session.document,
                 import_audit=context.import_audit,
@@ -576,6 +587,7 @@ def launch_qt_quick_editor(
         details.append(font_report.warnings[0])
     if bridge._recovery_point is not None:
         details.append("recovery disponível")
+    details.append("Image DB pronto" if image_database.available else "Image DB indisponível")
     bridge.set_status(" · ".join(details))
     return int(app.exec())
 
