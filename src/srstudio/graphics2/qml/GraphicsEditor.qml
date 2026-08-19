@@ -19,6 +19,8 @@ ApplicationWindow {
     property bool showRulers: true
     property real gridStep: 50
     property string selectedSlotId: ""
+    property string hoveredSlotId: ""
+    property bool smartSlotInspectionMode: false
     property var anchorNode: selectedNode()
     property var draggedProduct: null
     property bool productDragActive: false
@@ -155,6 +157,13 @@ ApplicationWindow {
     function slotBounds(slot) {
         if (!page || !slot)
             return {"x": 0, "y": 0, "width": 0, "height": 0}
+        var effective = slot.metadata ? slot.metadata.effective_bounds : null
+        if (effective) {
+            var ew = Math.max(0, Number(effective.width || 0))
+            var eh = Math.max(0, Number(effective.height || 0))
+            if (ew > 0 && eh > 0)
+                return {"x": Number(effective.x || 0), "y": Number(effective.y || 0), "width": ew, "height": eh}
+        }
         var cardId = slot.metadata ? String(slot.metadata.semantic_product_card_id || "") : ""
         var blocks = page.metadata && page.metadata.semantic_blocks ? page.metadata.semantic_blocks : {}
         if (cardId && blocks[cardId] && blocks[cardId].bounds) {
@@ -305,7 +314,9 @@ ApplicationWindow {
             if (availableSlots[i].id === selectedSlotId)
                 stillExists = true
         if (!stillExists)
-            selectedSlotId = availableSlots.length ? availableSlots[0].id : ""
+            selectedSlotId = ""
+        hoveredSlotId = ""
+        dragHoverSlotId = ""
         Qt.callLater(syncInspector)
     }
 
@@ -347,6 +358,7 @@ ApplicationWindow {
             ToolSeparator {}
             ToolButton { text: "▦"; checkable: true; checked: showGrid; ToolTip.text: "Grid"; ToolTip.visible: hovered; onClicked: showGrid = checked }
             ToolButton { text: "▤"; checkable: true; checked: showRulers; ToolTip.text: "Réguas"; ToolTip.visible: hovered; onClicked: showRulers = checked }
+            ToolButton { text: "Smart Slots"; checkable: true; checked: smartSlotInspectionMode; ToolTip.text: "Mostrar áreas inteligentes"; ToolTip.visible: hovered; onClicked: smartSlotInspectionMode = checked }
             ToolButton { text: "Agrupar"; onClicked: sceneBridge.dispatch('{"name":"group"}') }
             ToolButton { text: "Desagrupar"; onClicked: sceneBridge.dispatch('{"name":"ungroup"}') }
             ToolButton { text: "Frente"; onClicked: sceneBridge.dispatch('{"name":"layer","mode":"front"}') }
@@ -414,7 +426,6 @@ ApplicationWindow {
                                 textRole: "name"
                                 valueRole: "id"
                                 onActivated: selectedSlotId = currentValue
-                                Component.onCompleted: if (count > 0) selectedSlotId = currentValue
                             }
                             Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
                             ListView {
@@ -779,29 +790,39 @@ ApplicationWindow {
                                     required property var modelData
                                     property var bounds: slotBounds(modelData)
                                     property bool isDropTarget: productDragActive && dragHoverSlotId === modelData.id
+                                    property bool isSelectedSlot: selectedSlotId === modelData.id
+                                    property bool isHoveredSlot: hoveredSlotId === modelData.id
+                                    property bool showSlotOverlay: smartSlotInspectionMode || productDragActive || isSelectedSlot || isHoveredSlot
                                     x: bounds.x * zoom
                                     y: bounds.y * zoom
                                     width: bounds.width * zoom
                                     height: bounds.height * zoom
-                                    visible: width > 2 && height > 2
+                                    visible: showSlotOverlay && width > 2 && height > 2
                                     z: 100000
                                     Rectangle {
                                         anchors.fill: parent
-                                        color: isDropTarget ? "#16A34A2A" : (selectedSlotId === modelData.id ? "#0F5BD811" : "transparent")
-                                        border.width: isDropTarget ? 3 : (selectedSlotId === modelData.id ? 2 : 1)
-                                        border.color: isDropTarget ? "#16A34A" : (selectedSlotId === modelData.id ? "#0F5BD8" : "#0F5BD855")
+                                        color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
+                                        border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)
+                                        border.color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#0F5BD855")
                                         radius: 4
                                     }
                                     Label {
                                         x: 4; y: 4
-                                        text: isDropTarget ? "SOLTAR PRODUTO AQUI" : (modelData.name || "Smart Slot")
+                                        text: isDropTarget ? "SOLTAR PRODUTO AQUI" : ((modelData.metadata && modelData.metadata.display_label) ? modelData.metadata.display_label : (modelData.name || "Smart Slot"))
                                         color: "white"
                                         font.bold: true
                                         font.pixelSize: 9
                                         padding: 3
-                                        background: Rectangle { color: isDropTarget ? "#16A34A" : (selectedSlotId === modelData.id ? "#0F5BD8" : "#64748BAA"); radius: 3 }
+                                        background: Rectangle { color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#64748BAA"); radius: 3 }
                                     }
-                                    MouseArea { anchors.fill: parent; acceptedButtons: Qt.LeftButton; onClicked: selectedSlotId = modelData.id }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        acceptedButtons: Qt.LeftButton
+                                        hoverEnabled: true
+                                        onEntered: hoveredSlotId = modelData.id
+                                        onExited: if (hoveredSlotId === modelData.id) hoveredSlotId = ""
+                                        onClicked: selectedSlotId = modelData.id
+                                    }
                                 }
                             }
 
