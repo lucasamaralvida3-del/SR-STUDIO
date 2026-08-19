@@ -2,14 +2,10 @@ from __future__ import annotations
 
 """Primary SR Studio -> Graphics Engine 2 activation bridge.
 
-This module promotes the already-certified separated Qt host to the normal
-Encartes Studio flow without changing the import pipeline.  PPTX/Canva exports
-are passed to the host as the original source path, so ``qt_host`` continues to
-own ``GraphicsImportService -> UnifiedImportPipeline -> SR Scene 2``.
-
-The legacy ``studio_bridge`` remains responsible for runtime discovery,
-persistent ``.srscene`` snapshots and compatibility sync.  No Qt objects are
-created inside the Tk process.
+The full Studio shell has one Encartes destination: the separated Qt/G2 host.
+This module never selects an alternative editor. Compatibility snapshot/sync
+helpers remain in ``studio_bridge`` because they are shared data infrastructure,
+not product routing.
 """
 
 from datetime import datetime, timezone
@@ -20,9 +16,11 @@ import subprocess
 import sys
 import tempfile
 
+from srstudio import __version__
 from srstudio.core.models import StudioProject
 
 from .studio_bridge import (
+    HOST_EXE_NAME,
     StudioBridgeLaunchResult,
     discover_packaged_host,
     prepare_studio_project,
@@ -38,12 +36,7 @@ def launch_graphics_source(
     graphics_api: str = "auto",
     process_factory: Callable[..., Any] = subprocess.Popen,
 ) -> StudioBridgeLaunchResult:
-    """Open/import a real source directly in the G2 host.
-
-    PPTX is deliberately *not* converted to ``StudioProject`` here.  Passing the
-    original source to ``srstudio.graphics2.entrypoint`` preserves the normal G2
-    import chain and all Graphics2-specific PPTX enrichment passes.
-    """
+    """Open/import a real source directly in the G2 host."""
 
     path = Path(source).expanduser().resolve()
     if not path.is_file():
@@ -58,7 +51,7 @@ def launch_graphics_source(
         return StudioBridgeLaunchResult(
             ok=False,
             launched=False,
-            message=f"Formato não suportado pelo fluxo direto do Studio de Encartes G2: {path.suffix or '<sem extensão>'}",
+            message=f"Formato não suportado pelo Studio de Encartes G2: {path.suffix or '<sem extensão>'}",
             package_path=str(path),
             graphics_api=graphics_api,
         )
@@ -80,20 +73,24 @@ def launch_studio_project(
     graphics_api: str = "auto",
     process_factory: Callable[..., Any] = subprocess.Popen,
 ) -> StudioBridgeLaunchResult:
-    """Open the current SR Studio project in G2 without a feature flag.
-
-    This is the production entrypoint.  ``launch_studio_project_if_enabled`` in
-    ``studio_bridge`` is retained for historical callers and feature-flag
-    compatibility; the full Studio shell no longer depends on that flag.
-    """
+    """Open the current SR Studio project in G2 without a feature flag."""
 
     try:
         prepared = prepare_studio_project(project, data_dir, graphics_api=graphics_api)
     except Exception as exc:
+        reason = f"Falha ao preparar o projeto atual para o G2: {exc}"
+        diagnostic = _diagnostic_text(
+            reason=reason,
+            source=Path(data_dir),
+            graphics_api=graphics_api,
+            command=[],
+            exception=exc,
+        )
+        log_path = _write_diagnostic(diagnostic)
         return StudioBridgeLaunchResult(
             ok=False,
             launched=False,
-            message=f"Falha ao preparar o projeto atual para o Studio de Encartes G2: {exc}",
+            message=f"{diagnostic}\nLog: {log_path}",
             graphics_api=graphics_api,
         )
 
@@ -160,6 +157,81 @@ def _launch_log_path() -> Path:
     return root / "g2-launch.log"
 
 
+def _host_search_paths() -> list[str]:
+    candidates: list[Path] = []
+    explicit = str(os.environ.get("SR_GRAPHICS_ENGINE_2_HOST") or "").strip()
+    if explicit:
+        candidates.append(Path(explicit).expanduser())
+
+    executable_dir = Path(sys.executable).resolve().parent
+    candidates.extend(
+        [
+            executable_dir / "Graphics2Host" / HOST_EXE_NAME,
+            executable_dir / HOST_EXE_NAME,
+            Path(__file__).resolve().parents[3] / "Graphics2Host" / HOST_EXE_NAME,
+        ]
+    )
+    local_app_data = str(os.environ.get("LOCALAPPDATA") or "").strip()
+    if local_app_data:
+        candidates.append(Path(local_app_data) / "SRStudio" / "App" / "Graphics2Host" / HOST_EXE_NAME)
+
+    unique: list[str] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            resolved = candidate.resolve()
+        except OSError:
+            resolved = candidate.absolute()
+        key = os.path.normcase(str(resolved))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(str(resolved))
+    return unique
+
+
+def _diagnostic_text(
+    *,
+    reason: str,
+    source: Path,
+    graphics_api: str,
+    command: list[str],
+    exception: Exception | None = None,
+) -> str:
+    if command:
+        if _uses_current_python(command):
+            found = "development: python -m srstudio.graphics2.entrypoint"
+        else:
+            found = str(command[0])
+    else:
+        found = "NÃO ENCONTRADO"
+    searched = _host_search_paths()
+    lines = [
+        "Não foi possível iniciar o Studio de Encartes G2.",
+        f"Motivo: {reason}",
+        f"Host procurado: {' | '.join(searched) if searched else '<nenhum caminho calculado>'}",
+        f"Host encontrado: {found}",
+        f"Source: {source}",
+        f"SR Studio source/version: {__version__}",
+        (
+            "Launcher/runtime: "
+            f"executable={sys.executable} · frozen={bool(getattr(sys, 'frozen', False))} · "
+            f"python={sys.version.split()[0]} · platform={sys.platform} · graphics_api={graphics_api}"
+        ),
+    ]
+    if exception is not None:
+        lines.append(f"Exception: {type(exception).__name__}: {exception}")
+    return "\n".join(lines)
+
+
+def _write_diagnostic(text: str) -> Path:
+    log_path = _launch_log_path()
+    stamp = datetime.now(timezone.utc).isoformat()
+    with log_path.open("a", encoding="utf-8", errors="replace") as handle:
+        handle.write(f"\n[{stamp}] G2 LAUNCH DIAGNOSTIC\n{text}\n")
+    return log_path
+
+
 def _launch_host(
     source: Path,
     *,
@@ -171,10 +243,17 @@ def _launch_host(
 ) -> StudioBridgeLaunchResult:
     command = _host_command()
     if not command:
+        diagnostic = _diagnostic_text(
+            reason="SRGraphicsEngine2Host.exe não foi encontrado ou validado no pacote atual.",
+            source=source,
+            graphics_api=graphics_api,
+            command=command,
+        )
+        log_path = _write_diagnostic(diagnostic)
         return StudioBridgeLaunchResult(
             ok=False,
             launched=False,
-            message="Studio de Encartes G2 não está instalado no pacote atual do SR Studio.",
+            message=f"{diagnostic}\nLog: {log_path}",
             package_path=str(source),
             graphics_api=graphics_api,
         )
@@ -183,10 +262,17 @@ def _launch_host(
         from .qt_host import qt_quick_available
 
         if not qt_quick_available():
+            diagnostic = _diagnostic_text(
+                reason="PySide6/Qt Quick não está disponível neste runtime.",
+                source=source,
+                graphics_api=graphics_api,
+                command=command,
+            )
+            log_path = _write_diagnostic(diagnostic)
             return StudioBridgeLaunchResult(
                 ok=False,
                 launched=False,
-                message="PySide6/Qt Quick não está disponível neste ambiente do SR Studio.",
+                message=f"{diagnostic}\nLog: {log_path}",
                 package_path=str(source),
                 graphics_api=graphics_api,
             )
@@ -205,7 +291,13 @@ def _launch_host(
     try:
         log_handle = log_path.open("a", encoding="utf-8", errors="replace")
         stamp = datetime.now(timezone.utc).isoformat()
-        log_handle.write(f"\n[{stamp}] launching G2: {args!r}\n")
+        launch_context = _diagnostic_text(
+            reason="launch requested",
+            source=source,
+            graphics_api=graphics_api,
+            command=command,
+        )
+        log_handle.write(f"\n[{stamp}] launching G2\n{launch_context}\nargs={args!r}\n")
         log_handle.flush()
         kwargs: dict[str, Any] = {
             "env": env,
@@ -220,33 +312,49 @@ def _launch_host(
 
         process = process_factory(args, **kwargs)
 
-        # For the real production subprocess, an immediate exit means the G2 UI
-        # never became usable.  Do not report success merely because Popen()
-        # returned a PID.  Test/fake process factories are intentionally exempt.
         if process_factory is subprocess.Popen and hasattr(process, "wait"):
             try:
                 exit_code = process.wait(timeout=1.25)
             except subprocess.TimeoutExpired:
                 exit_code = None
             if exit_code is not None:
-                log_handle.write(f"G2 exited during startup with code {exit_code}.\n")
+                reason = f"O processo G2 encerrou durante a inicialização com código {exit_code}."
+                diagnostic = _diagnostic_text(
+                    reason=reason,
+                    source=source,
+                    graphics_api=graphics_api,
+                    command=command,
+                )
+                log_handle.write(f"{diagnostic}\n")
                 log_handle.flush()
                 return StudioBridgeLaunchResult(
                     ok=False,
                     launched=False,
-                    message=(
-                        "O Studio de Encartes G2 encerrou durante a inicialização "
-                        f"(código {exit_code}). Diagnóstico: {log_path}"
-                    ),
+                    message=f"{diagnostic}\nLog: {log_path}",
                     package_path=str(source),
                     graphics_api=graphics_api,
                     pid=int(getattr(process, "pid", 0) or 0),
                 )
     except Exception as exc:
+        diagnostic = _diagnostic_text(
+            reason="Exceção ao criar/iniciar o processo do G2.",
+            source=source,
+            graphics_api=graphics_api,
+            command=command,
+            exception=exc,
+        )
+        try:
+            if log_handle is not None:
+                log_handle.write(f"{diagnostic}\n")
+                log_handle.flush()
+            else:
+                _write_diagnostic(diagnostic)
+        except OSError:
+            pass
         return StudioBridgeLaunchResult(
             ok=False,
             launched=False,
-            message=f"Não foi possível iniciar o Studio de Encartes G2: {exc}. Diagnóstico: {log_path}",
+            message=f"{diagnostic}\nLog: {log_path}",
             package_path=str(source),
             graphics_api=graphics_api,
         )
