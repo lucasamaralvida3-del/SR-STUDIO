@@ -12,11 +12,13 @@ persistent ``.srscene`` snapshots and compatibility sync.  No Qt objects are
 created inside the Tk process.
 """
 
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
 import os
 import subprocess
 import sys
+import tempfile
 
 from srstudio.core.models import StudioProject
 
@@ -148,6 +150,16 @@ def _uses_current_python(command: list[str]) -> bool:
     return candidate == current and command[1:3] == ["-m", "srstudio.graphics2.entrypoint"]
 
 
+def _launch_log_path() -> Path:
+    local_app_data = str(os.environ.get("LOCALAPPDATA") or "").strip()
+    if local_app_data:
+        root = Path(local_app_data) / "SRStudio" / "logs"
+    else:
+        root = Path(tempfile.gettempdir()) / "SRStudio" / "logs"
+    root.mkdir(parents=True, exist_ok=True)
+    return root / "g2-launch.log"
+
+
 def _launch_host(
     source: Path,
     *,
@@ -187,32 +199,68 @@ def _launch_host(
     env["SR_GRAPHICS_ENGINE_2_BRIDGE"] = "1"
     if source_project_id:
         env["SR_GRAPHICS_ENGINE_2_SOURCE_PROJECT"] = source_project_id
-    kwargs: dict[str, Any] = {
-        "env": env,
-        "stdin": subprocess.DEVNULL,
-        "stdout": subprocess.DEVNULL,
-        "stderr": subprocess.DEVNULL,
-    }
-    if os.name == "nt":
-        kwargs["creationflags"] = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
-    else:
-        kwargs["start_new_session"] = True
 
+    log_path = _launch_log_path()
+    log_handle = None
     try:
+        log_handle = log_path.open("a", encoding="utf-8", errors="replace")
+        stamp = datetime.now(timezone.utc).isoformat()
+        log_handle.write(f"\n[{stamp}] launching G2: {args!r}\n")
+        log_handle.flush()
+        kwargs: dict[str, Any] = {
+            "env": env,
+            "stdin": subprocess.DEVNULL,
+            "stdout": log_handle,
+            "stderr": log_handle,
+        }
+        if os.name == "nt":
+            kwargs["creationflags"] = int(getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0))
+        else:
+            kwargs["start_new_session"] = True
+
         process = process_factory(args, **kwargs)
+
+        # For the real production subprocess, an immediate exit means the G2 UI
+        # never became usable.  Do not report success merely because Popen()
+        # returned a PID.  Test/fake process factories are intentionally exempt.
+        if process_factory is subprocess.Popen and hasattr(process, "wait"):
+            try:
+                exit_code = process.wait(timeout=1.25)
+            except subprocess.TimeoutExpired:
+                exit_code = None
+            if exit_code is not None:
+                log_handle.write(f"G2 exited during startup with code {exit_code}.\n")
+                log_handle.flush()
+                return StudioBridgeLaunchResult(
+                    ok=False,
+                    launched=False,
+                    message=(
+                        "O Studio de Encartes G2 encerrou durante a inicialização "
+                        f"(código {exit_code}). Diagnóstico: {log_path}"
+                    ),
+                    package_path=str(source),
+                    graphics_api=graphics_api,
+                    pid=int(getattr(process, "pid", 0) or 0),
+                )
     except Exception as exc:
         return StudioBridgeLaunchResult(
             ok=False,
             launched=False,
-            message=f"Não foi possível iniciar o Studio de Encartes G2: {exc}",
+            message=f"Não foi possível iniciar o Studio de Encartes G2: {exc}. Diagnóstico: {log_path}",
             package_path=str(source),
             graphics_api=graphics_api,
         )
+    finally:
+        if log_handle is not None:
+            try:
+                log_handle.close()
+            except OSError:
+                pass
 
     return StudioBridgeLaunchResult(
         ok=True,
         launched=True,
-        message=f"{message_prefix} · processo isolado.",
+        message=f"{message_prefix} · processo isolado · log: {log_path}.",
         package_path=str(source),
         graphics_api=graphics_api,
         pid=int(getattr(process, "pid", 0) or 0),
