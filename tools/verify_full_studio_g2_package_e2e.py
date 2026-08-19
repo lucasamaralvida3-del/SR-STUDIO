@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import ctypes
 import json
 from pathlib import Path
 import subprocess
 import sys
 import time
 
-from PIL import Image, ImageChops
+from PIL import Image, ImageChops, ImageGrab
 import psutil
-from pywinauto import Desktop
+from pywinauto import Desktop, mouse
 
 
 def _wait_until(predicate, *, timeout: float, detail: str, interval: float = 0.25):
@@ -35,6 +36,21 @@ def _window_for_process(pid: int, *, timeout: float = 25.0):
         return windows[0] if windows else None
 
     return _wait_until(locate, timeout=timeout, detail=f"visible window for pid={pid}")
+
+
+def _win32_rect(handle: int) -> tuple[int, int, int, int]:
+    class RECT(ctypes.Structure):
+        _fields_ = [
+            ("left", ctypes.c_long),
+            ("top", ctypes.c_long),
+            ("right", ctypes.c_long),
+            ("bottom", ctypes.c_long),
+        ]
+
+    rect = RECT()
+    if not ctypes.windll.user32.GetWindowRect(int(handle), ctypes.byref(rect)):
+        raise OSError(f"GetWindowRect failed for hwnd={handle}")
+    return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
 
 
 def _dump_controls(window, path: Path) -> list[dict]:
@@ -97,14 +113,7 @@ def _click_named(window, text: str):
 
 
 def _click_shell_studio(shell_window, output_dir: Path) -> str:
-    """Click the real Tk sidebar button without calling navigate() directly.
-
-    Tk controls on GitHub-hosted Windows runners do not expose their button text
-    through UIA. Prefer semantic UIA/Win32 discovery when available; otherwise
-    click the deterministic second WORKSPACE row inside the 244px sidebar.
-    Child-host creation is required immediately afterwards, so a wrong physical
-    click cannot create a false positive.
-    """
+    """Click the real Tk sidebar button without calling navigate() directly."""
 
     try:
         _click_named(shell_window, "Studio de Encartes")
@@ -112,20 +121,30 @@ def _click_shell_studio(shell_window, output_dir: Path) -> str:
     except Exception:
         pass
 
+    handle = int(shell_window.handle)
     try:
-        win32_window = Desktop(backend="win32").window(handle=shell_window.handle)
+        win32_window = Desktop(backend="win32").window(handle=handle)
         _dump_controls(win32_window, output_dir / "shell-controls-win32.json")
         _click_named(win32_window, "Studio de Encartes")
         return "win32-name"
     except Exception:
         pass
 
-    # Sidebar geometry is deterministic in SRStudioProfessional._build_sidebar:
-    # brand -> two primary workflow cards -> WORKSPACE label -> Início ->
-    # Encartes Studio. The click remains a physical click on SR Studio 5.exe.
-    shell_window.set_focus()
-    shell_window.click_input(coords=(122, 314))
-    return "physical-sidebar-coordinate"
+    left, top, right, bottom = _win32_rect(handle)
+    width = right - left
+    height = bottom - top
+    assert width >= 800 and height >= 500, (left, top, right, bottom)
+    ctypes.windll.user32.ShowWindow(handle, 9)  # SW_RESTORE
+    ctypes.windll.user32.SetForegroundWindow(handle)
+    time.sleep(0.35)
+
+    # SRStudioProfessional uses a fixed 244px sidebar. The WORKSPACE section is
+    # below the two primary workflow cards; Encartes Studio is its second row.
+    # Use a relative coordinate so DPI/window origin changes do not matter.
+    x = left + min(122, max(70, width // 12))
+    y = top + min(314, max(250, int(height * 0.39)))
+    mouse.click(button="left", coords=(x, y))
+    return f"physical-win32-coordinate:{x},{y}"
 
 
 def _descendant_process(parent_pid: int, name: str):
@@ -165,7 +184,11 @@ def _g2_window_for_process(pid: int, *, timeout: float = 30.0):
 
 
 def _save_window(window, path: Path) -> None:
-    image = window.capture_as_image()
+    try:
+        image = window.capture_as_image()
+    except Exception:
+        bbox = _win32_rect(int(window.handle))
+        image = ImageGrab.grab(bbox=bbox, all_screens=True)
     image.save(path)
     assert path.is_file() and path.stat().st_size > 0, path
 
@@ -243,7 +266,7 @@ def main() -> int:
         time.sleep(1.5)
         result["shell_pid"] = shell_process.pid
         result["shell_title"] = shell_window.window_text()
-        result["shell_rect"] = list(shell_window.rectangle())
+        result["shell_rect"] = list(_win32_rect(int(shell_window.handle)))
         shell_controls = _dump_controls(shell_window, output_dir / "shell-controls.json")
         result["shell_controls"] = len(shell_controls)
         _save_window(shell_window, output_dir / "shell-before-studio-click.png")
