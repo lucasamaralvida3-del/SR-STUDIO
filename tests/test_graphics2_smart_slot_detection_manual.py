@@ -398,3 +398,75 @@ def test_qml_exposes_smart_slot_adjust_mode_without_serializing_overlay_nodes():
     assert '"name":"restore_smart_slot_auto"' in qml or '"name": "restore_smart_slot_auto"' in qml
     assert '"name":"mark_smart_slot_non_product"' in qml or '"name": "mark_smart_slot_non_product"' in qml
     assert "smartSlotEditMode || smartSlotInspectionMode" in qml
+
+
+def test_strict_group_name_price_without_third_role_is_not_product():
+    page = GraphicsPage(id="strict-group", width=600, height=800)
+    shape = _node("strict-shape", NodeKind.RECT, 100, 300, 180, 70)
+    name = _node("strict-name", NodeKind.TEXT, 110, 286, 160, 24, text="OFERTA")
+    price = _node("strict-price", NodeKind.TEXT, 125, 315, 120, 40, text="12,99")
+    for node in (shape, name, price):
+        page.add_node(node)
+    slot = SmartSlot(
+        id="slot-strict-group",
+        name="Grupo decorativo",
+        page_id=page.id,
+        node_by_role={BindingRole.NAME.value: name.id, BindingRole.RETAIL_PRICE.value: price.id},
+        metadata={
+            "source": "canva-smart-slot",
+            "semantic_recovered": True,
+            "source_group_id": "drawingml-group-decor",
+            "semantic_product_card_id": "card-strict-group",
+            "product_snapshot": {},
+        },
+    )
+    page.slots[slot.id] = slot
+    page.metadata["semantic_blocks"] = {
+        "card-strict-group": {
+            "id": "card-strict-group",
+            "kind": "product_card",
+            "slot_id": slot.id,
+            "members": [shape.id, name.id, price.id],
+            "roles": {},
+            "bounds": {"x": 100, "y": 286, "width": 180, "height": 84},
+            "metadata": {"source_group_id": "drawingml-group-decor", "content_members": [shape.id, name.id, price.id]},
+        }
+    }
+    document = GraphicsDocument(pages=[page], active_page_id=page.id)
+    before = _node_snapshot(document)
+
+    report = consolidate_smart_slot_false_positives(document)
+
+    assert report.decorative_false_positives_before == 1
+    assert report.smart_slots_after == 0
+    assert report.false_positives_after == 0
+    assert _node_snapshot(document) == before
+
+
+def test_drop_target_uses_manual_smart_slot_bounds():
+    from srstudio.graphics2.drop_target import find_drop_target
+
+    document = _five_product_document()
+    refresh_smart_slot_geometry(document)
+    session = GraphicsSession(document)
+    slot = document.active_page.slots["slot-real-1"]
+    original = dict(slot.metadata["effective_bounds"])
+    manual = {
+        "x": original["x"] + original["width"] + 60,
+        "y": original["y"],
+        "width": 90,
+        "height": 90,
+    }
+    set_manual_slot_bounds(session, slot.id, **manual)
+
+    target = find_drop_target(
+        document.active_page,
+        manual["x"] + manual["width"] / 2,
+        manual["y"] + manual["height"] / 2,
+    )
+    assert target is not None
+    assert target.slot_id == slot.id
+    assert target.bounds.x == manual["x"]
+    assert target.bounds.y == manual["y"]
+    assert target.bounds.width == manual["width"]
+    assert target.bounds.height == manual["height"]

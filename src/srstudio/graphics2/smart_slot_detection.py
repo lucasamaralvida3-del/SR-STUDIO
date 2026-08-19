@@ -217,7 +217,13 @@ def slot_evidence(page: GraphicsPage, slot: SmartSlot) -> SlotEvidence:
         roles.update(str(role) for role in extras)
     has_price = bool(roles & _PRICE_ROLES)
     group_id = str((card or {}).get("metadata", {}).get("source_group_id") or slot.metadata.get("source_group_id") or "")
-    group_composition = bool(group_id and has_price and (has_name or real_image))
+    group_composition = bool(
+        group_id
+        and (
+            (real_image and (has_name or has_price))
+            or (has_name and has_price and len(roles) >= 3)
+        )
+    )
 
     score = 0.0
     if explicit:
