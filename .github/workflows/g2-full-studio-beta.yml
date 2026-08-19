@@ -125,8 +125,8 @@ jobs:
           print(f"RUNTIME_OK={report.ok}")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $host = "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe"
-          $process = Start-Process -FilePath $host -ArgumentList "--version" -Wait -PassThru -NoNewWindow
+          $hostExe = "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe"
+          $process = Start-Process -FilePath $hostExe -ArgumentList "--version" -Wait -PassThru -NoNewWindow
           if ($process.ExitCode -ne 0) { throw "Graphics2Host --version falhou com exit code $($process.ExitCode)" }
 
       - name: Verify full-package layout
