@@ -90,7 +90,7 @@ jobs:
           python -m pytest -q tests/test_graphics2_smart_slot_geometry.py tests/test_graphics2_smart_slot_import_reset.py tests/test_graphics2_smart_slot_detection_manual.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-      - name: Real PPTX Smart Slot diagnostics
+      - name: Real multiproduct PPTX Smart Slot diagnostics
         shell: pwsh
         env:
           QT_QPA_PLATFORM: offscreen
@@ -104,22 +104,56 @@ jobs:
           from srstudio.graphics2.qt_renderer import render_png
           from srstudio.graphics2.smart_slot_geometry import refresh_smart_slot_geometry
 
-          # Real versioned PPTX used only as an import diagnostic, not as a
-          # legacy Golden Master or a substitute for the user's Canva corpus.
-          source = Path(r"src/srstudio/assets/poster_templates/legacy/models/SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx").resolve()
-          assert source.is_file(), source
+          # These are real, versioned PPTX files used only as import/detection
+          # diagnostics. They are not legacy Golden Masters and do not replace
+          # the user's Canva multipage file as the final manual visual gate.
+          models = Path(r"src/srstudio/assets/poster_templates/legacy/models").resolve()
+          candidates = [
+              models / "ATACADO.pptx",
+              models / "CLUBE_EXCLUSIVO.pptx",
+              models / "CLUBE_EXCLUSIVO_COM_LIMITE.pptx",
+              models / "SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx",
+              models / "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx",
+          ]
+          candidates = [path for path in candidates if path.is_file()]
+          assert candidates, "No versioned PPTX diagnostics found"
           app = QGuiApplication.instance() or QGuiApplication(["g2-smart-slot-validation"])
-          imported = GraphicsImportService().import_file(source)
-          document = imported.document
-          assert document.pages
 
-          reset = document.metadata.get("smart_slot_import_reset") or {}
-          detection = document.metadata.get("smart_slot_detection") or {}
-          assert reset.get("mode") == "new-pptx-import", reset
-          assert document.metadata.get("smart_slot_import_started_empty") is True
-          assert document.metadata.get("products") == []
-          assert imported.legacy_project.products == []
-          assert int(detection.get("false_positives_after") or 0) == 0, detection
+          results = []
+          for source in candidates:
+              imported = GraphicsImportService().import_file(source)
+              document = imported.document
+              assert document.pages, source
+              reset = document.metadata.get("smart_slot_import_reset") or {}
+              detection = document.metadata.get("smart_slot_detection") or {}
+              assert reset.get("mode") == "new-pptx-import", (source, reset)
+              assert document.metadata.get("smart_slot_import_started_empty") is True
+              assert document.metadata.get("products") == []
+              assert imported.legacy_project.products == []
+              assert int(detection.get("false_positives_after") or 0) == 0, (source, detection)
+              for page in document.pages:
+                  for slot in page.slots.values():
+                      assert slot.product_id == ""
+                      assert slot.metadata.get("product_snapshot") == {}
+              total_after = sum(len(page.slots) for page in document.pages)
+              results.append((total_after, source.name, source, imported, document, reset, detection))
+              print("REAL_CANDIDATE=" + str({
+                  "file": source.name,
+                  "pages": len(document.pages),
+                  "smart_slots_before": detection.get("smart_slots_before"),
+                  "decorative_false_positives_before": detection.get("decorative_false_positives_before"),
+                  "smart_slots_after": detection.get("smart_slots_after"),
+                  "false_positives_after": detection.get("false_positives_after"),
+                  "merged_decorative_members": detection.get("merged_decorative_members"),
+                  "orphan_slots": detection.get("orphan_slots"),
+              }))
+
+          results.sort(key=lambda item: (item[0], item[1]), reverse=True)
+          total_slots, _, source, imported, document, reset, detection = results[0]
+          assert total_slots >= 2, (
+              "Real multiproduct diagnostic required; highest detected slot count was ",
+              [(item[1], item[0]) for item in results],
+          )
 
           page_metrics = list(detection.get("page_metrics") or [])
           assert len(page_metrics) == len(document.pages), (page_metrics, len(document.pages))
@@ -137,10 +171,7 @@ jobs:
               }))
 
           report = refresh_smart_slot_geometry(document)
-          total_slots = sum(len(page.slots) for page in document.pages)
           assert report.slots == total_slots
-          assert total_slots >= 1
-
           stable_before = {}
           after_significant = 0
           max_after = 0.0
@@ -184,9 +215,8 @@ jobs:
           assert png.is_file() and png.stat().st_size > 0
           assert rendered.width > 0 and rendered.height > 0
 
-          print(f"REAL_TEMPLATE={source.name}")
+          print(f"REAL_MULTIPRODUCT_TEMPLATE={source.name}")
           print(f"PAGES={len(document.pages)}")
-          print(f"SLOTS_AFTER={total_slots}")
           print(f"SMART_SLOTS_BEFORE={detection.get('smart_slots_before')}")
           print(f"DECORATIVE_FALSE_POSITIVES_BEFORE={detection.get('decorative_false_positives_before')}")
           print(f"SMART_SLOTS_AFTER={detection.get('smart_slots_after')}")
