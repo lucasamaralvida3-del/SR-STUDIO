@@ -1,0 +1,114 @@
+name: G2 Canonical Import Reset State
+
+on:
+  push:
+    branches:
+      - g2/fix-smart-slot-import-reset
+    paths:
+      - '.github/workflows/g2-canonical-import-reset-state.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/fix-smart-slot-import-reset
+          fetch-depth: 0
+
+      - name: Remove redundant binding-state metadata
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_exact(path_name, old, new, expected=1):
+              path = Path(path_name)
+              text = path.read_text(encoding='utf-8')
+              count = text.count(old)
+              if count != expected:
+                  raise SystemExit(f'fail-closed {path_name}: expected {expected}, got {count}: {old!r}')
+              path.write_text(text.replace(old, new, expected), encoding='utf-8')
+
+          replace_exact(
+              'src/srstudio/graphics2/import_bridge.py',
+              '''            slot.metadata["product_binding_state"] = "filled"\n            slot.metadata["product_content_empty"] = False\n            slot.metadata.pop("product_reset_reason", None)\n''',
+              '',
+          )
+          replace_exact(
+              'src/srstudio/graphics2/import_bridge.py',
+              '''                    node.metadata["product_binding_empty"] = False\n''',
+              '',
+          )
+          replace_exact(
+              'src/srstudio/graphics2/smart_slot_import_reset.py',
+              '''            card.overrides["product_content_empty"] = True\n''',
+              '',
+          )
+          replace_exact(
+              'src/srstudio/graphics2/smart_slot_import_reset.py',
+              '''    slot.metadata["product_binding_state"] = "empty"\n    slot.metadata["product_content_empty"] = True\n    slot.metadata["product_reset_reason"] = "new-pptx-import"\n''',
+              '',
+          )
+          replace_exact(
+              'src/srstudio/graphics2/smart_slot_import_reset.py',
+              '''        node.metadata["product_binding_empty"] = True\n\n''',
+              '',
+          )
+
+      - name: Make reset tests use canonical product state
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('tests/test_graphics2_smart_slot_import_reset.py')
+          text = path.read_text(encoding='utf-8')
+          replacements = [
+              ('    assert slot.metadata["product_binding_state"] == "empty"\n', ''),
+              ('    assert slot.metadata["product_content_empty"] is True\n', ''),
+              ('    assert all(slot.metadata.get("product_content_empty") is True for slot in slots_a)\n', ''),
+              ('    assert first_a.metadata["product_binding_state"] == "filled"\n', '    assert first_a.metadata["product_snapshot"]["id"] == "chosen-a"\n'),
+              ('    assert all(slot.metadata.get("product_binding_state") == "empty" for slot in slots_b)\n', ''),
+              ('    assert all(slot.metadata.get("product_content_empty") is True for slot in slots_b)\n', ''),
+              ('    assert slot.metadata["product_binding_state"] == "filled"\n', '    assert slot.metadata["product_snapshot"]["id"] == "chosen-b"\n'),
+              ('    assert slot.metadata["product_content_empty"] is False\n', ''),
+              ('    assert reopened.metadata["product_binding_state"] == "filled"\n', ''),
+              ('    assert reopened.metadata["product_content_empty"] is False\n', ''),
+          ]
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'fail-closed tests: expected 1, got {count}: {old!r}')
+              text = text.replace(old, new, 1)
+          path.write_text(text, encoding='utf-8')
+
+      - name: Make focused gate use canonical product state
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('.github/workflows/g2-smart-slot-validation.yml')
+          text = path.read_text(encoding='utf-8')
+          for old in (
+              '                  assert slot.metadata.get("product_binding_state") == "empty"\n',
+              '                  assert slot.metadata.get("product_binding_state") == "empty"\n',
+          ):
+              if old not in text:
+                  raise SystemExit(f'fail-closed workflow: missing {old!r}')
+              text = text.replace(old, '', 1)
+          path.write_text(text, encoding='utf-8')
+
+      - name: Validate syntax
+        shell: bash
+        run: |
+          python -m py_compile src/srstudio/graphics2/import_bridge.py src/srstudio/graphics2/smart_slot_import_reset.py tests/test_graphics2_smart_slot_import_reset.py
+
+      - name: Commit cleanup and self-remove
+        shell: bash
+        run: |
+          git rm .github/workflows/g2-canonical-import-reset-state.yml
+          git config user.name 'sr-studio-beta-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/srstudio/graphics2/import_bridge.py src/srstudio/graphics2/smart_slot_import_reset.py tests/test_graphics2_smart_slot_import_reset.py .github/workflows/g2-smart-slot-validation.yml
+          git commit -m 'fix(g2): use canonical product state for fresh-import reset'
+          git push origin HEAD:g2/fix-smart-slot-import-reset
