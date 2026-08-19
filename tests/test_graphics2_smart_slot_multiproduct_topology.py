@@ -200,7 +200,7 @@ def measure_multiproduct_topology() -> dict:
             "price_backplates": 10,
             "badges": 5,
             "badge_texts": 5,
-            "rounded_rectangles": 18,
+            "rounded_rectangles": 17,
             "shared_decorative_elements": 3,
         },
         "smart_slot_count_before": int(metrics["smart_slots_before"]),
