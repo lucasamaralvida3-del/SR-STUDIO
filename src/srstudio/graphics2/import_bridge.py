@@ -22,6 +22,7 @@ from .pptx_structure import PptxMappingAudit, PptxStructureReport, inspect_pptx_
 from .scene_fingerprint import store_scene_fingerprint
 from .semantic_blocks import build_semantic_blocks
 from .semantic_recovery import recover_canva_semantic_cards
+from .smart_slot_import_reset import mark_slot_product_filled, reset_new_pptx_import_product_content
 
 _SLOT_ROLE_MAP: dict[str, BindingRole] = {
     "name": BindingRole.NAME,
@@ -98,6 +99,13 @@ class GraphicsImportService:
             mapping = structure.audit_document(document)
             _apply_exact_fill_rect_mapping(mapping, document)
             document.metadata["pptx_mapping_audit"] = mapping.to_dict()
+
+            # NOVA IMPORTAÇÃO PPTX/CANVA começa semanticamente vazia. Executar
+            # somente aqui mantém a estrutura já detectada e garante que
+            # load_package(.srscene/.zip), SAVE/REOPEN e "Projeto atual" nunca
+            # passem pelo reset.
+            reset_new_pptx_import_product_content(document, project, source=source)
+
         fingerprint = store_scene_fingerprint(document)
         document.metadata["import_fingerprint_sha256"] = fingerprint.sha256
         audit = audit_import(document)
@@ -293,7 +301,8 @@ def _convert_visual_page(document: GraphicsDocument, old_page, project: StudioPr
             page_id=page.id,
             node_by_role=primary,
             product_id=(card.product_id if card is not None else ""),
-            confidence=float((card.overrides.get("recognition_confidence", 1.0) if card is not None else 1.0) or 1.0),
+            confidence=float((card.overrides.get("recognition_confidence", 1.0) if card is not None else 1.0) or 1.0,
+            ),
             metadata={
                 "extra_bindings": extras,
                 "product_snapshot": product.to_dict() if product is not None else {},
@@ -332,6 +341,7 @@ def _element_to_node(document: GraphicsDocument, element: dict[str, Any], index:
         "group_depth": int(element.get("group_depth", 0) or 0),
         "source_font_name": str(element.get("source_font_name") or ""),
         "shape_geometry": str(element.get("shape_geometry") or ""),
+        "semantic_synthetic_image_slot": bool(element.get("synthetic_canva_image_slot", False)),
     }
     if source:
         metadata["bound_image_source"] = source
@@ -486,6 +496,11 @@ class CanvaBindingService:
                         node.visible = bool(value)
                     elif value:
                         node.visible = True
+            mark_slot_product_filled(
+                slot,
+                node_ids=[node_id for node_ids in bindings.values() for node_id in node_ids],
+                page=session.page,
+            )
         return True
 
 
