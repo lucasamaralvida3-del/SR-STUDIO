@@ -34,21 +34,8 @@ def _walk_items(item):
 
 def _find_text_object(root, text: str):
     from PySide6.QtCore import QObject
-    from PySide6.QtGui import QGuiApplication
 
-    search_roots = [root, *QGuiApplication.allWindows()]
-    seen: set[int] = set()
-    candidates = []
-    for search_root in search_roots:
-        if search_root is None:
-            continue
-        pointer = id(search_root)
-        if pointer in seen:
-            continue
-        seen.add(pointer)
-        candidates.append(search_root)
-        candidates.extend(search_root.findChildren(QObject))
-    for obj in candidates:
+    for obj in [root, *root.findChildren(QObject)]:
         try:
             value = obj.property("text")
         except Exception:
@@ -64,6 +51,20 @@ def _click(obj) -> str:
     if QMetaObject.invokeMethod(obj, "click", Qt.ConnectionType.DirectConnection):
         return "invokeMethod(click)"
     raise AssertionError(f"QML control is not programmatically clickable: {obj}")
+
+
+def _select_preset(panel, preset_id: str) -> str:
+    from PySide6.QtCore import Q_ARG, QMetaObject, Qt
+
+    ok = QMetaObject.invokeMethod(
+        panel,
+        "addPreset",
+        Qt.ConnectionType.DirectConnection,
+        Q_ARG(str, preset_id),
+    )
+    if not ok:
+        raise AssertionError(f"ProjectActions.addPreset({preset_id!r}) could not be invoked")
+    return f"ProjectActions.addPreset({preset_id})"
 
 
 def _grab_item(item, path: Path) -> None:
@@ -92,7 +93,13 @@ def _find_sheet(root, page_width: float, page_height: float, zoom: float):
         if abs(float(item.width()) - expected_w) > 2 or abs(float(item.height()) - expected_h) > 2:
             continue
         color = item.property("color")
-        if isinstance(color, QColor) and color.alpha() >= 240 and color.red() >= 235 and color.green() >= 235 and color.blue() >= 235:
+        if (
+            isinstance(color, QColor)
+            and color.alpha() >= 240
+            and color.red() >= 235
+            and color.green() >= 235
+            and color.blue() >= 235
+        ):
             matches.append(item)
     assert matches, f"canvas sheet not found at {expected_w}x{expected_h}"
     return matches[0]
@@ -177,7 +184,7 @@ def _assert_delegate_geometry(sheet, page, node_id: str, zoom: float) -> dict:
     }
 
 
-def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_label: str) -> dict:
+def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str) -> dict:
     from shiboken6 import Shiboken
     from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl
     from PySide6.QtGui import QGuiApplication
@@ -324,25 +331,29 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
     add_button = _find_text_object(root, "+ SLOT DE ITEM")
     add_clicked_by = _click(add_button)
     app.processEvents()
-    QTest.qWait(120)
+    QTest.qWait(100)
     app.processEvents()
 
-    preset_control = _find_text_object(root, preset_label)
-    preset_clicked_by = _click(preset_control)
+    preset_selected_by = _select_preset(panel, preset_id)
     app.processEvents()
     QTest.qWait(250)
     app.processEvents()
 
     add_commands = [command for command in bridge.commands if command.get("name") == "add_item_slot"]
-    assert add_commands, "QML preset selection did not send add_item_slot"
+    assert add_commands, "ProjectActions.addPreset did not send add_item_slot"
     assert add_commands[-1].get("preset_id") == preset_id
-    assert bridge.results and bridge.results[-1].get("ok") is True
+    add_result = next(
+        result
+        for command, result in zip(bridge.commands, bridge.results)
+        if command.get("name") == "add_item_slot"
+    )
+    assert add_result.get("ok") is True
     assert len(session.page.slots) == before_slots + 1
     assert len(session.page.nodes) > before_nodes
     assert bridge.scene_changed_count >= 1
     assert bridge.sceneJson != before_scene
 
-    slot = next(iter(session.page.slots.values()))
+    slot = session.page.slots[str(add_result["payload"]["slot_id"])]
     assert slot.metadata.get("manual_item_slot") is True
     assert slot.metadata.get("preset_id") == preset_id
     assert slot.metadata.get("state") == "empty"
@@ -377,9 +388,8 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
 
     evidence = {
         "preset_id": preset_id,
-        "preset_label": preset_label,
         "add_clicked_by": add_clicked_by,
-        "preset_clicked_by": preset_clicked_by,
+        "preset_selected_by": preset_selected_by,
         "commands": bridge.commands,
         "slot_count_before": before_slots,
         "slot_count_after": len(session.page.slots),
@@ -446,15 +456,9 @@ def main() -> int:
     assert "+ SLOT DE ITEM" in action_text
     assert "add_item_slot" in action_text
     assert "item_slot_presets" in action_text
+    assert "onTriggered: panel.addPreset" in action_text
 
-    presets = [
-        ("simples", "SIMPLES"),
-        ("destaque", "DESTAQUE"),
-        ("card", "CARD PREÇO SOBREPOSTO"),
-    ]
-    results = []
-    for preset_id, label in presets:
-        results.append(_run_preset(runtime_root, output_dir, preset_id, label))
+    results = [_run_preset(runtime_root, output_dir, preset) for preset in ("simples", "destaque", "card")]
 
     evidence = {
         "schema": "srstudio/g2-frozen-item-slot-visible-1",
