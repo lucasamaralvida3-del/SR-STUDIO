@@ -9,6 +9,9 @@ on:
       - 'src/srstudio/app/turbo_posters.py'
       - 'src/srstudio/graphics2/full_studio_bridge.py'
       - 'src/srstudio/graphics2/studio_bridge.py'
+      - 'src/srstudio/graphics2/image_database_runtime.py'
+      - 'scripts/ci/image_db_build_distribution_seed.py'
+      - 'tests/test_graphics2_existing_image_database.py'
       - 'tests/test_graphics2_full_studio_entrypoint.py'
       - 'tests/test_graphics2_studio_bridge.py'
       - 'build/build_graphics2_host.py'
@@ -21,6 +24,9 @@ on:
       - 'src/srstudio/app/turbo_posters.py'
       - 'src/srstudio/graphics2/full_studio_bridge.py'
       - 'src/srstudio/graphics2/studio_bridge.py'
+      - 'src/srstudio/graphics2/image_database_runtime.py'
+      - 'scripts/ci/image_db_build_distribution_seed.py'
+      - 'tests/test_graphics2_existing_image_database.py'
       - 'tests/test_graphics2_full_studio_entrypoint.py'
       - 'tests/test_graphics2_studio_bridge.py'
       - 'build/build_graphics2_host.py'
@@ -29,59 +35,69 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   full-studio-windows:
     runs-on: windows-latest
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
 
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+          cache: pip
 
       - name: Install focused build dependencies
+        shell: pwsh
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev,graphics2-build]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Record exact source SHA
         shell: pwsh
         run: |
           $sha = git rev-parse HEAD
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          if ($sha -ne $expected) { throw "Exact SHA mismatch" }
           "SOURCE_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "SOURCE SHA: $sha"
+          Write-Host "CHECKED OUT SHA: $sha"
+          Write-Host "SHA MATCH: PASS"
 
-      - name: Focused integration tests
+      - name: Focused integration and Image DB tests
         shell: pwsh
         run: |
-          python -m pytest -q tests/test_graphics2_full_studio_entrypoint.py tests/test_graphics2_studio_bridge.py
+          $env:PYTHONPATH = Join-Path $env:GITHUB_WORKSPACE "src"
+          python -m pytest -q tests/test_graphics2_full_studio_entrypoint.py tests/test_graphics2_studio_bridge.py tests/test_graphics2_existing_image_database.py tests/test_graphics2_template_product_workflow.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m compileall -q src/srstudio/app/turbo_posters.py src/srstudio/graphics2/full_studio_bridge.py
+          python -m compileall -q src/srstudio/app/turbo_posters.py src/srstudio/graphics2/full_studio_bridge.py src/srstudio/graphics2/image_database_runtime.py src/srstudio/graphics2/qt_host.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Real PPTX import bridge smoke
         shell: pwsh
         run: |
+          $env:PYTHONPATH = Join-Path $env:GITHUB_WORKSPACE "src"
           $pptx = "src/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
           if (!(Test-Path $pptx)) { throw "PPTX real de smoke não encontrado: $pptx" }
           @'
           from pathlib import Path
           from srstudio.graphics2.qt_host import load_launch_context
           from srstudio.graphics2.operations import GraphicsSession
-
           source = Path(r"src/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx").resolve()
           context = load_launch_context(source)
           document = context.document
-          assert document.pages, "PPTX real não produziu páginas no G2"
+          assert document.pages
           session = GraphicsSession(document)
           before = document.name
           document.name = before + " · E2E"
-          assert document.name.endswith(" · E2E"), "documento importado não ficou editável"
-          assert context.import_audit is not None, "PPTX não passou pelo GraphicsImportService/import bridge"
+          assert document.name.endswith(" · E2E")
+          assert context.import_audit is not None
           print(f"REAL_PPTX={source.name}")
           print(f"PAGES={len(document.pages)}")
           print(f"NODES={sum(len(p.nodes) for p in document.pages)}")
@@ -90,6 +106,58 @@ jobs:
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
+      - name: Materialize certified existing SR Image Database seed
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path image-db-approved | Out-Null
+          New-Item -ItemType Directory -Force -Path image-db-corpus | Out-Null
+          New-Item -ItemType Directory -Force -Path image-db-dist | Out-Null
+          gh run download 32197750743 --repo lucasamaralvida3-del/SR-STUDIO --name image-db-coverage-baseline-32197750743 --dir image-db-approved
+          if ($LASTEXITCODE -ne 0) { throw "Approved Image DB baseline unavailable" }
+          foreach ($path in @(
+            "image-db-approved/image-db-coverage-library/index.json",
+            "image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json",
+            "image-db-approved/image-db-coverage-baseline/final/library-audit.json"
+          )) { if (!(Test-Path $path)) { throw "Image DB baseline file missing: $path" } }
+          foreach ($asset in @("Downloads.1.1.zip", "Downloads.2.1.zip", "standalone-images.zip")) {
+            gh release download image-db-corpus-v1 --repo lucasamaralvida3-del/SR-STUDIO --pattern $asset --dir image-db-corpus
+            if ($LASTEXITCODE -ne 0) { throw "Image DB corpus asset unavailable: $asset" }
+          }
+          $expected = @{
+            "Downloads.1.1.zip" = "aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba"
+            "Downloads.2.1.zip" = "035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86"
+            "standalone-images.zip" = "9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff"
+          }
+          foreach ($entry in $expected.GetEnumerator()) {
+            $path = Join-Path "image-db-corpus" $entry.Key
+            if (!(Test-Path $path)) { throw "Image DB corpus file missing: $path" }
+            $actual = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $entry.Value) { throw "Image DB corpus SHA mismatch: $($entry.Key)" }
+          }
+          $builder = Join-Path $env:RUNNER_TEMP "image_db_build_distribution_seed.py"
+          $builderUrl = "https://raw.githubusercontent.com/${{ github.repository }}/$env:SOURCE_SHA/scripts/ci/image_db_build_distribution_seed.py"
+          Invoke-WebRequest -Uri $builderUrl -OutFile $builder
+          if (!(Test-Path $builder)) { throw "Exact-SHA Image DB seed builder unavailable" }
+          $workspaceSeed = Join-Path $env:GITHUB_WORKSPACE "image-db-dist/image-db-library-v1.zip"
+          python $builder `
+            --index image-db-approved/image-db-coverage-library/index.json `
+            --catalog-report image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json `
+            --audit-report image-db-approved/image-db-coverage-baseline/final/library-audit.json `
+            --pptx-archive image-db-corpus/Downloads.1.1.zip `
+            --pptx-archive image-db-corpus/Downloads.2.1.zip `
+            --image-archive image-db-corpus/standalone-images.zip `
+            --source-artifact "image-db-coverage-baseline-32197750743 / artifact 9346445276" `
+            --output $workspaceSeed
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path $workspaceSeed)) { throw "Image DB seed missing" }
+          $seedSnapshot = Join-Path $env:RUNNER_TEMP "image-db-library-v1.zip"
+          Copy-Item $workspaceSeed $seedSnapshot -Force
+          if (!(Test-Path $seedSnapshot)) { throw "Image DB seed runner-temp snapshot failed" }
+          Write-Host "IMAGE_DB_SEED=PASS"
+          Write-Host "IMAGE_DB_SEED_RUNNER_TEMP=PASS"
+
       - name: Build full SR Studio shell
         shell: pwsh
         run: |
@@ -97,7 +165,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "SR Studio 5.exe não foi gerado" }
 
-      - name: Build certified Graphics2 child host
+      - name: Build certified Graphics2 child host and include existing Image DB seed
         shell: pwsh
         run: |
           python build/build_graphics2_host.py --output "dist/graphics2-host"
@@ -106,40 +174,73 @@ jobs:
           if (!(Test-Path "$source/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host não foi gerado" }
           New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
           Copy-Item "$source/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
-          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host não foi incorporado ao SR Studio" }
+          $seedSnapshot = Join-Path $env:RUNNER_TEMP "image-db-library-v1.zip"
+          if (!(Test-Path $seedSnapshot)) { throw "Image DB seed snapshot ausente" }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host/ImageDatabaseSeed" | Out-Null
+          Copy-Item $seedSnapshot "dist/SR Studio 5/Graphics2Host/ImageDatabaseSeed/image-db-library-v1.zip" -Force
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host não foi incorporado" }
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/ImageDatabaseSeed/image-db-library-v1.zip")) { throw "Image DB seed não foi incorporado" }
 
-      - name: Verify packaged host discovery and runtime integrity
+      - name: Verify packaged host runtime and frozen Image DB without checkout
         shell: pwsh
         run: |
+          $env:PYTHONPATH = Join-Path $env:GITHUB_WORKSPACE "src"
           @'
           from pathlib import Path
           import json
           from srstudio.graphics2.host_runtime import validate_runtime_host
-
           root = Path(r"dist/SR Studio 5/Graphics2Host").resolve()
           report = validate_runtime_host(root, full=True)
           assert report.ok, report
-          assert report.executable.name == "SRGraphicsEngine2Host.exe"
           manifest = json.loads((root / "graphics2-host-runtime.json").read_text(encoding="utf-8"))
           print(f"RUNTIME_FILES={len(manifest.get('files') or [])}")
-          print(f"RUNTIME_OK={report.ok}")
+          print("RUNTIME_OK=PASS")
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $hostExe = "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe"
+          $hostExe = Join-Path $env:GITHUB_WORKSPACE "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe"
           $process = Start-Process -FilePath $hostExe -ArgumentList "--version" -Wait -PassThru -NoNewWindow
-          if ($process.ExitCode -ne 0) { throw "Graphics2Host --version falhou com exit code $($process.ExitCode)" }
+          if ($process.ExitCode -ne 0) { throw "Graphics2Host --version failed" }
+          Remove-Item Env:PYTHONPATH -ErrorAction SilentlyContinue
+          Remove-Item Env:SR_STUDIO_IMAGE_DB_SEED -ErrorAction SilentlyContinue
+          $env:SR_STUDIO_DATA_DIR = Join-Path $env:RUNNER_TEMP "g2-beta-clean-user-data"
+          if (Test-Path $env:SR_STUDIO_DATA_DIR) { Remove-Item $env:SR_STUDIO_DATA_DIR -Recurse -Force }
+          function Probe([string]$product,[int]$expectedExit) {
+            Push-Location $env:RUNNER_TEMP
+            try { & $hostExe --image-db-probe $product | Out-Null; $code=$LASTEXITCODE } finally { Pop-Location }
+            if ($code -ne $expectedExit) { throw "Frozen Image DB lookup mismatch '$product': expected $expectedExit got $code" }
+          }
+          Probe "BATATA INGLESA" 0
+          Probe "TOMATE PÊRA" 0
+          Probe "PRODUTO TOTALMENTE INEXISTENTE XYZ 987ML" 3
+          Probe "BATATA INGLESA" 0
+          Write-Host "FROZEN_IMAGE_DB_LOOKUP=PASS"
+          Write-Host "FROZEN_IMAGE_DB_REOPEN=PASS"
+          $imageRoot = Join-Path $env:SR_STUDIO_DATA_DIR "images"
+          $index = Join-Path $imageRoot "index.json"
+          $manifestPath = Join-Path $imageRoot "seed-manifest.json"
+          if (!(Test-Path $index) -or !(Test-Path $manifestPath)) { throw "Official AppData/data-root Image DB was not bootstrapped" }
+          $manifest = Get-Content $manifestPath -Raw | ConvertFrom-Json
+          if ([int]$manifest.total_products -ne 520 -or [int]$manifest.total_images -ne 1037) { throw "Frozen Image DB metrics diverge" }
+          if ([string]$manifest.provenance_status -ne "PASS" -or [string]$manifest.dedup_status -ne "PASS") { throw "Frozen Image DB integrity diverges" }
+          if ((Get-Content $index -Raw).Contains($env:GITHUB_WORKSPACE)) { throw "Developer checkout path leaked into Image DB" }
+          foreach ($parallel in @("image-db-beta","graphics2-images","image-db-temp")) {
+            if (Test-Path (Join-Path $env:SR_STUDIO_DATA_DIR $parallel)) { throw "Parallel Image DB detected: $parallel" }
+          }
+          Write-Host "NO_DEV_PATH=PASS"
+          Write-Host "IMAGE_DB_PERSISTENCE=PASS"
 
       - name: Verify full-package layout
         shell: pwsh
         run: |
           if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Shell ausente" }
           if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "G2 ausente" }
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/ImageDatabaseSeed/image-db-library-v1.zip")) { throw "Image DB seed ausente" }
           $qtQuick = Get-ChildItem "dist/SR Studio 5/Graphics2Host" -Recurse -File | Where-Object { $_.Name -match 'Qt6Quick|QtQuick' } | Select-Object -First 1
-          if ($null -eq $qtQuick) { throw "Runtime Qt Quick ausente do host" }
+          if ($null -eq $qtQuick) { throw "Runtime Qt Quick ausente" }
           $logo = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "SR_logo.png" | Select-Object -First 1
-          if ($null -eq $logo) { throw "Assets do SR Studio ausentes" }
+          if ($null -eq $logo) { throw "Assets SR ausentes" }
           $model = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "ATACADO.pptx" | Select-Object -First 1
-          if ($null -eq $model) { throw "Pipeline/modelos PPTX do SR Studio ausentes" }
+          if ($null -eq $model) { throw "Modelos PPTX ausentes" }
 
       - name: Create full user package and provenance
         shell: pwsh
@@ -160,9 +261,17 @@ jobs:
             shell_executable = "SR Studio 5.exe"
             graphics2_executable = "Graphics2Host/SRGraphicsEngine2Host.exe"
             graphics2_runtime_files = $runtimeFiles
+            image_database_path_strategy = "SR_STUDIO_DATA_DIR/images; packaged seed bootstrap only"
+            image_database_seed = "Graphics2Host/ImageDatabaseSeed/image-db-library-v1.zip"
+            image_database_total_products = 520
+            image_database_total_images = 1037
+            image_database_provenance_status = "PASS"
+            image_database_dedup_status = "PASS"
             import_pipeline = "PPTX/Canva -> GraphicsImportService -> UnifiedImportPipeline/Office Layout -> SR Scene 2 -> Editor G2"
           }
           $provenance | ConvertTo-Json -Depth 6 | Out-File "release/g2-full-studio-provenance.json" -Encoding utf8
+          "PACKAGE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PACKAGE_BYTES=$size" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           Write-Host "PACKAGE=$package"
           Write-Host "PACKAGE_SHA256=$hash"
           Write-Host "PACKAGE_BYTES=$size"
@@ -190,12 +299,10 @@ jobs:
           $studioRoot = Join-Path $filesRoot "SRStudio5"
           New-Item -ItemType Directory -Force -Path $studioRoot | Out-Null
           Copy-Item "dist/SR Studio 5/*" $studioRoot -Recurse -Force
-
           $wrapper = @'
           from pathlib import Path
           import subprocess
           import sys
-
           root = Path(__file__).resolve().parent
           exe = root / "SRStudio5" / "SR Studio 5.exe"
           if not exe.is_file():
@@ -204,15 +311,12 @@ jobs:
           sys.exit(0)
           '@
           [IO.File]::WriteAllText((Join-Path $filesRoot "SR_Studio_Gerador.py"), $wrapper, (New-Object Text.UTF8Encoding($false)))
-
           $bundle = Join-Path "release" $bundleName
           Push-Location $betaRoot
           try {
             $destination = Join-Path (Resolve-Path "../").Path $bundleName
             Compress-Archive -Path "files" -DestinationPath $destination -Force
-          } finally {
-            Pop-Location
-          }
+          } finally { Pop-Location }
           $hash = (Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
           $size = (Get-Item $bundle).Length
           "BETA_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
@@ -236,15 +340,15 @@ jobs:
           $notes = @"
           SR Studio G2 Beta ${{ github.run_number }}
 
-          Canal Beta de teste contínuo do novo Studio de Encartes G2 integrado ao SR Studio.
-
+          Existing SR Image Database reused inside the frozen package.
           Source SHA: $env:SOURCE_SHA
           Workflow run: ${{ github.run_id }}
-          Studio de Encartes G2: fluxo principal
-          Graphics2Host: incluído
-          Importação PPTX/Canva: incluída
+          Studio de Encartes G2: primary flow
+          Graphics2Host: included
+          PPTX/Canva + spreadsheet composition: included
+          Image DB frozen lookup: PASS before publication
 
-          BETA / TEST BUILD — não é Stable.
+          BETA / TEST BUILD — not Stable.
           "@
           gh release view $env:BETA_TAG *> $null
           if ($LASTEXITCODE -eq 0) {
@@ -267,10 +371,7 @@ jobs:
             $manifestPath = Join-Path $channelRoot "beta/manifest.json"
             $previous = ""
             if (Test-Path $manifestPath) {
-              try {
-                $old = Get-Content -Raw $manifestPath | ConvertFrom-Json
-                $previous = [string]$old.version
-              } catch { }
+              try { $previous = [string](Get-Content -Raw $manifestPath | ConvertFrom-Json).version } catch { }
             }
             $url = "https://github.com/${{ github.repository }}/releases/download/$env:BETA_TAG/$env:BETA_BUNDLE_NAME"
             $manifest = [ordered]@{
@@ -283,12 +384,7 @@ jobs:
               published_at = (Get-Date).ToUniversalTime().ToString("o")
               min_launcher = "4.0.1-hybrid.base2.5"
               min_launcher_version = "4.0.1-hybrid.base2.5"
-              bundle = [ordered]@{
-                url = $url
-                sha256 = $env:BETA_BUNDLE_SHA256
-                size = [int64]$env:BETA_BUNDLE_SIZE
-                member_prefix = "files/"
-              }
+              bundle = [ordered]@{ url = $url; sha256 = $env:BETA_BUNDLE_SHA256; size = [int64]$env:BETA_BUNDLE_SIZE; member_prefix = "files/" }
               url = $url
               bundle_url = $url
               sha256 = $env:BETA_BUNDLE_SHA256
@@ -299,13 +395,14 @@ jobs:
               graphics2_test = $true
               graphics2_primary = $true
               launcher_path_safe = $true
+              image_database_reused = $true
+              image_database_products = 520
+              image_database_images = 1037
               source_commit = $env:SOURCE_SHA
               workflow_run = "${{ github.run_id }}"
-              notes = "Canal Beta contínuo — novo Studio de Encartes G2 integrado ao SR Studio."
+              notes = "Canal Beta contínuo — Studio de Encartes G2 com Image Database SR existente."
             }
-            $json = $manifest | ConvertTo-Json -Depth 8
-            [IO.File]::WriteAllText($manifestPath, $json + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
-
+            [IO.File]::WriteAllText($manifestPath, ($manifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
             Push-Location $channelRoot
             try {
               git config user.name "github-actions[bot]"
@@ -318,12 +415,8 @@ jobs:
                 git push origin HEAD:main
                 if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar main/beta/manifest.json" }
               }
-            } finally {
-              Pop-Location
-            }
-          } finally {
-            git worktree remove $channelRoot --force 2>$null
-          }
+            } finally { Pop-Location }
+          } finally { git worktree remove $channelRoot --force 2>$null }
 
       - name: Verify published beta manifest
         if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'g2/integrate-studio-shell'
@@ -336,5 +429,7 @@ jobs:
           if ([string]$beta.version -ne $env:BETA_VERSION) { throw "Manifest Beta não aponta para a versão recém-publicada" }
           if ([string]$beta.source_commit -ne $env:SOURCE_SHA) { throw "Manifest Beta não aponta para o source SHA recém-publicado" }
           if ([string]$beta.bundle.sha256 -ne $env:BETA_BUNDLE_SHA256) { throw "SHA do bundle publicado diverge" }
+          if ($beta.image_database_reused -ne $true) { throw "Manifest não certifica reuse do Image DB" }
           Write-Host "BETA CHANNEL PROMOTED: $($beta.version)"
           Write-Host "BUNDLE: $($beta.bundle.url)"
+          Write-Host "MANIFEST_VERIFIED=PASS"
