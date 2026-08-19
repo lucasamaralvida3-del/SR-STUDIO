@@ -24,7 +24,7 @@ def _wait_until(predicate, *, timeout: float, detail: str, interval: float = 0.2
             value = predicate()
             if value:
                 return value
-        except Exception as exc:  # diagnostics are emitted after timeout
+        except Exception as exc:
             last_error = exc
         time.sleep(interval)
     suffix = f"; last_error={last_error}" if last_error else ""
@@ -35,43 +35,6 @@ def _window_pid(handle: int) -> int:
     pid = ctypes.c_ulong(0)
     ctypes.windll.user32.GetWindowThreadProcessId(int(handle), ctypes.byref(pid))
     return int(pid.value)
-
-
-def _live_window_by_title(fragment: str, *, timeout: float = 25.0):
-    """Resolve a live top-level Win32 window instead of retaining a PyInstaller/UIA wrapper."""
-
-    wanted = fragment.casefold()
-
-    def locate():
-        try:
-            windows = Desktop(backend="win32").windows(visible_only=True)
-        except Exception:
-            return None
-        candidates = []
-        for window in windows:
-            try:
-                title = str(window.window_text() or "").strip()
-                handle = int(window.handle)
-            except Exception:
-                continue
-            if wanted not in title.casefold() or not ctypes.windll.user32.IsWindow(handle):
-                continue
-            candidates.append((title, window))
-        if not candidates:
-            return None
-        # Prefer the full professional shell over splash/auxiliary windows.
-        candidates.sort(key=lambda item: ("professional" not in item[0].casefold(), len(item[0])))
-        return candidates[0][1]
-
-    return _wait_until(locate, timeout=timeout, detail=f"live Win32 window containing {fragment!r}")
-
-
-def _shell_window(*, timeout: float = 25.0):
-    return _live_window_by_title("SR Studio 5", timeout=timeout)
-
-
-def _failure_window(*, timeout: float = 12.0):
-    return _live_window_by_title("Studio de Encartes G2 — erro", timeout=timeout)
 
 
 def _win32_rect(handle: int) -> tuple[int, int, int, int]:
@@ -89,6 +52,55 @@ def _win32_rect(handle: int) -> tuple[int, int, int, int]:
     if not ctypes.windll.user32.GetWindowRect(int(handle), ctypes.byref(rect)):
         raise OSError(f"GetWindowRect failed for hwnd={handle}")
     return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
+
+
+def _live_window_by_title(
+    fragment: str,
+    *,
+    timeout: float = 25.0,
+    min_width: int = 0,
+    min_height: int = 0,
+):
+    """Resolve a live Win32 window and reject splash/boot windows by geometry."""
+
+    wanted = fragment.casefold()
+
+    def locate():
+        try:
+            windows = Desktop(backend="win32").windows(visible_only=True)
+        except Exception:
+            return None
+        candidates = []
+        for window in windows:
+            try:
+                title = str(window.window_text() or "").strip()
+                handle = int(window.handle)
+                left, top, right, bottom = _win32_rect(handle)
+            except Exception:
+                continue
+            width = right - left
+            height = bottom - top
+            if wanted not in title.casefold():
+                continue
+            if width < min_width or height < min_height:
+                continue
+            candidates.append((width * height, title, window))
+        if not candidates:
+            return None
+        candidates.sort(key=lambda item: item[0], reverse=True)
+        return candidates[0][2]
+
+    return _wait_until(locate, timeout=timeout, detail=f"live Win32 window containing {fragment!r}")
+
+
+def _shell_window(*, timeout: float = 25.0):
+    # The splash has the same product title but is ~520x300. The real shell is
+    # substantially larger, so geometry is the stable identity discriminator.
+    return _live_window_by_title("SR Studio 5", timeout=timeout, min_width=800, min_height=500)
+
+
+def _failure_window(*, timeout: float = 12.0):
+    return _live_window_by_title("Studio de Encartes G2 — erro", timeout=timeout)
 
 
 def _dump_controls(window, path: Path) -> list[dict]:
@@ -166,12 +178,10 @@ def _click_shell_studio(output_dir: Path) -> tuple[str, int]:
     width = right - left
     height = bottom - top
     assert width >= 800 and height >= 500, (left, top, right, bottom)
-    ctypes.windll.user32.ShowWindow(handle, 9)  # SW_RESTORE
+    ctypes.windll.user32.ShowWindow(handle, 9)
     ctypes.windll.user32.SetForegroundWindow(handle)
     time.sleep(0.35)
 
-    # The shell uses a fixed 244px sidebar. Encartes Studio is the second row
-    # under WORKSPACE. This remains a real physical click on SR Studio 5.exe.
     x = left + min(122, max(70, width // 12))
     y = top + min(314, max(250, int(height * 0.39)))
     mouse.click(button="left", coords=(x, y))
