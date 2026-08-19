@@ -316,7 +316,19 @@ def _commercially_near(rect: Rect, core: Rect, page: GraphicsPage) -> bool:
 
 
 def _bounds(page: GraphicsPage, node_ids: Iterable[str]) -> Rect | None:
-    rects = [page.nodes[node_id].rect.normalized() for node_id in node_ids if node_id in page.nodes]
+    rects: list[Rect] = []
+    for node_id in node_ids:
+        node = page.nodes.get(node_id)
+        if node is None:
+            continue
+        # LIMIT/APP e outros bindings opcionais podem permanecer como nodes
+        # invisíveis no template. Eles não fazem parte do card que o usuário vê
+        # e portanto não podem inflar a área de interação. A IMAGE sintética é
+        # exceção: mesmo invisível antes do primeiro produto, ela representa o
+        # destino comercial legítimo da foto.
+        if not node.visible and not bool(node.metadata.get("semantic_synthetic_image_slot")):
+            continue
+        rects.append(node.rect.normalized())
     return _union_many(rects)
 
 
