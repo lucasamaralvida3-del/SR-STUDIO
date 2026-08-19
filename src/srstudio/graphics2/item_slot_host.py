@@ -38,7 +38,7 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         editor["item_slots"] = list_item_slots(self.session.document)
         return payload
 
-    def dispatch_json(self, raw: str) -> str:
+    def dispatch_json(self, raw: str, *, include_scene_payload: bool = True) -> str:
         try:
             command = json.loads(raw)
             if not isinstance(command, dict):
@@ -46,7 +46,8 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
             result = self.dispatch(command)
         except Exception as exc:
             result = CommandResult(False, False, f"Erro: {exc}")
-        result.payload = self.payload()
+        if include_scene_payload:
+            result.payload = self.payload()
         return json.dumps(result.to_dict(), ensure_ascii=False, separators=(",", ":"))
 
     def dispatch(self, command: dict[str, Any]) -> CommandResult:
