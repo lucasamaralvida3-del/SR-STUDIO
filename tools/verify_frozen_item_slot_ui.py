@@ -54,16 +54,10 @@ def _click(obj) -> str:
 
 
 def _select_preset(panel, preset_id: str) -> str:
-    from PySide6.QtCore import Q_ARG, QMetaObject, Qt
-
-    ok = QMetaObject.invokeMethod(
-        panel,
-        "addPreset",
-        Qt.ConnectionType.DirectConnection,
-        Q_ARG(str, preset_id),
-    )
-    if not ok:
-        raise AssertionError(f"ProjectActions.addPreset({preset_id!r}) could not be invoked")
+    handler = getattr(panel, "addPreset", None)
+    if handler is None or not callable(handler):
+        raise AssertionError("ProjectActions.addPreset JavaScript handler is not exposed by the QML object")
+    handler(preset_id)
     return f"ProjectActions.addPreset({preset_id})"
 
 
