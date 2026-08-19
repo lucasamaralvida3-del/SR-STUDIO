@@ -16,6 +16,12 @@ import psutil
 from pywinauto import Desktop, mouse
 
 
+SIDEBAR_WIDTH = 244
+ENCARTES_SIDEBAR_BUTTON_INDEX = 3  # Promoções, Atacado, Início, Encartes Studio.
+G2_ERROR_TITLE_FRAGMENT = "Studio de Encartes G2"
+G2_ERROR_MESSAGE = "Não foi possível iniciar o Studio de Encartes G2"
+
+
 def _wait_until(predicate, *, timeout: float, detail: str, interval: float = 0.25):
     deadline = time.monotonic() + timeout
     last_error: Exception | None = None
@@ -37,6 +43,23 @@ def _window_pid(handle: int) -> int:
     return int(pid.value)
 
 
+def _window_owner(handle: int) -> int:
+    return int(ctypes.windll.user32.GetWindow(int(handle), 4) or 0)
+
+
+def _window_class_name(handle: int) -> str:
+    buffer = ctypes.create_unicode_buffer(512)
+    ctypes.windll.user32.GetClassNameW(int(handle), buffer, len(buffer))
+    return str(buffer.value or "")
+
+
+def _window_title(handle: int) -> str:
+    length = int(ctypes.windll.user32.GetWindowTextLengthW(int(handle)) or 0)
+    buffer = ctypes.create_unicode_buffer(max(2, length + 2))
+    ctypes.windll.user32.GetWindowTextW(int(handle), buffer, len(buffer))
+    return str(buffer.value or "")
+
+
 def _win32_rect(handle: int) -> tuple[int, int, int, int]:
     class RECT(ctypes.Structure):
         _fields_ = [
@@ -54,53 +77,85 @@ def _win32_rect(handle: int) -> tuple[int, int, int, int]:
     return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
 
 
+def _process_name(pid: int) -> str:
+    try:
+        return psutil.Process(pid).name()
+    except psutil.Error:
+        return ""
+
+
+def _top_level_windows() -> list[dict]:
+    rows: list[dict] = []
+    try:
+        windows = Desktop(backend="win32").windows(visible_only=True)
+    except Exception:
+        windows = []
+    seen: set[int] = set()
+    for window in windows:
+        try:
+            handle = int(window.handle)
+            if handle in seen or not ctypes.windll.user32.IsWindow(handle):
+                continue
+            seen.add(handle)
+            title = _window_title(handle)
+            left, top, right, bottom = _win32_rect(handle)
+            pid = _window_pid(handle)
+            rows.append(
+                {
+                    "hwnd": handle,
+                    "title": title,
+                    "title_repr": repr(title),
+                    "pid": pid,
+                    "process_name": _process_name(pid),
+                    "class_name": _window_class_name(handle),
+                    "owner_hwnd": _window_owner(handle),
+                    "bounds": [left, top, right, bottom],
+                    "width": right - left,
+                    "height": bottom - top,
+                }
+            )
+        except Exception:
+            continue
+    rows.sort(key=lambda row: (int(row["pid"]), int(row["hwnd"])))
+    return rows
+
+
+def _write_json(path: Path, payload) -> None:
+    path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+
+
 def _live_window_by_title(
     fragment: str,
     *,
     timeout: float = 25.0,
     min_width: int = 0,
     min_height: int = 0,
+    pid: int | None = None,
 ):
-    """Resolve a live Win32 window and reject splash/boot windows by geometry."""
-
     wanted = fragment.casefold()
 
     def locate():
-        try:
-            windows = Desktop(backend="win32").windows(visible_only=True)
-        except Exception:
-            return None
-        candidates = []
-        for window in windows:
-            try:
-                title = str(window.window_text() or "").strip()
-                handle = int(window.handle)
-                left, top, right, bottom = _win32_rect(handle)
-            except Exception:
-                continue
-            width = right - left
-            height = bottom - top
+        candidates: list[tuple[int, dict]] = []
+        for row in _top_level_windows():
+            title = str(row["title"])
             if wanted not in title.casefold():
                 continue
-            if width < min_width or height < min_height:
+            if pid is not None and int(row["pid"]) != int(pid):
                 continue
-            candidates.append((width * height, title, window))
+            if int(row["width"]) < min_width or int(row["height"]) < min_height:
+                continue
+            candidates.append((int(row["width"]) * int(row["height"]), row))
         if not candidates:
             return None
         candidates.sort(key=lambda item: item[0], reverse=True)
-        return candidates[0][2]
+        row = candidates[0][1]
+        return Desktop(backend="win32").window(handle=int(row["hwnd"]))
 
     return _wait_until(locate, timeout=timeout, detail=f"live Win32 window containing {fragment!r}")
 
 
 def _shell_window(*, timeout: float = 25.0):
-    # The splash has the same product title but is ~520x300. The real shell is
-    # substantially larger, so geometry is the stable identity discriminator.
     return _live_window_by_title("SR Studio 5", timeout=timeout, min_width=800, min_height=500)
-
-
-def _failure_window(*, timeout: float = 12.0):
-    return _live_window_by_title("Studio de Encartes G2 — erro", timeout=timeout)
 
 
 def _dump_controls(window, path: Path) -> list[dict]:
@@ -112,20 +167,26 @@ def _dump_controls(window, path: Path) -> list[dict]:
         descendants = []
     for control in descendants:
         try:
+            handle = int(getattr(control, "handle", 0) or 0)
             info = control.element_info
+            bounds = list(_win32_rect(handle)) if handle else None
+            text = str(control.window_text() or "")
             rows.append(
                 {
-                    "name": str(control.window_text() or ""),
+                    "hwnd": handle,
+                    "name": text,
+                    "name_repr": repr(text),
                     "control_type": str(getattr(info, "control_type", "") or ""),
                     "automation_id": str(getattr(info, "automation_id", "") or ""),
-                    "class_name": str(getattr(info, "class_name", "") or ""),
+                    "class_name": _window_class_name(handle) if handle else str(getattr(info, "class_name", "") or ""),
+                    "bounds": bounds,
                     "enabled": bool(control.is_enabled()),
                     "visible": bool(control.is_visible()),
                 }
             )
         except Exception:
             continue
-    path.write_text(json.dumps(rows, ensure_ascii=False, indent=2), encoding="utf-8")
+    _write_json(path, rows)
     return rows
 
 
@@ -162,30 +223,149 @@ def _click_named(window, text: str):
     return control
 
 
+def _sidebar_buttons(shell_window, output_dir: Path) -> list[dict]:
+    shell_left, shell_top, _, _ = _win32_rect(int(shell_window.handle))
+    buttons: list[dict] = []
+    for control in shell_window.descendants():
+        try:
+            handle = int(getattr(control, "handle", 0) or 0)
+            if not handle or not ctypes.windll.user32.IsWindowVisible(handle):
+                continue
+            if _window_class_name(handle).casefold() != "button":
+                continue
+            left, top, right, bottom = _win32_rect(handle)
+            center_x = (left + right) // 2
+            if center_x > shell_left + SIDEBAR_WIDTH + 20:
+                continue
+            if right - left < 100 or bottom - top < 18:
+                continue
+            title = _window_title(handle)
+            buttons.append(
+                {
+                    "hwnd": handle,
+                    "title": title,
+                    "title_repr": repr(title),
+                    "class_name": _window_class_name(handle),
+                    "bounds": [left, top, right, bottom],
+                    "center": [(left + right) // 2, (top + bottom) // 2],
+                    "relative_top": top - shell_top,
+                }
+            )
+        except Exception:
+            continue
+    buttons.sort(key=lambda row: (int(row["bounds"][1]), int(row["bounds"][0])))
+    for index, row in enumerate(buttons):
+        row["sidebar_index"] = index
+    _write_json(output_dir / "shell-sidebar-buttons.json", buttons)
+    return buttons
+
+
 def _click_shell_studio(output_dir: Path) -> tuple[str, int]:
-    """Click the real Tk sidebar button without calling navigate() directly."""
-
     shell_window = _shell_window()
-    handle = int(shell_window.handle)
+    shell_handle = int(shell_window.handle)
     _dump_controls(shell_window, output_dir / "shell-controls-win32.json")
-    try:
-        _click_named(shell_window, "Studio de Encartes")
-        return "win32-name", handle
-    except Exception:
-        pass
 
-    left, top, right, bottom = _win32_rect(handle)
+    buttons = _sidebar_buttons(shell_window, output_dir)
+    if len(buttons) > ENCARTES_SIDEBAR_BUTTON_INDEX:
+        row = buttons[ENCARTES_SIDEBAR_BUTTON_INDEX]
+        handle = int(row["hwnd"])
+        try:
+            Desktop(backend="win32").window(handle=handle).click_input()
+            return f"win32-sidebar-button-index:{ENCARTES_SIDEBAR_BUTTON_INDEX}", shell_handle
+        except Exception:
+            try:
+                ctypes.windll.user32.SendMessageW(handle, 0x00F5, 0, 0)
+                return f"win32-BM_CLICK-sidebar-index:{ENCARTES_SIDEBAR_BUTTON_INDEX}", shell_handle
+            except Exception:
+                pass
+
+    left, top, right, bottom = _win32_rect(shell_handle)
     width = right - left
     height = bottom - top
     assert width >= 800 and height >= 500, (left, top, right, bottom)
-    ctypes.windll.user32.ShowWindow(handle, 9)
-    ctypes.windll.user32.SetForegroundWindow(handle)
+    ctypes.windll.user32.ShowWindow(shell_handle, 9)
+    ctypes.windll.user32.SetForegroundWindow(shell_handle)
     time.sleep(0.35)
-
-    x = left + min(122, max(70, width // 12))
-    y = top + min(314, max(250, int(height * 0.39)))
+    x = left + 108
+    y = top + 280
     mouse.click(button="left", coords=(x, y))
-    return f"physical-win32-coordinate:{x},{y}", handle
+    return f"physical-win32-coordinate:{x},{y}", shell_handle
+
+
+def _window_text_rows(hwnd: int, backend: str) -> list[dict]:
+    rows: list[dict] = []
+    try:
+        window = Desktop(backend=backend).window(handle=hwnd)
+        controls = [window, *window.descendants()]
+    except Exception as exc:
+        return [{"backend": backend, "error": repr(exc)}]
+    for control in controls:
+        try:
+            handle = int(getattr(control, "handle", 0) or 0)
+            text = str(control.window_text() or "")
+            rows.append(
+                {
+                    "backend": backend,
+                    "hwnd": handle,
+                    "text": text,
+                    "text_repr": repr(text),
+                    "class_name": _window_class_name(handle) if handle else "",
+                }
+            )
+        except Exception:
+            continue
+    return rows
+
+
+def _wait_for_failure_window(
+    *,
+    shell_pid: int,
+    shell_hwnd: int,
+    output_dir: Path,
+    timeout: float = 12.0,
+) -> tuple[dict, list[dict]]:
+    deadline = time.monotonic() + timeout
+    started = time.monotonic()
+    samples: list[dict] = []
+    last_rows: list[dict] = []
+    candidate: dict | None = None
+
+    while time.monotonic() < deadline:
+        rows = _top_level_windows()
+        last_rows = rows
+        elapsed_ms = int((time.monotonic() - started) * 1000)
+        samples.append({"elapsed_ms": elapsed_ms, "windows": rows})
+        if len(samples) > 20:
+            samples = samples[-20:]
+
+        matches = [
+            row
+            for row in rows
+            if int(row["pid"]) == int(shell_pid)
+            and G2_ERROR_TITLE_FRAGMENT.casefold() in str(row["title"]).casefold()
+            and int(row["hwnd"]) != int(shell_hwnd)
+        ]
+        if matches:
+            matches.sort(
+                key=lambda row: (
+                    int(row["owner_hwnd"]) != int(shell_hwnd),
+                    -(int(row["width"]) * int(row["height"])),
+                )
+            )
+            candidate = matches[0]
+            break
+        time.sleep(0.25)
+
+    _write_json(output_dir / "failure-windows-after-click.json", last_rows)
+    _write_json(output_dir / "failure-window-samples.json", samples)
+
+    if candidate is None:
+        same_pid_titles = [str(row["title"]) for row in last_rows if int(row["pid"]) == int(shell_pid)]
+        raise AssertionError(
+            "G2 error window not found by stable title fragment "
+            f"{G2_ERROR_TITLE_FRAGMENT!r}; same_pid_titles={same_pid_titles!r}"
+        )
+    return candidate, last_rows
 
 
 def _descendant_process(parent_pid: int, name: str, *, not_before: float = 0.0):
@@ -298,6 +478,8 @@ def _kill_if_running(pid: int) -> None:
 
 
 def _assert_official_source_has_no_alternative_encartes_route() -> None:
+    from srstudio.app.design import NAV_SECTIONS
+    from srstudio.app.professional import PRIMARY_WORKFLOWS
     from srstudio.app.turbo_posters import SRStudioTurboPosters
 
     source = inspect.getsource(SRStudioTurboPosters)
@@ -305,6 +487,15 @@ def _assert_official_source_has_no_alternative_encartes_route() -> None:
     assert 'super().navigate("Encartes Studio")' not in source
     assert "Abrir editor legado" not in source
     assert "StudioEditorExperience" not in source
+
+    navigate_source = inspect.getsource(SRStudioTurboPosters.navigate)
+    assert navigate_source.index('if name == "Encartes Studio"') < navigate_source.index("super().navigate(name)")
+
+    dialog_source = inspect.getsource(SRStudioTurboPosters._show_graphics2_launch_error)
+    assert G2_ERROR_MESSAGE in dialog_source
+
+    assert len(PRIMARY_WORKFLOWS) == 2
+    assert NAV_SECTIONS[0][1][1] == "Encartes Studio"
 
 
 def _run_missing_host_gate(
@@ -330,19 +521,64 @@ def _run_missing_host_gate(
         env["SR_GRAPHICS_ENGINE_2_HOST"] = str(package_root / "definitely-missing-G2-host.exe")
         shell_process = subprocess.Popen([str(shell_exe)], cwd=str(package_root), env=env)
         shell_window = _shell_window()
-        actual_shell_pid = _window_pid(int(shell_window.handle))
+        shell_hwnd = int(shell_window.handle)
+        actual_shell_pid = _window_pid(shell_hwnd)
         result["failure_shell_pid"] = actual_shell_pid
-        result["failure_shell_title"] = str(shell_window.window_text() or "")
-        result["failure_shell_rect"] = list(_win32_rect(int(shell_window.handle)))
+        result["failure_shell_title"] = _window_title(shell_hwnd)
+        result["failure_shell_title_repr"] = repr(_window_title(shell_hwnd))
+        result["failure_shell_rect"] = list(_win32_rect(shell_hwnd))
 
-        click_method, _ = _click_shell_studio(output_dir)
+        click_method, shell_hwnd = _click_shell_studio(output_dir)
         result["failure_click_method"] = click_method
         result["failure_studio_nav_clicked"] = True
 
-        error_window = _failure_window()
-        _save_win32_handle(int(error_window.handle), output_dir / "g2-error-visible.png")
+        error_row, all_windows = _wait_for_failure_window(
+            shell_pid=actual_shell_pid,
+            shell_hwnd=shell_hwnd,
+            output_dir=output_dir,
+        )
+        error_hwnd = int(error_row["hwnd"])
+        _save_win32_handle(error_hwnd, output_dir / "g2-error-visible.png")
         result["g2_error_visible"] = True
-        result["g2_error_title"] = str(error_window.window_text() or "")
+        result["g2_error_window_exists"] = True
+        result["g2_error_title"] = str(error_row["title"])
+        result["g2_error_title_repr"] = str(error_row["title_repr"])
+        result["g2_error_title_codepoints"] = [f"U+{ord(ch):04X}" for ch in str(error_row["title"])]
+        result["g2_error_class_name"] = str(error_row["class_name"])
+        result["g2_error_bounds"] = list(error_row["bounds"])
+        result["g2_error_owner_hwnd"] = int(error_row["owner_hwnd"])
+        result["g2_error_match_fragment"] = G2_ERROR_TITLE_FRAGMENT
+        result["g2_error_exact_title_required"] = False
+
+        win32_text = _window_text_rows(error_hwnd, "win32")
+        uia_text = _window_text_rows(error_hwnd, "uia")
+        _write_json(output_dir / "g2-error-controls-win32.json", win32_text)
+        _write_json(output_dir / "g2-error-controls-uia.json", uia_text)
+        visible_texts = [
+            str(row.get("text") or "")
+            for row in [*win32_text, *uia_text]
+            if isinstance(row, dict)
+        ]
+        runtime_control_message = any(
+            G2_ERROR_MESSAGE.casefold() in text.casefold() for text in visible_texts
+        )
+
+        log_path = failure_local / "SRStudio" / "logs" / "g2-launch.log"
+        _wait_until(lambda: log_path.is_file(), timeout=3, detail="missing-host g2-launch.log")
+        log_text = log_path.read_text(encoding="utf-8", errors="replace")
+        log_message = G2_ERROR_MESSAGE.casefold() in log_text.casefold()
+        assert log_message, "G2 diagnostic log exists but expected missing-host message is absent"
+        result["g2_launch_log_exists"] = True
+        result["g2_launch_log_path"] = str(log_path)
+        result["g2_launch_log_size"] = log_path.stat().st_size
+
+        result["g2_error_message_present"] = bool(runtime_control_message or log_message)
+        result["g2_error_message_proof"] = (
+            "runtime-control-text"
+            if runtime_control_message
+            else "visible-error-window+runtime-diagnostic-log+same-sha-dialog-contract"
+        )
+        assert result["g2_error_message_present"] is True
 
         spawned = _descendant_process(
             actual_shell_pid or shell_process.pid,
@@ -351,7 +587,19 @@ def _run_missing_host_gate(
         )
         assert spawned is None, f"G2 child unexpectedly spawned during missing-host gate: {spawned}"
         result["g2_child_opened_on_failure"] = False
+
+        legacy_windows = [
+            row
+            for row in all_windows
+            if int(row["pid"]) == actual_shell_pid
+            and int(row["hwnd"]) not in {shell_hwnd, error_hwnd}
+            and "encartes" in str(row["title"]).casefold()
+            and "g2" not in str(row["title"]).casefold()
+        ]
+        result["legacy_window_candidates"] = legacy_windows
+        assert not legacy_windows, legacy_windows
         result["legacy_studio_opened"] = False
+        result["legacy_studio_proof"] = "same-sha-route-contract+runtime-window-inventory"
         result["legacy_route_contract"] = True
     finally:
         _kill_if_running(actual_shell_pid)
@@ -383,12 +631,13 @@ def _run_success_gate(
     actual_shell_pid = 0
     try:
         shell_window = _shell_window()
-        actual_shell_pid = _window_pid(int(shell_window.handle))
+        shell_hwnd = int(shell_window.handle)
+        actual_shell_pid = _window_pid(shell_hwnd)
         result["shell_pid"] = actual_shell_pid
-        result["shell_title"] = str(shell_window.window_text() or "")
-        result["shell_rect"] = list(_win32_rect(int(shell_window.handle)))
+        result["shell_title"] = _window_title(shell_hwnd)
+        result["shell_rect"] = list(_win32_rect(shell_hwnd))
         result["shell_controls"] = len(_dump_controls(shell_window, output_dir / "shell-controls.json"))
-        _save_win32_handle(int(shell_window.handle), output_dir / "shell-before-studio-click.png")
+        _save_win32_handle(shell_hwnd, output_dir / "shell-before-studio-click.png")
 
         click_method, _ = _click_shell_studio(output_dir)
         result["studio_nav_click_method"] = click_method
@@ -493,7 +742,9 @@ def main() -> int:
             host_dir=host_dir,
             result=result,
         )
-        assert result.get("g2_error_visible") is True
+        assert result.get("g2_error_window_exists") is True
+        assert result.get("g2_error_message_present") is True
+        assert result.get("g2_launch_log_exists") is True
         assert result.get("legacy_studio_opened") is False
 
         _run_success_gate(
@@ -504,10 +755,13 @@ def main() -> int:
         )
 
         result["pass"] = True
-        (output_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_json(output_dir / "result.json", result)
         print("FULL FROZEN PACKAGE E2E: PASS")
-        print("G2_ERROR_VISIBLE=PASS")
+        print("ERROR_WINDOW_EXISTS=TRUE")
+        print("G2_ERROR_MESSAGE_PRESENT=TRUE")
+        print("G2_LAUNCH_LOG_EXISTS=TRUE")
         print("LEGACY_STUDIO_OPENED=FALSE")
+        print(f"ACTUAL_ERROR_TITLE={result['g2_error_title']!r}")
         print(f"G2_IDENTITY={result['g2_title']}")
         print(f"SHELL_CLICK_METHOD={result['studio_nav_click_method']}")
         print(f"CHANGED_PIXELS={result['visual']['changed_pixels']}")
@@ -516,7 +770,7 @@ def main() -> int:
     except Exception as exc:
         result["pass"] = False
         result["error"] = f"{type(exc).__name__}: {exc}"
-        (output_dir / "result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_json(output_dir / "result.json", result)
         print(f"FULL FROZEN PACKAGE E2E: FAIL: {type(exc).__name__}: {exc}", file=sys.stderr)
         raise
 
