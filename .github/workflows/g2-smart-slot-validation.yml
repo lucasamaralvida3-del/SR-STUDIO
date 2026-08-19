@@ -1,0 +1,175 @@
+name: G2 Smart Slot Validation
+
+on:
+  push:
+    branches:
+      - g2/fix-smart-slots-beta
+    paths:
+      - 'src/srstudio/graphics2/smart_slot_geometry.py'
+      - 'src/srstudio/graphics2/semantic_recovery.py'
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'tests/test_graphics2_smart_slot_geometry.py'
+      - '.github/workflows/g2-smart-slot-validation.yml'
+  pull_request:
+    branches:
+      - g2/integrate-studio-shell
+    paths:
+      - 'src/srstudio/graphics2/smart_slot_geometry.py'
+      - 'src/srstudio/graphics2/semantic_recovery.py'
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'tests/test_graphics2_smart_slot_geometry.py'
+      - '.github/workflows/g2-smart-slot-validation.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  smart-slots-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install focused dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Record exact SHA
+        shell: pwsh
+        run: |
+          $sha = git rev-parse HEAD
+          Write-Host "SOURCE_SHA=$sha"
+          if ($sha -ne "${{ github.event.pull_request.head.sha || github.sha }}") {
+            throw "Exact SHA mismatch"
+          }
+
+      - name: Smart Slot regression tests
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_smart_slot_geometry.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Real limpeza template diagnostics
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: |
+          @'
+          from pathlib import Path
+          from PySide6.QtGui import QGuiApplication
+          from srstudio.graphics2.import_bridge import GraphicsImportService
+          from srstudio.graphics2.package import save_package, load_package
+          from srstudio.graphics2.qt_renderer import render_png
+          from srstudio.graphics2.smart_slot_geometry import refresh_smart_slot_geometry
+
+          source = Path(r"src/srstudio/assets/poster_templates/legacy/models/SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx").resolve()
+          assert source.is_file(), source
+          app = QGuiApplication.instance() or QGuiApplication(["g2-smart-slot-validation"])
+          imported = GraphicsImportService().import_file(source)
+          document = imported.document
+          assert document.pages
+
+          def rect(block):
+              raw = block.get("bounds") or {}
+              return tuple(float(raw.get(k) or 0.0) for k in ("x", "y", "width", "height"))
+
+          def overlap(a, b):
+              ax, ay, aw, ah = a; bx, by, bw, bh = b
+              w = max(0.0, min(ax+aw, bx+bw) - max(ax, bx))
+              h = max(0.0, min(ay+ah, by+bh) - max(ay, by))
+              inter = w*h
+              return inter / max(min(max(1.0, aw*ah), max(1.0, bw*bh)), 1.0)
+
+          before_pairs = []
+          for page in document.pages:
+              blocks = page.metadata.get("semantic_blocks") or {}
+              raw = []
+              for slot in page.slots.values():
+                  cid = str(slot.metadata.get("semantic_product_card_id") or "")
+                  block = blocks.get(cid) if cid else None
+                  if isinstance(block, dict) and isinstance(block.get("bounds"), dict):
+                      raw.append((slot.id, rect(block)))
+              for i, (aid, a) in enumerate(raw):
+                  for bid, b in raw[i+1:]:
+                      ratio = overlap(a, b)
+                      if ratio > 0:
+                          before_pairs.append((page.id, aid, bid, ratio))
+
+          report = refresh_smart_slot_geometry(document)
+          total_slots = sum(len(page.slots) for page in document.pages)
+          assert report.slots == total_slots
+          assert total_slots >= 1
+
+          after_significant = 0
+          max_after = 0.0
+          role_rows = []
+          stable_before = {}
+          for page_index, page in enumerate(document.pages, start=1):
+              stable_before[page.id] = sorted(page.slots)
+              for slot in sorted(page.slots.values(), key=lambda s: int(s.metadata.get("display_index") or 999999)):
+                  bounds = slot.metadata.get("effective_bounds") or {}
+                  assert float(bounds.get("width") or 0) > 0
+                  assert float(bounds.get("height") or 0) > 0
+                  ratio = float(slot.metadata.get("slot_overlap_ratio") or 0.0)
+                  max_after = max(max_after, ratio)
+                  after_significant += int(bool(slot.metadata.get("significant_overlap")))
+                  role_rows.append({
+                      "page": page_index,
+                      "slot_id": slot.id,
+                      "product_id": slot.product_id,
+                      "display_label": slot.metadata.get("display_label"),
+                      "bounds": bounds,
+                      "nodes": dict(slot.node_by_role),
+                      "overlap": ratio,
+                  })
+
+          work = Path("smart-slot-artifacts")
+          work.mkdir(exist_ok=True)
+          package = save_package(document, work / "limpeza-smart-slots.srscene", embed_local_assets=False)
+          reopened = load_package(package)
+          for page in reopened.pages:
+              assert sorted(page.slots) == stable_before[page.id]
+              for slot in page.slots.values():
+                  assert slot.metadata.get("effective_bounds")
+                  assert slot.metadata.get("display_index")
+
+          png = work / "limpeza-page-1.png"
+          rendered = render_png(reopened, png, page_index=0, dpi=96)
+          assert png.is_file() and png.stat().st_size > 0
+          assert rendered.width > 0 and rendered.height > 0
+          for page in reopened.pages:
+              for node in page.nodes.values():
+                  assert "SOLTAR PRODUTO AQUI" not in str(node.text or "")
+                  assert not str(node.metadata.get("display_label") or "").startswith("Produto ")
+
+          print(f"REAL_TEMPLATE={source.name}")
+          print(f"PAGES={len(document.pages)}")
+          print(f"SLOTS={total_slots}")
+          print(f"OVERLAP_PAIRS_BEFORE={len(before_pairs)}")
+          print(f"SIGNIFICANT_SLOT_FLAGS_AFTER={after_significant}")
+          print(f"MAX_SLOT_OVERLAP_AFTER={max_after:.6f}")
+          print(f"SAVE_REOPEN=PASS")
+          print(f"EXPORT_CLEAN=PASS")
+          print("SLOT_ROWS_BEGIN")
+          for row in role_rows:
+              print(row)
+          print("SLOT_ROWS_END")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g2-smart-slot-validation
+          path: smart-slot-artifacts
+          if-no-files-found: error
+          retention-days: 30
