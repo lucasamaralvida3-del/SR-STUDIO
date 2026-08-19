@@ -22,6 +22,8 @@ from .pptx_structure import PptxMappingAudit, PptxStructureReport, inspect_pptx_
 from .scene_fingerprint import store_scene_fingerprint
 from .semantic_blocks import build_semantic_blocks
 from .semantic_recovery import recover_canva_semantic_cards
+from .smart_slot_detection import consolidate_smart_slot_false_positives
+from .smart_slot_geometry import refresh_smart_slot_geometry
 from .smart_slot_import_reset import reset_new_pptx_import_product_content
 
 _SLOT_ROLE_MAP: dict[str, BindingRole] = {
@@ -96,6 +98,12 @@ class GraphicsImportService:
         # que slots criados na segunda passagem também recebam binding IMAGE.
         recover_canva_semantic_cards(document)
         if structure is not None:
+            # Final semantic arbitration: recovered PriceBlocks/backplates
+            # may be useful intermediate candidates, but artwork alone is
+            # never sufficient product identity. This pass removes/merges
+            # false Smart Slots without touching any visual node.
+            consolidate_smart_slot_false_positives(document)
+            refresh_smart_slot_geometry(document)
             mapping = structure.audit_document(document)
             _apply_exact_fill_rect_mapping(mapping, document)
             document.metadata["pptx_mapping_audit"] = mapping.to_dict()
