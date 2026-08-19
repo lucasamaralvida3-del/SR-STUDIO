@@ -6,6 +6,7 @@ import QtQuick.Window
 
 Rectangle {
     id: panel
+    objectName: "smartSlotProjectActionsPanel"
     width: 890
     height: 84
     anchors.left: parent ? parent.left : undefined
