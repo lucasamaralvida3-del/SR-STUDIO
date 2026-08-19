@@ -3,6 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 import inspect
+import subprocess
+import sys
 
 from srstudio.app import turbo_posters
 from srstudio.app.turbo_posters import SRStudioTurboPosters
@@ -95,6 +97,37 @@ def test_primary_current_project_launch_does_not_require_feature_flag(tmp_path, 
     assert result.reused_session is True
     assert captured["args"][1] == str(package)
     assert "--project-name" in captured["args"]
+
+
+def test_real_child_immediate_exit_fails_closed_with_diagnostic_log(tmp_path, monkeypatch) -> None:
+    source = tmp_path / "project.srscene"
+    source.write_bytes(b"scene")
+    log_path = tmp_path / "g2-launch.log"
+
+    monkeypatch.setattr(
+        full_studio_bridge,
+        "_host_command",
+        lambda: [sys.executable, "-c", "import sys; sys.exit(7)"],
+    )
+    monkeypatch.setattr(full_studio_bridge, "_uses_current_python", lambda _command: False)
+    monkeypatch.setattr(full_studio_bridge, "_launch_log_path", lambda: log_path)
+
+    result = full_studio_bridge._launch_host(
+        source,
+        graphics_api="auto",
+        project_name="E2E",
+        source_project_id="",
+        process_factory=subprocess.Popen,
+        message_prefix="G2 opened",
+    )
+
+    assert result.ok is False
+    assert result.launched is False
+    assert "encerrou durante a inicialização" in result.message
+    assert "código 7" in result.message
+    assert str(log_path) in result.message
+    assert log_path.is_file()
+    assert "exited during startup with code 7" in log_path.read_text(encoding="utf-8")
 
 
 def test_encartes_route_is_intercepted_before_legacy_parent_navigation() -> None:
