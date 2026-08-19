@@ -51,6 +51,17 @@ def test_direct_pptx_launch_fails_closed_when_source_is_missing(tmp_path) -> Non
     assert "Arquivo não encontrado" in result.message
 
 
+def test_direct_launch_fails_closed_for_unsupported_source(tmp_path) -> None:
+    source = tmp_path / "unsupported.txt"
+    source.write_text("not a studio source", encoding="utf-8")
+
+    result = full_studio_bridge.launch_graphics_source(source, tmp_path / "data")
+
+    assert result.ok is False
+    assert result.launched is False
+    assert "Formato não suportado" in result.message
+
+
 def test_primary_current_project_launch_does_not_require_feature_flag(tmp_path, monkeypatch) -> None:
     package = tmp_path / "project.srscene"
     package.write_bytes(b"scene")
