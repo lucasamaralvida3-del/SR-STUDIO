@@ -14,6 +14,18 @@ on:
       - 'build/build_graphics2_host.py'
       - 'pyproject.toml'
       - '.github/workflows/g2-full-studio-beta.yml'
+  pull_request:
+    branches:
+      - g2/integration-beta
+    paths:
+      - 'src/srstudio/app/turbo_posters.py'
+      - 'src/srstudio/graphics2/full_studio_bridge.py'
+      - 'src/srstudio/graphics2/studio_bridge.py'
+      - 'tests/test_graphics2_full_studio_entrypoint.py'
+      - 'tests/test_graphics2_studio_bridge.py'
+      - 'build/build_graphics2_host.py'
+      - 'pyproject.toml'
+      - '.github/workflows/g2-full-studio-beta.yml'
 
 permissions:
   contents: read
@@ -60,7 +72,6 @@ jobs:
           context = load_launch_context(source)
           document = context.document
           assert document.pages, "PPTX real não produziu páginas no G2"
-          page = document.pages[0]
           session = GraphicsSession(document)
           before = document.name
           document.name = before + " · E2E"
@@ -92,7 +103,6 @@ jobs:
       - name: Verify packaged host discovery and runtime integrity
         shell: pwsh
         run: |
-          $env:SR_STUDIO_PACKAGED_ROOT = (Resolve-Path "dist/SR Studio 5").Path
           @'
           from pathlib import Path
           import json
