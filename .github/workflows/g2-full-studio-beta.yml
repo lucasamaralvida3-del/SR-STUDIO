@@ -28,7 +28,7 @@ on:
       - '.github/workflows/g2-full-studio-beta.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   full-studio-windows:
@@ -175,3 +175,165 @@ jobs:
             release/SR-Studio-G2-Full-Beta-Windows-x64.zip
             release/g2-full-studio-provenance.json
           if-no-files-found: error
+          retention-days: 90
+
+      - name: Create launcher-compatible Beta bundle
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          $run = "${{ github.run_number }}"
+          $version = "5.0.0-hybrid.g2beta.$run"
+          $tag = "g2-beta-$run"
+          $bundleName = "SR_STUDIO_G2_BETA_${run}_PROFESSIONAL.zip"
+          $betaRoot = "release/channel-beta"
+          $filesRoot = Join-Path $betaRoot "files"
+          $studioRoot = Join-Path $filesRoot "SRStudio5"
+          New-Item -ItemType Directory -Force -Path $studioRoot | Out-Null
+          Copy-Item "dist/SR Studio 5/*" $studioRoot -Recurse -Force
+
+          $wrapper = @'
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          root = Path(__file__).resolve().parent
+          exe = root / "SRStudio5" / "SR Studio 5.exe"
+          if not exe.is_file():
+              raise FileNotFoundError(f"SR Studio G2 executable not found: {exe}")
+          subprocess.Popen([str(exe)], cwd=str(exe.parent))
+          sys.exit(0)
+          '@
+          [IO.File]::WriteAllText((Join-Path $filesRoot "SR_Studio_Gerador.py"), $wrapper, (New-Object Text.UTF8Encoding($false)))
+
+          $bundle = Join-Path "release" $bundleName
+          Push-Location $betaRoot
+          try {
+            Compress-Archive -Path "files" -DestinationPath (Resolve-Path "../").Path\$bundleName -Force
+          } finally {
+            Pop-Location
+          }
+          $hash = (Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $bundle).Length
+          "BETA_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_BUNDLE_NAME=$bundleName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_BUNDLE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_BUNDLE_SIZE=$size" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "BETA_VERSION=$version"
+          Write-Host "BETA_TAG=$tag"
+          Write-Host "BETA_BUNDLE=$bundleName"
+          Write-Host "BETA_SHA256=$hash"
+          Write-Host "BETA_SIZE=$size"
+
+      - name: Publish G2 Beta release
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $bundle = Join-Path "release" $env:BETA_BUNDLE_NAME
+          $notes = @"
+          SR Studio G2 Beta ${{ github.run_number }}
+
+          Canal Beta de teste contínuo do novo Studio de Encartes G2 integrado ao SR Studio.
+
+          Source SHA: $env:SOURCE_SHA
+          Workflow run: ${{ github.run_id }}
+          Studio de Encartes G2: fluxo principal
+          Graphics2Host: incluído
+          Importação PPTX/Canva: incluída
+
+          BETA / TEST BUILD — não é Stable.
+          "@
+          gh release view $env:BETA_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:BETA_TAG $bundle --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar asset Beta" }
+            gh release edit $env:BETA_TAG --title "SR Studio — G2 Beta ${{ github.run_number }}" --notes $notes --prerelease
+          } else {
+            gh release create $env:BETA_TAG $bundle --title "SR Studio — G2 Beta ${{ github.run_number }}" --notes $notes --prerelease --target $env:SOURCE_SHA
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao publicar release Beta" }
+
+      - name: Promote G2 build to official beta manifest
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          $channelRoot = Join-Path $env:RUNNER_TEMP "srstudio-beta-main"
+          git fetch origin main
+          git worktree add --detach $channelRoot origin/main
+          try {
+            $manifestPath = Join-Path $channelRoot "beta/manifest.json"
+            $previous = ""
+            if (Test-Path $manifestPath) {
+              try {
+                $old = Get-Content -Raw $manifestPath | ConvertFrom-Json
+                $previous = [string]$old.version
+              } catch { }
+            }
+            $url = "https://github.com/${{ github.repository }}/releases/download/$env:BETA_TAG/$env:BETA_BUNDLE_NAME"
+            $manifest = [ordered]@{
+              format = "SRSTUDIO_HYBRID_BUNDLE_1"
+              product = "SR Studio"
+              channel = "beta"
+              version = $env:BETA_VERSION
+              product_version = "5.0.0"
+              release_label = "G2 Beta ${{ github.run_number }} — Studio de Encartes"
+              published_at = (Get-Date).ToUniversalTime().ToString("o")
+              min_launcher = "4.0.1-hybrid.base2.5"
+              min_launcher_version = "4.0.1-hybrid.base2.5"
+              bundle = [ordered]@{
+                url = $url
+                sha256 = $env:BETA_BUNDLE_SHA256
+                size = [int64]$env:BETA_BUNDLE_SIZE
+                member_prefix = "files/"
+              }
+              url = $url
+              bundle_url = $url
+              sha256 = $env:BETA_BUNDLE_SHA256
+              size = [int64]$env:BETA_BUNDLE_SIZE
+              member_prefix = "files/"
+              previous_version = $previous
+              entrypoint = "SR_Studio_Gerador.py"
+              graphics2_test = $true
+              graphics2_primary = $true
+              launcher_path_safe = $true
+              source_commit = $env:SOURCE_SHA
+              workflow_run = "${{ github.run_id }}"
+              notes = "Canal Beta contínuo — novo Studio de Encartes G2 integrado ao SR Studio."
+            }
+            $json = $manifest | ConvertTo-Json -Depth 8
+            [IO.File]::WriteAllText($manifestPath, $json + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+
+            Push-Location $channelRoot
+            try {
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add beta/manifest.json
+              git diff --cached --quiet
+              if ($LASTEXITCODE -ne 0) {
+                git commit -m "chore(beta): promote Studio de Encartes G2 $env:BETA_VERSION"
+                if ($LASTEXITCODE -ne 0) { throw "Falha ao criar commit do canal Beta" }
+                git push origin HEAD:main
+                if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar main/beta/manifest.json" }
+              }
+            } finally {
+              Pop-Location
+            }
+          } finally {
+            git worktree remove $channelRoot --force 2>$null
+          }
+
+      - name: Verify published beta manifest
+        if: github.event_name != 'pull_request'
+        shell: pwsh
+        run: |
+          Start-Sleep -Seconds 5
+          $url = "https://raw.githubusercontent.com/${{ github.repository }}/main/beta/manifest.json?run=${{ github.run_id }}"
+          $beta = Invoke-RestMethod -Uri $url -Headers @{"Cache-Control"="no-cache"}
+          if ([string]$beta.channel -ne "beta") { throw "Canal publicado não é beta" }
+          if ([string]$beta.version -ne $env:BETA_VERSION) { throw "Manifest Beta não aponta para a versão recém-publicada" }
+          if ([string]$beta.source_commit -ne $env:SOURCE_SHA) { throw "Manifest Beta não aponta para o source SHA recém-publicado" }
+          if ([string]$beta.bundle.sha256 -ne $env:BETA_BUNDLE_SHA256) { throw "SHA do bundle publicado diverge" }
+          Write-Host "BETA CHANNEL PROMOTED: $($beta.version)"
+          Write-Host "BUNDLE: $($beta.bundle.url)"
