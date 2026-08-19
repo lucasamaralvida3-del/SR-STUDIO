@@ -103,6 +103,9 @@ class GraphicsImageDatabaseRuntime:
                 return
             library = SafeImageLibrary(self.library_root)
             self._validate_library_index(library, verify_hashes=False)
+            manifest_path = self.library_root / "seed-manifest.json"
+            if manifest_path.is_file():
+                self._load_persisted_seed_manifest(library, manifest_path)
             self.library = library
             self.lookup_service = ProductImageLookupService(library)
             self.status = "ready"
@@ -192,6 +195,24 @@ class GraphicsImageDatabaseRuntime:
             raise ImageDatabaseIntegrityError("Seed deve conter objetos JSON válidos")
         return manifest, payload
 
+    def _load_persisted_seed_manifest(self, library: SafeImageLibrary, manifest_path: Path) -> None:
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
+            raise ImageDatabaseIntegrityError(f"Manifesto persistido do Image Database inválido: {exc}") from exc
+        if not isinstance(manifest, dict):
+            raise ImageDatabaseIntegrityError("Manifesto persistido do Image Database deve ser um objeto JSON")
+        installed = library._load()
+        canonical_payload: dict[str, dict[str, Any]] = {}
+        for asset_id, raw_value in installed.items():
+            if not isinstance(raw_value, dict):
+                raise ImageDatabaseIntegrityError(f"Registro inválido no Image DB: {asset_id}")
+            raw = dict(raw_value)
+            raw_path = Path(str(self._require(raw, "path")))
+            raw["path"] = f"assets/{raw_path.name}"
+            canonical_payload[str(asset_id)] = raw
+        self._validate_seed_manifest(manifest, canonical_payload)
+
     @staticmethod
     def _require(mapping: dict[str, Any], key: str) -> Any:
         if key not in mapping:
@@ -215,10 +236,14 @@ class GraphicsImageDatabaseRuntime:
         canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8")
         if sha256(canonical).hexdigest() != expected_index_sha:
             raise ImageDatabaseIntegrityError("SHA-256 lógico do index do seed diverge")
-        for key in ("catalog_version", "source_release", "source_artifact", "provenance_status", "dedup_status"):
+        for key in ("catalog_version", "source_release", "source_artifact"):
             value = self._require(manifest, key)
             if value in (None, ""):
                 raise ImageDatabaseIntegrityError(f"Campo obrigatório vazio no seed: {key}")
+        if self._require(manifest, "provenance_status") != "PASS":
+            raise ImageDatabaseIntegrityError("Provenance do seed não está certificada")
+        if self._require(manifest, "dedup_status") != "PASS":
+            raise ImageDatabaseIntegrityError("Deduplicação do seed não está certificada")
         self.seed_manifest = dict(manifest)
 
     def _validate_library_index(
