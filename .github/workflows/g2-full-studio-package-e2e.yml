@@ -13,6 +13,7 @@ on:
       - 'src/srstudio/graphics2/item_slots.py'
       - 'src/srstudio/graphics2/qml/**'
       - 'tests/test_graphics2_full_studio_entrypoint.py'
+      - 'tests/test_graphics2_studio_bridge.py'
       - 'tests/test_graphics2_item_slots.py'
       - 'tools/verify_full_studio_g2_package_e2e.py'
       - 'build/build_graphics2_host.py'
@@ -52,7 +53,7 @@ jobs:
           git diff --quiet
           if ($LASTEXITCODE -ne 0) { throw "Tracked working tree changed before E2E" }
 
-      - name: Focused routing and ItemSlot contracts
+      - name: Focused G2-only routing and ItemSlot contracts
         shell: pwsh
         run: |
           python -m compileall -q src/srstudio/app/turbo_posters.py src/srstudio/graphics2/full_studio_bridge.py tools/verify_full_studio_g2_package_e2e.py
@@ -91,7 +92,7 @@ jobs:
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
           Write-Host "E2E_PACKAGE_SHA256=$hash"
 
-      - name: SR Studio shell to G2 to SIMPLES visible
+      - name: Missing-host fail-closed then SR Studio to G2 to SIMPLES visible
         shell: pwsh
         env:
           QT_QPA_PLATFORM: windows
@@ -106,15 +107,23 @@ jobs:
         shell: pwsh
         run: |
           if (!(Test-Path "e2e/evidence/result.json")) { throw "result.json missing" }
+          if (!(Test-Path "e2e/evidence/g2-error-visible.png")) { throw "G2 error screenshot missing" }
+          if (!(Test-Path "e2e/evidence/failure-localappdata/SRStudio/logs/g2-launch.log")) { throw "G2 failure diagnostic log missing" }
           if (!(Test-Path "e2e/evidence/g2-before-slot.png")) { throw "before screenshot missing" }
           if (!(Test-Path "e2e/evidence/g2-after-simples.png")) { throw "after screenshot missing" }
           $result = Get-Content "e2e/evidence/result.json" -Raw | ConvertFrom-Json
           if (!$result.pass) { throw "Full package E2E did not pass" }
+          if (!$result.legacy_route_contract) { throw "G2-only source routing contract not verified" }
+          if (!$result.g2_error_visible) { throw "Missing-host G2 error not visible" }
+          if ($result.g2_child_opened_on_failure) { throw "G2 child unexpectedly opened in missing-host gate" }
+          if ($result.legacy_studio_opened) { throw "Legacy Studio opened during G2 failure" }
           if (!$result.g2_identity_verified) { throw "G2 identity not verified" }
           if (!$result.slot_button_clicked) { throw "+ SLOT DE ITEM not clicked" }
           if (!$result.simples_clicked) { throw "SIMPLES not clicked" }
           if (!$result.simples_visible) { throw "SIMPLES not visually proven" }
           if ([int64]$result.visual.changed_pixels -lt 800) { throw "Insufficient canvas visual delta" }
+          Write-Host "G2_ERROR_VISIBLE=PASS"
+          Write-Host "LEGACY_STUDIO_OPENED=FALSE"
           Write-Host "FULL_FROZEN_PACKAGE_E2E=PASS"
           Write-Host "G2_IDENTITY_VERIFIED=PASS"
           Write-Host "SLOT_CLICK=PASS"
