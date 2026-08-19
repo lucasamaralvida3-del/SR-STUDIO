@@ -236,6 +236,34 @@ def test_seed_bootstraps_same_official_root_not_parallel_catalog(tmp_path: Path)
     assert not (data_dir / "graphics2-images").exists()
 
 
+def test_seed_manifest_is_reloaded_and_revalidated_after_runtime_reopen(tmp_path: Path) -> None:
+    source_library = SafeImageLibrary(tmp_path / "builder-reopen" / "images")
+    asset = _asset(source_library, _png(tmp_path / "known-reopen.png"), "BATATA INGLESA")
+    seed = _seed_from_library(tmp_path, source_library, total_products=520)
+    data_dir = tmp_path / "reopen-user-data"
+    first = GraphicsImageDatabaseRuntime(data_dir, seed_path=seed, require_library=True)
+    assert first.seed_manifest["total_products"] == 520
+    assert first.seed_manifest["total_images"] == 1
+    assert first.seed_manifest["provenance_status"] == "PASS"
+    assert first.seed_manifest["dedup_status"] == "PASS"
+
+    second = GraphicsImageDatabaseRuntime(data_dir, require_library=True)
+    assert second.available
+    assert second.seed_manifest == first.seed_manifest
+    result = second.lookup_product("BATATA INGLESA")
+    assert result.best_match is not None and result.best_match.asset.id == asset.id
+
+    persisted_manifest = data_dir / "images" / "seed-manifest.json"
+    tampered = json.loads(persisted_manifest.read_text(encoding="utf-8"))
+    tampered["provenance_status"] = "UNKNOWN"
+    persisted_manifest.write_text(json.dumps(tampered), encoding="utf-8")
+    invalid = GraphicsImageDatabaseRuntime(data_dir)
+    assert not invalid.available
+    assert "provenance" in invalid.error.lower()
+    with pytest.raises(ImageDatabaseIntegrityError):
+        GraphicsImageDatabaseRuntime(data_dir, require_library=True)
+
+
 @pytest.mark.parametrize("mutation, expected", [
     ("missing_provenance", "Provenance ausente"),
     ("missing_hash", "sha256_full"),
@@ -279,6 +307,7 @@ def test_payload_preview_is_suggestion_only_and_does_not_fill_slots(tmp_path: Pa
     assert slot.metadata.get("product_snapshot") in (None, {})
     assert image.asset_id == ""
     assert image.visible is False
+
 
 def test_ambiguous_existing_matches_require_manual_choice(tmp_path: Path) -> None:
     runtime, _, assets = _runtime(tmp_path, [("BATATA INGLESA", (), True), ("BATATA INGLESA", (), True)])
