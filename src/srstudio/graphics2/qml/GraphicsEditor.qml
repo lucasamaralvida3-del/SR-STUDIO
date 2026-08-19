@@ -21,6 +21,8 @@ ApplicationWindow {
     property string selectedSlotId: ""
     property string hoveredSlotId: ""
     property bool smartSlotInspectionMode: false
+    property bool smartSlotEditMode: false
+    property bool smartSlotSnap: true
     property var anchorNode: selectedNode()
     property var draggedProduct: null
     property bool productDragActive: false
@@ -359,6 +361,33 @@ ApplicationWindow {
             ToolButton { text: "▦"; checkable: true; checked: showGrid; ToolTip.text: "Grid"; ToolTip.visible: hovered; onClicked: showGrid = checked }
             ToolButton { text: "▤"; checkable: true; checked: showRulers; ToolTip.text: "Réguas"; ToolTip.visible: hovered; onClicked: showRulers = checked }
             ToolButton { text: "Smart Slots"; checkable: true; checked: smartSlotInspectionMode; ToolTip.text: "Mostrar áreas inteligentes"; ToolTip.visible: hovered; onClicked: smartSlotInspectionMode = checked }
+            ToolButton {
+                text: "Ajustar Smart Slot"
+                checkable: true
+                checked: smartSlotEditMode
+                ToolTip.text: "Mover/redimensionar somente a área semântica do slot"
+                ToolTip.visible: hovered
+                onClicked: {
+                    smartSlotEditMode = checked
+                    if (checked) smartSlotInspectionMode = true
+                }
+            }
+            ToolButton { text: "Snap Slot"; visible: smartSlotEditMode; checkable: true; checked: smartSlotSnap; onClicked: smartSlotSnap = checked }
+            ToolButton {
+                text: "Restaurar Auto"
+                visible: smartSlotEditMode && selectedSlotId !== ""
+                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"restore_smart_slot_auto","slot_id":selectedSlotId}))
+            }
+            ToolButton {
+                text: "Não-produto"
+                visible: smartSlotEditMode && selectedSlotId !== ""
+                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"mark_smart_slot_non_product","slot_id":selectedSlotId}))
+            }
+            ToolButton {
+                text: "Excluir Slot"
+                visible: smartSlotEditMode && selectedSlotId !== ""
+                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"delete_smart_slot","slot_id":selectedSlotId}))
+            }
             ToolButton { text: "Agrupar"; onClicked: sceneBridge.dispatch('{"name":"group"}') }
             ToolButton { text: "Desagrupar"; onClicked: sceneBridge.dispatch('{"name":"ungroup"}') }
             ToolButton { text: "Frente"; onClicked: sceneBridge.dispatch('{"name":"layer","mode":"front"}') }
@@ -787,12 +816,13 @@ ApplicationWindow {
                             Repeater {
                                 model: slots()
                                 delegate: Item {
+                                    id: slotOverlay
                                     required property var modelData
                                     property var bounds: slotBounds(modelData)
                                     property bool isDropTarget: productDragActive && dragHoverSlotId === modelData.id
                                     property bool isSelectedSlot: selectedSlotId === modelData.id
                                     property bool isHoveredSlot: hoveredSlotId === modelData.id
-                                    property bool showSlotOverlay: smartSlotInspectionMode || productDragActive || isSelectedSlot || isHoveredSlot
+                                    property bool showSlotOverlay: smartSlotEditMode || smartSlotInspectionMode || productDragActive || isSelectedSlot || isHoveredSlot
                                     x: bounds.x * zoom
                                     y: bounds.y * zoom
                                     width: bounds.width * zoom
@@ -819,9 +849,91 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         acceptedButtons: Qt.LeftButton
                                         hoverEnabled: true
-                                        onEntered: hoveredSlotId = modelData.id
-                                        onExited: if (hoveredSlotId === modelData.id) hoveredSlotId = ""
-                                        onClicked: selectedSlotId = modelData.id
+                                        preventStealing: smartSlotEditMode
+                                        drag.target: smartSlotEditMode ? slotOverlay : null
+                                        onEntered: hoveredSlotId = slotOverlay.modelData.id
+                                        onExited: if (hoveredSlotId === slotOverlay.modelData.id) hoveredSlotId = ""
+                                        onPressed: selectedSlotId = slotOverlay.modelData.id
+                                        onClicked: selectedSlotId = slotOverlay.modelData.id
+                                        onReleased: {
+                                            if (!smartSlotEditMode) return
+                                            sceneBridge.dispatch(JSON.stringify({
+                                                "name":"adjust_smart_slot",
+                                                "slot_id":slotOverlay.modelData.id,
+                                                "x":slotOverlay.x / zoom,
+                                                "y":slotOverlay.y / zoom,
+                                                "width":slotOverlay.width / zoom,
+                                                "height":slotOverlay.height / zoom,
+                                                "snap":smartSlotSnap
+                                            }))
+                                        }
+                                    }
+                                    Repeater {
+                                        model: [
+                                            {"dir":"nw","fx":0,"fy":0,"cursor":Qt.SizeFDiagCursor},
+                                            {"dir":"n","fx":0.5,"fy":0,"cursor":Qt.SizeVerCursor},
+                                            {"dir":"ne","fx":1,"fy":0,"cursor":Qt.SizeBDiagCursor},
+                                            {"dir":"e","fx":1,"fy":0.5,"cursor":Qt.SizeHorCursor},
+                                            {"dir":"se","fx":1,"fy":1,"cursor":Qt.SizeFDiagCursor},
+                                            {"dir":"s","fx":0.5,"fy":1,"cursor":Qt.SizeVerCursor},
+                                            {"dir":"sw","fx":0,"fy":1,"cursor":Qt.SizeBDiagCursor},
+                                            {"dir":"w","fx":0,"fy":0.5,"cursor":Qt.SizeHorCursor}
+                                        ]
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            visible: smartSlotEditMode && slotOverlay.isSelectedSlot
+                                            width: 11; height: 11; radius: 2
+                                            x: modelData.fx * slotOverlay.width - width / 2
+                                            y: modelData.fy * slotOverlay.height - height / 2
+                                            color: "white"
+                                            border.width: 2
+                                            border.color: "#0F5BD8"
+                                            z: 10
+                                            MouseArea {
+                                                anchors.fill: parent
+                                                cursorShape: modelData.cursor
+                                                preventStealing: true
+                                                property real startGlobalX: 0
+                                                property real startGlobalY: 0
+                                                property real startX: 0
+                                                property real startY: 0
+                                                property real startW: 0
+                                                property real startH: 0
+                                                onPressed: {
+                                                    var p = mapToItem(sheet, mouse.x, mouse.y)
+                                                    startGlobalX = p.x / zoom
+                                                    startGlobalY = p.y / zoom
+                                                    startX = slotOverlay.bounds.x
+                                                    startY = slotOverlay.bounds.y
+                                                    startW = slotOverlay.bounds.width
+                                                    startH = slotOverlay.bounds.height
+                                                }
+                                                onReleased: {
+                                                    var p = mapToItem(sheet, mouse.x, mouse.y)
+                                                    var dx = p.x / zoom - startGlobalX
+                                                    var dy = p.y / zoom - startGlobalY
+                                                    var nx = startX
+                                                    var ny = startY
+                                                    var nw = startW
+                                                    var nh = startH
+                                                    if (modelData.dir.indexOf("w") >= 0) { nx += dx; nw -= dx }
+                                                    if (modelData.dir.indexOf("e") >= 0) nw += dx
+                                                    if (modelData.dir.indexOf("n") >= 0) { ny += dy; nh -= dy }
+                                                    if (modelData.dir.indexOf("s") >= 0) nh += dy
+                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                                    sceneBridge.dispatch(JSON.stringify({
+                                                        "name":"adjust_smart_slot",
+                                                        "slot_id":slotOverlay.modelData.id,
+                                                        "x":nx,
+                                                        "y":ny,
+                                                        "width":nw,
+                                                        "height":nh,
+                                                        "snap":smartSlotSnap
+                                                    }))
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }

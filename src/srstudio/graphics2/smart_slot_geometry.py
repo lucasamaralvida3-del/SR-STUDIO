@@ -144,13 +144,33 @@ def _refresh_page(page: GraphicsPage, significant_overlap_ratio: float) -> list[
                     continue
                 included.append(node_id)
 
-        final = _bounds(page, included) or core
-        if final is None and card is not None:
+        auto_final = _bounds(page, included) or core
+        if auto_final is None and card is not None:
             raw = card.get("bounds")
             if isinstance(raw, dict):
-                final = _rect(raw)
-        if final is None:
-            final = Rect()
+                auto_final = _rect(raw)
+        if auto_final is None:
+            auto_final = Rect()
+
+        # The first automatic geometry is the restore point. A normal refresh
+        # may update diagnostics, but it cannot override explicit user bounds.
+        slot.metadata["auto_detected_bounds"] = _rect_dict(auto_final)
+        original = _metadata_rect(slot.metadata.get("original_detected_bounds"))
+        if original is None and _area(auto_final) > 0:
+            original = auto_final
+            slot.metadata["original_detected_bounds"] = _rect_dict(auto_final)
+
+        manual = _metadata_rect(slot.metadata.get("user_adjusted_bounds"))
+        adjustment_source = str(slot.metadata.get("adjustment_source") or "")
+        if adjustment_source == "manual" and manual is not None:
+            final = manual
+            geometry_source = "manual"
+        elif adjustment_source == "auto-restored" and original is not None:
+            final = original
+            geometry_source = "original-detected-bounds"
+        else:
+            final = auto_final
+            geometry_source = "bindings+exclusive-card-members"
 
         label = _slot_label(page, slot)
         source_group_id = str((card or {}).get("metadata", {}).get("source_group_id") or slot.metadata.get("source_group_id") or "")
@@ -173,8 +193,8 @@ def _refresh_page(page: GraphicsPage, significant_overlap_ratio: float) -> list[
         slot.metadata["effective_node_ids"] = list(entry.included_node_ids)
         slot.metadata["excluded_shared_node_ids"] = list(excluded_shared)
         slot.metadata["excluded_large_node_ids"] = list(excluded_large)
-        slot.metadata["geometry_source"] = "bindings+exclusive-card-members"
-        slot.metadata["geometry_version"] = 1
+        slot.metadata["geometry_source"] = geometry_source
+        slot.metadata["geometry_version"] = 2
 
     ordered = sorted(
         slots,
@@ -368,6 +388,13 @@ def _rect(raw: dict[str, Any]) -> Rect:
         max(0.0, float(raw.get("width") or 0.0)),
         max(0.0, float(raw.get("height") or 0.0)),
     ).normalized()
+
+
+def _metadata_rect(raw: object) -> Rect | None:
+    if not isinstance(raw, dict):
+        return None
+    rect = _rect(raw)
+    return rect if _area(rect) > 0 else None
 
 
 def _rect_dict(rect: Rect) -> dict[str, float]:
