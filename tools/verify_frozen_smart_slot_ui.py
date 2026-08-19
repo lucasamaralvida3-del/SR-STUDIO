@@ -75,6 +75,7 @@ def main() -> int:
 
     required_action_terms = [
         "AJUSTAR SMART SLOTS",
+        "smartSlotProjectActionsPanel",
         "smartSlotAdjustButton",
         "smartSlotRestoreButton",
         "smartSlotNonProductButton",
@@ -83,7 +84,7 @@ def main() -> int:
     for term in required_action_terms:
         assert term in actions_text, f"frozen ProjectActions.qml missing {term!r}"
 
-    from PySide6.QtCore import QObject, Property, QMetaObject, QPoint, QPointF, Qt, QUrl, Signal, Slot
+    from PySide6.QtCore import QEventLoop, QObject, Property, QMetaObject, QPoint, QPointF, Qt, QTimer, QUrl, Signal, Slot
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
     from PySide6.QtTest import QTest
@@ -180,6 +181,7 @@ def main() -> int:
         assert found is not None, f"QML object not found: {name}"
         return found
 
+    panel_item = child("smartSlotProjectActionsPanel")
     adjust = child("smartSlotAdjustButton")
     assert bool(adjust.property("visible")) is True
     assert bool(adjust.property("enabled")) is True
@@ -213,8 +215,15 @@ def main() -> int:
         assert bool(control.property("enabled")) is True
 
     screenshot_path = output_dir / "frozen-smart-slot-ui.png"
-    image = root.grabWindow()
-    assert not image.isNull(), "QQuickWindow.grabWindow returned a null image"
+    grab = panel_item.grabToImage()
+    assert grab is not None, "QQuickItem.grabToImage could not be initiated"
+    if grab.image().isNull():
+        loop = QEventLoop()
+        grab.ready.connect(loop.quit)
+        QTimer.singleShot(5000, loop.quit)
+        loop.exec()
+    image = grab.image()
+    assert not image.isNull(), "QQuickItem.grabToImage returned a null image"
     assert image.save(str(screenshot_path)), screenshot_path
     assert screenshot_path.is_file() and screenshot_path.stat().st_size > 0
 
@@ -236,6 +245,7 @@ def main() -> int:
         "non_product_visible": bool(non_product.property("visible")),
         "delete_slot_visible": bool(delete.property("visible")),
         "resize_handles_verified": 8,
+        "screenshot_capture": "QQuickItem.grabToImage",
         "screenshot": screenshot_path.name,
     }
     evidence_path = output_dir / "frozen-smart-slot-ui.json"
