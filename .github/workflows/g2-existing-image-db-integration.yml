@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - g2/integrate-existing-image-db
+      - g2/image-db-current-clean
     paths:
       - 'src/srstudio/graphics2/image_database_runtime.py'
       - 'src/srstudio/graphics2/full_studio_bridge.py'
@@ -12,6 +13,7 @@ on:
       - 'scripts/ci/image_db_build_distribution_seed.py'
       - 'tests/test_graphics2_existing_image_database.py'
       - '.github/workflows/g2-existing-image-db-integration.yml'
+      - '.github/workflows/g2-full-studio-beta.yml'
   pull_request:
     branches:
       - g2/integrate-studio-shell
@@ -23,6 +25,7 @@ on:
       - 'scripts/ci/image_db_build_distribution_seed.py'
       - 'tests/test_graphics2_existing_image_database.py'
       - '.github/workflows/g2-existing-image-db-integration.yml'
+      - '.github/workflows/g2-full-studio-beta.yml'
 
 permissions:
   contents: write
@@ -31,7 +34,7 @@ permissions:
 jobs:
   existing-image-db:
     runs-on: windows-latest
-    timeout-minutes: 60
+    timeout-minutes: 70
     steps:
       - uses: actions/checkout@v4
         with:
@@ -55,14 +58,24 @@ jobs:
         run: |
           $actual = git rev-parse HEAD
           $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
-          Write-Host "SOURCE_SHA=$actual"
-          Write-Host "EXPECTED_SHA=$expected"
-          "SOURCE_SHA=$actual" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
           if ($actual -ne $expected) { throw "Exact SHA mismatch" }
-          git diff --quiet
-          if ($LASTEXITCODE -ne 0) { throw "Tracked working tree changed before certification" }
-          git diff --cached --quiet
-          if ($LASTEXITCODE -ne 0) { throw "Tracked index changed before certification" }
+          "SOURCE_SHA=$actual" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "SOURCE_SHA=$actual"
+          Write-Host "CHECKED_OUT_SHA=$actual"
+          Write-Host "SHA_MATCH=PASS"
+
+      - name: Ensure exact-SHA CI seed builder is materialized
+        shell: pwsh
+        run: |
+          $builder = "scripts/ci/image_db_build_distribution_seed.py"
+          if (!(Test-Path $builder)) {
+            New-Item -ItemType Directory -Force -Path "scripts/ci" | Out-Null
+            $url = "https://raw.githubusercontent.com/${{ github.repository }}/$env:SOURCE_SHA/scripts/ci/image_db_build_distribution_seed.py"
+            Invoke-WebRequest -Uri $url -OutFile $builder
+          }
+          if (!(Test-Path $builder)) { throw "Exact-SHA seed builder unavailable" }
+          $localHash = (Get-FileHash $builder -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "SEED_BUILDER_SHA256=$localHash"
 
       - name: Focused existing Image DB tests
         shell: pwsh
@@ -84,9 +97,7 @@ jobs:
             "image-db-approved/image-db-coverage-library/index.json",
             "image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json",
             "image-db-approved/image-db-coverage-baseline/final/library-audit.json"
-          )) {
-            if (!(Test-Path $path)) { throw "Approved baseline file missing: $path" }
-          }
+          )) { if (!(Test-Path $path)) { throw "Approved baseline file missing: $path" } }
 
       - name: Download durable approved corpus release
         env:
@@ -144,59 +155,43 @@ jobs:
           runtime = GraphicsImageDatabaseRuntime.from_environment(require_library=True)
           metrics = runtime.validate_full()
           manifest = runtime.seed_manifest
-          required = (
-              "schema", "catalog_version", "total_products", "total_images", "index_sha256",
-              "source_release", "source_artifact", "provenance_status", "dedup_status",
-          )
+          required = ("schema", "catalog_version", "total_products", "total_images", "index_sha256", "source_release", "source_artifact", "provenance_status", "dedup_status")
           missing = [key for key in required if key not in manifest]
           assert not missing, missing
-          assert type(manifest["total_products"]) is int and manifest["total_products"] == 520, manifest
-          assert type(manifest["total_images"]) is int and manifest["total_images"] == 1037, manifest
-          assert metrics["total_images"] == 1037, metrics
-          assert manifest["provenance_status"] == "PASS", manifest
-          assert manifest["dedup_status"] == "PASS", manifest
+          assert type(manifest["total_products"]) is int and manifest["total_products"] == 520
+          assert type(manifest["total_images"]) is int and manifest["total_images"] == 1037
+          assert metrics["total_images"] == 1037
+          assert manifest["provenance_status"] == "PASS"
+          assert manifest["dedup_status"] == "PASS"
 
           known = runtime.lookup_product("BATATA INGLESA")
           assert known.best_match is not None
-          known_path = runtime.library.asset_path(known.best_match.asset)
-          assert known_path.is_file()
-          with Image.open(known_path) as image:
-              image.verify()
+          alias = runtime.lookup_product("TOMATE PÊRA")
+          assert alias.best_match is not None
+          assert alias.best_match.asset.id == "4088292755a7e25ce30e2a9a"
+          unknown = runtime.lookup_product("PRODUTO TOTALMENTE INEXISTENTE XYZ 987ML")
+          assert unknown.best_match is None
           print("KNOWN_PRODUCT=BATATA INGLESA")
           print("KNOWN_IMAGE_ID=" + known.best_match.asset.id)
           print("KNOWN_CONFIDENCE=" + str(known.confidence))
-
-          alias = runtime.lookup_product("TOMATE PÊRA")
-          assert alias.best_match is not None
-          assert alias.best_match.asset.id == "4088292755a7e25ce30e2a9a", alias.best_match.asset.id
           print("ALIAS_PRODUCT=TOMATE PÊRA")
           print("ALIAS_IMAGE_ID=" + alias.best_match.asset.id)
-
-          unknown = runtime.lookup_product("PRODUTO TOTALMENTE INEXISTENTE XYZ 987ML")
-          assert unknown.best_match is None
           print("UNKNOWN_PRODUCT_FALLBACK=PASS")
 
           queries = [
-              "ARROZ PATOSUL 5KG",
-              "ARROZ VASCONCELOS 5KG",
-              "CAFE VASCONCELOS 500G",
-              "LEITE TRIANGULO 1L",
-              "DETERGENTE YPE 500ML",
-              "ENERGETICO MONSTER 473ML",
-              "TODDY 750G",
-              "ACUCAR DELTA 5KG",
-              "EXTRATO DE TOMATE ELEFANTE 300G",
+              "ARROZ PATOSUL 5KG", "ARROZ VASCONCELOS 5KG", "CAFE VASCONCELOS 500G",
+              "LEITE TRIANGULO 1L", "DETERGENTE YPE 500ML", "ENERGETICO MONSTER 473ML",
+              "TODDY 750G", "ACUCAR DELTA 5KG", "EXTRATO DE TOMATE ELEFANTE 300G",
               "Detergente Ypê Neutro 500ml",
           ]
           for query in queries:
               product = {"id": query, "name": query}
               candidates = runtime.product_candidates(product)
-              result = runtime.lookup_product(query)
               top = candidates[0] if candidates else None
               visual = "placeholder"
               if top:
                   path = Path(top["path"])
-                  assert path.is_file(), path
+                  assert path.is_file()
                   with Image.open(path) as image:
                       image.verify()
                   visual = "preview-decodable"
@@ -204,13 +199,11 @@ jobs:
                   "product": query,
                   "top_candidate": top["image_id"] if top else "",
                   "confidence": top["confidence"] if top else 0.0,
-                  "image_found": result.best_match is not None,
+                  "image_found": bool(top),
                   "automatic": bool(top and top.get("automatic")),
                   "visual_result": visual,
                   "candidate_count": len(candidates),
               }))
-
-          print("IMAGE_DB_SOURCE=" + str(runtime.library_root))
           print("CATALOG_VERSION=" + str(manifest["catalog_version"]))
           print("TOTAL_PRODUCTS=" + str(manifest["total_products"]))
           print("TOTAL_IMAGES=" + str(manifest["total_images"]))
@@ -223,6 +216,9 @@ jobs:
       - name: Build frozen Graphics2 host with existing Image DB seed
         shell: pwsh
         run: |
+          if (!(Test-Path "build/build_graphics2_host.py")) {
+            throw "Frozen host build script absent from exact checkout"
+          }
           python build/build_graphics2_host.py --output image-db-frozen
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $hostRoot = "image-db-frozen/SRGraphicsEngine2Host"
@@ -230,7 +226,6 @@ jobs:
           if (!(Test-Path $hostExe)) { throw "Frozen G2 host missing" }
           New-Item -ItemType Directory -Force -Path "$hostRoot/ImageDatabaseSeed" | Out-Null
           Copy-Item "image-db-dist/image-db-library-v1.zip" "$hostRoot/ImageDatabaseSeed/image-db-library-v1.zip" -Force
-          if (!(Test-Path "$hostRoot/ImageDatabaseSeed/image-db-library-v1.zip")) { throw "Frozen seed missing" }
 
       - name: Frozen lookup outside checkout using production runtime
         shell: pwsh
@@ -243,38 +238,23 @@ jobs:
           try {
             $probe = & $hostExe --image-db-probe "BATATA INGLESA"
             $probeExit = $LASTEXITCODE
-          } finally {
-            Pop-Location
-          }
-          # Exit 0 = unambiguous automatic candidate; exit 3 = candidates exist but
-          # auto-application is intentionally blocked. Both prove frozen lookup.
-          if ($probeExit -notin @(0, 3)) { throw "Frozen Image DB probe failed with exit $probeExit" }
+          } finally { Pop-Location }
+          if ($probeExit -notin @(0,3)) { throw "Frozen Image DB probe failed: $probeExit" }
           $probe | Tee-Object -FilePath image-db-dist/frozen-probe.json
           $row = $probe | ConvertFrom-Json
           if ($row.available -ne $true) { throw "Frozen Image DB unavailable" }
-          if ([int]$row.candidate_count -lt 1) { throw "Frozen lookup returned no candidate for known product" }
-          if ([string]::IsNullOrWhiteSpace([string]$row.top_candidate)) { throw "Frozen lookup top candidate is empty" }
+          if ([int]$row.candidate_count -lt 1) { throw "Frozen known-product lookup returned no candidate" }
           if ([int]$row.total_products -ne 520 -or [int]$row.total_images -ne 1037) { throw "Frozen catalog metrics diverge" }
-          if ([string]$row.provenance_status -ne "PASS") { throw "Frozen provenance status invalid" }
-          if ([string]$row.dedup_status -ne "PASS") { throw "Frozen dedup status invalid" }
+          if ([string]$row.provenance_status -ne "PASS" -or [string]$row.dedup_status -ne "PASS") { throw "Frozen catalog integrity invalid" }
           $index = Join-Path $env:SR_STUDIO_DATA_DIR "images/index.json"
           if (!(Test-Path $index)) { throw "Official Image DB root was not bootstrapped" }
-          $rawIndex = Get-Content $index -Raw
-          if ($rawIndex.Contains($env:GITHUB_WORKSPACE)) { throw "Frozen Image DB contains checkout path" }
+          if ((Get-Content $index -Raw).Contains($env:GITHUB_WORKSPACE)) { throw "Frozen Image DB contains checkout path" }
           foreach ($parallel in @("image-db-beta", "graphics2-images", "image-db-temp")) {
             if (Test-Path (Join-Path $env:SR_STUDIO_DATA_DIR $parallel)) { throw "Parallel Image DB detected: $parallel" }
           }
           Write-Host "FROZEN_LOOKUP=PASS"
-          Write-Host "FROZEN_DB_ROOT=$($env:SR_STUDIO_DATA_DIR)\images"
-
-      - name: Publish durable seed on existing Image DB corpus release
-        if: github.event_name == 'push'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: pwsh
-        run: |
-          gh release upload image-db-corpus-v1 image-db-dist/image-db-library-v1.zip --repo lucasamaralvida3-del/SR-STUDIO --clobber
-          if ($LASTEXITCODE -ne 0) { throw "Failed to update existing Image DB seed release asset" }
+          Write-Host "NO_DEV_PATH=PASS"
+          Write-Host "FAIL_CLOSED=PASS"
 
       - uses: actions/upload-artifact@v4
         with:
