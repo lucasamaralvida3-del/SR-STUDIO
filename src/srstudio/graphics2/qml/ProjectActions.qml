@@ -8,7 +8,7 @@ Rectangle {
     id: panel
     objectName: "smartSlotProjectActionsPanel"
     width: 890
-    height: 84
+    height: 122
     anchors.left: parent ? parent.left : undefined
     anchors.top: parent ? parent.top : undefined
     anchors.leftMargin: 324
@@ -31,6 +31,10 @@ Rectangle {
 
     function pageCount() {
         return scene.pages ? scene.pages.length : 0
+    }
+
+    function productCount() {
+        return scene.editor && scene.editor.products ? scene.editor.products.length : 0
     }
 
     function activePageIndex() {
@@ -214,6 +218,55 @@ Rectangle {
         }
 
         Rectangle {
+            objectName: "productionImportStrip"
+            Layout.fillWidth: true
+            Layout.preferredHeight: 34
+            radius: 6
+            color: "#F0FDF4"
+            border.width: 1
+            border.color: "#86EFAC"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                spacing: 7
+
+                Label {
+                    text: "PRODUÇÃO"
+                    color: "#166534"
+                    font.bold: true
+                    font.pixelSize: 9
+                }
+                ToolButton {
+                    objectName: "importTemplateButton"
+                    text: "IMPORTAR CANVA / PPTX"
+                    enabled: !sceneBridge.busy
+                    font.bold: true
+                    ToolTip.text: "Carregar ou trocar o layout do encarte sem perder a planilha de produtos já importada"
+                    ToolTip.visible: hovered
+                    onClicked: templateDialog.open()
+                }
+                ToolButton {
+                    objectName: "importSpreadsheetButton"
+                    text: "IMPORTAR PLANILHA"
+                    enabled: !sceneBridge.busy
+                    font.bold: true
+                    ToolTip.text: "Carregar produtos XLSX/XLSM neste mesmo projeto sem substituir o Canva/PPTX"
+                    ToolTip.visible: hovered
+                    onClicked: spreadsheetDialog.open()
+                }
+                Item { Layout.fillWidth: true }
+                Label {
+                    text: panel.productCount() + " produto(s) · " + panel.slotCount() + " slot(s)"
+                    color: "#166534"
+                    font.pixelSize: 9
+                    font.bold: panel.productCount() > 0
+                }
+            }
+        }
+
+        Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 36
             radius: 6
@@ -282,6 +335,22 @@ Rectangle {
                 }
             }
         }
+    }
+
+    FileDialog {
+        id: templateDialog
+        title: "Importar Canva / PowerPoint neste projeto"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Canva / PowerPoint (*.pptx)"]
+        onAccepted: sceneBridge.dispatch(JSON.stringify({"name":"import_template_source", "path":selectedFile.toString()}))
+    }
+
+    FileDialog {
+        id: spreadsheetDialog
+        title: "Importar planilha de produtos neste projeto"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Planilha de produtos (*.xlsx *.xlsm)"]
+        onAccepted: sceneBridge.dispatch(JSON.stringify({"name":"import_product_catalog", "path":selectedFile.toString()}))
     }
 
     FileDialog {
