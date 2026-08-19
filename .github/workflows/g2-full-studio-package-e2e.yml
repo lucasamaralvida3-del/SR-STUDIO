@@ -107,6 +107,8 @@ jobs:
         shell: pwsh
         run: |
           if (!(Test-Path "e2e/evidence/result.json")) { throw "result.json missing" }
+          if (!(Test-Path "e2e/evidence/failure-windows-after-click.json")) { throw "Post-click Win32 inventory missing" }
+          if (!(Test-Path "e2e/evidence/failure-window-samples.json")) { throw "Post-click window timeline missing" }
           if (!(Test-Path "e2e/evidence/g2-error-visible.png")) { throw "G2 error screenshot missing" }
           if (!(Test-Path "e2e/evidence/failure-localappdata/SRStudio/logs/g2-launch.log")) { throw "G2 failure diagnostic log missing" }
           if (!(Test-Path "e2e/evidence/g2-before-slot.png")) { throw "before screenshot missing" }
@@ -114,7 +116,9 @@ jobs:
           $result = Get-Content "e2e/evidence/result.json" -Raw | ConvertFrom-Json
           if (!$result.pass) { throw "Full package E2E did not pass" }
           if (!$result.legacy_route_contract) { throw "G2-only source routing contract not verified" }
-          if (!$result.g2_error_visible) { throw "Missing-host G2 error not visible" }
+          if (!$result.g2_error_window_exists) { throw "Missing-host G2 error window not found" }
+          if (!$result.g2_error_message_present) { throw "Missing-host G2 error message not proven" }
+          if (!$result.g2_launch_log_exists) { throw "Missing-host G2 diagnostic log not proven" }
           if ($result.g2_child_opened_on_failure) { throw "G2 child unexpectedly opened in missing-host gate" }
           if ($result.legacy_studio_opened) { throw "Legacy Studio opened during G2 failure" }
           if (!$result.g2_identity_verified) { throw "G2 identity not verified" }
@@ -122,7 +126,9 @@ jobs:
           if (!$result.simples_clicked) { throw "SIMPLES not clicked" }
           if (!$result.simples_visible) { throw "SIMPLES not visually proven" }
           if ([int64]$result.visual.changed_pixels -lt 800) { throw "Insufficient canvas visual delta" }
-          Write-Host "G2_ERROR_VISIBLE=PASS"
+          Write-Host "ERROR_WINDOW_EXISTS=TRUE"
+          Write-Host "G2_ERROR_MESSAGE_PRESENT=TRUE"
+          Write-Host "G2_LAUNCH_LOG_EXISTS=TRUE"
           Write-Host "LEGACY_STUDIO_OPENED=FALSE"
           Write-Host "FULL_FROZEN_PACKAGE_E2E=PASS"
           Write-Host "G2_IDENTITY_VERIFIED=PASS"
