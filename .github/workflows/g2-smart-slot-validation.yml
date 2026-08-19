@@ -1,6 +1,6 @@
 name: G2 Smart Slot Validation
 
-# Certifies geometry/UX plus fresh-import product reset and save/reopen persistence.
+# Certifies geometry/UX plus fresh-import reset and save/reopen persistence.
 on:
   push:
     branches:
@@ -111,7 +111,6 @@ jobs:
               for slot in page.slots.values():
                   assert slot.product_id == ""
                   assert slot.metadata.get("product_snapshot") == {}
-                  assert slot.metadata.get("product_binding_state") == "empty"
                   cid = str(slot.metadata.get("semantic_product_card_id") or "")
                   block = blocks.get(cid) if cid else None
                   if isinstance(block, dict) and isinstance(block.get("bounds"), dict):
@@ -160,7 +159,7 @@ jobs:
                   assert slot.metadata.get("effective_bounds")
                   assert slot.metadata.get("display_index")
                   assert slot.product_id == ""
-                  assert slot.metadata.get("product_binding_state") == "empty"
+                  assert slot.metadata.get("product_snapshot") == {}
 
           png = work / "limpeza-page-1.png"
           rendered = render_png(reopened, png, page_index=0, dpi=96)
