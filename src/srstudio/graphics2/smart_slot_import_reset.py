@@ -15,7 +15,7 @@ from typing import Any
 
 from srstudio.core.models import StudioProject
 
-from .model import BindingRole, GraphicsDocument, NodeKind, SmartSlot
+from .model import GraphicsDocument, NodeKind, SmartSlot
 
 
 _PRODUCT_VALUE_METADATA_KEYS = {
@@ -99,7 +99,7 @@ def reset_new_pptx_import_product_content(
 
     payload = report.to_dict()
     document.metadata["smart_slot_import_reset"] = payload
-    document.metadata["smart_slot_product_content_empty"] = True
+    document.metadata["smart_slot_import_started_empty"] = True
     document.metadata["smart_slot_import_reset_version"] = 1
     return report
 
