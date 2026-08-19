@@ -1,21 +1,20 @@
-name: G2 Image DB Current Head Reconcile
-
+name: Diagnosticar Banco Produtos Beta 9
 on:
   push:
-    paths:
-      - '.github/workflows/diagnosticar-encartes-beta6.yml'
-
+    paths: ['.github/workflows/diagnosticar-encartes-beta6.yml']
 permissions:
-  contents: write
-
+  contents: read
 jobs:
-  reconcile:
+  diagnosticar:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: g2/integrate-existing-image-db
-          fetch-depth: 0
-      - name: Reconcile Image DB production/tests with current G2 integration head
-        run: python scripts/ci/g2_image_db_rebase_no_workflows.py
+      - name: Listar banco e produtos
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          rm -rf /tmp/sr9 && mkdir -p /tmp/sr9
+          gh release download v4.0.8-hybrid.beta9 -p 'SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip' -D /tmp/sr9
+          unzip -q /tmp/sr9/SR_STUDIO_4.0.8_BETA9_XLSX_LOCAL.zip -d /tmp/sr9/work
+          find /tmp/sr9/work/files -maxdepth 2 -type f | grep -Ei 'banco|produto|product|catalog|sqlite|\.db$' | sort || true
+          grep -RniE 'sqlite3|banco.*produto|imagem.*oficial|ean|codigo.*barra' /tmp/sr9/work/files --include='*.py' | head -n 220 || true

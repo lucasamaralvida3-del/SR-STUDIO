@@ -43,6 +43,12 @@ def set_manual_slot_bounds(
         slot.metadata["manual_adjustment_version"] = _MANUAL_VERSION
         slot.metadata["manual_adjustment_at"] = _timestamp()
         slot.metadata["geometry_source"] = "manual"
+        # Overlap and drop-target invalidation are intentionally commit-on-release.
+        # No node scan or semantic rebuild is required while the pointer is moving.
+        overlap_ids = _slot_overlap_ids(page, slot, rect)
+        slot.metadata["manual_overlap_slot_ids"] = overlap_ids
+        slot.metadata["manual_overlap_count"] = len(overlap_ids)
+        page.metadata["drop_target_revision"] = int(page.metadata.get("drop_target_revision") or 0) + 1
         _record_feedback(
             session.document,
             page,
@@ -295,6 +301,19 @@ def _validated_rect(page: GraphicsPage, rect: Rect) -> Rect:
     x = min(max(0.0, rect.x), max(0.0, page.width - width))
     y = min(max(0.0, rect.y), max(0.0, page.height - height))
     return Rect(x, y, width, height)
+
+
+def _slot_overlap_ids(page: GraphicsPage, slot: SmartSlot, bounds: Rect) -> list[str]:
+    result: list[str] = []
+    for other in page.slots.values():
+        if other.id == slot.id:
+            continue
+        other_bounds = _effective_bounds(other) or _original_bounds(other)
+        if other_bounds is None:
+            continue
+        if _intersection_area(bounds, other_bounds) > 0:
+            result.append(other.id)
+    return sorted(result)
 
 
 def _intersection_area(a: Rect, b: Rect) -> float:
