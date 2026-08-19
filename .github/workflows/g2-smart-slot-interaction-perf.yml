@@ -13,6 +13,7 @@ on:
       - 'tests/test_graphics2_smart_slot_detection_manual.py'
       - 'tests/test_graphics2_smart_slot_multiproduct_topology.py'
       - 'tools/benchmark_frozen_smart_slot_interaction.py'
+      - 'tools/benchmark_frozen_smart_slot_interaction_v2.py'
       - '.github/workflows/g2-smart-slot-interaction-perf.yml'
   pull_request:
     branches:
@@ -26,6 +27,7 @@ on:
       - 'tests/test_graphics2_smart_slot_detection_manual.py'
       - 'tests/test_graphics2_smart_slot_multiproduct_topology.py'
       - 'tools/benchmark_frozen_smart_slot_interaction.py'
+      - 'tools/benchmark_frozen_smart_slot_interaction_v2.py'
       - '.github/workflows/g2-smart-slot-interaction-perf.yml'
 
 permissions:
@@ -78,7 +80,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           QSG_RHI_BACKEND: software
         run: |
-          python -m compileall -q src/srstudio/graphics2 tests/test_graphics2_smart_slot_interaction_perf.py tools/benchmark_frozen_smart_slot_interaction.py
+          python -m compileall -q src/srstudio/graphics2 tests/test_graphics2_smart_slot_interaction_perf.py tools/benchmark_frozen_smart_slot_interaction.py tools/benchmark_frozen_smart_slot_interaction_v2.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest -q tests/test_graphics2_smart_slot_interaction_perf.py tests/test_graphics2_smart_slot_detection_manual.py tests/test_graphics2_smart_slot_multiproduct_topology.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -100,7 +102,7 @@ jobs:
           QT_QPA_PLATFORM: windows
           QSG_RHI_BACKEND: software
         run: |
-          python tools/benchmark_frozen_smart_slot_interaction.py `
+          python tools/benchmark_frozen_smart_slot_interaction_v2.py `
             --runtime-root "dist/graphics2-host/SRGraphicsEngine2Host" `
             --legacy-qml "smart-slot-perf-evidence/legacy-GraphicsEditor.qml" `
             --output "smart-slot-perf-evidence/smart-slot-interaction-perf.json"
