@@ -5,6 +5,7 @@ import csv
 import json
 import statistics
 import time
+from collections import Counter
 from dataclasses import asdict
 from pathlib import Path
 
@@ -62,6 +63,15 @@ NEGATIVE_CASES = (
 )
 
 
+_AUDIT_REQUIRED_NONNEGATIVE_INT_METRICS = (
+    "associations_without_provenance",
+    "negative_invariant_violations",
+    "duplicate_logical_associations",
+    "logical_associations_total",
+    "unique_logical_associations",
+)
+
+
 def _write_json(path: Path, payload: object) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -99,6 +109,64 @@ def _lookup_row(service: ProductImageLookupService, query: str) -> dict:
     }
 
 
+def _run_negative_invariants(service: ProductImageLookupService) -> list[dict]:
+    rows: list[dict] = []
+    for query, forbidden_name in NEGATIVE_CASES:
+        row = _lookup_row(service, query)
+        row["forbidden_product_name"] = forbidden_name
+        same_forbidden = normalize_product_name(row["best_product_name"]) == normalize_product_name(forbidden_name)
+        auto_or_exact = row["match_type"] in {"exact", "alias"} or row["asset_review_status"].lower() == "accepted"
+        row["violated"] = bool(row["found"] and same_forbidden and auto_or_exact)
+        rows.append(row)
+    return rows
+
+
+def _logical_association_summary(assets: list[object]) -> dict:
+    identities: Counter[tuple[str, str]] = Counter()
+    for asset in assets:
+        product = str(getattr(asset, "product_name", "") or getattr(asset, "product_key", "") or "")
+        normalized_product = normalize_product_name(product)
+        metadata = dict(getattr(asset, "metadata", {}) or {})
+        canonical_sha = str(metadata.get("canonical_sha256") or metadata.get("sha256") or "").strip().lower()
+        if not normalized_product or not canonical_sha:
+            continue
+        identities[(normalized_product, canonical_sha)] += 1
+
+    logical_total = sum(identities.values())
+    unique_logical = len(identities)
+    duplicate_logical = sum(count - 1 for count in identities.values() if count > 1)
+    if duplicate_logical != logical_total - unique_logical:
+        raise AssertionError("logical association duplicate accounting is inconsistent")
+
+    examples = [
+        {
+            "normalized_product": normalized_product,
+            "canonical_sha": canonical_sha,
+            "count": count,
+        }
+        for (normalized_product, canonical_sha), count in sorted(identities.items())
+        if count > 1
+    ]
+    return {
+        "logical_associations_total": logical_total,
+        "unique_logical_associations": unique_logical,
+        "duplicate_logical_associations": duplicate_logical,
+        "duplicate_logical_examples": examples,
+    }
+
+
+def _validate_audit_schema(audit_data: dict) -> None:
+    metrics = audit_data.get("metrics") if isinstance(audit_data, dict) else None
+    if not isinstance(metrics, dict):
+        raise AssertionError("library audit metrics object is missing")
+    for field in _AUDIT_REQUIRED_NONNEGATIVE_INT_METRICS:
+        if field not in metrics:
+            raise AssertionError(f"library audit metric is missing: {field}")
+        value = metrics[field]
+        if type(value) is not int or value < 0:
+            raise AssertionError(f"library audit metric must be a non-negative integer: {field}")
+
+
 def run(args: argparse.Namespace) -> int:
     artifact = Path(args.artifact_dir)
     library_root = Path(args.library)
@@ -132,7 +200,6 @@ def run(args: argparse.Namespace) -> int:
     )
     audit_seconds = time.perf_counter() - audit_started
     audit_data = audit_payload(audit)
-    _write_json(artifact / "library-audit.json", audit_data)
 
     metrics = audit_data["metrics"]
     total = int(metrics.get("catalog_products", 0))
@@ -184,16 +251,23 @@ def run(args: argparse.Namespace) -> int:
             service.find_image(query)
             fuzzy_times.append(time.perf_counter() - begin)
 
-    violations: list[dict] = []
-    negative_rows: list[dict] = []
-    for query, forbidden_name in NEGATIVE_CASES:
-        row = _lookup_row(service, query)
-        row["forbidden_product_name"] = forbidden_name
-        negative_rows.append(row)
-        same_forbidden = normalize_product_name(row["best_product_name"]) == normalize_product_name(forbidden_name)
-        auto_or_exact = row["match_type"] in {"exact", "alias"} or row["asset_review_status"].lower() == "accepted"
-        if row["found"] and same_forbidden and auto_or_exact:
-            violations.append(row)
+    negative_rows = _run_negative_invariants(service)
+    violations = [row for row in negative_rows if row["violated"]]
+    negative_invariant_violations = sum(1 for row in negative_rows if row["violated"])
+
+    logical_summary = _logical_association_summary(assets)
+    metrics["negative_invariant_violations"] = negative_invariant_violations
+    metrics["duplicate_logical_associations"] = logical_summary["duplicate_logical_associations"]
+    metrics["logical_associations_total"] = logical_summary["logical_associations_total"]
+    metrics["unique_logical_associations"] = logical_summary["unique_logical_associations"]
+    audit_data["negative_invariant_evidence"] = negative_rows
+    audit_data["duplicate_logical_evidence"] = logical_summary
+    _validate_audit_schema(audit_data)
+    if metrics["negative_invariant_violations"] != sum(
+        1 for row in audit_data["negative_invariant_evidence"] if row["violated"]
+    ):
+        raise AssertionError("negative invariant metric does not match evidence")
+    _write_json(artifact / "library-audit.json", audit_data)
 
     _write_json(
         artifact / "find-image-results.json",

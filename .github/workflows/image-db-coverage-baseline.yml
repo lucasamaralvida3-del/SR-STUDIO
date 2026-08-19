@@ -1,0 +1,408 @@
+name: Image DB Coverage Baseline
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - g2/parallel-image-coverage
+    paths:
+      - '.github/workflows/image-db-coverage-baseline.yml'
+  pull_request:
+    branches:
+      - g2/integration-beta
+    paths:
+      - '.github/workflows/image-db-coverage-baseline.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  ARTIFACT_DIR: artifacts/image-db-coverage-baseline
+  CORPUS_DIR: .phase3-corpus
+  LIBRARY: artifacts/image-db-coverage-library
+  IMPORTS: artifacts/image-db-coverage-imports
+  PYTHON_VERSION: '3.11'
+  PHASE3A_RUN_ID: '32166973267'
+  EXPECTED_STANDALONE_SIZE: '48848012'
+  EXPECTED_STANDALONE_SHA256: '9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff'
+  REQUESTED_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REQUESTED_SHA }}
+          fetch-depth: 0
+          lfs: true
+
+      - name: Verify exact requested SHA
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR"
+          requested_sha="$(printf '%s' "$REQUESTED_SHA" | tr '[:upper:]' '[:lower:]')"
+          checked_out_sha="$(git rev-parse HEAD | tr '[:upper:]' '[:lower:]')"
+          sha_match=false
+          if [ "$requested_sha" = "$checked_out_sha" ]; then
+            sha_match=true
+          fi
+          python - <<PY
+          import json
+          from pathlib import Path
+          payload = {
+              "requested_sha": "$requested_sha",
+              "checked_out_sha": "$checked_out_sha",
+              "sha_match": "$sha_match" == "true",
+          }
+          out = Path("$ARTIFACT_DIR") / "sha-verification.json"
+          out.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(payload, indent=2))
+          PY
+          printf '%s\n' "$requested_sha" > "$ARTIFACT_DIR/requested-sha.txt"
+          printf '%s\n' "$checked_out_sha" > "$ARTIFACT_DIR/checked-out-sha.txt"
+          printf '%s\n' "$sha_match" > "$ARTIFACT_DIR/sha-match.txt"
+          if [ "$sha_match" != true ]; then
+            echo "FATAL: requested_sha != checked_out_sha" >&2
+            exit 64
+          fi
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install project
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR" "$CORPUS_DIR" "$LIBRARY" "$IMPORTS"
+          python -m pip install --upgrade pip
+          python -m pip install -e '.[dev]'
+          git rev-parse HEAD > "$ARTIFACT_DIR/tested-sha.txt"
+
+      - name: Image DB full suite
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_image_*.py --junitxml="$ARTIFACT_DIR/test-results.xml" | tee "$ARTIFACT_DIR/pytest.log"
+
+      - name: Restore approved Phase 3A logical index
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p .phase3a-persisted
+          gh run download "$PHASE3A_RUN_ID" -n image-db-phase3a-report -D .phase3a-persisted
+          index=$(find .phase3a-persisted -type f -name index.json | head -1)
+          test -n "$index"
+          echo "PHASE3A_INDEX=$index" >> "$GITHUB_ENV"
+
+      - name: Resolve approved rich corpus and real catalog
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/ci/image_db_phase3_corpus.py > "$ARTIFACT_DIR/corpus-resolver.json"
+
+      - name: Validate resolved corpus and catalog
+        run: |
+          set -euo pipefail
+          test "${CORPUS_INTEGRITY_PASS:-false}" = true
+          test "${RICH_CORPUS_AVAILABLE:-false}" = true
+          test "${CATALOG_AVAILABLE:-false}" = true
+          test -n "${PRODUCT_DB:-}"
+          test -f "$PRODUCT_DB"
+
+      - name: Resolve approved standalone corpus
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python scripts/ci/image_db_phase3b.py inventory --artifact-dir "$ARTIFACT_DIR" --corpus-dir "$CORPUS_DIR"
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          art=Path(os.environ['ARTIFACT_DIR'])
+          ver=json.loads((art/'standalone-asset-verification.json').read_text())
+          man=json.loads((art/'standalone-manifest.json').read_text())
+          m=man.get('metrics',{})
+          checks={
+            'found': ver.get('asset_found') is True,
+            'download': ver.get('download_complete') is True,
+            'zip': ver.get('zip_integrity') is True,
+            'verified': ver.get('verified') is True,
+            'size': int(ver.get('actual_size') or 0)==int(os.environ['EXPECTED_STANDALONE_SIZE']),
+            'sha': str(ver.get('sha256') or '').lower()==os.environ['EXPECTED_STANDALONE_SHA256'],
+            'valid160': int(m.get('valid_images') or -1)==160,
+            'corrupt0': int(m.get('corrupt_images',-1))==0,
+          }
+          (art/'standalone-gate.json').write_text(json.dumps({'checks':checks,'pass':all(checks.values())},indent=2))
+          raise SystemExit(0 if all(checks.values()) else 61)
+          PY
+
+      - name: Validate resolved standalone corpus
+        run: |
+          set -euo pipefail
+          test "${STANDALONE_AVAILABLE:-false}" = true
+          test "${STANDALONE_CORPUS_VALIDATED:-false}" = true
+          test -n "${STANDALONE_MANIFEST:-}"
+          test -f "$STANDALONE_MANIFEST"
+          test "${STANDALONE_TOTAL_FILES:-0}" = 160
+          test "${STANDALONE_TRAINING_FILES:-0}" = 153
+
+      - name: Materialize approved physical Phase 3A bank
+        run: |
+          set -euo pipefail
+          python scripts/ci/image_db_phase3b_restore.py \
+            --index-source "$PHASE3A_INDEX" \
+            --library "$LIBRARY" \
+            --archive "$CORPUS_DIR/Downloads(1)(1).zip" \
+            --archive "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --output "$ARTIFACT_DIR/phase3a-physical-restore.json"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$LIBRARY" --output "$ARTIFACT_DIR/pre-standalone-snapshot.json"
+
+      - name: Apply approved standalone increment
+        run: |
+          set -euo pipefail
+          python -m srstudio.images.standalone_cli \
+            --library "$LIBRARY" \
+            --product-db "$PRODUCT_DB" \
+            --manifest "$STANDALONE_MANIFEST" \
+            --state "$IMPORTS/standalone-state.json" \
+            --report "$ARTIFACT_DIR/first-ingest.json"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$LIBRARY" --output "$ARTIFACT_DIR/after-first-snapshot.json"
+
+      - name: Second ingest idempotency
+        run: |
+          set -euo pipefail
+          python -m srstudio.images.standalone_cli \
+            --library "$LIBRARY" \
+            --product-db "$PRODUCT_DB" \
+            --manifest "$STANDALONE_MANIFEST" \
+            --state "$IMPORTS/standalone-state.json" \
+            --report "$ARTIFACT_DIR/second-ingest.json"
+          python scripts/ci/image_db_phase3b.py snapshot --library "$LIBRARY" --output "$ARTIFACT_DIR/after-second-snapshot.json"
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          art=Path(os.environ['ARTIFACT_DIR'])
+          a=json.loads((art/'after-first-snapshot.json').read_text())
+          b=json.loads((art/'after-second-snapshot.json').read_text())
+          r=json.loads((art/'second-ingest.json').read_text()).get('metrics',{})
+          checks={
+            'physical_unchanged': a['physical']==b['physical'],
+            'canonical_unchanged': a['canonical']==b['canonical'],
+            'logical_unchanged': a['logical_signature_sha256']==b['logical_signature_sha256'],
+            'processed_zero': int(r.get('processed',-1))==0,
+          }
+          (art/'idempotency.json').write_text(json.dumps({'checks':checks,'pass':all(checks.values())},indent=2))
+          raise SystemExit(0 if all(checks.values()) else 62)
+          PY
+
+      - name: Recovery
+        run: |
+          set -euo pipefail
+          python -m pytest -q tests/test_image_standalone_recovery.py --junitxml="$ARTIFACT_DIR/recovery.xml" | tee "$ARTIFACT_DIR/recovery.log"
+
+      - name: Coverage audit, Top Missing and lookup performance
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR/final"
+          python scripts/ci/image_db_phase3_analysis.py \
+            --library "$LIBRARY" \
+            --product-db "$PRODUCT_DB" \
+            --corpus-source "$CORPUS_DIR/Downloads(1)(1).zip" \
+            --corpus-source "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --artifact-dir "$ARTIFACT_DIR/final" \
+            --review-limit 100
+
+      - name: Exact approved baseline gate
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from datetime import datetime, timezone
+          from pathlib import Path
+
+          art=Path(os.environ['ARTIFACT_DIR'])
+          snap_path=art/'after-second-snapshot.json'
+          cov_path=art/'final/coverage-catalog-520.json'
+          audit_path=art/'final/library-audit.json'
+          idem_path=art/'idempotency.json'
+
+          snap=json.loads(snap_path.read_text())
+          cov=json.loads(cov_path.read_text())
+          audit_doc=json.loads(audit_path.read_text())
+          audit=audit_doc.get('metrics') if isinstance(audit_doc, dict) else None
+          idem=json.loads(idem_path.read_text())
+
+          expected={
+            'catalog_520': 520,
+            'physical_1037': 1037,
+            'canonical_1037': 1037,
+            'auto_2': 2,
+            'likely_42': 42,
+            'review_7': 7,
+            'missing_469': 469,
+            'coverage_51': 51,
+            'coverage_pct': 9.8077,
+            'physical_audit_1037': 1037,
+            'canonical_audit_1037': 1037,
+            'missing_provenance_0': 0,
+            'negative_invariants_0': 0,
+            'duplicate_logical_0': 0,
+            'idempotency': True,
+          }
+
+          contracts={
+            'catalog_520': (cov, str(cov_path), 'total', 'number'),
+            'physical_1037': (snap, str(snap_path), 'physical', 'number'),
+            'canonical_1037': (snap, str(snap_path), 'canonical', 'number'),
+            'auto_2': (cov, str(cov_path), 'auto_approved', 'number'),
+            'likely_42': (cov, str(cov_path), 'likely', 'number'),
+            'review_7': (cov, str(cov_path), 'review_required', 'number'),
+            'missing_469': (cov, str(cov_path), 'missing', 'number'),
+            'coverage_51': (cov, str(cov_path), 'any_candidate', 'number'),
+            'coverage_pct': (cov, str(cov_path), 'any_candidate_coverage_percent', 'number'),
+            'physical_audit_1037': (audit, str(audit_path), 'physical_images', 'number'),
+            'canonical_audit_1037': (audit, str(audit_path), 'canonical_assets', 'number'),
+            'missing_provenance_0': (audit, str(audit_path), 'associations_without_provenance', 'number'),
+            'negative_invariants_0': (audit, str(audit_path), None, 'number'),
+            'duplicate_logical_0': (audit, str(audit_path), None, 'number'),
+            'idempotency': (idem, str(idem_path), 'pass', 'boolean'),
+          }
+
+          source_labels={
+            'catalog_520': 'total',
+            'physical_1037': 'physical',
+            'canonical_1037': 'canonical',
+            'auto_2': 'auto_approved',
+            'likely_42': 'likely',
+            'review_7': 'review_required',
+            'missing_469': 'missing',
+            'coverage_51': 'any_candidate',
+            'coverage_pct': 'any_candidate_coverage_percent',
+            'physical_audit_1037': 'metrics.physical_images',
+            'canonical_audit_1037': 'metrics.canonical_assets',
+            'missing_provenance_0': 'metrics.associations_without_provenance',
+            'negative_invariants_0': 'SCHEMA FIELD MISSING',
+            'duplicate_logical_0': 'SCHEMA FIELD MISSING',
+            'idempotency': 'pass',
+          }
+
+          def read_contract(container, field, kind):
+            field_exists=isinstance(container, dict) and field is not None and field in container
+            if not field_exists:
+              return None, False, False, 'SCHEMA FIELD MISSING'
+            value=container[field]
+            if kind == 'boolean':
+              valid_type=type(value) is bool
+            else:
+              valid_type=type(value) in (int, float)
+            if not valid_type:
+              return value, True, False, 'INVALID FIELD TYPE'
+            return value, True, True, None
+
+          invariants=[]
+          checks={}
+          for name, exp in expected.items():
+            container, source_file, field, kind=contracts[name]
+            act, field_exists, valid_type, schema_error=read_contract(container, field, kind)
+            if kind == 'boolean':
+              passed=field_exists and valid_type and act is exp
+              delta=None
+            else:
+              passed=field_exists and valid_type and act == exp
+              delta=(act-exp) if field_exists and valid_type else None
+            checks[name]=bool(passed)
+            item={
+              'name': name,
+              'expected': exp,
+              'actual': act,
+              'delta': delta,
+              'passed': bool(passed),
+              'source_file': source_file,
+              'source_field': source_labels[name],
+              'field_exists': field_exists,
+              'schema_field_exists': field_exists,
+              'field_type_valid': valid_type,
+            }
+            if schema_error:
+              item['schema_error']=schema_error
+            if name == 'coverage_pct':
+              item['absolute_delta']=abs(act-exp) if field_exists and valid_type else None
+              item['comparison']='=='
+              item['abs_tolerance']=None
+            invariants.append(item)
+            print(
+              f"BASELINE_GATE {name} expected={json.dumps(exp)} actual={json.dumps(act)} "
+              f"delta={json.dumps(delta)} source_file={source_file} "
+              f"source_field={json.dumps(source_labels[name])} field_exists={str(field_exists).lower()} "
+              f"pass={str(bool(passed)).lower()}"
+            )
+
+          def provenance(path, producer_step, consumed_by_gate):
+            p=Path(path)
+            exists=p.exists()
+            stat=p.stat() if exists else None
+            return {
+              'path': str(p),
+              'exists': exists,
+              'size': stat.st_size if stat else None,
+              'mtime': datetime.fromtimestamp(stat.st_mtime, timezone.utc).isoformat() if stat else None,
+              'producer_step': producer_step,
+              'consumed_by_gate': consumed_by_gate,
+            }
+
+          file_provenance=[
+            provenance(snap_path, 'Second ingest idempotency', True),
+            provenance(cov_path, 'Coverage audit, Top Missing and lookup performance', True),
+            provenance(audit_path, 'Coverage audit, Top Missing and lookup performance', True),
+            provenance(idem_path, 'Second ingest idempotency', True),
+            provenance(Path('.phase3-corpus/baseline.json'), None, False),
+            provenance(Path('coverage/coverage-summary.json'), None, False),
+            provenance(Path('post-standalone/audit-report.json'), None, False),
+            provenance(Path('post-standalone/idempotency.json'), None, False),
+          ]
+
+          sha_file=art/'sha-verification.json'
+          sha_payload=json.loads(sha_file.read_text()) if sha_file.exists() else {}
+          failed=[item['name'] for item in invariants if not item['passed']]
+          diagnostic={
+            'requested_sha': sha_payload.get('requested_sha', os.environ.get('REQUESTED_SHA')),
+            'checked_out_sha': sha_payload.get('checked_out_sha'),
+            'conditions_total': len(invariants),
+            'conditions_pass': sum(1 for item in invariants if item['passed']),
+            'conditions_fail': len(failed),
+            'failed_invariants': failed,
+            'invariants': invariants,
+            'file_provenance': file_provenance,
+          }
+          (art/'baseline-gate-diagnostic.json').write_text(json.dumps(diagnostic, ensure_ascii=False, indent=2)+'\n', encoding='utf-8')
+          print('BASELINE_GATE_DIAGNOSTIC '+json.dumps(diagnostic, ensure_ascii=False))
+
+          payload={
+            'baseline_materialized': all(checks.values()),
+            'source': 'FRESH REBUILD',
+            'checks': checks,
+            'snapshot': snap,
+            'coverage': cov,
+            'audit': audit,
+          }
+          (art/'baseline-gate.json').write_text(json.dumps(payload,ensure_ascii=False,indent=2))
+          print(json.dumps(payload,ensure_ascii=False,indent=2))
+          raise SystemExit(0 if payload['baseline_materialized'] else 63)
+          PY
+
+      - name: Upload baseline evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-db-coverage-baseline-${{ github.run_id }}
+          path: |
+            artifacts/image-db-coverage-baseline
+            artifacts/image-db-coverage-library/index.json
+            artifacts/image-db-coverage-imports/*.json
+          retention-days: 14
+          compression-level: 6
