@@ -1,0 +1,150 @@
+name: G2 Smart Slot Frozen UI Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - g2/fix-smart-slot-ui-frozen-beta
+    paths:
+      - 'src/srstudio/graphics2/qml/ProjectActions.qml'
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'src/srstudio/graphics2/smart_slot_detection.py'
+      - 'src/srstudio/graphics2/smart_slot_manual.py'
+      - 'src/srstudio/graphics2/smart_slot_geometry.py'
+      - 'tests/test_graphics2_smart_slot_detection_manual.py'
+      - 'tests/test_graphics2_smart_slot_multiproduct_topology.py'
+      - 'tools/verify_frozen_smart_slot_ui.py'
+      - 'build/build_graphics2_host.py'
+      - '.github/workflows/g2-smart-slot-frozen-ui.yml'
+  pull_request:
+    branches:
+      - g2/integrate-studio-shell
+    paths:
+      - 'src/srstudio/graphics2/qml/ProjectActions.qml'
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'src/srstudio/graphics2/smart_slot_detection.py'
+      - 'src/srstudio/graphics2/smart_slot_manual.py'
+      - 'src/srstudio/graphics2/smart_slot_geometry.py'
+      - 'tests/test_graphics2_smart_slot_detection_manual.py'
+      - 'tests/test_graphics2_smart_slot_multiproduct_topology.py'
+      - 'tools/verify_frozen_smart_slot_ui.py'
+      - 'build/build_graphics2_host.py'
+      - '.github/workflows/g2-smart-slot-frozen-ui.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-smart-slot-ui-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install focused dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2,graphics2-build]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Record exact source SHA
+        shell: pwsh
+        run: |
+          $sha = git rev-parse HEAD
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          Write-Host "SOURCE_SHA=$sha"
+          Write-Host "EXPECTED_SHA=$expected"
+          "SOURCE_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if ($sha -ne $expected) { throw "Exact SHA mismatch" }
+          git diff --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked working tree changed before gate" }
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked index changed before gate" }
+
+      - name: Focused Smart Slot regression tests
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: |
+          python -m compileall -q src/srstudio/graphics2 tools/verify_frozen_smart_slot_ui.py tests/test_graphics2_smart_slot_multiproduct_topology.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_graphics2_smart_slot_detection_manual.py tests/test_graphics2_smart_slot_multiproduct_topology.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Record realistic multiproduct false-positive evidence
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path smart-slot-frozen-evidence | Out-Null
+          python tests/test_graphics2_smart_slot_multiproduct_topology.py --evidence smart-slot-frozen-evidence/multiproduct-smart-slot-counts.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build frozen Graphics2 host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $root = "dist/graphics2-host/SRGraphicsEngine2Host"
+          if (!(Test-Path "$root/SRGraphicsEngine2Host.exe")) { throw "Frozen Graphics2Host missing" }
+          if (!(Test-Path "$root/_internal/srstudio/graphics2/qml/GraphicsEditor.qml")) { throw "Frozen GraphicsEditor.qml missing" }
+          if (!(Test-Path "$root/_internal/srstudio/graphics2/qml/ProjectActions.qml")) { throw "Frozen ProjectActions.qml missing" }
+          & "$root/SRGraphicsEngine2Host.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "Frozen Graphics2Host --version failed" }
+
+      - name: Prove frozen UI command is visible and clickable
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+          QSG_RHI_BACKEND: software
+        run: |
+          python tools/verify_frozen_smart_slot_ui.py --runtime-root "dist/graphics2-host/SRGraphicsEngine2Host" --output-dir smart-slot-frozen-evidence
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Enforce final Smart Slot gate values
+        shell: pwsh
+        run: |
+          $multi = Get-Content "smart-slot-frozen-evidence/multiproduct-smart-slot-counts.json" -Raw | ConvertFrom-Json
+          if ([int]$multi.smart_slot_count_before -ne 10) { throw "SMART SLOT COUNT BEFORE != 10" }
+          if ([int]$multi.smart_slot_count_after -ne 5) { throw "SMART SLOT COUNT AFTER != 5" }
+          if ([int]$multi.false_positives_before -ne 5) { throw "FALSE POSITIVES BEFORE != 5" }
+          if ([int]$multi.false_positives_after -ne 0) { throw "FALSE POSITIVES AFTER != 0" }
+          if (-not [bool]$multi.visual_nodes_unchanged) { throw "Visual nodes changed during semantic cleanup" }
+
+          $ui = Get-Content "smart-slot-frozen-evidence/frozen-smart-slot-ui.json" -Raw | ConvertFrom-Json
+          if ($ui.ui_command_text -ne "AJUSTAR SMART SLOTS") { throw "Frozen UI command label mismatch" }
+          if (-not [bool]$ui.ui_command_visible) { throw "Frozen UI command is not visible" }
+          if (-not [bool]$ui.ui_command_enabled) { throw "Frozen UI command is not enabled" }
+          if (-not [bool]$ui.smart_slot_edit_mode_after_click) { throw "Frozen UI command is not clickable" }
+          if (-not [bool]$ui.smart_slot_inspection_after_click) { throw "Smart Slot overlay was not enabled" }
+          if ([int]$ui.resize_handles_verified -ne 8) { throw "Eight resize handles were not verified" }
+          if (-not [bool]$ui.restore_auto_visible) { throw "Restaurar Auto is not visible" }
+          if (-not [bool]$ui.non_product_visible) { throw "Não-produto is not visible" }
+          if (-not [bool]$ui.delete_slot_visible) { throw "Excluir Slot is not visible" }
+          if ([string]::IsNullOrWhiteSpace([string]$ui.screenshot_font_family)) { throw "Frozen UI screenshot has no resolved system font" }
+          if (!(Test-Path "smart-slot-frozen-evidence/frozen-smart-slot-ui.png")) { throw "Frozen UI screenshot missing" }
+
+          Write-Host "FROZEN_UI_VERIFIED=true"
+          Write-Host "SMART_SLOT_COUNT_BEFORE=$($multi.smart_slot_count_before)"
+          Write-Host "SMART_SLOT_COUNT_AFTER=$($multi.smart_slot_count_after)"
+          Write-Host "FALSE_POSITIVES_BEFORE=$($multi.false_positives_before)"
+          Write-Host "FALSE_POSITIVES_AFTER=$($multi.false_positives_after)"
+          Write-Host "UI_COMMAND=$($ui.ui_command_text)"
+          Write-Host "UI_CLICKED_BY=$($ui.ui_command_clicked_by)"
+          Write-Host "SCREENSHOT_FONT=$($ui.screenshot_font_family)"
+          $shotHash = (Get-FileHash "smart-slot-frozen-evidence/frozen-smart-slot-ui.png" -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "SCREENSHOT_SHA256=$shotHash"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g2-smart-slot-frozen-ui-evidence
+          path: smart-slot-frozen-evidence
+          if-no-files-found: error
+          retention-days: 30
