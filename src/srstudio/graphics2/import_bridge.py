@@ -301,8 +301,7 @@ def _convert_visual_page(document: GraphicsDocument, old_page, project: StudioPr
             page_id=page.id,
             node_by_role=primary,
             product_id=(card.product_id if card is not None else ""),
-            confidence=float((card.overrides.get("recognition_confidence", 1.0) if card is not None else 1.0) or 1.0,
-            ),
+            confidence=float((card.overrides.get("recognition_confidence", 1.0) if card is not None else 1.0) or 1.0),
             metadata={
                 "extra_bindings": extras,
                 "product_snapshot": product.to_dict() if product is not None else {},
