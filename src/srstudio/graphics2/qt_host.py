@@ -14,6 +14,7 @@ import threading
 from .autosave import AutosaveManager
 from .command_router import GraphicsCommandRouter
 from .fonts import register_qt_document_fonts
+from .image_database_runtime import GraphicsImageDatabaseRuntime
 from .model import GraphicsDocument
 from .operations import GraphicsSession
 from .quality import ProductionGateReport, inspect_production_gate
@@ -64,6 +65,12 @@ def build_parser() -> ArgumentParser:
         help="Backend do Qt Quick. 'auto' deixa o Qt escolher conforme a plataforma/GPU.",
     )
     parser.add_argument("--project-name", default="", help="Nome opcional para o projeto importado.")
+    parser.add_argument(
+        "--image-db-probe",
+        default="",
+        metavar="PRODUCT",
+        help="Valida o Image Database existente no runtime/frozen e imprime o match em JSON.",
+    )
     parser.add_argument(
         "--probe-graphics-api",
         action="store_true",
@@ -212,6 +219,8 @@ def launch_qt_quick_editor(
         context = GraphicsLaunchContext(document=document, source=launch_context.source, cache_dir=launch_context.cache_dir)
     session = GraphicsSession(context.document)
     router = GraphicsCommandRouter(session)
+    image_database = GraphicsImageDatabaseRuntime.from_environment()
+    image_database.attach(session, router)
     gate = context.gate or inspect_production_gate(session.document, require_visual_fidelity=False)
     preview_provider = create_live_scene_image_provider()
 
@@ -245,7 +254,15 @@ def launch_qt_quick_editor(
         def sceneJson(self) -> str:
             preview_provider.sync_document(session.document)
             payload = inject_preview_image_urls(router.payload(), session.document)
+            image_database.augment_payload(payload)
             editor = payload.setdefault("editor", {})
+            editor["image_database"] = {
+                "available": image_database.available,
+                "status": image_database.status,
+                "root": str(image_database.library_root),
+                "error": image_database.error,
+                "seed_manifest": dict(image_database.seed_manifest),
+            }
             editor["diagnostics"] = build_editor_diagnostics(
                 session.document,
                 import_audit=context.import_audit,
@@ -579,6 +596,7 @@ def launch_qt_quick_editor(
         details.append(font_report.warnings[0])
     if bridge._recovery_point is not None:
         details.append("recovery disponível")
+    details.append("Image DB pronto" if image_database.available else "Image DB indisponível")
     bridge.set_status(" · ".join(details))
     return int(app.exec())
 
@@ -691,6 +709,31 @@ def _startup_status(context: GraphicsLaunchContext, gate: ProductionGateReport, 
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.image_db_probe:
+            runtime = GraphicsImageDatabaseRuntime.from_environment(require_library=True)
+            product = {"id": "probe", "name": str(args.image_db_probe), "display_name": str(args.image_db_probe)}
+            candidates = runtime.product_candidates(product)
+            automatic = next((row for row in candidates if row.get("automatic") is True), None)
+            top = candidates[0] if candidates else None
+            manifest = dict(runtime.seed_manifest)
+            report = {
+                "available": runtime.available,
+                "status": runtime.status,
+                "library_root": str(runtime.library_root),
+                "product": str(args.image_db_probe),
+                "candidate_count": len(candidates),
+                "top_candidate": str(top.get("image_id") or "") if top else "",
+                "confidence": float(top.get("confidence") or 0.0) if top else 0.0,
+                "found": automatic is not None,
+                "automatic_image_id": str(automatic.get("image_id") or "") if automatic else "",
+                "catalog_version": manifest.get("catalog_version"),
+                "total_products": manifest.get("total_products"),
+                "total_images": manifest.get("total_images"),
+                "provenance_status": manifest.get("provenance_status"),
+                "dedup_status": manifest.get("dedup_status"),
+            }
+            print(json.dumps(report, ensure_ascii=False, sort_keys=True))
+            return 0 if automatic is not None else 3
         if args.probe_graphics_api:
             probe = probe_graphics_api(args.graphics_api)
             print(f"SR Graphics Engine 2 GPU: solicitado={probe.requested} | resolvido={probe.resolved}")
