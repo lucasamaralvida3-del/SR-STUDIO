@@ -178,7 +178,7 @@ jobs:
           retention-days: 90
 
       - name: Create launcher-compatible Beta bundle
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'g2/integrate-studio-shell'
         shell: pwsh
         run: |
           $run = "${{ github.run_number }}"
@@ -208,7 +208,8 @@ jobs:
           $bundle = Join-Path "release" $bundleName
           Push-Location $betaRoot
           try {
-            Compress-Archive -Path "files" -DestinationPath (Resolve-Path "../").Path\$bundleName -Force
+            $destination = Join-Path (Resolve-Path "../").Path $bundleName
+            Compress-Archive -Path "files" -DestinationPath $destination -Force
           } finally {
             Pop-Location
           }
@@ -226,7 +227,7 @@ jobs:
           Write-Host "BETA_SIZE=$size"
 
       - name: Publish G2 Beta release
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'g2/integrate-studio-shell'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
@@ -256,7 +257,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "Falha ao publicar release Beta" }
 
       - name: Promote G2 build to official beta manifest
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'g2/integrate-studio-shell'
         shell: pwsh
         run: |
           $channelRoot = Join-Path $env:RUNNER_TEMP "srstudio-beta-main"
@@ -325,7 +326,7 @@ jobs:
           }
 
       - name: Verify published beta manifest
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'g2/integrate-studio-shell'
         shell: pwsh
         run: |
           Start-Sleep -Seconds 5
