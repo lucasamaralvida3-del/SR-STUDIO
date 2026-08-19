@@ -7,6 +7,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QSG_RHI_BACKEND", "software")
 
 from PIL import Image
+import pytest
 
 import srstudio
 from srstudio.graphics2.command_router import GraphicsCommandRouter
@@ -254,7 +255,8 @@ def test_manual_resize_save_close_reopen_preserves_user_bounds(tmp_path):
 
 
 def test_manual_slot_move_does_not_change_export_pixels(tmp_path):
-    from PySide6.QtGui import QGuiApplication
+    QtGui = pytest.importorskip("PySide6.QtGui")
+    QGuiApplication = QtGui.QGuiApplication
 
     app = QGuiApplication.instance() or QGuiApplication(["smart-slot-manual-export"])
     assert app is not None
