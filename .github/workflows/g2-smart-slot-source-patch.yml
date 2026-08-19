@@ -1,0 +1,123 @@
+name: G2 Smart Slot Source Patch
+
+on:
+  push:
+    branches:
+      - g2/fix-smart-slots-beta
+    paths:
+      - '.github/workflows/g2-smart-slot-source-patch.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch-qml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/fix-smart-slots-beta
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply fail-closed QML patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = path.read_text(encoding='utf-8')
+          marker = 'property bool smartSlotInspectionMode: false'
+          if marker in text:
+              print('Smart Slot QML patch already applied.')
+              raise SystemExit(0)
+
+          replacements = [
+              (
+                  '    property string selectedSlotId: ""\n    property var anchorNode: selectedNode()\n',
+                  '    property string selectedSlotId: ""\n    property string hoveredSlotId: ""\n    property bool smartSlotInspectionMode: false\n    property var anchorNode: selectedNode()\n',
+              ),
+              (
+                  '        if (!page || !slot)\n            return {"x": 0, "y": 0, "width": 0, "height": 0}\n        var cardId = slot.metadata ? String(slot.metadata.semantic_product_card_id || "") : ""\n',
+                  '        if (!page || !slot)\n            return {"x": 0, "y": 0, "width": 0, "height": 0}\n        var effective = slot.metadata ? slot.metadata.effective_bounds : null\n        if (effective) {\n            var ew = Math.max(0, Number(effective.width || 0))\n            var eh = Math.max(0, Number(effective.height || 0))\n            if (ew > 0 && eh > 0)\n                return {"x": Number(effective.x || 0), "y": Number(effective.y || 0), "width": ew, "height": eh}\n        }\n        var cardId = slot.metadata ? String(slot.metadata.semantic_product_card_id || "") : ""\n',
+              ),
+              (
+                  '        if (!stillExists)\n            selectedSlotId = availableSlots.length ? availableSlots[0].id : ""\n        Qt.callLater(syncInspector)\n',
+                  '        if (!stillExists)\n            selectedSlotId = ""\n        hoveredSlotId = ""\n        dragHoverSlotId = ""\n        Qt.callLater(syncInspector)\n',
+              ),
+              (
+                  '            ToolButton { text: "▤"; checkable: true; checked: showRulers; ToolTip.text: "Réguas"; ToolTip.visible: hovered; onClicked: showRulers = checked }\n',
+                  '            ToolButton { text: "▤"; checkable: true; checked: showRulers; ToolTip.text: "Réguas"; ToolTip.visible: hovered; onClicked: showRulers = checked }\n            ToolButton { text: "Smart Slots"; checkable: true; checked: smartSlotInspectionMode; ToolTip.text: "Mostrar áreas inteligentes"; ToolTip.visible: hovered; onClicked: smartSlotInspectionMode = checked }\n',
+              ),
+              (
+                  '                                onActivated: selectedSlotId = currentValue\n                                Component.onCompleted: if (count > 0) selectedSlotId = currentValue\n',
+                  '                                onActivated: selectedSlotId = currentValue\n',
+              ),
+              (
+                  '                                    property bool isDropTarget: productDragActive && dragHoverSlotId === modelData.id\n                                    x: bounds.x * zoom\n',
+                  '                                    property bool isDropTarget: productDragActive && dragHoverSlotId === modelData.id\n                                    property bool isSelectedSlot: selectedSlotId === modelData.id\n                                    property bool isHoveredSlot: hoveredSlotId === modelData.id\n                                    property bool showSlotOverlay: smartSlotInspectionMode || productDragActive || isSelectedSlot || isHoveredSlot\n                                    x: bounds.x * zoom\n',
+              ),
+              (
+                  '                                    visible: width > 2 && height > 2\n                                    z: 100000\n',
+                  '                                    visible: showSlotOverlay && width > 2 && height > 2\n                                    z: 100000\n',
+              ),
+              (
+                  '                                        color: isDropTarget ? "#16A34A2A" : (selectedSlotId === modelData.id ? "#0F5BD811" : "transparent")\n                                        border.width: isDropTarget ? 3 : (selectedSlotId === modelData.id ? 2 : 1)\n                                        border.color: isDropTarget ? "#16A34A" : (selectedSlotId === modelData.id ? "#0F5BD8" : "#0F5BD855")\n',
+                  '                                        color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))\n                                        border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)\n                                        border.color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#0F5BD855")\n',
+              ),
+              (
+                  '                                        text: isDropTarget ? "SOLTAR PRODUTO AQUI" : (modelData.name || "Smart Slot")\n',
+                  '                                        text: isDropTarget ? "SOLTAR PRODUTO AQUI" : ((modelData.metadata && modelData.metadata.display_label) ? modelData.metadata.display_label : (modelData.name || "Smart Slot"))\n',
+              ),
+              (
+                  '                                        background: Rectangle { color: isDropTarget ? "#16A34A" : (selectedSlotId === modelData.id ? "#0F5BD8" : "#64748BAA"); radius: 3 }\n',
+                  '                                        background: Rectangle { color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#64748BAA"); radius: 3 }\n',
+              ),
+              (
+                  '                                    MouseArea { anchors.fill: parent; acceptedButtons: Qt.LeftButton; onClicked: selectedSlotId = modelData.id }\n',
+                  '                                    MouseArea {\n                                        anchors.fill: parent\n                                        acceptedButtons: Qt.LeftButton\n                                        hoverEnabled: true\n                                        onEntered: hoveredSlotId = modelData.id\n                                        onExited: if (hoveredSlotId === modelData.id) hoveredSlotId = ""\n                                        onClicked: selectedSlotId = modelData.id\n                                    }\n',
+              ),
+          ]
+
+          for old, new in replacements:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'Fail-closed: expected exactly one QML context, found {count}: {old[:90]!r}')
+              text = text.replace(old, new, 1)
+
+          path.write_text(text, encoding='utf-8')
+
+      - name: Validate QML source invariants
+        shell: python
+        run: |
+          from pathlib import Path
+          text = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml').read_text(encoding='utf-8')
+          required = [
+              'property bool smartSlotInspectionMode: false',
+              'slot.metadata.effective_bounds',
+              'visible: showSlotOverlay && width > 2 && height > 2',
+              'hoverEnabled: true',
+              'selectedSlotId = ""',
+              'modelData.metadata.display_label',
+          ]
+          missing = [item for item in required if item not in text]
+          if missing:
+              raise SystemExit(f'Missing Smart Slot UX invariants: {missing}')
+          if 'Component.onCompleted: if (count > 0) selectedSlotId = currentValue' in text:
+              raise SystemExit('Old auto-selection invariant still present')
+
+      - name: Commit QML source patch
+        shell: bash
+        run: |
+          if git diff --quiet -- src/srstudio/graphics2/qml/GraphicsEditor.qml; then
+            echo 'No patch required.'
+            exit 0
+          fi
+          git config user.name 'sr-studio-beta-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add src/srstudio/graphics2/qml/GraphicsEditor.qml
+          git commit -m 'fix(g2): hide Smart Slot overlays outside interaction'
+          git push origin HEAD:g2/fix-smart-slots-beta
