@@ -1,9 +1,7 @@
 name: G2 Smart Slot Validation
 
-# Certifies Smart Slot detection, fresh-import reset, manual semantic geometry
-# and save/reopen/export invariants. The feature-only patch step is one-shot:
-# after it commits the final source SHA, the temporary patch files delete
-# themselves and the same Windows job certifies that exact git HEAD.
+# Certifies Smart Slot detection, fresh-import reset, manual semantic geometry,
+# save/reopen persistence and visual-output invariants.
 on:
   push:
     branches:
@@ -24,7 +22,6 @@ on:
       - 'tests/test_graphics2_smart_slot_geometry.py'
       - 'tests/test_graphics2_smart_slot_import_reset.py'
       - 'tests/test_graphics2_smart_slot_detection_manual.py'
-      - 'tools/g2_apply_smart_slot_decorative_manual.py'
       - '.github/workflows/g2-smart-slot-validation.yml'
   pull_request:
     branches:
@@ -42,11 +39,10 @@ on:
       - 'tests/test_graphics2_smart_slot_geometry.py'
       - 'tests/test_graphics2_smart_slot_import_reset.py'
       - 'tests/test_graphics2_smart_slot_detection_manual.py'
-      - 'tools/g2_apply_smart_slot_decorative_manual.py'
       - '.github/workflows/g2-smart-slot-validation.yml'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   smart-slots-windows:
@@ -54,28 +50,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
-          fetch-depth: 0
-
-      - name: Apply feature patch once
-        if: github.event.pull_request.head.ref == 'g2/fix-smart-slot-decorative-manual' || github.ref_name == 'g2/fix-smart-slot-decorative-manual'
-        shell: pwsh
-        run: |
-          if (Test-Path "tools/g2_apply_smart_slot_decorative_manual.py") {
-            python tools/g2_apply_smart_slot_decorative_manual.py
-            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add -A
-            git diff --cached --stat
-            git diff --cached --quiet
-            if ($LASTEXITCODE -ne 0) {
-              git commit -m "feat(g2): fix decorative Smart Slots and add manual bounds"
-              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-              git push origin HEAD:g2/fix-smart-slot-decorative-manual
-              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            }
-          }
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
 
       - uses: actions/setup-python@v5
         with:
@@ -93,10 +69,15 @@ jobs:
         shell: pwsh
         run: |
           $sha = git rev-parse HEAD
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
           Write-Host "SOURCE_SHA=$sha"
+          Write-Host "EXPECTED_SHA=$expected"
           "SOURCE_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
-          git status --short
-          if (git status --porcelain) { throw "Working tree is not clean after feature commit" }
+          if ($sha -ne $expected) { throw "Exact SHA mismatch" }
+          git diff --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked working-tree files changed before certification" }
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked index changed before certification" }
 
       - name: Smart Slot regression tests
         shell: pwsh
@@ -123,7 +104,8 @@ jobs:
           from srstudio.graphics2.qt_renderer import render_png
           from srstudio.graphics2.smart_slot_geometry import refresh_smart_slot_geometry
 
-          # Versioned PPTX is a real import diagnostic, not a G2 Golden Master.
+          # Real versioned PPTX used only as an import diagnostic, not as a
+          # legacy Golden Master or a substitute for the user's Canva corpus.
           source = Path(r"src/srstudio/assets/poster_templates/legacy/models/SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx").resolve()
           assert source.is_file(), source
           app = QGuiApplication.instance() or QGuiApplication(["g2-smart-slot-validation"])
