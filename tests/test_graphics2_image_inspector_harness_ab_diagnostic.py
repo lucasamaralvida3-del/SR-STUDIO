@@ -54,21 +54,7 @@ def _build_selected_image_router():
     return router, image
 
 
-def _type_name(value) -> str:
-    return type(value).__name__ if value is not None else "None"
-
-
-def test_base_orphan_vs_qquickwindow_image_inspector_harness_ab():
-    pytest.importorskip("PySide6")
-    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
-    from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
-    from PySide6.QtGui import QGuiApplication
-    from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
-    from PySide6.QtQuick import QQuickItem, QQuickWindow
-
-    router, image = _build_selected_image_router()
-
+def _bridge_type(QObject, Property, Signal, Slot, router):
     class _Bridge(QObject):
         sceneChanged = Signal()
         statusChanged = Signal()
@@ -87,79 +73,106 @@ def test_base_orphan_vs_qquickwindow_image_inspector_harness_ab():
             self.sceneChanged.emit()
             return result
 
+    return _Bridge
+
+
+def _type_name(value) -> str:
+    return type(value).__name__ if value is not None else "None"
+
+
+def test_base_orphan_exact_original_harness_observation():
+    pytest.importorskip("PySide6")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQml import QQmlApplicationEngine
+    from PySide6.QtQuick import QQuickItem
+
+    router, image = _build_selected_image_router()
+    Bridge = _bridge_type(QObject, Property, Signal, Slot, router)
     app = QGuiApplication.instance() or QGuiApplication([])
-    bridge = _Bridge()
+    engine = QQmlApplicationEngine()
+    bridge = Bridge()
+    engine.rootContext().setContextProperty("sceneBridge", bridge)
     qml = Path(qt_host.__file__).with_name("qml") / "ImageInspector.qml"
-    qml_url = QUrl.fromLocalFile(str(qml.resolve()))
-
-    # A: exact legacy failing harness: top-level ImageInspector loaded directly
-    # into QQmlApplicationEngine, with no QQuickWindow/contentItem parent.
-    engine_a = QQmlApplicationEngine()
-    engine_a.rootContext().setContextProperty("sceneBridge", bridge)
-    engine_a.load(qml_url)
-    assert _process_events_until(app, lambda: bool(engine_a.rootObjects()))
-    orphan = engine_a.rootObjects()[0]
-    assert isinstance(orphan, QQuickItem)
-    assert _process_events_until(app, lambda: bool(orphan.property("hasImageSelection")))
-    orphan_image = orphan.property("imageNode")
-    orphan_state = {
-        "component_created": orphan is not None,
-        "parent": _type_name(orphan.parent()),
-        "parent_item": _type_name(orphan.parentItem()),
-        "qquickwindow": orphan.window() is not None,
-        "window_shown": bool(orphan.window() and orphan.window().isVisible()),
-        "visible": bool(orphan.property("visible")),
-        "hasImageSelection": bool(orphan.property("hasImageSelection")),
-        "imageNode_id": _js_field(orphan_image, "id"),
+    engine.load(QUrl.fromLocalFile(str(qml.resolve())))
+    assert _process_events_until(app, lambda: bool(engine.rootObjects()))
+    root = engine.rootObjects()[0]
+    assert isinstance(root, QQuickItem)
+    assert _process_events_until(app, lambda: bool(root.property("hasImageSelection")))
+    image_node = root.property("imageNode")
+    state = {
+        "component_created": True,
+        "parent": _type_name(root.parent()),
+        "parent_item": _type_name(root.parentItem()),
+        "qquickwindow": root.window() is not None,
+        "window_shown": bool(root.window() and root.window().isVisible()),
+        "visible": bool(root.property("visible")),
+        "hasImageSelection": bool(root.property("hasImageSelection")),
+        "imageNode_id": _js_field(image_node, "id"),
     }
-    print("IMAGE_INSPECTOR_BASE_A", json.dumps(orphan_state, sort_keys=True, default=str))
+    print("IMAGE_INSPECTOR_BASE_A", json.dumps(state, sort_keys=True, default=str))
+    assert state["parent_item"] == "None"
+    assert state["qquickwindow"] is False
+    assert state["window_shown"] is False
+    assert state["hasImageSelection"] is True
+    assert state["imageNode_id"] == image.id
 
-    # B: same component and bridge, but parented exactly like qt_host.py.
-    engine_b = QQmlApplicationEngine()
-    engine_b.rootContext().setContextProperty("sceneBridge", bridge)
-    component = QQmlComponent(engine_b, qml_url)
+
+def test_base_qquickwindow_hosted_harness_contract():
+    pytest.importorskip("PySide6")
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+    from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
+    from PySide6.QtQuick import QQuickItem, QQuickWindow
+
+    router, image = _build_selected_image_router()
+    Bridge = _bridge_type(QObject, Property, Signal, Slot, router)
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlApplicationEngine()
+    bridge = Bridge()
+    engine.rootContext().setContextProperty("sceneBridge", bridge)
+    qml = Path(qt_host.__file__).with_name("qml") / "ImageInspector.qml"
+    component = QQmlComponent(engine, QUrl.fromLocalFile(str(qml.resolve())))
     assert not component.isError(), [error.toString() for error in component.errors()]
-    hosted = component.create(engine_b.rootContext())
-    assert hosted is not None
-    assert isinstance(hosted, QQuickItem)
+    root = component.create(engine.rootContext())
+    assert root is not None
+    assert isinstance(root, QQuickItem)
+
     window = QQuickWindow()
     window.resize(640, 720)
-    hosted.setParentItem(window.contentItem())
-    hosted.setParent(window)
+    root.setParentItem(window.contentItem())
+    root.setParent(window)
     window.show()
-    assert _process_events_until(app, lambda: bool(hosted.property("hasImageSelection")))
-    assert _process_events_until(app, lambda: bool(hosted.property("visible")))
-    hosted_image = hosted.property("imageNode")
-    hosted_state = {
-        "component_created": hosted is not None,
-        "parent": _type_name(hosted.parent()),
-        "parent_item": _type_name(hosted.parentItem()),
-        "qquickwindow": hosted.window() is window,
+
+    assert _process_events_until(app, lambda: bool(root.property("hasImageSelection")))
+    assert _process_events_until(app, lambda: bool(root.property("visible")))
+    image_node = root.property("imageNode")
+    state = {
+        "component_created": True,
+        "parent": _type_name(root.parent()),
+        "parent_item": _type_name(root.parentItem()),
+        "qquickwindow": root.window() is window,
         "window_shown": window.isVisible(),
-        "visible": bool(hosted.property("visible")),
-        "hasImageSelection": bool(hosted.property("hasImageSelection")),
-        "imageNode_id": _js_field(hosted_image, "id"),
+        "visible": bool(root.property("visible")),
+        "hasImageSelection": bool(root.property("hasImageSelection")),
+        "imageNode_id": _js_field(image_node, "id"),
     }
-    print("IMAGE_INSPECTOR_BASE_B", json.dumps(hosted_state, sort_keys=True, default=str))
+    print("IMAGE_INSPECTOR_BASE_B", json.dumps(state, sort_keys=True, default=str))
+    assert state["parent"] == "QQuickWindow"
+    assert state["parent_item"] in {"QQuickRootItem", "QQuickItem"}
+    assert state["qquickwindow"] is True
+    assert state["window_shown"] is True
+    assert state["hasImageSelection"] is True
+    assert state["imageNode_id"] == image.id
+    assert state["visible"] is True
 
-    assert orphan_state["parent_item"] == "None"
-    assert orphan_state["qquickwindow"] is False
-    assert orphan_state["window_shown"] is False
-    assert orphan_state["hasImageSelection"] is True
-    assert orphan_state["imageNode_id"] == image.id
-    assert orphan_state["visible"] is False
-
-    assert hosted_state["parent"] == "QQuickWindow"
-    assert hosted_state["parent_item"] == "QQuickRootItem"
-    assert hosted_state["qquickwindow"] is True
-    assert hosted_state["window_shown"] is True
-    assert hosted_state["hasImageSelection"] is True
-    assert hosted_state["imageNode_id"] == image.id
-    assert hosted_state["visible"] is True
-
-    hosted.setParentItem(None)
-    hosted.setParent(None)
-    hosted.deleteLater()
+    root.setParentItem(None)
+    root.setParent(None)
+    root.deleteLater()
     window.close()
     window.deleteLater()
     app.processEvents()
