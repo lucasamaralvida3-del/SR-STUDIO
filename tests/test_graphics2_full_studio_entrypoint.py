@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 import inspect
 
+from srstudio.app import turbo_posters
 from srstudio.app.turbo_posters import SRStudioTurboPosters
 from srstudio.core.models import StudioProject
 from srstudio.graphics2 import full_studio_bridge
@@ -105,6 +106,53 @@ def test_encartes_route_is_intercepted_before_legacy_parent_navigation() -> None
     assert "_show_graphics2_studio_entrypoint" in source
 
 
+def test_primary_encartes_entrypoint_launches_g2_immediately(tmp_path, monkeypatch) -> None:
+    app = object.__new__(SRStudioTurboPosters)
+    app.project = StudioProject(name="E2E G2")
+    app.data_dir = tmp_path
+    expected = SimpleNamespace(ok=True, launched=True, message="G2 opened", pid=4242)
+    captured: dict[str, object] = {}
+
+    def fake_launch(project, data_dir):
+        captured["project"] = project
+        captured["data_dir"] = data_dir
+        return expected
+
+    monkeypatch.setattr(turbo_posters, "launch_studio_project", fake_launch)
+    app._show_graphics2_launch_result = lambda result: captured.setdefault("result", result)
+
+    SRStudioTurboPosters._show_graphics2_studio_entrypoint(app)
+
+    assert captured["project"] is app.project
+    assert captured["data_dir"] == tmp_path
+    assert captured["result"] is expected
+
+
+def test_primary_entrypoint_contains_no_legacy_navigation() -> None:
+    source = inspect.getsource(SRStudioTurboPosters._show_graphics2_studio_entrypoint)
+
+    assert "launch_studio_project" in source
+    assert "super().navigate" not in source
+    assert "_open_legacy_encartes_fallback" not in source
+
+
+def test_primary_launch_failure_is_explicit_and_not_legacy(monkeypatch) -> None:
+    app = object.__new__(SRStudioTurboPosters)
+    calls: list[tuple] = []
+    app.toast = SimpleNamespace(show=lambda *args: calls.append(("toast", *args)))
+
+    monkeypatch.setattr(turbo_posters.messagebox, "showerror", lambda *args, **kwargs: calls.append(("error", args, kwargs)))
+    result = SimpleNamespace(ok=False, launched=False, message="host ausente")
+
+    SRStudioTurboPosters._show_graphics2_launch_result(app, result)
+
+    assert any(call[0] == "error" for call in calls)
+    error_call = next(call for call in calls if call[0] == "error")
+    assert "FALHA AO INICIAR STUDIO DE ENCARTES G2" in error_call[1][0]
+    assert "host ausente" in error_call[1][1]
+    assert "legado não foi aberto automaticamente" in error_call[1][1]
+
+
 def test_pptx_import_command_routes_directly_to_graphics2() -> None:
     source = inspect.getsource(SRStudioTurboPosters.import_source)
 
@@ -113,7 +161,8 @@ def test_pptx_import_command_routes_directly_to_graphics2() -> None:
     assert "self.workflow.import_source(path)" in source  # Excel compatibility remains.
 
 
-def test_legacy_editor_remains_explicit_fallback() -> None:
+def test_legacy_editor_remains_explicit_fallback_only() -> None:
     source = inspect.getsource(SRStudioTurboPosters._open_legacy_encartes_fallback)
 
     assert 'super().navigate("Encartes Studio")' in source
+    assert "Explicit compatibility action only" in source
