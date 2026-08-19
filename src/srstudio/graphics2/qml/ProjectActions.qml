@@ -6,11 +6,11 @@ import QtQuick.Window
 
 Rectangle {
     id: panel
-    width: 890
+    width: 1020
     height: 42
     anchors.left: parent ? parent.left : undefined
     anchors.top: parent ? parent.top : undefined
-    anchors.leftMargin: 324
+    anchors.leftMargin: 300
     anchors.topMargin: 7
     z: 897000
     radius: 8
@@ -19,6 +19,8 @@ Rectangle {
     border.color: "#CBD5E1"
 
     property var scene: ({})
+    property bool importingPptx: false
+    property url pendingImportFile: ""
 
     function refreshScene() {
         try {
@@ -72,6 +74,30 @@ Rectangle {
         onActivated: sceneBridge.dispatch('{"name":"paste"}')
     }
 
+    Timer {
+        id: importPptxTimer
+        interval: 1
+        repeat: false
+        onTriggered: {
+            var result = ({"ok": false, "message": "Não foi possível importar este arquivo PPTX."})
+            try {
+                result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
+                    "name": "import_pptx",
+                    "path": panel.pendingImportFile.toString()
+                })))
+            } catch (error) {
+                result = ({"ok": false, "message": "Não foi possível importar este arquivo PPTX."})
+            }
+            panel.importingPptx = false
+            panel.pendingImportFile = ""
+            panel.refreshScene()
+            if (!result.ok) {
+                importErrorDialog.text = result.message || "Não foi possível importar este arquivo PPTX."
+                importErrorDialog.open()
+            }
+        }
+    }
+
     RowLayout {
         anchors.fill: parent
         anchors.margins: 5
@@ -86,7 +112,7 @@ Rectangle {
         ComboBox {
             id: pageCombo
             Layout.preferredWidth: 128
-            enabled: !sceneBridge.busy && panel.pageCount() > 0
+            enabled: !sceneBridge.busy && !panel.importingPptx && panel.pageCount() > 0
             model: panel.scene.pages || []
             textRole: "name"
             currentIndex: panel.activePageIndex()
@@ -99,35 +125,35 @@ Rectangle {
         }
         ToolButton {
             text: "+"
-            enabled: !sceneBridge.busy
+            enabled: !sceneBridge.busy && !panel.importingPptx
             ToolTip.text: "Adicionar página"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch('{"name":"add_page"}')
         }
         ToolButton {
             text: "⧉"
-            enabled: !sceneBridge.busy && panel.pageCount() > 0
+            enabled: !sceneBridge.busy && !panel.importingPptx && panel.pageCount() > 0
             ToolTip.text: "Duplicar página com IDs internos seguros"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}')
         }
         ToolButton {
             text: "←"
-            enabled: !sceneBridge.busy && panel.activePageIndex() > 0
+            enabled: !sceneBridge.busy && !panel.importingPptx && panel.activePageIndex() > 0
             ToolTip.text: "Mover página para a esquerda"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch(JSON.stringify({"name":"reorder_page", "page_id": panel.scene.active_page_id || "", "mode":"previous"}))
         }
         ToolButton {
             text: "→"
-            enabled: !sceneBridge.busy && panel.activePageIndex() >= 0 && panel.activePageIndex() < panel.pageCount() - 1
+            enabled: !sceneBridge.busy && !panel.importingPptx && panel.activePageIndex() >= 0 && panel.activePageIndex() < panel.pageCount() - 1
             ToolTip.text: "Mover página para a direita"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch(JSON.stringify({"name":"reorder_page", "page_id": panel.scene.active_page_id || "", "mode":"next"}))
         }
         ToolButton {
             text: "×"
-            enabled: !sceneBridge.busy && panel.pageCount() > 1
+            enabled: !sceneBridge.busy && !panel.importingPptx && panel.pageCount() > 1
             ToolTip.text: panel.pageCount() > 1 ? "Excluir página atual · desfazer disponível" : "O projeto precisa manter uma página"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch(JSON.stringify({"name":"delete_page", "page_id": panel.scene.active_page_id || ""}))
@@ -135,54 +161,80 @@ Rectangle {
         ToolSeparator {}
         ToolButton {
             text: "Copiar"
-            enabled: !sceneBridge.busy
+            enabled: !sceneBridge.busy && !panel.importingPptx
             ToolTip.text: "Copiar seleção · preserva ProductCard/PriceBlock/SmartSlot · Ctrl+C"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch('{"name":"copy"}')
         }
         ToolButton {
             text: "Colar"
-            enabled: !sceneBridge.busy
+            enabled: !sceneBridge.busy && !panel.importingPptx
             ToolTip.text: "Colar preservando ProductCard/PriceBlock/SmartSlot · Ctrl+V"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch('{"name":"paste"}')
         }
         ToolSeparator {}
         ToolButton {
+            text: "Importar PPTX / Canva"
+            enabled: !sceneBridge.busy && !panel.importingPptx
+            ToolTip.text: "Importe um PowerPoint ou um projeto exportado do Canva em .pptx"
+            ToolTip.visible: hovered
+            onClicked: importPptxDialog.open()
+        }
+        ToolButton {
             text: "💾 Salvar"
-            enabled: !sceneBridge.busy
+            enabled: !sceneBridge.busy && !panel.importingPptx
             ToolTip.text: "Salvar projeto portátil .srscene · Ctrl+S"
             ToolTip.visible: hovered
             onClicked: saveDialog.open()
         }
         ToolButton {
             text: "↺ Recuperar"
-            enabled: !sceneBridge.busy
+            enabled: !sceneBridge.busy && !panel.importingPptx
             ToolTip.text: "Restaurar o ponto de autosave mais recente deste projeto"
             ToolTip.visible: hovered
             onClicked: sceneBridge.recoverLatest()
         }
         ToolButton {
             text: "PDF"
-            enabled: !sceneBridge.busy
+            enabled: !sceneBridge.busy && !panel.importingPptx
             ToolTip.text: "Exportar todas as páginas em PDF de produção"
             ToolTip.visible: hovered
             onClicked: pdfDialog.open()
         }
         ToolButton {
             text: "PNG"
-            enabled: !sceneBridge.busy
+            enabled: !sceneBridge.busy && !panel.importingPptx
             ToolTip.text: "Exportar a página atual em PNG de alta resolução"
             ToolTip.visible: hovered
             onClicked: pngDialog.open()
         }
         Item { Layout.fillWidth: true }
         BusyIndicator {
-            running: sceneBridge.busy
+            running: sceneBridge.busy || panel.importingPptx
             visible: running
             implicitWidth: 24
             implicitHeight: 24
         }
+    }
+
+    FileDialog {
+        id: importPptxDialog
+        title: "Importar PPTX / Canva"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["PowerPoint (*.pptx)"]
+        onAccepted: {
+            panel.pendingImportFile = selectedFile
+            panel.importingPptx = true
+            importPptxTimer.start()
+        }
+    }
+
+    MessageDialog {
+        id: importErrorDialog
+        title: "Importar PPTX / Canva"
+        text: "Não foi possível importar este arquivo PPTX."
+        buttons: MessageDialog.Ok
     }
 
     FileDialog {
