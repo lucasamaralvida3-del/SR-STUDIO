@@ -12,7 +12,7 @@ import srstudio
 from srstudio.diagnostics.crash_guard import CrashGuard
 
 from . import ENGINE_VERSION
-from . import qt_host
+from . import item_slot_host as qt_host
 
 LOGGER_NAME = "srstudio.graphics2"
 
