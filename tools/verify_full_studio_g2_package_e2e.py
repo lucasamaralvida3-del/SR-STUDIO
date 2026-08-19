@@ -24,40 +24,54 @@ def _wait_until(predicate, *, timeout: float, detail: str, interval: float = 0.2
             value = predicate()
             if value:
                 return value
-        except Exception as exc:
+        except Exception as exc:  # diagnostics are emitted after timeout
             last_error = exc
         time.sleep(interval)
     suffix = f"; last_error={last_error}" if last_error else ""
     raise AssertionError(f"timeout waiting for {detail}{suffix}")
 
 
-def _window_for_process(pid: int, *, timeout: float = 25.0):
-    desktop = Desktop(backend="uia")
+def _window_pid(handle: int) -> int:
+    pid = ctypes.c_ulong(0)
+    ctypes.windll.user32.GetWindowThreadProcessId(int(handle), ctypes.byref(pid))
+    return int(pid.value)
+
+
+def _live_window_by_title(fragment: str, *, timeout: float = 25.0):
+    """Resolve a live top-level Win32 window instead of retaining a PyInstaller/UIA wrapper."""
+
+    wanted = fragment.casefold()
 
     def locate():
-        windows = [w for w in desktop.windows(process=pid, visible_only=True) if w.window_text().strip()]
-        return windows[0] if windows else None
-
-    return _wait_until(locate, timeout=timeout, detail=f"visible window for pid={pid}")
-
-
-def _failure_window_for_process(pid: int, *, timeout: float = 12.0):
-    def locate():
-        for backend in ("win32", "uia"):
+        try:
+            windows = Desktop(backend="win32").windows(visible_only=True)
+        except Exception:
+            return None
+        candidates = []
+        for window in windows:
             try:
-                windows = Desktop(backend=backend).windows(process=pid, visible_only=True)
+                title = str(window.window_text() or "").strip()
+                handle = int(window.handle)
             except Exception:
                 continue
-            for window in windows:
-                try:
-                    title = str(window.window_text() or "")
-                except Exception:
-                    continue
-                if "Studio de Encartes G2" in title and "erro" in title.casefold():
-                    return window
-        return None
+            if wanted not in title.casefold() or not ctypes.windll.user32.IsWindow(handle):
+                continue
+            candidates.append((title, window))
+        if not candidates:
+            return None
+        # Prefer the full professional shell over splash/auxiliary windows.
+        candidates.sort(key=lambda item: ("professional" not in item[0].casefold(), len(item[0])))
+        return candidates[0][1]
 
-    return _wait_until(locate, timeout=timeout, detail="visible G2 startup error dialog")
+    return _wait_until(locate, timeout=timeout, detail=f"live Win32 window containing {fragment!r}")
+
+
+def _shell_window(*, timeout: float = 25.0):
+    return _live_window_by_title("SR Studio 5", timeout=timeout)
+
+
+def _failure_window(*, timeout: float = 12.0):
+    return _live_window_by_title("Studio de Encartes G2 — erro", timeout=timeout)
 
 
 def _win32_rect(handle: int) -> tuple[int, int, int, int]:
@@ -70,6 +84,8 @@ def _win32_rect(handle: int) -> tuple[int, int, int, int]:
         ]
 
     rect = RECT()
+    if not ctypes.windll.user32.IsWindow(int(handle)):
+        raise OSError(f"invalid hwnd={handle}")
     if not ctypes.windll.user32.GetWindowRect(int(handle), ctypes.byref(rect)):
         raise OSError(f"GetWindowRect failed for hwnd={handle}")
     return int(rect.left), int(rect.top), int(rect.right), int(rect.bottom)
@@ -134,21 +150,15 @@ def _click_named(window, text: str):
     return control
 
 
-def _click_shell_studio(shell_window, output_dir: Path) -> str:
+def _click_shell_studio(output_dir: Path) -> tuple[str, int]:
     """Click the real Tk sidebar button without calling navigate() directly."""
 
+    shell_window = _shell_window()
+    handle = int(shell_window.handle)
+    _dump_controls(shell_window, output_dir / "shell-controls-win32.json")
     try:
         _click_named(shell_window, "Studio de Encartes")
-        return "uia-name"
-    except Exception:
-        pass
-
-    handle = int(shell_window.handle)
-    try:
-        win32_window = Desktop(backend="win32").window(handle=handle)
-        _dump_controls(win32_window, output_dir / "shell-controls-win32.json")
-        _click_named(win32_window, "Studio de Encartes")
-        return "win32-name"
+        return "win32-name", handle
     except Exception:
         pass
 
@@ -156,14 +166,16 @@ def _click_shell_studio(shell_window, output_dir: Path) -> str:
     width = right - left
     height = bottom - top
     assert width >= 800 and height >= 500, (left, top, right, bottom)
-    ctypes.windll.user32.ShowWindow(handle, 9)
+    ctypes.windll.user32.ShowWindow(handle, 9)  # SW_RESTORE
     ctypes.windll.user32.SetForegroundWindow(handle)
     time.sleep(0.35)
 
+    # The shell uses a fixed 244px sidebar. Encartes Studio is the second row
+    # under WORKSPACE. This remains a real physical click on SR Studio 5.exe.
     x = left + min(122, max(70, width // 12))
     y = top + min(314, max(250, int(height * 0.39)))
     mouse.click(button="left", coords=(x, y))
-    return f"physical-win32-coordinate:{x},{y}"
+    return f"physical-win32-coordinate:{x},{y}", handle
 
 
 def _descendant_process(parent_pid: int, name: str, *, not_before: float = 0.0):
@@ -217,6 +229,12 @@ def _save_window(window, path: Path) -> None:
     assert path.is_file() and path.stat().st_size > 0, path
 
 
+def _save_win32_handle(handle: int, path: Path) -> None:
+    image = ImageGrab.grab(bbox=_win32_rect(handle), all_screens=True)
+    image.save(path)
+    assert path.is_file() and path.stat().st_size > 0, path
+
+
 def _canvas_change(before: Path, after: Path) -> dict:
     with Image.open(before).convert("RGB") as first, Image.open(after).convert("RGB") as second:
         assert first.size == second.size, (first.size, second.size)
@@ -264,6 +282,11 @@ def _kill_process_tree(pid: int) -> None:
             pass
 
 
+def _kill_if_running(pid: int) -> None:
+    if pid:
+        _kill_process_tree(pid)
+
+
 def _assert_official_source_has_no_alternative_encartes_route() -> None:
     from srstudio.app.turbo_posters import SRStudioTurboPosters
 
@@ -287,6 +310,7 @@ def _run_missing_host_gate(
         shutil.rmtree(disabled_host_dir)
     host_dir.rename(disabled_host_dir)
     shell_process = None
+    actual_shell_pid = 0
     started = time.time()
     try:
         env = os.environ.copy()
@@ -295,19 +319,23 @@ def _run_missing_host_gate(
         env["LOCALAPPDATA"] = str(failure_local)
         env["SR_GRAPHICS_ENGINE_2_HOST"] = str(package_root / "definitely-missing-G2-host.exe")
         shell_process = subprocess.Popen([str(shell_exe)], cwd=str(package_root), env=env)
-        shell_window = _window_for_process(shell_process.pid)
-        time.sleep(1.5)
-        _save_window(shell_window, output_dir / "failure-shell-before-click.png")
-        result["failure_click_method"] = _click_shell_studio(shell_window, output_dir)
+        shell_window = _shell_window()
+        actual_shell_pid = _window_pid(int(shell_window.handle))
+        result["failure_shell_pid"] = actual_shell_pid
+        result["failure_shell_title"] = str(shell_window.window_text() or "")
+        result["failure_shell_rect"] = list(_win32_rect(int(shell_window.handle)))
+
+        click_method, _ = _click_shell_studio(output_dir)
+        result["failure_click_method"] = click_method
         result["failure_studio_nav_clicked"] = True
 
-        error_window = _failure_window_for_process(shell_process.pid)
-        _save_window(error_window, output_dir / "g2-error-visible.png")
+        error_window = _failure_window()
+        _save_win32_handle(int(error_window.handle), output_dir / "g2-error-visible.png")
         result["g2_error_visible"] = True
         result["g2_error_title"] = str(error_window.window_text() or "")
 
         spawned = _descendant_process(
-            shell_process.pid,
+            actual_shell_pid or shell_process.pid,
             "SRGraphicsEngine2Host.exe",
             not_before=started,
         )
@@ -316,8 +344,9 @@ def _run_missing_host_gate(
         result["legacy_studio_opened"] = False
         result["legacy_route_contract"] = True
     finally:
-        if shell_process is not None:
-            _kill_process_tree(shell_process.pid)
+        _kill_if_running(actual_shell_pid)
+        if shell_process is not None and shell_process.pid != actual_shell_pid:
+            _kill_if_running(shell_process.pid)
         if host_dir.exists():
             shutil.rmtree(host_dir)
         if disabled_host_dir.exists():
@@ -341,22 +370,23 @@ def _run_success_gate(
     started = time.time()
     shell_process = subprocess.Popen([str(shell_exe)], cwd=str(package_root), env=env)
     child_pid = 0
+    actual_shell_pid = 0
     try:
-        shell_window = _window_for_process(shell_process.pid)
-        time.sleep(1.5)
-        result["shell_pid"] = shell_process.pid
-        result["shell_title"] = shell_window.window_text()
+        shell_window = _shell_window()
+        actual_shell_pid = _window_pid(int(shell_window.handle))
+        result["shell_pid"] = actual_shell_pid
+        result["shell_title"] = str(shell_window.window_text() or "")
         result["shell_rect"] = list(_win32_rect(int(shell_window.handle)))
-        shell_controls = _dump_controls(shell_window, output_dir / "shell-controls.json")
-        result["shell_controls"] = len(shell_controls)
-        _save_window(shell_window, output_dir / "shell-before-studio-click.png")
+        result["shell_controls"] = len(_dump_controls(shell_window, output_dir / "shell-controls.json"))
+        _save_win32_handle(int(shell_window.handle), output_dir / "shell-before-studio-click.png")
 
-        result["studio_nav_click_method"] = _click_shell_studio(shell_window, output_dir)
+        click_method, _ = _click_shell_studio(output_dir)
+        result["studio_nav_click_method"] = click_method
         result["studio_nav_clicked"] = True
 
         child = _wait_until(
             lambda: _descendant_process(
-                shell_process.pid,
+                actual_shell_pid or shell_process.pid,
                 "SRGraphicsEngine2Host.exe",
                 not_before=started,
             ),
@@ -372,8 +402,7 @@ def _run_success_gate(
         assert "SR Graphics Engine 2" in g2_title, g2_title
         result["g2_title"] = g2_title
         result["g2_identity_verified"] = True
-        g2_controls = _dump_controls(g2_window, output_dir / "g2-controls-before.json")
-        result["g2_controls_before"] = len(g2_controls)
+        result["g2_controls_before"] = len(_dump_controls(g2_window, output_dir / "g2-controls-before.json"))
 
         before = output_dir / "g2-before-slot.png"
         after = output_dir / "g2-after-simples.png"
@@ -417,8 +446,10 @@ def _run_success_gate(
         result["simples_visible"] = True
     finally:
         if child_pid:
-            _kill_process_tree(child_pid)
-        _kill_process_tree(shell_process.pid)
+            _kill_if_running(child_pid)
+        _kill_if_running(actual_shell_pid)
+        if shell_process.pid != actual_shell_pid:
+            _kill_if_running(shell_process.pid)
 
 
 def main() -> int:
