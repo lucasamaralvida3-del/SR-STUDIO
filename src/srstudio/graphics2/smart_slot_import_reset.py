@@ -3,8 +3,7 @@ from __future__ import annotations
 """Reset lógico de conteúdo de produto para NOVA importação Canva/PPTX.
 
 A geometria visual importada é fonte de verdade e nunca é apagada por este
-módulo. O reset atua somente na associação de produto do Smart Slot e nos
-marcadores/overrides que representam conteúdo preenchido pelo usuário.
+módulo. O reset atua somente na associação de produto do Smart Slot.
 
 Abrir ``.srscene``/``.zip`` salvo não passa por este módulo.
 """
@@ -62,9 +61,12 @@ def reset_new_pptx_import_product_content(
 ) -> SmartSlotImportResetReport:
     """Preserva Smart Slot STRUCTURE e zera PRODUCT CONTENT em import novo.
 
+    Fonte canônica de conteúdo:
+    - ``slot.product_id == ""``;
+    - ``slot.metadata["product_snapshot"] == {}``.
+
     Contrato:
     - ``slot.id``, ``node_by_role``, ``extra_bindings``, bounds e nodes ficam;
-    - ``slot.product_id``/``product_snapshot`` são zerados;
     - conteúdo visual original do PPTX (texto/imagem/geometria) não é apagado;
     - imagem sintética criada apenas para auto-preenchimento volta a ficar vazia;
     - a lista de produtos inferidos do PPTX não vira conteúdo ativo do projeto G2.
@@ -73,10 +75,6 @@ def reset_new_pptx_import_product_content(
     report = SmartSlotImportResetReport(source=str(Path(source)))
     report.pages = len(document.pages)
 
-    # ``from_imported_project`` materializa os produtos inferidos pelo PPTX no
-    # metadata do documento. Eles continuam podendo ter sido aprendidos pelo
-    # ImageLibrary durante o pipeline, mas não entram como conteúdo ativo do
-    # novo encarte.
     imported_products = list(document.metadata.get("products") or [])
     report.imported_products_discarded = len(imported_products)
     document.metadata["products"] = []
@@ -85,16 +83,14 @@ def reset_new_pptx_import_product_content(
         for slot in page.slots.values():
             _reset_slot_product_state(page, slot, report)
 
-    # O GraphicsImportResult também expõe o StudioProject intermediário. Limpar
-    # este espelho evita que qualquer caller posterior reutilize, por acidente,
-    # os produtos inferidos como se fossem produtos já escolhidos pelo usuário.
+    # O ImageLibrary já teve a oportunidade de aprender durante o pipeline;
+    # agora removemos somente o conteúdo ativo do projeto intermediário.
     legacy_project.products.clear()
     for page in legacy_project.pages:
         for card in page.cards:
             card.product_id = ""
             card.overrides.pop("slot_template_product_id", None)
             card.overrides["slot_filled"] = False
-            card.overrides["product_content_empty"] = True
             report.legacy_cards_reset += 1
 
     payload = report.to_dict()
@@ -112,9 +108,6 @@ def _reset_slot_product_state(page, slot: SmartSlot, report: SmartSlotImportRese
 
     slot.product_id = ""
     slot.metadata["product_snapshot"] = {}
-    slot.metadata["product_binding_state"] = "empty"
-    slot.metadata["product_content_empty"] = True
-    slot.metadata["product_reset_reason"] = "new-pptx-import"
     for key in _PRODUCT_VALUE_METADATA_KEYS:
         slot.metadata.pop(key, None)
 
@@ -122,24 +115,22 @@ def _reset_slot_product_state(page, slot: SmartSlot, report: SmartSlotImportRese
         node = page.node(node_id)
         if node is None:
             continue
-        node.metadata["product_binding_empty"] = True
 
         if node.kind is not NodeKind.IMAGE:
             # Texto original é parte do layout visual importado. Não limpar
-            # ``node.text`` aqui é requisito explícito: o slot fica logicamente
-            # vazio, mas o PPTX continua visualmente idêntico ao arquivo fonte.
+            # ``node.text`` aqui é requisito explícito: o binding fica vazio,
+            # mas o PPTX continua visualmente idêntico ao arquivo fonte.
             continue
 
         if "bound_image_source" in node.metadata:
-            # Slot image de importação possui AssetRef próprio; remover apenas o
-            # override de produto mantém a imagem original via ``asset_id``.
+            # O asset original importado continua referenciado por ``asset_id``;
+            # só o override de produto é removido.
             node.metadata.pop("bound_image_source", None)
             report.image_binding_markers_cleared += 1
 
         if _is_synthetic_product_image(node):
             # Placeholder sintético não pertence ao visual original. Se o banco
-            # de imagens o auto-preencheu durante a análise, ele deve iniciar
-            # vazio até o usuário escolher um produto.
+            # o auto-preencheu durante a análise, ele inicia vazio até escolha do usuário.
             node.visible = False
             report.synthetic_images_emptied += 1
 
