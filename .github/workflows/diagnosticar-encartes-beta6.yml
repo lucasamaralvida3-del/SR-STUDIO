@@ -17,5 +17,5 @@ jobs:
         with:
           ref: g2/integrate-existing-image-db
           fetch-depth: 0
-      - name: Reconcile existing Image DB work with current G2 integration head
-        run: python scripts/ci/g2_image_db_rebase_current.py
+      - name: Reconcile Image DB production/tests with current G2 integration head
+        run: python scripts/ci/g2_image_db_rebase_no_workflows.py
