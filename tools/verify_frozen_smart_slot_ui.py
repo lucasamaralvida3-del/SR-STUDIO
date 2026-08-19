@@ -84,9 +84,11 @@ def main() -> int:
     for term in required_action_terms:
         assert term in actions_text, f"frozen ProjectActions.qml missing {term!r}"
 
+    from shiboken6 import Shiboken
     from PySide6.QtCore import QEventLoop, QObject, Property, QMetaObject, QPoint, QPointF, Qt, QTimer, QUrl, Signal, Slot
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
+    from PySide6.QtQuick import QQuickItem
     from PySide6.QtTest import QTest
 
     class SceneBridge(QObject):
@@ -181,7 +183,11 @@ def main() -> int:
         assert found is not None, f"QML object not found: {name}"
         return found
 
-    panel_item = child("smartSlotProjectActionsPanel")
+    panel_object = child("smartSlotProjectActionsPanel")
+    panel_address = int(Shiboken.getCppPointer(panel_object)[0])
+    panel_item = Shiboken.wrapInstance(panel_address, QQuickItem)
+    assert panel_item is not None and Shiboken.isValid(panel_item), "Could not type frozen ProjectActions panel as QQuickItem"
+
     adjust = child("smartSlotAdjustButton")
     assert bool(adjust.property("visible")) is True
     assert bool(adjust.property("enabled")) is True
@@ -245,7 +251,7 @@ def main() -> int:
         "non_product_visible": bool(non_product.property("visible")),
         "delete_slot_visible": bool(delete.property("visible")),
         "resize_handles_verified": 8,
-        "screenshot_capture": "QQuickItem.grabToImage",
+        "screenshot_capture": "QQuickItem.grabToImage via Shiboken typed wrapper",
         "screenshot": screenshot_path.name,
     }
     evidence_path = output_dir / "frozen-smart-slot-ui.json"
