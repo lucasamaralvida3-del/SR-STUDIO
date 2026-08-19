@@ -1,5 +1,6 @@
 name: G2 Smart Slot Validation
 
+# Certifies geometry/UX plus fresh-import product reset and save/reopen persistence.
 on:
   push:
     branches:
