@@ -46,7 +46,26 @@ def _document() -> GraphicsDocument:
 
 
 def _node_snapshot(document: GraphicsDocument) -> dict:
-    return {node.id: node.to_dict() for node in document.active_page.nodes.values()}
+    return {
+        node.id: (
+            node.kind.value,
+            node.name,
+            node.transform.x,
+            node.transform.y,
+            node.transform.width,
+            node.transform.height,
+            node.transform.rotation,
+            node.z_index,
+            node.visible,
+            node.locked,
+            node.opacity,
+            node.text,
+            node.asset_id,
+            dict(node.style),
+            dict(node.metadata),
+        )
+        for node in document.active_page.nodes.values()
+    }
 
 
 def test_qml_smart_slot_hot_path_is_preview_only() -> None:
