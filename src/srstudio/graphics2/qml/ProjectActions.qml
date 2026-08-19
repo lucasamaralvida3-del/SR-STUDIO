@@ -173,10 +173,28 @@ Rectangle {
         }
 
         ToolSeparator {}
-        ToolButton { text: "Copiar"; enabled: !sceneBridge.busy; onClicked: sceneBridge.dispatch('{"name":"copy"}') }
-        ToolButton { text: "Colar"; enabled: !sceneBridge.busy; onClicked: sceneBridge.dispatch('{"name":"paste"}') }
+        ToolButton {
+            text: "Copiar"
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Copiar seleção · preserva ProductCard/PriceBlock/SmartSlot · Ctrl+C"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.dispatch('{"name":"copy"}')
+        }
+        ToolButton {
+            text: "Colar"
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Colar preservando ProductCard/PriceBlock/SmartSlot · Ctrl+V"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.dispatch('{"name":"paste"}')
+        }
         ToolButton { text: "💾 Salvar"; enabled: !sceneBridge.busy; onClicked: saveDialog.open() }
-        ToolButton { text: "↺"; enabled: !sceneBridge.busy; ToolTip.text: "Recuperar autosave"; ToolTip.visible: hovered; onClicked: sceneBridge.recoverLatest() }
+        ToolButton {
+            text: "↺"
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Restaurar o ponto de autosave mais recente deste projeto"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.recoverLatest()
+        }
         ToolButton { text: "PDF"; enabled: !sceneBridge.busy; onClicked: pdfDialog.open() }
         ToolButton { text: "PNG"; enabled: !sceneBridge.busy; onClicked: pngDialog.open() }
         Item { Layout.fillWidth: true }
