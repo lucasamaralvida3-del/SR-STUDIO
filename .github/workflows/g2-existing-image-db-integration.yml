@@ -56,7 +56,6 @@ jobs:
           Write-Host "CHECKED_OUT_SHA=$sha"
           Write-Host 'SHA_MATCH=PASS'
 
-          # Preserve exact source before any tool/test can mutate runner topology.
           $sourceSnapshot = Join-Path $env:RUNNER_TEMP 'g2-image-db-source'
           New-Item -ItemType Directory -Force -Path $sourceSnapshot | Out-Null
           Copy-Item (Join-Path $env:GITHUB_WORKSPACE 'src/srstudio') (Join-Path $sourceSnapshot 'srstudio') -Recurse -Force
@@ -71,7 +70,6 @@ jobs:
           Write-Host 'FOCUSED_TESTS=14_PASS'
           Write-Host 'FAIL_CLOSED=PASS'
 
-          # Consume the repository's official frozen-host build associated with this head SHA.
           $hostRunId = $null
           for ($attempt = 0; $attempt -lt 36; $attempt++) {
             $json = gh run list --repo lucasamaralvida3-del/SR-STUDIO --workflow "SR Graphics Engine 2 Host Build" --commit $sha --limit 5 --json databaseId,status,conclusion,headSha
@@ -100,7 +98,6 @@ jobs:
           $hostRoot = $hostItem.Directory.FullName
           Write-Host 'FROZEN_HOST_ARTIFACT=PASS'
 
-          # Build a transport seed from the already-approved SR Image Database corpus.
           New-Item -ItemType Directory -Force -Path image-db-approved,image-db-corpus,image-db-dist | Out-Null
           gh run download 32197750743 --repo lucasamaralvida3-del/SR-STUDIO --name image-db-coverage-baseline-32197750743 --dir image-db-approved
           if ($LASTEXITCODE -ne 0) { throw 'Approved Image DB baseline unavailable' }
@@ -125,6 +122,8 @@ jobs:
 
           $builder = Join-Path $env:RUNNER_TEMP 'image_db_build_distribution_seed.py'
           Invoke-WebRequest "https://raw.githubusercontent.com/${{ github.repository }}/$sha/scripts/ci/image_db_build_distribution_seed.py" -OutFile $builder
+          $workspaceSeed = Join-Path $env:GITHUB_WORKSPACE 'image-db-dist/image-db-library-v1.zip'
+          $buildReport = Join-Path $env:RUNNER_TEMP 'image-db-build-report.json'
           python $builder `
             --index image-db-approved/image-db-coverage-library/index.json `
             --catalog-report image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json `
@@ -133,15 +132,18 @@ jobs:
             --pptx-archive image-db-corpus/Downloads.2.1.zip `
             --image-archive image-db-corpus/standalone-images.zip `
             --source-artifact 'image-db-coverage-baseline-32197750743 / artifact 9346445276' `
-            --output image-db-dist/image-db-library-v1.zip | Tee-Object image-db-dist/build-report.json
+            --output $workspaceSeed | Tee-Object $buildReport
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $seed = Join-Path $env:GITHUB_WORKSPACE 'image-db-dist/image-db-library-v1.zip'
-          if (!(Test-Path $seed)) { throw 'Image DB seed missing' }
+          if (!(Test-Path $workspaceSeed)) { throw 'Image DB seed missing after build' }
+          $seed = Join-Path $env:RUNNER_TEMP 'image-db-library-v1.zip'
+          Copy-Item $workspaceSeed $seed -Force
+          if (!(Test-Path $seed)) { throw 'Runner-temp Image DB seed snapshot failed' }
           $seedSha = (Get-FileHash $seed -Algorithm SHA256).Hash.ToLowerInvariant()
-          "$seedSha  image-db-library-v1.zip" | Out-File image-db-dist/image-db-library-v1.sha256 -Encoding ascii
+          $seedShaFile = Join-Path $env:RUNNER_TEMP 'image-db-library-v1.sha256'
+          "$seedSha  image-db-library-v1.zip" | Out-File $seedShaFile -Encoding ascii
           Write-Host "SEED_SHA256=$seedSha"
+          Write-Host 'SEED_RUNNER_TEMP_SNAPSHOT=PASS'
 
-          # Detailed Product -> Image report using exact adapter source + real approved seed.
           $env:PYTHONPATH = $sourceSnapshot
           $env:SR_STUDIO_DATA_DIR = Join-Path $env:RUNNER_TEMP 'srstudio-logical-image-db'
           $env:SR_STUDIO_IMAGE_DB_SEED = $seed
@@ -176,8 +178,8 @@ jobs:
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           if (!(Test-Path $env:IMAGE_DB_REPORT)) { throw 'Product Image report missing' }
+          if (!(Test-Path $seed)) { throw 'Runner-temp Image DB seed disappeared after logical lookup' }
 
-          # Frozen EXE is windowed: exit code is the reliable process contract.
           New-Item -ItemType Directory -Force -Path (Join-Path $hostRoot 'ImageDatabaseSeed') | Out-Null
           Copy-Item $seed (Join-Path $hostRoot 'ImageDatabaseSeed/image-db-library-v1.zip') -Force
           Remove-Item Env:SR_STUDIO_IMAGE_DB_SEED -ErrorAction SilentlyContinue
@@ -216,8 +218,8 @@ jobs:
         with:
           name: g2-existing-image-db-certification
           path: |
-            image-db-dist/build-report.json
-            image-db-dist/image-db-library-v1.sha256
+            ${{ runner.temp }}/image-db-build-report.json
+            ${{ runner.temp }}/image-db-library-v1.sha256
             ${{ runner.temp }}/product-image-report.json
           if-no-files-found: error
           retention-days: 30
