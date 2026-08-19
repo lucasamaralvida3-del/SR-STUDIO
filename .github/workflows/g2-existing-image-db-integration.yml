@@ -1,0 +1,216 @@
+name: G2 Existing Image DB Integration
+
+on:
+  push:
+    branches:
+      - g2/integrate-existing-image-db
+    paths:
+      - 'src/srstudio/graphics2/image_database_runtime.py'
+      - 'src/srstudio/graphics2/full_studio_bridge.py'
+      - 'src/srstudio/graphics2/qt_host.py'
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'scripts/ci/image_db_build_distribution_seed.py'
+      - 'tests/test_graphics2_existing_image_database.py'
+      - '.github/workflows/g2-existing-image-db-integration.yml'
+  pull_request:
+    branches:
+      - g2/integrate-studio-shell
+    paths:
+      - 'src/srstudio/graphics2/image_database_runtime.py'
+      - 'src/srstudio/graphics2/full_studio_bridge.py'
+      - 'src/srstudio/graphics2/qt_host.py'
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'scripts/ci/image_db_build_distribution_seed.py'
+      - 'tests/test_graphics2_existing_image_database.py'
+      - '.github/workflows/g2-existing-image-db-integration.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  existing-image-db:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install focused dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2]"
+
+      - name: Record exact SHA
+        shell: bash
+        run: |
+          set -euo pipefail
+          actual="$(git rev-parse HEAD)"
+          expected="${{ github.event.pull_request.head.sha || github.sha }}"
+          echo "SOURCE_SHA=$actual" | tee -a "$GITHUB_ENV"
+          echo "EXPECTED_SHA=$expected"
+          test "$actual" = "$expected"
+          git diff --quiet
+          git diff --cached --quiet
+
+      - name: Focused existing Image DB tests
+        run: |
+          python -m compileall -q src/srstudio/graphics2/image_database_runtime.py scripts/ci/image_db_build_distribution_seed.py
+          python -m pytest -q tests/test_graphics2_existing_image_database.py tests/test_graphics2_full_studio_entrypoint.py
+
+      - name: Download approved logical Image DB baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p image-db-approved
+          gh run download 32197750743 \
+            --repo lucasamaralvida3-del/SR-STUDIO \
+            --name image-db-coverage-baseline-32197750743 \
+            --dir image-db-approved
+          test -f image-db-approved/image-db-coverage-library/index.json
+          test -f image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json
+          test -f image-db-approved/image-db-coverage-baseline/final/library-audit.json
+
+      - name: Download durable approved corpus release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p image-db-corpus
+          gh release download image-db-corpus-v1 --repo lucasamaralvida3-del/SR-STUDIO --pattern 'Downloads.1.1.zip' --dir image-db-corpus
+          gh release download image-db-corpus-v1 --repo lucasamaralvida3-del/SR-STUDIO --pattern 'Downloads.2.1.zip' --dir image-db-corpus
+          gh release download image-db-corpus-v1 --repo lucasamaralvida3-del/SR-STUDIO --pattern 'standalone-images.zip' --dir image-db-corpus
+          test -f image-db-corpus/Downloads.1.1.zip
+          test -f image-db-corpus/Downloads.2.1.zip
+          test -f image-db-corpus/standalone-images.zip
+          echo 'aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba  image-db-corpus/Downloads.1.1.zip' | sha256sum -c -
+          echo '035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86  image-db-corpus/Downloads.2.1.zip' | sha256sum -c -
+          echo '9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff  image-db-corpus/standalone-images.zip' | sha256sum -c -
+
+      - name: Materialize existing approved Image DB seed
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p image-db-dist
+          python scripts/ci/image_db_build_distribution_seed.py \
+            --index image-db-approved/image-db-coverage-library/index.json \
+            --catalog-report image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json \
+            --audit-report image-db-approved/image-db-coverage-baseline/final/library-audit.json \
+            --pptx-archive image-db-corpus/Downloads.1.1.zip \
+            --pptx-archive image-db-corpus/Downloads.2.1.zip \
+            --image-archive image-db-corpus/standalone-images.zip \
+            --source-artifact 'image-db-coverage-baseline-32197750743 / artifact 9346445276' \
+            --output image-db-dist/image-db-library-v1.zip | tee image-db-dist/build-report.json
+
+      - name: Full seed integrity and Product to Image report
+        shell: bash
+        run: |
+          set -euo pipefail
+          export SR_STUDIO_DATA_DIR="$RUNNER_TEMP/srstudio-clean-user-data"
+          export SR_STUDIO_IMAGE_DB_SEED="$GITHUB_WORKSPACE/image-db-dist/image-db-library-v1.zip"
+          python - <<'PY' | tee image-db-dist/product-image-report.txt
+          from pathlib import Path
+          from PIL import Image
+          from srstudio.graphics2.image_database_runtime import GraphicsImageDatabaseRuntime
+
+          runtime = GraphicsImageDatabaseRuntime.from_environment(require_library=True)
+          metrics = runtime.validate_full()
+          manifest = runtime.seed_manifest
+          required = [
+              "schema", "catalog_version", "total_products", "total_images", "index_sha256",
+              "source_release", "source_artifact", "provenance_status", "dedup_status",
+          ]
+          missing = [key for key in required if key not in manifest]
+          assert not missing, missing
+          assert manifest["total_products"] == 520, manifest
+          assert manifest["total_images"] == 1037, manifest
+          assert metrics["total_images"] == 1037, metrics
+          assert manifest["provenance_status"] == "PASS"
+          assert manifest["dedup_status"] == "PASS"
+
+          known = runtime.lookup_product("BATATA INGLESA")
+          assert known.best_match is not None
+          print("KNOWN_PRODUCT=BATATA INGLESA")
+          print("KNOWN_IMAGE_ID=" + known.best_match.asset.id)
+          print("KNOWN_CONFIDENCE=" + str(known.confidence))
+
+          alias = runtime.lookup_product("TOMATE PÊRA")
+          assert alias.best_match is not None
+          assert alias.best_match.asset.id == "4088292755a7e25ce30e2a9a"
+          print("ALIAS_PRODUCT=TOMATE PÊRA")
+          print("ALIAS_IMAGE_ID=" + alias.best_match.asset.id)
+
+          unknown = runtime.lookup_product("PRODUTO TOTALMENTE INEXISTENTE XYZ 987ML")
+          assert unknown.best_match is None
+          print("UNKNOWN_PRODUCT_FALLBACK=PASS")
+
+          queries = [
+              "ARROZ PATOSUL 5KG",
+              "ARROZ VASCONCELOS 5KG",
+              "CAFE VASCONCELOS 500G",
+              "LEITE TRIANGULO 1L",
+              "DETERGENTE YPE 500ML",
+              "ENERGETICO MONSTER 473ML",
+              "TODDY 750G",
+              "ACUCAR DELTA 5KG",
+              "EXTRATO DE TOMATE ELEFANTE 300G",
+              "Detergente Ypê Neutro 500ml",
+          ]
+          for query in queries:
+              product = {"id": query, "name": query}
+              candidates = runtime.product_candidates(product)
+              result = runtime.lookup_product(query)
+              top = candidates[0] if candidates else None
+              visual = "placeholder"
+              if top:
+                  with Image.open(top["path"]) as image:
+                      image.verify()
+                  visual = "preview-decodable"
+              print({
+                  "product": query,
+                  "top_candidate": top["image_id"] if top else "",
+                  "confidence": top["confidence"] if top else 0.0,
+                  "image_found": result.best_match is not None,
+                  "visual_result": visual,
+                  "candidate_count": len(candidates),
+              })
+
+          print("IMAGE_DB_SOURCE=" + str(runtime.library_root))
+          print("CATALOG_VERSION=" + str(manifest["catalog_version"]))
+          print("TOTAL_PRODUCTS=" + str(manifest["total_products"]))
+          print("TOTAL_IMAGES=" + str(manifest["total_images"]))
+          print("DEDUP_STATUS=" + str(manifest["dedup_status"]))
+          print("PROVENANCE_STATUS=" + str(manifest["provenance_status"]))
+          print("LOOKUP_WITHOUT_CHECKOUT=PASS")
+          PY
+
+      - name: Publish durable seed on existing Image DB corpus release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload image-db-corpus-v1 image-db-dist/image-db-library-v1.zip \
+            --repo lucasamaralvida3-del/SR-STUDIO --clobber
+          sha256sum image-db-dist/image-db-library-v1.zip | tee image-db-dist/image-db-library-v1.sha256
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g2-existing-image-db-certification
+          path: |
+            image-db-dist/build-report.json
+            image-db-dist/product-image-report.txt
+            image-db-dist/image-db-library-v1.sha256
+          if-no-files-found: warn
+          retention-days: 30
