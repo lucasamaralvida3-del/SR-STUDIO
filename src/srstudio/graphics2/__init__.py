@@ -134,6 +134,7 @@ from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merg
 
 from . import command_router as _command_router
 from .command_router import GraphicsCommandRouter
+from .import_ui_runtime import install_import_ui_commands
 from .product_card_runtime import (
     ProductCardCreation,
     install_product_card_commands,
@@ -151,6 +152,7 @@ install_safe_page_duplication(GraphicsSession)
 install_product_card_runtime(GraphicsSession, _semantic_blocks)
 install_product_card_commands(_command_router)
 install_product_data_runtime(GraphicsSession, _command_router)
+install_import_ui_commands(_command_router)
 
 __all__ = [
     "AssetRef",
