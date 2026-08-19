@@ -1,0 +1,140 @@
+name: G2 Smart Slot Interaction Performance
+
+on:
+  push:
+    branches:
+      - g2/perf-smart-slot-preview
+    paths:
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'src/srstudio/graphics2/command_router.py'
+      - 'src/srstudio/graphics2/qt_host.py'
+      - 'src/srstudio/graphics2/smart_slot_manual.py'
+      - 'tests/test_graphics2_smart_slot_interaction_perf.py'
+      - 'tests/test_graphics2_smart_slot_detection_manual.py'
+      - 'tests/test_graphics2_smart_slot_multiproduct_topology.py'
+      - 'tools/benchmark_frozen_smart_slot_interaction.py'
+      - '.github/workflows/g2-smart-slot-interaction-perf.yml'
+  pull_request:
+    branches:
+      - g2/integrate-studio-shell
+    paths:
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'src/srstudio/graphics2/command_router.py'
+      - 'src/srstudio/graphics2/qt_host.py'
+      - 'src/srstudio/graphics2/smart_slot_manual.py'
+      - 'tests/test_graphics2_smart_slot_interaction_perf.py'
+      - 'tests/test_graphics2_smart_slot_detection_manual.py'
+      - 'tests/test_graphics2_smart_slot_multiproduct_topology.py'
+      - 'tools/benchmark_frozen_smart_slot_interaction.py'
+      - '.github/workflows/g2-smart-slot-interaction-perf.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-windows-performance:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install focused dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2,graphics2-build]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Record exact source SHA
+        shell: pwsh
+        run: |
+          $sha = git rev-parse HEAD
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          Write-Host "SOURCE_SHA=$sha"
+          Write-Host "EXPECTED_SHA=$expected"
+          "SOURCE_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if ($sha -ne $expected) { throw "Exact SHA mismatch" }
+          git diff --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked working tree changed before gate" }
+
+      - name: Capture Beta 23 legacy QML baseline
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path smart-slot-perf-evidence | Out-Null
+          git fetch origin g2/integrate-studio-shell --depth=1
+          git show FETCH_HEAD:src/srstudio/graphics2/qml/GraphicsEditor.qml | Out-File -FilePath smart-slot-perf-evidence/legacy-GraphicsEditor.qml -Encoding utf8
+          if ($LASTEXITCODE -ne 0) { throw "Could not capture legacy GraphicsEditor.qml" }
+
+      - name: Functional Smart Slot regression suite
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: |
+          python -m compileall -q src/srstudio/graphics2 tests/test_graphics2_smart_slot_interaction_perf.py tools/benchmark_frozen_smart_slot_interaction.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_graphics2_smart_slot_interaction_perf.py tests/test_graphics2_smart_slot_detection_manual.py tests/test_graphics2_smart_slot_multiproduct_topology.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build frozen Graphics2 host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $root = "dist/graphics2-host/SRGraphicsEngine2Host"
+          if (!(Test-Path "$root/SRGraphicsEngine2Host.exe")) { throw "Frozen Graphics2Host missing" }
+          if (!(Test-Path "$root/_internal/srstudio/graphics2/qml/GraphicsEditor.qml")) { throw "Frozen GraphicsEditor.qml missing" }
+          & "$root/SRGraphicsEngine2Host.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "Frozen Graphics2Host --version failed" }
+
+      - name: Benchmark production QML interaction path
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+          QSG_RHI_BACKEND: software
+        run: |
+          python tools/benchmark_frozen_smart_slot_interaction.py `
+            --runtime-root "dist/graphics2-host/SRGraphicsEngine2Host" `
+            --legacy-qml "smart-slot-perf-evidence/legacy-GraphicsEditor.qml" `
+            --output "smart-slot-perf-evidence/smart-slot-interaction-perf.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Enforce performance and commit-on-release gates
+        shell: pwsh
+        run: |
+          $perf = Get-Content "smart-slot-perf-evidence/smart-slot-interaction-perf.json" -Raw | ConvertFrom-Json
+          if (-not [bool]$perf.runtime_manifest_hash_match) { throw "Frozen QML hash mismatch" }
+          if ([double]$perf.frozen_qml.move_event.median_ms -ge 16) { throw "Move median >= 16ms" }
+          if ([double]$perf.frozen_qml.resize_event.median_ms -ge 16) { throw "Resize median >= 16ms" }
+          if ([double]$perf.frozen_qml.move_event.p95_ms -ge 33) { throw "Move p95 >= 33ms" }
+          if ([double]$perf.frozen_qml.resize_event.p95_ms -ge 33) { throw "Resize p95 >= 33ms" }
+          if ([int]$perf.frozen_qml.dispatch_count -ne 2) { throw "Expected exactly one backend commit per move/resize gesture" }
+          if ([int]$perf.legacy_contract.resize_position_changed_handlers -ne 0) { throw "Legacy baseline unexpectedly had resize preview" }
+          if ([bool]$perf.legacy_contract.resize_preview_present) { throw "Legacy baseline unexpectedly had preview_bounds" }
+          if ([double]$perf.backend_release_commit.after.median_ms -gt ([double]$perf.backend_release_commit.before.median_ms * 1.10)) { throw "Release commit regressed" }
+
+          Write-Host "MOVE_MEDIAN_MS=$($perf.frozen_qml.move_event.median_ms)"
+          Write-Host "MOVE_P95_MS=$($perf.frozen_qml.move_event.p95_ms)"
+          Write-Host "RESIZE_MEDIAN_MS=$($perf.frozen_qml.resize_event.median_ms)"
+          Write-Host "RESIZE_P95_MS=$($perf.frozen_qml.resize_event.p95_ms)"
+          Write-Host "MOVE_RELEASE_MS=$($perf.frozen_qml.move_release_ms)"
+          Write-Host "RESIZE_RELEASE_MS=$($perf.frozen_qml.resize_release_ms)"
+          Write-Host "COMMIT_BEFORE_MEDIAN_MS=$($perf.backend_release_commit.before.median_ms)"
+          Write-Host "COMMIT_AFTER_MEDIAN_MS=$($perf.backend_release_commit.after.median_ms)"
+          Write-Host "PREVIEW_EVENTS=$($perf.frozen_qml.preview_events)"
+          Write-Host "PREVIEW_UPDATES=$($perf.frozen_qml.preview_updates)"
+          Write-Host "FROZEN_WINDOWS_RESULT=PASS"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g2-smart-slot-interaction-performance
+          path: smart-slot-perf-evidence
+          if-no-files-found: error
+          retention-days: 30
