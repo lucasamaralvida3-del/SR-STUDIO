@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from pathlib import Path
 import threading
 import tkinter as tk
+from tkinter import filedialog, messagebox
 
 import srstudio.app.advanced_posters as advanced
 import srstudio.app.cartazes_productivity as cartazes_productivity
@@ -10,18 +12,15 @@ from srstudio.app.cloud_image_bank_view import CloudImageBankView
 from srstudio.app.graphics2_merge_dialog import ask_graphics2_merge_resolutions
 from srstudio.app.layout_corpus_view import LayoutCorpusView
 from srstudio.app.professional import _show_splash
+from srstudio.graphics2.full_studio_bridge import launch_graphics_source, launch_studio_project
 from srstudio.graphics2.saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
-from srstudio.graphics2.studio_bridge import (
-    bridge_flags,
-    launch_studio_project_if_enabled,
-    sync_saved_session_to_project,
-)
+from srstudio.graphics2.studio_bridge import sync_saved_session_to_project
 from srstudio.images.cloud_sync import ImageBankCloudSync
 from srstudio.posters import PosterKind
 
 
 class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
-    """Responsive poster shell plus the professional Encartes Studio experience."""
+    """Official SR Studio shell with Studio de Encartes G2 as primary editor."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -62,6 +61,15 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             )
 
     def navigate(self, name: str) -> None:
+        # Encartes Studio is intercepted before the inherited navigation can
+        # instantiate the legacy Tk canvas.  The old implementation remains in
+        # the parent class and is available through an explicit fallback button.
+        if name == "Encartes Studio":
+            self._set_active_navigation(name)
+            self._clear()
+            self._show_graphics2_studio_entrypoint()
+            return
+
         super().navigate(name)
         if name == "Banco de Imagens":
             self._clear()
@@ -71,9 +79,6 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
                 self._image_bank_cloud,
                 on_changed=self._mark_changed,
             )
-            return
-        if name == "Encartes Studio":
-            self._attach_graphics2_launcher()
             return
         if name != "Modelos":
             return
@@ -88,59 +93,225 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
             on_train=self.train_canva_library,
         )
 
-    def _attach_graphics2_launcher(self) -> None:
-        """Mostra controles G2 somente quando a feature flag foi ligada manualmente."""
+    def _set_active_navigation(self, name: str) -> None:
+        """Keep the inherited shell navigation state coherent for an override."""
 
-        engine_enabled, gpu_enabled = bridge_flags(self.data_dir)
-        if not engine_enabled:
-            return
-        children = list(self.content.winfo_children())
-        if not children:
-            return
-        editor = children[-1]
-        label = "ENGINE 2 · GPU" if gpu_enabled else "ENGINE 2 · TESTE"
-        button = tk.Button(
-            editor,
-            text=label,
-            command=self._launch_graphics2_optional,
-            bg="#0F5BD8",
-            fg="white",
-            activebackground="#0B46AA",
-            activeforeground="white",
-            relief="flat",
-            bd=0,
-            padx=12,
-            pady=6,
-            font=("Segoe UI", 8, "bold"),
-            cursor="hand2",
+        self._active_nav = name
+        for label, button in self.nav_buttons.items():
+            active = label == name
+            try:
+                button.configure(
+                    bg="#173D72" if active else "#102A4D",
+                    fg="white" if active else "#D5E3F5",
+                )
+                self.nav_indicators[label].configure(bg="#77A7FF" if active else "#102A4D")
+            except (KeyError, tk.TclError):
+                pass
+        if hasattr(self, "topbar_title"):
+            self.topbar_title.configure(text="Studio de Encartes")
+        if hasattr(self, "topbar_subtitle"):
+            self.topbar_subtitle.configure(text="Graphics Engine 2 · importação, edição e exportação")
+
+    def _show_graphics2_studio_entrypoint(self) -> None:
+        """Primary human entrypoint for the full Studio de Encartes G2 flow."""
+
+        root = tk.Frame(self.content, bg="#F4F7FB")
+        root.pack(fill="both", expand=True, padx=28, pady=24)
+
+        hero = tk.Frame(
+            root,
+            bg="white",
+            highlightbackground="#D9E2EF",
+            highlightthickness=1,
         )
-        sync_button = tk.Button(
-            editor,
-            text="APLICAR G2",
-            command=self._sync_graphics2_optional,
+        hero.pack(fill="x")
+        title = tk.Frame(hero, bg="white")
+        title.pack(fill="x", padx=26, pady=(24, 8))
+        tk.Label(
+            title,
+            text="STUDIO DE ENCARTES G2",
+            bg="white",
+            fg="#0F5BD8",
+            font=("Segoe UI", 10, "bold"),
+        ).pack(anchor="w")
+        tk.Label(
+            title,
+            text="Novo editor oficial de encartes do SR Studio",
+            bg="white",
+            fg="#111827",
+            font=("Segoe UI", 19, "bold"),
+        ).pack(anchor="w", pady=(3, 0))
+        tk.Label(
+            title,
+            text=(
+                "Importe o PPTX exportado do Canva pelo pipeline real do SR Studio e abra o documento "
+                "diretamente no editor Graphics Engine 2."
+            ),
+            bg="white",
+            fg="#64748B",
+            font=("Segoe UI", 10),
+            justify="left",
+            wraplength=940,
+        ).pack(anchor="w", pady=(8, 4))
+
+        actions = tk.Frame(hero, bg="white")
+        actions.pack(fill="x", padx=26, pady=(12, 26))
+        self._g2_action_button(
+            actions,
+            "IMPORTAR CANVA / PPTX",
+            "Abrir um .pptx e converter pelo import bridge real",
+            self._choose_graphics2_pptx,
+            primary=True,
+        ).pack(side="left", fill="x", expand=True, padx=(0, 7))
+        self._g2_action_button(
+            actions,
+            "ABRIR PROJETO G2",
+            "Reabrir um .srscene/.zip salvo pelo editor",
+            self._choose_graphics2_project,
+        ).pack(side="left", fill="x", expand=True, padx=7)
+        self._g2_action_button(
+            actions,
+            "PROJETO ATUAL",
+            "Levar o projeto atual do SR Studio ao G2",
+            self._launch_current_project_in_graphics2,
+        ).pack(side="left", fill="x", expand=True, padx=(7, 0))
+
+        flow = tk.Frame(root, bg="#EAF2FF")
+        flow.pack(fill="x", pady=(16, 0))
+        tk.Label(
+            flow,
+            text="FLUXO ATIVO",
+            bg="#EAF2FF",
+            fg="#0F5BD8",
+            font=("Segoe UI", 8, "bold"),
+        ).pack(anchor="w", padx=18, pady=(14, 2))
+        tk.Label(
+            flow,
+            text="PPTX / Canva  →  Import Bridge / Office Layout  →  SR Scene 2  →  Editor G2",
+            bg="#EAF2FF",
+            fg="#1E3A5F",
+            font=("Segoe UI", 10, "bold"),
+        ).pack(anchor="w", padx=18, pady=(0, 14))
+
+        compatibility = tk.Frame(root, bg="#F4F7FB")
+        compatibility.pack(fill="x", pady=(18, 0))
+        tk.Label(
+            compatibility,
+            text="Compatibilidade",
+            bg="#F4F7FB",
+            fg="#64748B",
+            font=("Segoe UI", 9, "bold"),
+        ).pack(side="left")
+        tk.Button(
+            compatibility,
+            text="Abrir editor legado (fallback)",
+            command=self._open_legacy_encartes_fallback,
             bg="#E2E8F0",
-            fg="#0F172A",
+            fg="#334155",
             activebackground="#CBD5E1",
             activeforeground="#0F172A",
             relief="flat",
             bd=0,
-            padx=10,
-            pady=6,
-            font=("Segoe UI", 8, "bold"),
+            padx=12,
+            pady=7,
+            font=("Segoe UI", 8),
+            cursor="hand2",
+        ).pack(side="left", padx=(12, 0))
+
+    @staticmethod
+    def _g2_action_button(parent, title: str, detail: str, command, *, primary: bool = False) -> tk.Frame:
+        bg = "#0F5BD8" if primary else "#F8FAFC"
+        fg = "white" if primary else "#0F172A"
+        muted = "#D9E8FF" if primary else "#64748B"
+        border = "#0F5BD8" if primary else "#D9E2EF"
+        card = tk.Frame(parent, bg=bg, highlightbackground=border, highlightthickness=1, cursor="hand2")
+        heading = tk.Label(
+            card,
+            text=title,
+            bg=bg,
+            fg=fg,
+            font=("Segoe UI", 10, "bold"),
             cursor="hand2",
         )
-        # Overlays intencionais e isolados: não alteram o layout Tk antigo e só
-        # existem no modo experimental. Quando a flag está off, nem são criados.
-        button.place(relx=1.0, x=-150, y=13, anchor="ne")
-        sync_button.place(relx=1.0, x=-276, y=13, anchor="ne")
+        heading.pack(anchor="w", padx=16, pady=(14, 3))
+        description = tk.Label(
+            card,
+            text=detail,
+            bg=bg,
+            fg=muted,
+            font=("Segoe UI", 8),
+            justify="left",
+            wraplength=260,
+            cursor="hand2",
+        )
+        description.pack(anchor="w", padx=16, pady=(0, 14))
+        for widget in (card, heading, description):
+            widget.bind("<Button-1>", lambda _event: command())
+        return card
 
-    def _launch_graphics2_optional(self) -> None:
-        result = launch_studio_project_if_enabled(self.project, self.data_dir)
+    def _choose_graphics2_pptx(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Importar Canva / PPTX no Studio de Encartes G2",
+            filetypes=[("PowerPoint / Canva", "*.pptx"), ("Todos os arquivos", "*.*")],
+        )
+        if path:
+            self._launch_graphics2_source(Path(path))
+
+    def _choose_graphics2_project(self) -> None:
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Abrir projeto do Studio de Encartes G2",
+            filetypes=[("Projeto SR Scene 2", "*.srscene *.zip"), ("Todos os arquivos", "*.*")],
+        )
+        if path:
+            self._launch_graphics2_source(Path(path))
+
+    def _launch_graphics2_source(self, source: Path) -> None:
+        result = launch_graphics_source(source, self.data_dir)
+        self._show_graphics2_launch_result(result)
+
+    def _launch_current_project_in_graphics2(self) -> None:
+        result = launch_studio_project(self.project, self.data_dir)
+        self._show_graphics2_launch_result(result)
+
+    def _show_graphics2_launch_result(self, result) -> None:
         if result.launched:
-            self.toast.show(result.message, "success", 5200)
+            self.toast.show(result.message, "success", 5600)
             return
         tone = "warning" if result.ok else "danger"
-        self.toast.show(result.message, tone, 6200)
+        self.toast.show(result.message, tone, 7600)
+        if not result.ok:
+            messagebox.showerror("Studio de Encartes G2", result.message, parent=self)
+
+    def _open_legacy_encartes_fallback(self) -> None:
+        # Intentionally bypass this class' route override.  This keeps the old
+        # editor available while G2 is being certified, but never as the default.
+        super().navigate("Encartes Studio")
+        self.toast.show("Editor legado aberto em modo de compatibilidade.", "warning", 4800)
+
+    def import_source(self, _event=None) -> str:
+        """Route PPTX directly to G2 while preserving Excel legacy import."""
+
+        path = filedialog.askopenfilename(
+            parent=self,
+            title="Importar campanha",
+            filetypes=[("Excel / Canva PPTX", "*.xlsx *.xlsm *.pptx"), ("Todos", "*.*")],
+        )
+        if not path:
+            return "break"
+        source = Path(path)
+        if source.suffix.lower() == ".pptx":
+            self._launch_graphics2_source(source)
+            return "break"
+        try:
+            result = self.workflow.import_source(path)
+            messagebox.showinfo("Importação", result.message, parent=self)
+            self.navigate("Encartes Studio")
+            self._refresh_dirty()
+        except Exception as exc:
+            messagebox.showerror("Importação", f"Falha na importação.\n\n{exc}", parent=self)
+        return "break"
 
     def _sync_graphics2_optional(self) -> None:
         """Importa alterações representáveis e resolve conflitos por campo."""
@@ -268,8 +439,8 @@ class SRStudioTurboPosters(responsive.SRStudioResponsivePosters):
 
 
 def run() -> None:
-    # Beta 7.27 preserva o layout atual e injeta somente produtividade em
-    # Promoções/Atacado. Encartes Studio mantém o pipeline G2 independente.
+    # Encartes Studio now routes to Graphics Engine 2.  Promoções/Atacado keep
+    # their current productivity modules until their own migration is certified.
     advanced.base.PromotionPosterModule = cartazes_productivity.CartazesProductivityPromotionPosterModule
     advanced.base.WholesalePosterModule = cartazes_productivity.CartazesProductivityWholesalePosterModule
     app = SRStudioTurboPosters()
