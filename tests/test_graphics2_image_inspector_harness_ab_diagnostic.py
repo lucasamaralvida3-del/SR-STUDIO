@@ -54,6 +54,10 @@ def _build_selected_image_router():
     return router, image
 
 
+def _type_name(value) -> str:
+    return type(value).__name__ if value is not None else "None"
+
+
 def test_base_orphan_vs_qquickwindow_image_inspector_harness_ab():
     pytest.importorskip("PySide6")
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -84,22 +88,24 @@ def test_base_orphan_vs_qquickwindow_image_inspector_harness_ab():
             return result
 
     app = QGuiApplication.instance() or QGuiApplication([])
-    engine = QQmlApplicationEngine()
     bridge = _Bridge()
-    engine.rootContext().setContextProperty("sceneBridge", bridge)
     qml = Path(qt_host.__file__).with_name("qml") / "ImageInspector.qml"
-    component = QQmlComponent(engine, QUrl.fromLocalFile(str(qml.resolve())))
-    assert not component.isError(), [error.toString() for error in component.errors()]
+    qml_url = QUrl.fromLocalFile(str(qml.resolve()))
 
-    orphan = component.create(engine.rootContext())
-    assert orphan is not None
+    # A: exact legacy failing harness: top-level ImageInspector loaded directly
+    # into QQmlApplicationEngine, with no QQuickWindow/contentItem parent.
+    engine_a = QQmlApplicationEngine()
+    engine_a.rootContext().setContextProperty("sceneBridge", bridge)
+    engine_a.load(qml_url)
+    assert _process_events_until(app, lambda: bool(engine_a.rootObjects()))
+    orphan = engine_a.rootObjects()[0]
     assert isinstance(orphan, QQuickItem)
-    _process_events_until(app, lambda: bool(orphan.property("hasImageSelection")))
+    assert _process_events_until(app, lambda: bool(orphan.property("hasImageSelection")))
     orphan_image = orphan.property("imageNode")
     orphan_state = {
         "component_created": orphan is not None,
-        "parent": orphan.parent() is not None,
-        "parent_item": orphan.parentItem() is not None,
+        "parent": _type_name(orphan.parent()),
+        "parent_item": _type_name(orphan.parentItem()),
         "qquickwindow": orphan.window() is not None,
         "window_shown": bool(orphan.window() and orphan.window().isVisible()),
         "visible": bool(orphan.property("visible")),
@@ -108,11 +114,16 @@ def test_base_orphan_vs_qquickwindow_image_inspector_harness_ab():
     }
     print("IMAGE_INSPECTOR_BASE_A", json.dumps(orphan_state, sort_keys=True, default=str))
 
-    window = QQuickWindow()
-    window.resize(640, 720)
-    hosted = component.create(engine.rootContext())
+    # B: same component and bridge, but parented exactly like qt_host.py.
+    engine_b = QQmlApplicationEngine()
+    engine_b.rootContext().setContextProperty("sceneBridge", bridge)
+    component = QQmlComponent(engine_b, qml_url)
+    assert not component.isError(), [error.toString() for error in component.errors()]
+    hosted = component.create(engine_b.rootContext())
     assert hosted is not None
     assert isinstance(hosted, QQuickItem)
+    window = QQuickWindow()
+    window.resize(640, 720)
     hosted.setParentItem(window.contentItem())
     hosted.setParent(window)
     window.show()
@@ -121,8 +132,8 @@ def test_base_orphan_vs_qquickwindow_image_inspector_harness_ab():
     hosted_image = hosted.property("imageNode")
     hosted_state = {
         "component_created": hosted is not None,
-        "parent": hosted.parent() is window,
-        "parent_item": hosted.parentItem() is window.contentItem(),
+        "parent": _type_name(hosted.parent()),
+        "parent_item": _type_name(hosted.parentItem()),
         "qquickwindow": hosted.window() is window,
         "window_shown": window.isVisible(),
         "visible": bool(hosted.property("visible")),
@@ -131,15 +142,16 @@ def test_base_orphan_vs_qquickwindow_image_inspector_harness_ab():
     }
     print("IMAGE_INSPECTOR_BASE_B", json.dumps(hosted_state, sort_keys=True, default=str))
 
-    # A reproduces the legacy harness mismatch. B reproduces qt_host topology.
+    assert orphan_state["parent_item"] == "None"
     assert orphan_state["qquickwindow"] is False
-    assert orphan_state["parent_item"] is False
+    assert orphan_state["window_shown"] is False
     assert orphan_state["hasImageSelection"] is True
     assert orphan_state["imageNode_id"] == image.id
     assert orphan_state["visible"] is False
 
+    assert hosted_state["parent"] == "QQuickWindow"
+    assert hosted_state["parent_item"] == "QQuickRootItem"
     assert hosted_state["qquickwindow"] is True
-    assert hosted_state["parent_item"] is True
     assert hosted_state["window_shown"] is True
     assert hosted_state["hasImageSelection"] is True
     assert hosted_state["imageNode_id"] == image.id
@@ -148,7 +160,6 @@ def test_base_orphan_vs_qquickwindow_image_inspector_harness_ab():
     hosted.setParentItem(None)
     hosted.setParent(None)
     hosted.deleteLater()
-    orphan.deleteLater()
     window.close()
     window.deleteLater()
     app.processEvents()
