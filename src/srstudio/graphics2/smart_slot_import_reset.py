@@ -1,9 +1,11 @@
 from __future__ import annotations
 
-"""Reset lógico de conteúdo de produto para NOVA importação Canva/PPTX.
+"""Reset de conteúdo de produto para NOVA importação Canva/PPTX.
 
-A geometria visual importada é fonte de verdade e nunca é apagada por este
-módulo. O reset atua somente na associação de produto do Smart Slot.
+A estrutura visual do template continua sendo fonte de verdade: geometria,
+styles, shapes decorativos, máscaras e bindings nunca são apagados. Apenas o
+conteúdo variável pertencente a Smart Slots (texto/imagem de produto) começa
+visualmente vazio para que o arquivo importado funcione como template.
 
 Abrir ``.srscene``/``.zip`` salvo não passa por este módulo.
 """
@@ -44,6 +46,8 @@ class SmartSlotImportResetReport:
     legacy_cards_reset: int = 0
     image_binding_markers_cleared: int = 0
     synthetic_images_emptied: int = 0
+    product_text_nodes_emptied: int = 0
+    product_images_emptied: int = 0
     source_text_mutations: int = 0
     source_geometry_mutations: int = 0
     source_nodes_deleted: int = 0
@@ -61,15 +65,16 @@ def reset_new_pptx_import_product_content(
 ) -> SmartSlotImportResetReport:
     """Preserva Smart Slot STRUCTURE e zera PRODUCT CONTENT em import novo.
 
-    Fonte canônica de conteúdo:
+    Estado canônico vazio:
     - ``slot.product_id == ""``;
-    - ``slot.metadata["product_snapshot"] == {}``.
+    - ``slot.metadata["product_snapshot"] == {}``;
+    - nodes TEXT associados ao slot mantêm geometria/style, mas iniciam sem texto;
+    - nodes IMAGE associados ao slot mantêm geometria/máscara/style, mas iniciam
+      sem asset visível.
 
-    Contrato:
-    - ``slot.id``, ``node_by_role``, ``extra_bindings``, bounds e nodes ficam;
-    - conteúdo visual original do PPTX (texto/imagem/geometria) não é apagado;
-    - imagem sintética criada apenas para auto-preenchimento volta a ficar vazia;
-    - a lista de produtos inferidos do PPTX não vira conteúdo ativo do projeto G2.
+    O texto/asset original é guardado somente como metadata de template para
+    preservar pistas de formatação e diagnóstico. Shapes decorativos nunca são
+    removidos, ocultados ou redimensionados.
     """
 
     report = SmartSlotImportResetReport(source=str(Path(source)))
@@ -96,12 +101,11 @@ def reset_new_pptx_import_product_content(
     payload = report.to_dict()
     document.metadata["smart_slot_import_reset"] = payload
     document.metadata["smart_slot_import_started_empty"] = True
-    document.metadata["smart_slot_import_reset_version"] = 1
+    document.metadata["smart_slot_import_reset_version"] = 2
     return report
 
 
 def _reset_slot_product_state(page, slot: SmartSlot, report: SmartSlotImportResetReport) -> None:
-    # Estrutura é capturada apenas para diagnóstico; não é reescrita.
     structural_ids = _slot_node_ids(slot)
     report.structural_role_links_preserved += len(structural_ids)
     report.slot_ids.append(slot.id)
@@ -116,22 +120,42 @@ def _reset_slot_product_state(page, slot: SmartSlot, report: SmartSlotImportRese
         if node is None:
             continue
 
+        if node.kind is NodeKind.TEXT:
+            # Preserve a pista tipográfica/token do Canva/PPTX antes de limpar o
+            # valor comercial. O binding runtime usa binding_template_text para
+            # reconstruir moeda/unidade/preço sem depender do produto antigo.
+            if "binding_template_text" not in node.metadata:
+                node.metadata["binding_template_text"] = str(node.text or "")
+            if "template_product_text" not in node.metadata:
+                node.metadata["template_product_text"] = str(node.text or "")
+            if node.text:
+                node.text = ""
+                report.product_text_nodes_emptied += 1
+                report.source_text_mutations += 1
+            node.visible = False
+            continue
+
         if node.kind is not NodeKind.IMAGE:
-            # Texto original é parte do layout visual importado. Não limpar
-            # ``node.text`` aqui é requisito explícito: o binding fica vazio,
-            # mas o PPTX continua visualmente idêntico ao arquivo fonte.
+            # Backplates, badges, shapes e qualquer artwork não textual continuam
+            # exatamente como vieram do template.
             continue
 
         if "bound_image_source" in node.metadata:
-            # O asset original importado continua referenciado por ``asset_id``;
-            # só o override de produto é removido.
             node.metadata.pop("bound_image_source", None)
             report.image_binding_markers_cleared += 1
 
-        if _is_synthetic_product_image(node):
-            # Placeholder sintético não pertence ao visual original. Se o banco
-            # o auto-preencheu durante a análise, ele inicia vazio até escolha do usuário.
+        if node.asset_id and "template_product_asset_id" not in node.metadata:
+            node.metadata["template_product_asset_id"] = str(node.asset_id)
+
+        # Toda IMAGE que participa explicitamente do Smart Slot é superfície de
+        # produto, seja sintética ou uma foto real existente no Canva. Mantemos o
+        # node, crop, clip_path, transform e style; apenas retiramos a foto antiga.
+        was_synthetic = _is_synthetic_product_image(node)
+        if node.asset_id or node.visible:
+            node.asset_id = ""
             node.visible = False
+            report.product_images_emptied += 1
+        if was_synthetic:
             report.synthetic_images_emptied += 1
 
     report.slots_reset += 1

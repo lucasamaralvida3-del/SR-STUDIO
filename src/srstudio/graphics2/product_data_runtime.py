@@ -1,21 +1,26 @@
 from __future__ import annotations
 
-"""Dynamic product-data updates for G2 SmartSlots.
+"""Dynamic product-data updates and production-source composition for G2.
 
-``bind_product`` replaces the product assigned to one SmartSlot. Daily retail
-production also needs two different update semantics:
+Besides editing/cascading product data, this runtime owns the user-facing
+composition contract:
 
-- edit fields on one card without mutating the shared catalog record;
-- update one catalog product and cascade the new values to every unlocked slot
-  bound to that product, across all pages, as one undoable transaction.
+- Canva/PPTX supplies the visual template and Smart Slots;
+- XLSX/XLSM supplies the active product catalog;
+- both can be imported in either order inside the same editor session.
 
-The implementation deliberately reuses the binding runtime's formatting and
-image rules so cascade updates cannot diverge from drag/drop replacement.
+Importing a spreadsheet never replaces pages/artwork. Importing a template
+replaces the visual document while preserving the already-loaded product
+catalog. This keeps the two sources complementary instead of competing entry
+paths.
 """
 
 from copy import deepcopy
 from dataclasses import asdict, dataclass
+from pathlib import Path
 from typing import Any
+from urllib.parse import unquote, urlparse
+import os
 
 from . import binding_runtime as binding_runtime
 from . import import_bridge as import_bridge
@@ -146,8 +151,73 @@ def _install_session_methods(session_type: Any) -> None:
             page_ids=changed_pages,
         )
 
+    def import_product_catalog(self: Any, source: str) -> dict[str, Any]:
+        path = _source_path(source)
+        if path.suffix.lower() not in {".xlsx", ".xlsm"}:
+            raise ValueError("Selecione uma planilha XLSX/XLSM de produtos.")
+        imported = import_bridge.GraphicsImportService().import_file(path, project_name=path.stem)
+        products = imported.document.metadata.get("products")
+        if not isinstance(products, list):
+            products = []
+        products = [deepcopy(item) for item in products if isinstance(item, dict)]
+        if not products:
+            raise ValueError("A planilha não produziu nenhum produto reconhecido.")
+
+        previous = deepcopy(self.document.metadata.get("products") or [])
+        with self.transaction("Importar planilha de produtos"):
+            self.document.metadata["products"] = products
+            self.document.metadata["product_catalog_source"] = str(path)
+            self.document.metadata["product_catalog_count"] = len(products)
+            self.document.metadata["product_catalog_import_mode"] = "spreadsheet-overlay"
+
+        return {
+            "changed": previous != products,
+            "products": len(products),
+            "source": str(path),
+            "pages_preserved": len(self.document.pages),
+            "template_preserved": True,
+        }
+
+    def import_template_source(self: Any, source: str) -> dict[str, Any]:
+        path = _source_path(source)
+        if path.suffix.lower() != ".pptx":
+            raise ValueError("Selecione um arquivo Canva/PowerPoint em formato PPTX.")
+
+        catalog = [
+            deepcopy(item)
+            for item in (self.document.metadata.get("products") or [])
+            if isinstance(item, dict)
+        ]
+        catalog_source = str(self.document.metadata.get("product_catalog_source") or "")
+        imported = import_bridge.GraphicsImportService().import_file(path, project_name=path.stem)
+        replacement = imported.document
+
+        # Fresh PPTX import has already run Smart Slot visual reset. Reattach only
+        # the external catalog; never reattach products inferred from the template.
+        replacement.metadata["products"] = catalog
+        replacement.metadata["template_source"] = str(path)
+        replacement.metadata["template_import_mode"] = "replace-layout-preserve-catalog"
+        if catalog_source:
+            replacement.metadata["product_catalog_source"] = catalog_source
+        replacement.metadata["product_catalog_count"] = len(catalog)
+
+        self.document = replacement
+        self.history.clear()
+        self.clear_selection()
+
+        return {
+            "changed": True,
+            "source": str(path),
+            "products_preserved": len(catalog),
+            "pages": len(replacement.pages),
+            "slots": sum(len(page.slots) for page in replacement.pages),
+            "template_started_empty": bool(replacement.metadata.get("smart_slot_import_started_empty")),
+        }
+
     session_type.update_product_fields = update_product_fields
     session_type.update_product_data = update_product_data
+    session_type.import_product_catalog = import_product_catalog
+    session_type.import_template_source = import_template_source
 
 
 def _install_commands(command_module: Any) -> None:
@@ -159,9 +229,33 @@ def _install_commands(command_module: Any) -> None:
 
     def dispatch(self: Any, command: dict[str, Any]):
         name = str(command.get("name") or "").strip().lower()
-        if name not in {"update_product_fields", "update_product_data"}:
+        managed = {
+            "update_product_fields",
+            "update_product_data",
+            "import_product_catalog",
+            "import_template_source",
+        }
+        if name not in managed:
             return original_dispatch(self, command)
         try:
+            if name == "import_product_catalog":
+                result = self.session.import_product_catalog(str(command.get("path") or command.get("source") or ""))
+                return command_module.CommandResult(
+                    True,
+                    bool(result.get("changed", True)),
+                    f"Planilha carregada · {result['products']} produto(s) disponíveis no mesmo projeto.",
+                    result,
+                )
+
+            if name == "import_template_source":
+                result = self.session.import_template_source(str(command.get("path") or command.get("source") or ""))
+                return command_module.CommandResult(
+                    True,
+                    True,
+                    f"Canva/PPTX carregado · {result['slots']} Smart Slot(s) · {result['products_preserved']} produto(s) preservados da planilha.",
+                    result,
+                )
+
             changes = command.get("changes")
             if not isinstance(changes, dict):
                 return command_module.CommandResult(False, False, "changes precisa ser um objeto.")
@@ -197,6 +291,26 @@ def _install_commands(command_module: Any) -> None:
 
     router_type.dispatch = dispatch
     router_type._sr_product_data_commands_installed = True
+
+
+def _source_path(raw: str) -> Path:
+    value = str(raw or "").strip()
+    if not value:
+        raise ValueError("Arquivo não informado.")
+    parsed = urlparse(value)
+    if parsed.scheme.lower() == "file":
+        path_text = unquote(parsed.path or "")
+        if parsed.netloc:
+            path_text = f"//{parsed.netloc}{path_text}"
+        if os.name == "nt" and len(path_text) >= 3 and path_text[0] == "/" and path_text[2] == ":":
+            path_text = path_text[1:]
+        path = Path(path_text)
+    else:
+        path = Path(value)
+    path = path.expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"Arquivo não encontrado: {path}")
+    return path
 
 
 def _apply_product_to_slot(session: Any, page: Any, slot: Any, product: dict[str, Any]) -> bool:
