@@ -1,0 +1,288 @@
+name: G2 Existing Image DB Integration
+
+on:
+  push:
+    branches:
+      - g2/integrate-existing-image-db
+    paths:
+      - 'src/srstudio/graphics2/image_database_runtime.py'
+      - 'src/srstudio/graphics2/full_studio_bridge.py'
+      - 'src/srstudio/graphics2/qt_host.py'
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'scripts/ci/image_db_build_distribution_seed.py'
+      - 'tests/test_graphics2_existing_image_database.py'
+      - '.github/workflows/g2-existing-image-db-integration.yml'
+  pull_request:
+    branches:
+      - g2/integrate-studio-shell
+    paths:
+      - 'src/srstudio/graphics2/image_database_runtime.py'
+      - 'src/srstudio/graphics2/full_studio_bridge.py'
+      - 'src/srstudio/graphics2/qt_host.py'
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'scripts/ci/image_db_build_distribution_seed.py'
+      - 'tests/test_graphics2_existing_image_database.py'
+      - '.github/workflows/g2-existing-image-db-integration.yml'
+
+permissions:
+  contents: write
+  actions: read
+
+jobs:
+  existing-image-db:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install focused frozen-build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2-build]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Record exact SHA and clean tracked tree
+        shell: pwsh
+        run: |
+          $actual = git rev-parse HEAD
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          Write-Host "SOURCE_SHA=$actual"
+          Write-Host "EXPECTED_SHA=$expected"
+          "SOURCE_SHA=$actual" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          if ($actual -ne $expected) { throw "Exact SHA mismatch" }
+          git diff --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked working tree changed before certification" }
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked index changed before certification" }
+
+      - name: Focused existing Image DB tests
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/graphics2/image_database_runtime.py src/srstudio/graphics2/qt_host.py scripts/ci/image_db_build_distribution_seed.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_graphics2_existing_image_database.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Download approved logical Image DB baseline
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path image-db-approved | Out-Null
+          gh run download 32197750743 --repo lucasamaralvida3-del/SR-STUDIO --name image-db-coverage-baseline-32197750743 --dir image-db-approved
+          if ($LASTEXITCODE -ne 0) { throw "Approved logical Image DB baseline unavailable" }
+          foreach ($path in @(
+            "image-db-approved/image-db-coverage-library/index.json",
+            "image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json",
+            "image-db-approved/image-db-coverage-baseline/final/library-audit.json"
+          )) {
+            if (!(Test-Path $path)) { throw "Approved baseline file missing: $path" }
+          }
+
+      - name: Download durable approved corpus release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path image-db-corpus | Out-Null
+          foreach ($asset in @("Downloads.1.1.zip", "Downloads.2.1.zip", "standalone-images.zip")) {
+            gh release download image-db-corpus-v1 --repo lucasamaralvida3-del/SR-STUDIO --pattern $asset --dir image-db-corpus
+            if ($LASTEXITCODE -ne 0) { throw "Approved corpus asset unavailable: $asset" }
+          }
+          $expected = @{
+            "Downloads.1.1.zip" = "aae355ed0ddcb60867172cf11b637553bf1f292c488c536ca090d15472ca79ba"
+            "Downloads.2.1.zip" = "035789d47d06e8f2667d776c023b055e5d68b8c2240f98d5f775289874fbfd86"
+            "standalone-images.zip" = "9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff"
+          }
+          foreach ($entry in $expected.GetEnumerator()) {
+            $path = Join-Path "image-db-corpus" $entry.Key
+            if (!(Test-Path $path)) { throw "Corpus asset missing: $path" }
+            $actual = (Get-FileHash $path -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $entry.Value) { throw "Corpus SHA mismatch: $($entry.Key)" }
+          }
+          Write-Host "CORPUS_HASHES=PASS"
+
+      - name: Materialize existing approved Image DB seed
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path image-db-dist | Out-Null
+          python scripts/ci/image_db_build_distribution_seed.py `
+            --index image-db-approved/image-db-coverage-library/index.json `
+            --catalog-report image-db-approved/image-db-coverage-baseline/final/coverage-catalog-520.json `
+            --audit-report image-db-approved/image-db-coverage-baseline/final/library-audit.json `
+            --pptx-archive image-db-corpus/Downloads.1.1.zip `
+            --pptx-archive image-db-corpus/Downloads.2.1.zip `
+            --image-archive image-db-corpus/standalone-images.zip `
+            --source-artifact "image-db-coverage-baseline-32197750743 / artifact 9346445276" `
+            --output image-db-dist/image-db-library-v1.zip | Tee-Object -FilePath image-db-dist/build-report.json
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "image-db-dist/image-db-library-v1.zip")) { throw "Image DB seed was not created" }
+          $seedSha = (Get-FileHash "image-db-dist/image-db-library-v1.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$seedSha  image-db-library-v1.zip" | Out-File image-db-dist/image-db-library-v1.sha256 -Encoding ascii
+          Write-Host "SEED_SHA256=$seedSha"
+
+      - name: Fail-closed catalog integrity and Product to Image report
+        shell: pwsh
+        run: |
+          $env:SR_STUDIO_DATA_DIR = Join-Path $env:RUNNER_TEMP "srstudio-image-db-logical"
+          $env:SR_STUDIO_IMAGE_DB_SEED = Join-Path $env:GITHUB_WORKSPACE "image-db-dist/image-db-library-v1.zip"
+          if (Test-Path $env:SR_STUDIO_DATA_DIR) { Remove-Item $env:SR_STUDIO_DATA_DIR -Recurse -Force }
+          @'
+          from pathlib import Path
+          from PIL import Image
+          from srstudio.graphics2.image_database_runtime import GraphicsImageDatabaseRuntime
+
+          runtime = GraphicsImageDatabaseRuntime.from_environment(require_library=True)
+          metrics = runtime.validate_full()
+          manifest = runtime.seed_manifest
+          required = (
+              "schema", "catalog_version", "total_products", "total_images", "index_sha256",
+              "source_release", "source_artifact", "provenance_status", "dedup_status",
+          )
+          missing = [key for key in required if key not in manifest]
+          assert not missing, missing
+          assert type(manifest["total_products"]) is int and manifest["total_products"] == 520, manifest
+          assert type(manifest["total_images"]) is int and manifest["total_images"] == 1037, manifest
+          assert metrics["total_images"] == 1037, metrics
+          assert manifest["provenance_status"] == "PASS", manifest
+          assert manifest["dedup_status"] == "PASS", manifest
+
+          known = runtime.lookup_product("BATATA INGLESA")
+          assert known.best_match is not None
+          known_path = runtime.library.asset_path(known.best_match.asset)
+          assert known_path.is_file()
+          with Image.open(known_path) as image:
+              image.verify()
+          print("KNOWN_PRODUCT=BATATA INGLESA")
+          print("KNOWN_IMAGE_ID=" + known.best_match.asset.id)
+          print("KNOWN_CONFIDENCE=" + str(known.confidence))
+
+          alias = runtime.lookup_product("TOMATE PÊRA")
+          assert alias.best_match is not None
+          assert alias.best_match.asset.id == "4088292755a7e25ce30e2a9a", alias.best_match.asset.id
+          print("ALIAS_PRODUCT=TOMATE PÊRA")
+          print("ALIAS_IMAGE_ID=" + alias.best_match.asset.id)
+
+          unknown = runtime.lookup_product("PRODUTO TOTALMENTE INEXISTENTE XYZ 987ML")
+          assert unknown.best_match is None
+          print("UNKNOWN_PRODUCT_FALLBACK=PASS")
+
+          queries = [
+              "ARROZ PATOSUL 5KG",
+              "ARROZ VASCONCELOS 5KG",
+              "CAFE VASCONCELOS 500G",
+              "LEITE TRIANGULO 1L",
+              "DETERGENTE YPE 500ML",
+              "ENERGETICO MONSTER 473ML",
+              "TODDY 750G",
+              "ACUCAR DELTA 5KG",
+              "EXTRATO DE TOMATE ELEFANTE 300G",
+              "Detergente Ypê Neutro 500ml",
+          ]
+          for query in queries:
+              product = {"id": query, "name": query}
+              candidates = runtime.product_candidates(product)
+              result = runtime.lookup_product(query)
+              top = candidates[0] if candidates else None
+              visual = "placeholder"
+              if top:
+                  path = Path(top["path"])
+                  assert path.is_file(), path
+                  with Image.open(path) as image:
+                      image.verify()
+                  visual = "preview-decodable"
+              print("PRODUCT_IMAGE_ROW=" + repr({
+                  "product": query,
+                  "top_candidate": top["image_id"] if top else "",
+                  "confidence": top["confidence"] if top else 0.0,
+                  "image_found": result.best_match is not None,
+                  "automatic": bool(top and top.get("automatic")),
+                  "visual_result": visual,
+                  "candidate_count": len(candidates),
+              }))
+
+          print("IMAGE_DB_SOURCE=" + str(runtime.library_root))
+          print("CATALOG_VERSION=" + str(manifest["catalog_version"]))
+          print("TOTAL_PRODUCTS=" + str(manifest["total_products"]))
+          print("TOTAL_IMAGES=" + str(manifest["total_images"]))
+          print("DEDUP_STATUS=" + str(manifest["dedup_status"]))
+          print("PROVENANCE_STATUS=" + str(manifest["provenance_status"]))
+          print("LOGICAL_LOOKUP=PASS")
+          '@ | python - | Tee-Object -FilePath image-db-dist/product-image-report.txt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build frozen Graphics2 host with existing Image DB seed
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output image-db-frozen
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hostRoot = "image-db-frozen/SRGraphicsEngine2Host"
+          $hostExe = "$hostRoot/SRGraphicsEngine2Host.exe"
+          if (!(Test-Path $hostExe)) { throw "Frozen G2 host missing" }
+          New-Item -ItemType Directory -Force -Path "$hostRoot/ImageDatabaseSeed" | Out-Null
+          Copy-Item "image-db-dist/image-db-library-v1.zip" "$hostRoot/ImageDatabaseSeed/image-db-library-v1.zip" -Force
+          if (!(Test-Path "$hostRoot/ImageDatabaseSeed/image-db-library-v1.zip")) { throw "Frozen seed missing" }
+
+      - name: Frozen lookup outside checkout using production runtime
+        shell: pwsh
+        run: |
+          $hostExe = Join-Path $env:GITHUB_WORKSPACE "image-db-frozen/SRGraphicsEngine2Host/SRGraphicsEngine2Host.exe"
+          $env:SR_STUDIO_DATA_DIR = Join-Path $env:RUNNER_TEMP "srstudio-frozen-image-db"
+          Remove-Item Env:SR_STUDIO_IMAGE_DB_SEED -ErrorAction SilentlyContinue
+          if (Test-Path $env:SR_STUDIO_DATA_DIR) { Remove-Item $env:SR_STUDIO_DATA_DIR -Recurse -Force }
+          Push-Location $env:RUNNER_TEMP
+          try {
+            $probe = & $hostExe --image-db-probe "BATATA INGLESA"
+            $probeExit = $LASTEXITCODE
+          } finally {
+            Pop-Location
+          }
+          # Exit 0 = unambiguous automatic candidate; exit 3 = candidates exist but
+          # auto-application is intentionally blocked. Both prove frozen lookup.
+          if ($probeExit -notin @(0, 3)) { throw "Frozen Image DB probe failed with exit $probeExit" }
+          $probe | Tee-Object -FilePath image-db-dist/frozen-probe.json
+          $row = $probe | ConvertFrom-Json
+          if ($row.available -ne $true) { throw "Frozen Image DB unavailable" }
+          if ([int]$row.candidate_count -lt 1) { throw "Frozen lookup returned no candidate for known product" }
+          if ([string]::IsNullOrWhiteSpace([string]$row.top_candidate)) { throw "Frozen lookup top candidate is empty" }
+          if ([int]$row.total_products -ne 520 -or [int]$row.total_images -ne 1037) { throw "Frozen catalog metrics diverge" }
+          if ([string]$row.provenance_status -ne "PASS") { throw "Frozen provenance status invalid" }
+          if ([string]$row.dedup_status -ne "PASS") { throw "Frozen dedup status invalid" }
+          $index = Join-Path $env:SR_STUDIO_DATA_DIR "images/index.json"
+          if (!(Test-Path $index)) { throw "Official Image DB root was not bootstrapped" }
+          $rawIndex = Get-Content $index -Raw
+          if ($rawIndex.Contains($env:GITHUB_WORKSPACE)) { throw "Frozen Image DB contains checkout path" }
+          foreach ($parallel in @("image-db-beta", "graphics2-images", "image-db-temp")) {
+            if (Test-Path (Join-Path $env:SR_STUDIO_DATA_DIR $parallel)) { throw "Parallel Image DB detected: $parallel" }
+          }
+          Write-Host "FROZEN_LOOKUP=PASS"
+          Write-Host "FROZEN_DB_ROOT=$($env:SR_STUDIO_DATA_DIR)\images"
+
+      - name: Publish durable seed on existing Image DB corpus release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: pwsh
+        run: |
+          gh release upload image-db-corpus-v1 image-db-dist/image-db-library-v1.zip --repo lucasamaralvida3-del/SR-STUDIO --clobber
+          if ($LASTEXITCODE -ne 0) { throw "Failed to update existing Image DB seed release asset" }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g2-existing-image-db-certification
+          path: |
+            image-db-dist/build-report.json
+            image-db-dist/product-image-report.txt
+            image-db-dist/image-db-library-v1.sha256
+            image-db-dist/frozen-probe.json
+          if-no-files-found: error
+          retention-days: 30

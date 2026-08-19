@@ -473,7 +473,7 @@ ApplicationWindow {
                                     id: productCard
                                     required property var modelData
                                     width: productList.width - 4
-                                    height: 84
+                                    height: 116
                                     radius: 6
                                     color: productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF"
                                     border.color: productMouse.dragging ? "#0F5BD8" : "#D9E4F2"
@@ -494,9 +494,18 @@ ApplicationWindow {
                                             Image {
                                                 anchors.fill: parent
                                                 anchors.margins: 3
-                                                source: localSource(modelData.image_path || modelData.image || "")
+                                                source: localSource(modelData.image_db_preview || modelData.image_path || modelData.image || "")
                                                 fillMode: Image.PreserveAspectFit
                                                 asynchronous: true
+                                            }
+                                            Label {
+                                                anchors.centerIn: parent
+                                                visible: !modelData.image_db_preview && !modelData.image_path && !modelData.image
+                                                text: "SEM\nIMAGEM"
+                                                horizontalAlignment: Text.AlignHCenter
+                                                color: "#94A3B8"
+                                                font.bold: true
+                                                font.pixelSize: 8
                                             }
                                         }
                                         ColumnLayout {
@@ -505,9 +514,89 @@ ApplicationWindow {
                                             Label { Layout.fillWidth: true; text: modelData.display_name || modelData.name || modelData.original_name || "Produto"; color: "#111827"; font.bold: true; font.pixelSize: 11; elide: Text.ElideRight }
                                             Label { text: (modelData.unit || "UN") + (modelData.category ? " · " + modelData.category : ""); color: "#64748B"; font.pixelSize: 10 }
                                             Label { text: modelData.price ? ("R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 12 }
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: modelData.image_db_message || "Imagem não consultada"
+                                                color: modelData.image_db_status === "match" ? "#15803D" : modelData.image_db_status === "candidates" ? "#B45309" : "#64748B"
+                                                font.pixelSize: 9
+                                                elide: Text.ElideRight
+                                            }
                                         }
-                                        ToolButton { text: "+"; enabled: selectedSlotId !== ""; onClicked: bindProduct(modelData) }
+                                        ColumnLayout {
+                                            spacing: 1
+                                            ToolButton { text: "+"; enabled: selectedSlotId !== ""; onClicked: bindProduct(modelData) }
+                                            ToolButton {
+                                                text: modelData.image_db_found ? "Escolher outra" : "Buscar imagem"
+                                                font.pixelSize: 8
+                                                onClicked: {
+                                                    var candidates = modelData.image_db_candidates || []
+                                                    if (candidates.length > 0) {
+                                                        imageChooser.open()
+                                                    } else {
+                                                        sceneBridge.dispatch(JSON.stringify({
+                                                            "name": "lookup_product_image",
+                                                            "product_id": String(modelData.id || modelData.product_id || "")
+                                                        }))
+                                                    }
+                                                }
+                                            }
+                                        }
                                     }
+                                    Popup {
+                                        id: imageChooser
+                                        parent: Overlay.overlay
+                                        width: Math.min(480, Overlay.overlay ? Overlay.overlay.width - 40 : 480)
+                                        height: Math.min(430, 110 + Math.max(1, imageCandidateList.count) * 72)
+                                        x: Overlay.overlay ? Math.max(20, (Overlay.overlay.width - width) / 2) : 20
+                                        y: Overlay.overlay ? Math.max(20, (Overlay.overlay.height - height) / 2) : 20
+                                        modal: true
+                                        focus: true
+                                        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+                                        background: Rectangle { color: "#FFFFFF"; border.color: "#CBD5E1"; radius: 8 }
+                                        contentItem: ColumnLayout {
+                                            spacing: 8
+                                            Label { Layout.fillWidth: true; text: "Imagens para " + productLabel(productCard.productData); font.bold: true; color: "#111827"; elide: Text.ElideRight }
+                                            Label { Layout.fillWidth: true; text: "A aplicação só ocorre quando você escolher um candidato."; color: "#64748B"; font.pixelSize: 10; wrapMode: Text.WordWrap }
+                                            ListView {
+                                                id: imageCandidateList
+                                                Layout.fillWidth: true
+                                                Layout.fillHeight: true
+                                                clip: true
+                                                spacing: 4
+                                                model: productCard.productData.image_db_candidates || []
+                                                delegate: ItemDelegate {
+                                                    required property var modelData
+                                                    width: imageCandidateList.width
+                                                    height: 64
+                                                    enabled: selectedSlotId !== ""
+                                                    contentItem: RowLayout {
+                                                        spacing: 8
+                                                        Rectangle {
+                                                            Layout.preferredWidth: 52; Layout.preferredHeight: 52; color: "#F8FAFC"; border.color: "#E2E8F0"; radius: 4; clip: true
+                                                            Image { anchors.fill: parent; anchors.margins: 2; source: localSource(modelData.path || ""); fillMode: Image.PreserveAspectFit; asynchronous: true }
+                                                        }
+                                                        ColumnLayout {
+                                                            Layout.fillWidth: true; spacing: 1
+                                                            Label { Layout.fillWidth: true; text: modelData.product_name || "Imagem do banco"; font.bold: true; color: "#111827"; elide: Text.ElideRight }
+                                                            Label { Layout.fillWidth: true; text: (modelData.automatic ? "Match confiável" : "Escolha manual") + " · " + Math.round(Number(modelData.confidence || 0) * 100) + "% · " + (modelData.reason || ""); color: modelData.automatic ? "#15803D" : "#B45309"; font.pixelSize: 9; elide: Text.ElideRight }
+                                                        }
+                                                    }
+                                                    onClicked: {
+                                                        sceneBridge.dispatch(JSON.stringify({
+                                                            "name": "apply_product_image",
+                                                            "slot_id": selectedSlotId,
+                                                            "product_id": String(productCard.productData.id || productCard.productData.product_id || ""),
+                                                            "image_id": String(modelData.image_id || "")
+                                                        }))
+                                                        imageChooser.close()
+                                                    }
+                                                }
+                                                Label { anchors.centerIn: parent; visible: imageCandidateList.count === 0; text: "Imagem não encontrada"; color: "#94A3B8" }
+                                            }
+                                            Button { Layout.alignment: Qt.AlignRight; text: "Fechar"; onClicked: imageChooser.close() }
+                                        }
+                                    }
+
                                     MouseArea {
                                         id: productMouse
                                         anchors.fill: parent
