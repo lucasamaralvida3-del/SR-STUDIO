@@ -125,6 +125,7 @@ jobs:
       - name: Product lookup aliases fallback and 10 real samples
         shell: pwsh
         run: |
+          $env:PYTHONPATH = Join-Path $env:GITHUB_WORKSPACE "src"
           $env:SR_STUDIO_DATA_DIR = Join-Path $env:RUNNER_TEMP "srstudio-image-db-logical"
           $env:SR_STUDIO_IMAGE_DB_SEED = Join-Path $env:GITHUB_WORKSPACE "image-db-dist/image-db-library-v1.zip"
           if (Test-Path $env:SR_STUDIO_DATA_DIR) { Remove-Item $env:SR_STUDIO_DATA_DIR -Recurse -Force }
