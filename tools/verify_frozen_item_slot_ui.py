@@ -117,8 +117,10 @@ def _attach_actions(engine, root, actions_qml: Path):
 
 def _visual_node_ids(page, slot) -> dict[str, str]:
     image_backplate = next(
-        node.id for node in page.nodes.values()
-        if bool(node.metadata.get("item_slot_image_backplate")) and node.parent_id == slot.metadata.get("root_node_id")
+        node.id
+        for node in page.nodes.values()
+        if bool(node.metadata.get("item_slot_image_backplate"))
+        and node.parent_id == slot.metadata.get("root_node_id")
     )
     return {
         "image_placeholder": image_backplate,
@@ -134,11 +136,20 @@ def _assert_delegate_geometry(sheet, page, node_id: str, zoom: float) -> dict:
     node = page.node(node_id)
     assert node is not None
     target = node.transform
-    expected = (target.x * zoom, target.y * zoom, max(1.0, target.width * zoom), max(1.0, target.height * zoom))
+    expected = (
+        target.x * zoom,
+        target.y * zoom,
+        max(1.0, target.width * zoom),
+        max(1.0, target.height * zoom),
+    )
     matches = []
     for item in sheet.childItems():
         geometry = (float(item.x()), float(item.y()), float(item.width()), float(item.height()))
-        if all(abs(actual - wanted) <= 1.5 for actual, wanted in zip(geometry, expected)) and item.isVisible() and float(item.opacity()) > 0:
+        if (
+            all(abs(actual - wanted) <= 1.5 for actual, wanted in zip(geometry, expected))
+            and item.isVisible()
+            and float(item.opacity()) > 0
+        ):
             matches.append(item)
     assert matches, f"visible delegate missing for {node.name}: expected={expected}"
     assert target.width > 2 and target.height > 2
@@ -155,9 +166,11 @@ def _assert_delegate_geometry(sheet, page, node_id: str, zoom: float) -> dict:
 
 
 def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_label: str) -> dict:
+    from shiboken6 import Shiboken
     from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine
+    from PySide6.QtQuick import QQuickWindow
     from PySide6.QtTest import QTest
 
     from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
@@ -169,7 +182,10 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
     editor_qml = qml_root / "GraphicsEditor.qml"
     actions_qml = qml_root / "ProjectActions.qml"
 
-    document = GraphicsDocument(name=f"Frozen ItemSlot {preset_id}", pages=[GraphicsPage(name="Página 1", width=1080, height=1350)])
+    document = GraphicsDocument(
+        name=f"Frozen ItemSlot {preset_id}",
+        pages=[GraphicsPage(name="Página 1", width=1080, height=1350)],
+    )
     document.active_page_id = document.pages[0].id
     session = GraphicsSession(document)
     router = ItemSlotCommandRouter(session)
@@ -217,7 +233,16 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
 
         @Slot(str, bool, bool)
         def selectNodeAdvanced(self, node_id: str, additive: bool, toggle: bool) -> None:
-            self.dispatch(json.dumps({"name": "select", "node_id": node_id, "additive": additive, "toggle": toggle}))
+            self.dispatch(
+                json.dumps(
+                    {
+                        "name": "select",
+                        "node_id": node_id,
+                        "additive": additive,
+                        "toggle": toggle,
+                    }
+                )
+            )
 
         @Slot(float, float, float)
         def moveSelectionAtZoom(self, dx: float, dy: float, zoom_value: float) -> None:
@@ -262,9 +287,12 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
     engine.load(QUrl.fromLocalFile(str(editor_qml.resolve())))
     roots = engine.rootObjects()
     assert roots, "Frozen GraphicsEditor.qml did not create a root window"
-    root = roots[0]
+    root_object = roots[0]
+    root_address = int(Shiboken.getCppPointer(root_object)[0])
+    root = Shiboken.wrapInstance(root_address, QQuickWindow)
+    assert root is not None and Shiboken.isValid(root), "Frozen editor root could not be typed as QQuickWindow"
     actions_component, panel = _attach_actions(engine, root, actions_qml)
-    keep_alive = (actions_component, panel)
+    keep_alive = (root_object, actions_component, panel)
     assert keep_alive
 
     app.processEvents()
@@ -322,8 +350,7 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
         for role, node_id in visual_ids.items()
     }
 
-    # Remove selection so the visual proof cannot pass solely because of the blue
-    # selection outline. The empty placeholders themselves must remain visible.
+    # The visual proof must survive without the blue selection outline.
     bridge.dispatch('{"name":"clear_selection"}')
     app.processEvents()
     QTest.qWait(120)
@@ -332,7 +359,9 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
     after_child_count = len(sheet.childItems())
     changed_pixels, diff_bbox = _changed_pixels(before_path, after_path)
     assert after_child_count > before_child_count, (before_child_count, after_child_count)
-    assert changed_pixels >= 500, f"canvas changed only {changed_pixels} pixels; empty slot is not visibly represented"
+    assert changed_pixels >= 500, (
+        f"canvas changed only {changed_pixels} pixels; empty slot is not visibly represented"
+    )
     assert diff_bbox is not None
 
     evidence = {
@@ -347,7 +376,12 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
         "node_count_after": len(session.page.nodes),
         "scene_changed_count": bridge.scene_changed_count,
         "page_model_updated": bridge.sceneJson != before_scene,
-        "root_bounds": [root_node.transform.x, root_node.transform.y, root_node.transform.width, root_node.transform.height],
+        "root_bounds": [
+            root_node.transform.x,
+            root_node.transform.y,
+            root_node.transform.width,
+            root_node.transform.height,
+        ],
         "root_visible": root_node.visible,
         "empty_state": slot.metadata.get("state"),
         "product_id": slot.product_id,
@@ -361,13 +395,15 @@ def _run_preset(runtime_root: Path, output_dir: Path, preset_id: str, preset_lab
     }
 
     root.close()
-    root.deleteLater()
+    root_object.deleteLater()
     app.processEvents()
     return evidence
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Frozen Windows gate for + SLOT DE ITEM -> visible canvas component.")
+    parser = argparse.ArgumentParser(
+        description="Frozen Windows gate for + SLOT DE ITEM -> visible canvas component."
+    )
     parser.add_argument("--runtime-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     args = parser.parse_args()
@@ -398,7 +434,7 @@ def main() -> int:
     action_text = actions_qml.read_text(encoding="utf-8")
     assert "+ SLOT DE ITEM" in action_text
     assert "add_item_slot" in action_text
-    assert "SIMPLES" not in action_text or "item_slot_presets" in action_text
+    assert "item_slot_presets" in action_text
 
     presets = [
         ("simples", "SIMPLES"),
@@ -419,7 +455,10 @@ def main() -> int:
         "all_visible": all(item["changed_pixels_after_clear_selection"] >= 500 for item in results),
     }
     evidence_path = output_dir / "frozen-item-slot-visible.json"
-    evidence_path.write_text(json.dumps(evidence, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    evidence_path.write_text(
+        json.dumps(evidence, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
     print(json.dumps(evidence, ensure_ascii=False, sort_keys=True))
     return 0
 
