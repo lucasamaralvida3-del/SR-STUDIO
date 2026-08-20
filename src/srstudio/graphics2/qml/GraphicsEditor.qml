@@ -1130,6 +1130,7 @@ ApplicationWindow {
                                                 anchors.fill: parent
                                                 cursorShape: modelData.cursor
                                                 preventStealing: true
+                                                enabled: !slotOverlay.isManualItemSlot
                                                 property real startGlobalX: 0
                                                 property real startGlobalY: 0
                                                 property real startX: 0
@@ -1182,6 +1183,94 @@ ApplicationWindow {
                                                     previewTimer.stop()
                                                 }
                                             }
+
+                                  DragHandler {
+                                      id: manualItemSlotResizeHandler
+                                      enabled: slotOverlay.isManualItemSlot
+                                      target: null
+                                      acceptedButtons: Qt.LeftButton
+                                      dragThreshold: 0
+                                      property real startX: 0
+                                      property real startY: 0
+                                      property real startW: 1
+                                      property real startH: 1
+                                      property real lastDx: 0
+                                      property real lastDy: 0
+                                      property bool keepRatio: false
+
+                                      function boundsForDelta(dx, dy, proportional) {
+                                          var nx = startX
+                                          var ny = startY
+                                          var nw = startW
+                                          var nh = startH
+                                          if (modelData.dir.indexOf("w") >= 0) { nx += dx; nw -= dx }
+                                          if (modelData.dir.indexOf("e") >= 0) nw += dx
+                                          if (modelData.dir.indexOf("n") >= 0) { ny += dy; nh -= dy }
+                                          if (modelData.dir.indexOf("s") >= 0) nh += dy
+                                          if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                          if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                          if (!proportional)
+                                              return {"x":nx,"y":ny,"width":nw,"height":nh}
+
+                                          var horizontal = modelData.dir.indexOf("w") >= 0 || modelData.dir.indexOf("e") >= 0
+                                          var vertical = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
+                                          var sx = nw / Math.max(0.000001, startW)
+                                          var sy = nh / Math.max(0.000001, startH)
+                                          var scale = horizontal && vertical
+                                                  ? (Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy)
+                                                  : (horizontal ? sx : sy)
+                                          scale = Math.max(Math.max(1 / Math.max(1, startW), 1 / Math.max(1, startH)), scale)
+                                          nw = Math.max(1, startW * scale)
+                                          nh = Math.max(1, startH * scale)
+
+                                          if (modelData.dir.indexOf("w") >= 0)
+                                              nx = startX + startW - nw
+                                          else if (modelData.dir.indexOf("e") >= 0)
+                                              nx = startX
+                                          else
+                                              nx = startX + (startW - nw) / 2
+
+                                          if (modelData.dir.indexOf("n") >= 0)
+                                              ny = startY + startH - nh
+                                          else if (modelData.dir.indexOf("s") >= 0)
+                                              ny = startY
+                                          else
+                                              ny = startY + (startH - nh) / 2
+
+                                          return {"x":nx,"y":ny,"width":nw,"height":nh}
+                                      }
+
+                                      onActiveChanged: {
+                                          if (active) {
+                                              startX = slotOverlay.displayBounds.x
+                                              startY = slotOverlay.displayBounds.y
+                                              startW = slotOverlay.displayBounds.width
+                                              startH = slotOverlay.displayBounds.height
+                                              lastDx = 0
+                                              lastDy = 0
+                                              keepRatio = false
+                                              slotOverlay.beginPreview({"x":startX,"y":startY,"width":startW,"height":startH}, "resize")
+                                          } else if (slotOverlay.previewActive) {
+                                              slotOverlay.commitPreview(boundsForDelta(lastDx, lastDy, keepRatio), "resize")
+                                          }
+                                      }
+                                      onActiveTranslationChanged: {
+                                          if (!active || !slotOverlay.previewActive)
+                                              return
+                                          lastDx = activeTranslation.x / zoom
+                                          lastDy = activeTranslation.y / zoom
+                                          keepRatio = (centroid.modifiers & Qt.ShiftModifier) !== 0
+                                          slotOverlay.queuePreview(boundsForDelta(lastDx, lastDy, keepRatio), false)
+                                      }
+                                      onCanceled: {
+                                          if (slotOverlay.isManualItemSlot) {
+                                              window.itemSlotPreviewActive = false
+                                              window.itemSlotPreviewSlotId = ""
+                                          }
+                                          slotOverlay.previewActive = false
+                                          previewTimer.stop()
+                                      }
+                                  }
                                         }
                                     }
                                 }
