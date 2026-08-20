@@ -27,7 +27,33 @@ jobs:
           end = source.index("\n          PY\n", start)
           lines = source[start:end].splitlines()
           script = "\n".join(line[10:] if line.startswith("          ") else line for line in lines)
+          # The move and resize cancel handlers have different nesting indentation.
+          # Let the guarded source patch own the move handler, then patch the nested
+          # resize handler explicitly below.
+          script = script.replace('if count != 2:', 'if count != 1:').replace('expected 2 matches', 'expected 1 match')
           exec(compile(script, '<guarded-itemslot-qml-patch>', 'exec'), {'__name__': '__main__'})
+
+          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = path.read_text(encoding='utf-8')
+          old = (
+              '                                                onCanceled: {\n'
+              '                                                    slotOverlay.previewActive = false\n'
+              '                                                    previewTimer.stop()\n'
+              '                                                }\n'
+          )
+          new = (
+              '                                                onCanceled: {\n'
+              '                                                    if (slotOverlay.isManualItemSlot) {\n'
+              '                                                        window.itemSlotPreviewActive = false\n'
+              '                                                        window.itemSlotPreviewSlotId = ""\n'
+              '                                                    }\n'
+              '                                                    slotOverlay.previewActive = false\n'
+              '                                                    previewTimer.stop()\n'
+              '                                                }\n'
+          )
+          if text.count(old) != 1:
+              raise SystemExit(f'resize cancel handler: expected 1 match, got {text.count(old)}')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
           git diff --check
           git diff -- src/srstudio/graphics2/qml/GraphicsEditor.qml
