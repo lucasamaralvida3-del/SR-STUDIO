@@ -20,6 +20,14 @@ semantic_owner = _legacy.semantic_owner
 semantic_member_ids = _legacy.semantic_member_ids
 _UNIT_RE = UNIT_RE
 
+# Runtime extensions historically patch/mutate these private semantic symbols
+# on ``semantic_blocks`` itself.  Keep shared objects here so those existing
+# guards still affect the mature legacy implementation behind this facade.
+_PRICE_ROLE_ALIASES = _legacy._PRICE_ROLE_ALIASES
+_APP_PRICE_ROLE_ALIASES = _legacy._APP_PRICE_ROLE_ALIASES
+_PRODUCT_ROLE_NAMES = _legacy._PRODUCT_ROLE_NAMES
+_CURRENCY_RE = _legacy._CURRENCY_RE
+
 
 def _configure_legacy_vocabulary() -> None:
     _legacy._UNIT_RE = UNIT_RE
@@ -51,71 +59,13 @@ def _configure_legacy_vocabulary() -> None:
 
     _legacy._clear_recovered_slots = clear_recovered_slots_preserving_image_first
 
-    original_recover = getattr(_legacy, "_quinta3_original_recover_unbound_price_blocks", None)
-    if original_recover is None:
-        original_recover = _legacy._recover_unbound_price_blocks
-        _legacy._quinta3_original_recover_unbound_price_blocks = original_recover
-
-    def recover_with_complete_units(page):
-        blocks = list(original_recover(page))
-        return _attach_unambiguous_complete_units(page, blocks)
-
-    _legacy._recover_unbound_price_blocks = recover_with_complete_units
-
-
-def _attach_unambiguous_complete_units(page, blocks):
-    """Attach a literal unit to a recovered complete amount when unambiguous.
-
-    Canva sometimes exports ``R$`` + ``92,77`` as a complete amount while
-    keeping ``CADA``/``QUILO`` in its own text node.  The legacy complete-price
-    branch intentionally did not consume a unit.  Keep that branch intact and
-    enrich only when exactly one official, still-unbound unit overlaps the local
-    price region.
-    """
-
-    output = []
-    for block in blocks:
-        if block.roles.get("unit") or not block.roles.get("complete"):
-            output.append(block)
-            continue
-        bounds = dict(block.bounds or {})
-        x = float(bounds.get("x") or 0.0)
-        y = float(bounds.get("y") or 0.0)
-        width = max(float(bounds.get("width") or 0.0), 1.0)
-        height = max(float(bounds.get("height") or 0.0), 1.0)
-        left = x - width * 0.08
-        right = x + width * 1.08
-        top = y - height * 0.25
-        bottom = y + height * 1.25
-        candidates = []
-        for node in page.nodes.values():
-            if node.kind is not NodeKind.TEXT or not node.visible:
-                continue
-            if node.metadata.get("semantic_price_block_id"):
-                continue
-            text = " ".join(str(node.text or "").replace("\n", " ").split()).strip()
-            if not UNIT_RE.fullmatch(text):
-                continue
-            rect = node.rect.normalized()
-            if rect.right < left or rect.x > right or rect.bottom < top or rect.y > bottom:
-                continue
-            candidates.append(node)
-        if len(candidates) != 1:
-            output.append(block)
-            continue
-        roles = {key: list(value) for key, value in block.roles.items()}
-        roles["unit"] = [candidates[0].id]
-        replacement = _legacy._make_price_block(
-            page,
-            block.id,
-            block.slot_id,
-            roles,
-            source=str(block.metadata.get("source") or "spatial-recovery-complete"),
-            recovered=bool(block.metadata.get("recovered")),
-        )
-        replacement.metadata.update(dict(block.metadata or {}))
-        output.append(replacement)
-    return output
+    # ``semantic_runtime.install_complete_price_recovery_guard`` wraps this
+    # symbol on the public module.  Delegate the legacy builder through that
+    # already-certified guard so explicit named/wholesale bindings stay reserved
+    # and native complete prices retain ``complete_price_token`` metadata.
+    runtime_recovery = globals().get("_recover_unbound_price_blocks")
+    if callable(runtime_recovery):
+        _legacy._recover_unbound_price_blocks = runtime_recovery
 
 
 def _has_supervised_card_first_signal(document) -> bool:
@@ -186,9 +136,19 @@ def _is_product_name_candidate(node) -> bool:
 def is_official_unit_text(value: str) -> bool:
     return bool(UNIT_RE.fullmatch(" ".join(str(value or "").split()).strip()))
 
+
+def __getattr__(name: str):
+    """Keep private runtime compatibility without duplicating legacy helpers."""
+
+    if name.startswith("_") and hasattr(_legacy, name):
+        return getattr(_legacy, name)
+    raise AttributeError(name)
+
+
 _recover_unbound_price_blocks = _legacy._recover_unbound_price_blocks
 _make_price_block = _legacy._make_price_block
 _mark_recovered_editable = _legacy._mark_recovered_editable
 _bounds_dict = _legacy._bounds_dict
 _geometry = _legacy._geometry
+_stable_node_key = _legacy._stable_node_key
 _clean_text = _legacy._clean_text
