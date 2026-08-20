@@ -92,7 +92,7 @@ jobs:
           & "$root/SRGraphicsEngine2Host.exe" --version
           if ($LASTEXITCODE -ne 0) { throw "Frozen Graphics2Host --version failed" }
 
-      - name: Prove click to visible ItemSlot in frozen UI
+      - name: Prove click to visible ItemSlot in native Windows Qt
         shell: pwsh
         env:
           QT_QPA_PLATFORM: windows
@@ -102,6 +102,14 @@ jobs:
           New-Item -ItemType Directory -Force -Path item-slot-frozen-evidence | Out-Null
           python tools/verify_frozen_item_slot_ui.py --runtime-root "dist/graphics2-host/SRGraphicsEngine2Host" --output-dir item-slot-frozen-evidence
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Capture exact Studio viewports with real QQuickWindow grabWindow
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+          QT_SCALE_FACTOR: '1'
+        run: |
           New-Item -ItemType Directory -Force -Path item-slot-frozen-evidence/studio-viewports | Out-Null
           python tools/capture_studio_ui_viewports.py --runtime-root "dist/graphics2-host/SRGraphicsEngine2Host" --output-dir item-slot-frozen-evidence/studio-viewports
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -135,6 +143,18 @@ jobs:
 
           $viewports = Get-Content "item-slot-frozen-evidence/studio-viewports/studio-ui-viewports.json" -Raw | ConvertFrom-Json
           if (-not [bool]$viewports.pass) { throw "Studio viewport gate failed" }
+          if ([string]$viewports.grab_method -ne "QQuickWindow.grabWindow") { throw "Studio screenshots were not captured with QQuickWindow.grabWindow" }
+          if (-not [bool]$viewports.product_drag_runtime.pass) { throw "Product drag end-to-end failed" }
+          if ([string]$viewports.product_drag_runtime.product_id -ne [string]$viewports.product_drag_runtime.slot_product_id_after_drop) { throw "Wrong product bound after drag" }
+          if ([string]$viewports.product_drag_runtime.target_slot_id -ne [string]$viewports.product_drag_runtime.hit_test_slot_id) { throw "Product drag hit-test targeted wrong slot" }
+          if (-not [bool]$viewports.product_drag_runtime.highlight_active_before_drop) { throw "Product drag highlight did not activate" }
+          if (-not [bool]$viewports.product_drag_runtime.drop_product_dispatched) { throw "drop_product was not dispatched" }
+          if ([string]$viewports.product_drag_runtime.name_applied -ne "LEITE INTEGRAL 1L") { throw "Product name not applied" }
+          if ([string]$viewports.product_drag_runtime.price_integer_applied -ne "4") { throw "Product integer price not applied" }
+          if ([string]$viewports.product_drag_runtime.price_decimal_applied -ne ",79") { throw "Product decimal price not applied" }
+          if ([string]$viewports.product_drag_runtime.unit_applied -ne "/UN") { throw "Product unit not applied" }
+          if ([string]$viewports.product_drag_runtime.image_applied -ne "fixture://prod-5.png") { throw "Product image not applied" }
+          if ([bool]$viewports.product_drag_runtime.image_placeholder_after_drop) { throw "Product image remained a placeholder" }
           if ([int]$viewports.products_panel_count -lt 5) { throw "Products panel did not receive spreadsheet-like product data" }
           if (@($viewports.viewports).Count -ne 3) { throw "Expected exactly three Studio viewports" }
           foreach ($viewport in @($viewports.viewports)) {
@@ -146,6 +166,7 @@ jobs:
             Write-Host "STUDIO_$($viewport.viewport)_SHA256=$viewportHash"
           }
           Write-Host "FROZEN_CLICK_TO_VISIBLE=true"
+          Write-Host "PRODUCT_DRAG_E2E=PASS"
           Write-Host "STUDIO_VIEWPORTS=PASS"
           Write-Host "SOURCE_SHA=$env:SOURCE_SHA"
 
