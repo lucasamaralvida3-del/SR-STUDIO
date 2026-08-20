@@ -68,6 +68,16 @@ jobs:
           $blob = Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
           if ($blob.encoding -ne "base64") { throw "Unexpected blob encoding: $($blob.encoding)" }
           $raw = [Convert]::FromBase64String(($blob.content -replace '\s',''))
+          # The staging blob was intentionally created as UTF-8 base64 text. Decode
+          # that second layer only when the first decoded bytes begin with UEsDB.
+          if ($raw.Length -ge 5 -and [Text.Encoding]::ASCII.GetString($raw, 0, 5) -eq "UEsDB") {
+            $nested = [Text.Encoding]::UTF8.GetString($raw)
+            $raw = [Convert]::FromBase64String(($nested -replace '\s',''))
+            Write-Host "FIXTURE_BLOB_NESTED_BASE64=DECODED"
+          }
+          if ($raw.Length -lt 4 -or $raw[0] -ne 0x50 -or $raw[1] -ne 0x4B) {
+            throw "Fixture blob is not a ZIP after decoding"
+          }
           New-Item -ItemType Directory -Force -Path "harness/diagnostic" | Out-Null
           [IO.File]::WriteAllBytes("harness/diagnostic/meat_visual_gate_fixture.zip", $raw)
           Expand-Archive -Path "harness/diagnostic/meat_visual_gate_fixture.zip" -DestinationPath "harness/diagnostic/meat_visual_gate_fixture" -Force
