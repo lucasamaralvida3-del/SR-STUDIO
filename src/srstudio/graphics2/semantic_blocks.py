@@ -10,7 +10,7 @@ existing PriceBlock/ProductCard model.
 
 from . import _semantic_blocks_legacy as _legacy
 from .semantic_card_first import recover_product_cards_image_first
-from .semantic_vocabulary import UNIT_RE, is_name_forbidden_token
+from .semantic_vocabulary import UNIT_RE, is_name_forbidden_token, semantic_label_role
 
 SemanticBlock = _legacy.SemanticBlock
 SemanticBlockReport = _legacy.SemanticBlockReport
@@ -51,11 +51,34 @@ def _configure_legacy_vocabulary() -> None:
     _legacy._clear_recovered_slots = clear_recovered_slots_preserving_image_first
 
 
+def _has_supervised_card_first_signal(document) -> bool:
+    """Enable the pre-pass only when the source exposes Quinta3-era semantics.
+
+    Legacy layouts without CADA/QUILO or promotion/club labels keep their exact
+    historical recovery ids/reporting.  Once one of these source-proven signals
+    is present, IMAGE/CARD-first runs for the whole document before the legacy
+    fallback, so ordinary KG/UN cards in the same corpus are covered as well.
+    """
+
+    for page in document.pages:
+        for node in page.nodes.values():
+            text = " ".join(str(getattr(node, "text", "") or "").replace("\n", " ").split()).strip()
+            if not text:
+                continue
+            if text.upper().lstrip("/") in {"CADA", "QUILO"}:
+                return True
+            if semantic_label_role(text) in {"promotion", "club_label"}:
+                return True
+    return False
+
+
 def build_semantic_blocks(document):
     """Run CARD/IMAGE-first recovery, then the unchanged legacy fallback."""
 
     _configure_legacy_vocabulary()
-    image_first = recover_product_cards_image_first(document)
+    image_first = 0
+    if _has_supervised_card_first_signal(document):
+        image_first = recover_product_cards_image_first(document)
     report = _legacy.build_semantic_blocks(document)
     document.metadata["semantic_recovery_order"] = ["card-image-first", "price-first-fallback"]
     document.metadata["semantic_image_first_candidates"] = int(image_first)
