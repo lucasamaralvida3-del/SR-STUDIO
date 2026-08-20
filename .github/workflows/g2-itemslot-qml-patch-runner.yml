@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-itemslot-resize-grab:
+  patch-itemslot-stable-overlay:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +17,7 @@ jobs:
           ref: g2/fix-item-slot-interaction-performance
           fetch-depth: 0
 
-      - name: Apply guarded manual ItemSlot DragHandler patch
+      - name: Replace manual DragHandler with certified Smart Slot interaction geometry
         shell: bash
         run: |
           python - <<'PY'
@@ -25,15 +25,17 @@ jobs:
 
           path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
           text = path.read_text(encoding='utf-8')
-          marker = '                                                id: slotResizeArea\n'
+
+          # Remove the experimental manual DragHandler completely.
+          marker = '                                                id: manualItemSlotResizeHandler\n'
           if text.count(marker) != 1:
-              raise SystemExit(f'expected exactly one slotResizeArea, got {text.count(marker)}')
-
+              raise SystemExit(f'expected one manualItemSlotResizeHandler, got {text.count(marker)}')
           id_pos = text.index(marker)
-          start = text.rfind('                                            MouseArea {\n', 0, id_pos)
+          start = text.rfind('                                            DragHandler {\n', 0, id_pos)
           if start < 0:
-              raise SystemExit('slotResizeArea MouseArea start not found')
-
+              # Accept formatting normalized by git/QML tooling.
+              start = text.rfind('DragHandler {', 0, id_pos)
+              start = text.rfind('\n', 0, start) + 1
           brace_start = text.index('{', start)
           depth = 0
           in_string = False
@@ -61,119 +63,78 @@ jobs:
                       end = i + 1
                       break
           if end is None:
-              raise SystemExit('slotResizeArea MouseArea closing brace not found')
+              raise SystemExit('DragHandler closing brace not found')
+          while end < len(text) and text[end] in ' \t':
+              end += 1
+          if end < len(text) and text[end] == '\n':
+              end += 1
+          text = text[:start] + text[end:]
 
-          block = text[start:end]
-          enable_anchor = '                                                preventStealing: true\n'
-          if block.count(enable_anchor) != 1:
-              raise SystemExit(f'expected one preventStealing in resize MouseArea, got {block.count(enable_anchor)}')
-          block = block.replace(
-              enable_anchor,
-              enable_anchor + '                                                enabled: !slotOverlay.isManualItemSlot\n',
-              1,
+          disable = '                                                enabled: !slotOverlay.isManualItemSlot\n'
+          if text.count(disable) != 1:
+              raise SystemExit(f'expected one manual MouseArea disable, got {text.count(disable)}')
+          text = text.replace(disable, '', 1)
+
+          manual_anchor = '                                    property bool isManualItemSlot: !!(modelData.metadata && modelData.metadata.manual_item_slot)\n'
+          if text.count(manual_anchor) != 1:
+              raise SystemExit(f'isManualItemSlot anchor count={text.count(manual_anchor)}')
+          stable_props = (
+              manual_anchor
+              + '                                    // Keep the pressed resize MouseArea in stable geometry while preview_bounds drives only visuals.\n'
+              + '                                    property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"\n'
+              + '                                    property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds\n'
           )
+          text = text.replace(manual_anchor, stable_props, 1)
 
-          handler = r'''
+          geometry_old = (
+              '                                    x: displayBounds.x * zoom\n'
+              '                                    y: displayBounds.y * zoom\n'
+              '                                    width: displayBounds.width * zoom\n'
+              '                                    height: displayBounds.height * zoom\n'
+          )
+          geometry_new = (
+              '                                    x: interactionBounds.x * zoom\n'
+              '                                    y: interactionBounds.y * zoom\n'
+              '                                    width: interactionBounds.width * zoom\n'
+              '                                    height: interactionBounds.height * zoom\n'
+          )
+          if text.count(geometry_old) != 1:
+              raise SystemExit(f'overlay geometry anchor count={text.count(geometry_old)}')
+          text = text.replace(geometry_old, geometry_new, 1)
 
-                                            DragHandler {
-                                                id: manualItemSlotResizeHandler
-                                                enabled: slotOverlay.isManualItemSlot
-                                                target: null
-                                                acceptedButtons: Qt.LeftButton
-                                                dragThreshold: 0
-                                                property real startX: 0
-                                                property real startY: 0
-                                                property real startW: 1
-                                                property real startH: 1
-                                                property real lastDx: 0
-                                                property real lastDy: 0
-                                                property bool keepRatio: false
+          frame_old = '''                                    Rectangle {
+                                        anchors.fill: parent
+                                        color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
+                                        border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)
+                                        border.color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#0F5BD855")
+                                        radius: 4
+                                    }
+'''
+          frame_new = '''                                    Rectangle {
+                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
+                                        y: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom : 0
+                                        width: slotOverlay.resizePreviewKeepsInteractionGeometry ? Math.max(1, slotOverlay.displayBounds.width * zoom) : parent.width
+                                        height: slotOverlay.resizePreviewKeepsInteractionGeometry ? Math.max(1, slotOverlay.displayBounds.height * zoom) : parent.height
+                                        color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
+                                        border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)
+                                        border.color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#0F5BD855")
+                                        radius: 4
+                                    }
+'''
+          if text.count(frame_old) != 1:
+              raise SystemExit(f'preview frame anchor count={text.count(frame_old)}')
+          text = text.replace(frame_old, frame_new, 1)
 
-                                                function boundsForDelta(dx, dy, proportional) {
-                                                    var nx = startX
-                                                    var ny = startY
-                                                    var nw = startW
-                                                    var nh = startH
-                                                    if (modelData.dir.indexOf("w") >= 0) { nx += dx; nw -= dx }
-                                                    if (modelData.dir.indexOf("e") >= 0) nw += dx
-                                                    if (modelData.dir.indexOf("n") >= 0) { ny += dy; nh -= dy }
-                                                    if (modelData.dir.indexOf("s") >= 0) nh += dy
-                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
-                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
-                                                    if (!proportional)
-                                                        return {"x":nx,"y":ny,"width":nw,"height":nh}
-
-                                                    var horizontal = modelData.dir.indexOf("w") >= 0 || modelData.dir.indexOf("e") >= 0
-                                                    var vertical = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
-                                                    var sx = nw / Math.max(0.000001, startW)
-                                                    var sy = nh / Math.max(0.000001, startH)
-                                                    var scale = horizontal && vertical
-                                                            ? (Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy)
-                                                            : (horizontal ? sx : sy)
-                                                    scale = Math.max(Math.max(1 / Math.max(1, startW), 1 / Math.max(1, startH)), scale)
-                                                    nw = Math.max(1, startW * scale)
-                                                    nh = Math.max(1, startH * scale)
-
-                                                    if (modelData.dir.indexOf("w") >= 0)
-                                                        nx = startX + startW - nw
-                                                    else if (modelData.dir.indexOf("e") >= 0)
-                                                        nx = startX
-                                                    else
-                                                        nx = startX + (startW - nw) / 2
-
-                                                    if (modelData.dir.indexOf("n") >= 0)
-                                                        ny = startY + startH - nh
-                                                    else if (modelData.dir.indexOf("s") >= 0)
-                                                        ny = startY
-                                                    else
-                                                        ny = startY + (startH - nh) / 2
-
-                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
-                                                }
-
-                                                onActiveChanged: {
-                                                    if (active) {
-                                                        startX = slotOverlay.displayBounds.x
-                                                        startY = slotOverlay.displayBounds.y
-                                                        startW = slotOverlay.displayBounds.width
-                                                        startH = slotOverlay.displayBounds.height
-                                                        lastDx = 0
-                                                        lastDy = 0
-                                                        keepRatio = false
-                                                        slotOverlay.beginPreview({"x":startX,"y":startY,"width":startW,"height":startH}, "resize")
-                                                    } else if (slotOverlay.previewActive) {
-                                                        slotOverlay.commitPreview(boundsForDelta(lastDx, lastDy, keepRatio), "resize")
-                                                    }
-                                                }
-                                                onActiveTranslationChanged: {
-                                                    if (!active || !slotOverlay.previewActive)
-                                                        return
-                                                    lastDx = activeTranslation.x / zoom
-                                                    lastDy = activeTranslation.y / zoom
-                                                    keepRatio = (centroid.modifiers & Qt.ShiftModifier) !== 0
-                                                    slotOverlay.queuePreview(boundsForDelta(lastDx, lastDy, keepRatio), false)
-                                                }
-                                                onCanceled: {
-                                                    if (slotOverlay.isManualItemSlot) {
-                                                        window.itemSlotPreviewActive = false
-                                                        window.itemSlotPreviewSlotId = ""
-                                                    }
-                                                    slotOverlay.previewActive = false
-                                                    previewTimer.stop()
-                                                }
-                                            }'''
-
-          updated = text[:start] + block + handler + text[end:]
-          if updated.count('id: manualItemSlotResizeHandler') != 1:
-              raise SystemExit('manual DragHandler insertion failed')
-          if updated.count('enabled: !slotOverlay.isManualItemSlot') != 1:
-              raise SystemExit('manual MouseArea disable insertion failed')
-          path.write_text(updated, encoding='utf-8')
+          if 'manualItemSlotResizeHandler' in text:
+              raise SystemExit('experimental DragHandler still present')
+          if text.count('resizePreviewKeepsInteractionGeometry') < 5:
+              raise SystemExit('stable interaction geometry patch incomplete')
+          path.write_text(text, encoding='utf-8')
           PY
           git diff --check
           git diff -- src/srstudio/graphics2/qml/GraphicsEditor.qml
 
-      - name: Commit patch to performance branch
+      - name: Commit stable-overlay patch to performance branch
         shell: bash
         run: |
           if git diff --quiet -- src/srstudio/graphics2/qml/GraphicsEditor.qml; then
@@ -183,5 +144,5 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/srstudio/graphics2/qml/GraphicsEditor.qml
-          git commit -m 'fix(g2): keep ItemSlot resize grab stable during local preview'
+          git commit -m 'fix(g2): keep ItemSlot resize interaction geometry stable'
           git push origin HEAD:g2/fix-item-slot-interaction-performance
