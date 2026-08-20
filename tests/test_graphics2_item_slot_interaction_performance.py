@@ -50,9 +50,6 @@ def test_commit_item_slot_bounds_is_one_logical_group_commit_and_preserves_relat
         after_relative = after["internal_roles"][role]["relative"]
         assert after_relative == pytest.approx(before_relative, abs=1e-9)
 
-    # Public history contract: one undo must revert the whole release commit and
-    # one redo must restore it. If release created multiple logical transactions,
-    # a single undo would not return to the exact pre-release ItemSlot snapshot.
     assert session.undo() is True
     undone_slot = session.page.slots[slot.id]
     assert item_slot_snapshot(session.page, undone_slot) == before
@@ -104,3 +101,8 @@ def test_qml_manual_item_slot_uses_local_subtree_preview_and_one_release_command
     assert "!window.manualItemSlotForNode(anchorNode.id)" in qml
     assert "if (slotMetadata.manual_item_slot)" in qml
     assert "root_node_id" in qml
+    assert "property bool resizePreviewKeepsInteractionGeometry:" in qml
+    assert "property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds" in qml
+    assert "x: interactionBounds.x * zoom" in qml
+    assert "slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x" in qml
+    assert "manualItemSlotResizeHandler" not in qml
