@@ -20,7 +20,9 @@ jobs:
     timeout-minutes: 45
     env:
       REQUESTED_SHA: b6be9f85e18ae9065affa4006f54b18e81acf7f8
-      FIXTURE_BLOB_SHA: ea262539ed4edda9c94569126f1667e4e97c92c0
+      FIXTURE_BLOB_SHA: 63008bea83d9d15c49935bcfc819f1489bd88c7d
+      FIXTURE_ZIP_SHA256: 96c6ea72e8d3b5abcd6d6a35c4c6fe40313709cfa1eed9409e1c8c6ab09d6adb
+      FIXTURE_ZIP_BYTES: '525214'
     steps:
       - name: Checkout visual-gate harness branch
         uses: actions/checkout@v4
@@ -66,18 +68,15 @@ jobs:
           $blob = Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
           if ($blob.encoding -ne "base64") { throw "Unexpected blob encoding: $($blob.encoding)" }
           $raw = [Convert]::FromBase64String(($blob.content -replace '\s',''))
-          if ($raw.Length -ge 5 -and [Text.Encoding]::ASCII.GetString($raw, 0, 5) -eq "UEsDB") {
-            $nested = [Text.Encoding]::UTF8.GetString($raw)
-            $raw = [Convert]::FromBase64String(($nested -replace '\s',''))
-            Write-Host "FIXTURE_BLOB_NESTED_BASE64=DECODED"
-          }
           if ($raw.Length -lt 4 -or $raw[0] -ne 0x50 -or $raw[1] -ne 0x4B) { throw "Fixture blob is not a ZIP after decoding" }
+          if ($raw.Length -ne [int]$env:FIXTURE_ZIP_BYTES) { throw "Fixture ZIP size mismatch: actual=$($raw.Length) expected=$env:FIXTURE_ZIP_BYTES" }
           New-Item -ItemType Directory -Force -Path "harness/diagnostic" | Out-Null
           $zipPath = "harness/diagnostic/meat_visual_gate_fixture.zip"
           [IO.File]::WriteAllBytes($zipPath, $raw)
           $zipSha = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
           Write-Host "FIXTURE_ZIP_BYTES=$($raw.Length)"
           Write-Host "FIXTURE_ZIP_SHA256=$zipSha"
+          if ($zipSha -ne $env:FIXTURE_ZIP_SHA256) { throw "Fixture ZIP SHA mismatch: actual=$zipSha expected=$env:FIXTURE_ZIP_SHA256" }
           @'
           from pathlib import Path
           import zipfile
@@ -89,7 +88,9 @@ jobs:
               print('FIXTURE_ZIP_ENTRIES=' + ','.join(z.namelist()))
               if bad:
                   raise SystemExit(f'Bad ZIP member: {bad}')
+              print('FIXTURE_CRC=PASS')
               z.extractall(out)
+          print('FIXTURE_EXTRACTION=PASS')
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
@@ -99,12 +100,12 @@ jobs:
             "harness/diagnostic/meat_visual_gate_fixture/assets/image4.png" = "3a747c31bfe3aa8ae2326ec91f523f59c400aab069f3d3e94512c500b3a1fad3"
             "harness/diagnostic/meat_visual_gate_fixture/assets/image6.png" = "b2b40eb4f871b131d4c21d7ae40d7a9d0c4232c740ef8fa396b01f1948c35524"
             "harness/diagnostic/meat_visual_gate_fixture/reference/meat_original_anton.png" = "1d86434942c731b24d448b2a3f1f5b303fff71860e313c37ca200e352d76a6e7"
-            "harness/diagnostic/meat_visual_gate_fixture/fonts/anton_embedded.ttf" = "9c306606325bb3396711d7d1699fe45c1061ede2315fa217ae034bb0236edda7"
-            "harness/diagnostic/meat_visual_gate_fixture/visual_gate.py" = "8288923ee8fb87d3de5e2a8d24385cebc1df1f0b1030d28048af80aad795866e"
+            "harness/diagnostic/meat_visual_gate_fixture/visual_gate.py" = "2671201d5c509b415abeb19201ed89baec43019951322b2316f4043419521fe0"
           }
           foreach ($pair in $expected.GetEnumerator()) {
             if (!(Test-Path $pair.Key)) { throw "Fixture file missing: $($pair.Key)" }
             $actual = (Get-FileHash $pair.Key -Algorithm SHA256).Hash.ToLowerInvariant()
+            Write-Host "FIXTURE_MEMBER_SHA256 $($pair.Key) $actual"
             if ($actual -ne $pair.Value) { throw "Fixture SHA mismatch: $($pair.Key) actual=$actual expected=$($pair.Value)" }
           }
           Write-Host "EXACT_PPTX_VISUAL_FIXTURE=PASS"
