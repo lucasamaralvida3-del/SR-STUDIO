@@ -26,16 +26,17 @@ jobs:
           path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
           text = path.read_text(encoding='utf-8')
 
-          # Remove the experimental manual DragHandler completely.
-          marker = '                                                id: manualItemSlotResizeHandler\n'
-          if text.count(marker) != 1:
-              raise SystemExit(f'expected one manualItemSlotResizeHandler, got {text.count(marker)}')
-          id_pos = text.index(marker)
-          start = text.rfind('                                            DragHandler {\n', 0, id_pos)
+          # Remove the experimental manual DragHandler completely. Match by
+          # semantic id instead of whitespace so QML indentation cannot break
+          # this one-shot migration runner.
+          handler_id = 'id: manualItemSlotResizeHandler'
+          if text.count(handler_id) != 1:
+              raise SystemExit(f'expected one manualItemSlotResizeHandler, got {text.count(handler_id)}')
+          id_pos = text.index(handler_id)
+          start = text.rfind('DragHandler {', 0, id_pos)
           if start < 0:
-              # Accept formatting normalized by git/QML tooling.
-              start = text.rfind('DragHandler {', 0, id_pos)
-              start = text.rfind('\n', 0, start) + 1
+              raise SystemExit('DragHandler start not found')
+          start = text.rfind('\n', 0, start) + 1
           brace_start = text.index('{', start)
           depth = 0
           in_string = False
