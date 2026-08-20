@@ -26,9 +26,8 @@ jobs:
           path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
           text = path.read_text(encoding='utf-8')
 
-          # Remove the experimental manual DragHandler completely. Match by
-          # semantic id instead of whitespace so QML indentation cannot break
-          # this one-shot migration runner.
+          # Match by semantic id instead of whitespace so QML indentation
+          # normalization cannot break this temporary one-shot runner.
           handler_id = 'id: manualItemSlotResizeHandler'
           if text.count(handler_id) != 1:
               raise SystemExit(f'expected one manualItemSlotResizeHandler, got {text.count(handler_id)}')
