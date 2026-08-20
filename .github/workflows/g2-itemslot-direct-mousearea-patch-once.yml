@@ -1,0 +1,137 @@
+name: G2 ItemSlot Direct MouseArea Patch Once
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+    branches:
+      - g2/fix-full-studio-entrypoint-beta27
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.ref == 'g2/fix-item-slot-interaction-performance' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/fix-item-slot-interaction-performance
+          fetch-depth: 0
+
+      - name: Make stable resize handle own MouseArea directly
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = path.read_text(encoding='utf-8')
+          marker = 'objectName: "smartSlotHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")'
+          pos = text.index(marker)
+          start = text.rfind('                                        delegate: Rectangle {', 0, pos)
+          if start < 0:
+              region = text[text.index('model: slots()'):text.index('id: selectionOverlay')]
+              if 'delegate: MouseArea {' in region and 'id: slotResizeArea' not in region:
+                  raise SystemExit(0)
+              raise SystemExit('ItemSlot resize delegate not found')
+
+          def matching_brace(source: str, block_start: int) -> int:
+              opening = source.index('{', block_start)
+              depth = 0
+              quote = None
+              escape = False
+              for i in range(opening, len(source)):
+                  ch = source[i]
+                  if quote:
+                      if escape:
+                          escape = False
+                      elif ch == '\\':
+                          escape = True
+                      elif ch == quote:
+                          quote = None
+                      continue
+                  if ch in ('"', "'"):
+                      quote = ch
+                      continue
+                  if ch == '{':
+                      depth += 1
+                  elif ch == '}':
+                      depth -= 1
+                      if depth == 0:
+                          return i
+              raise RuntimeError('unbalanced QML braces')
+
+          end = matching_brace(text, start)
+          block = text[start:end + 1]
+          nested_marker = '                                            MouseArea {\n                                                id: slotResizeArea\n'
+          nested_start = block.index(nested_marker)
+          nested_end = matching_brace(block, nested_start)
+          nested = block[nested_start:nested_end + 1]
+          body = nested[nested.index('{') + 1:-1]
+          for line in [
+              '                                                id: slotResizeArea\n',
+              '                                                objectName: "smartSlotResizeArea-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")\n',
+              '                                                anchors.fill: parent\n',
+              '                                                cursorShape: modelData.cursor\n',
+              '                                                preventStealing: true\n',
+          ]:
+              if line not in body:
+                  raise SystemExit(f'nested contract missing: {line.strip()}')
+              body = body.replace(line, '', 1)
+          body = ''.join(line[4:] if line.startswith('    ') else line for line in body.splitlines(keepends=True))
+
+          prefix = block[:nested_start]
+          prefix = prefix.replace('                                        delegate: Rectangle {', '                                        delegate: MouseArea {', 1)
+          prefix = prefix.replace(marker, 'objectName: "smartSlotResizeArea-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")', 1)
+          for obsolete in [
+              '                                            radius: 2\n',
+              '                                            color: "transparent"\n',
+              '                                            border.width: 0\n',
+          ]:
+              prefix = prefix.replace(obsolete, '', 1)
+          anchor = '                                            z: 10\n'
+          child = '''                                            acceptedButtons: Qt.LeftButton
+                                            cursorShape: modelData.cursor
+                                            preventStealing: true
+                                            Item {
+                                                objectName: "smartSlotHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                                anchors.fill: parent
+                                            }
+'''
+          if anchor not in prefix:
+              raise SystemExit('stable z anchor missing')
+          prefix = prefix.replace(anchor, anchor + child, 1)
+          replacement = prefix + body + block[nested_end + 1:]
+          text = text[:start] + replacement + text[end + 1:]
+
+          region = text[text.index('model: slots()'):text.index('id: selectionOverlay')]
+          for token in [
+              'delegate: MouseArea {',
+              'objectName: "smartSlotResizeArea-"',
+              'objectName: "smartSlotHandle-"',
+              'objectName: "smartSlotVisualHandle-"',
+              'acceptedButtons: Qt.LeftButton',
+              'preventStealing: true',
+              'onPressed: {',
+              'onPositionChanged: {',
+              'onReleased: {',
+          ]:
+              if token not in region:
+                  raise SystemExit(f'missing direct MouseArea token: {token}')
+          if 'id: slotResizeArea' in region or 'DragHandler {' in region or 'manualItemSlotResizeHandler' in region:
+              raise SystemExit('obsolete/experimental resize path remains')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/srstudio/graphics2/qml/GraphicsEditor.qml
+          if git diff --cached --quiet; then
+            echo 'Direct MouseArea already present'
+          else
+            git commit -m 'fix(g2): make stable ItemSlot handle own mouse grab directly'
+            git push origin HEAD:g2/fix-item-slot-interaction-performance
+          fi
