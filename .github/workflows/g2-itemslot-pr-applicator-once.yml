@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   apply-final-itemslot:
-    if: github.event.pull_request.head.ref == 'g2/fix-item-slot-interaction-performance' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.sha == github.sha
+    if: github.event.pull_request.head.ref == 'g2/fix-item-slot-interaction-performance' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
