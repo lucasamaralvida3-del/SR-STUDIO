@@ -1,7 +1,8 @@
-name: G2 ItemSlot Shift Ratio Runner
+name: G2 ItemSlot Final Applicator Runner
 
 on:
-  pull_request:
+  pull_request_target:
+    types: [opened, reopened, synchronize]
     branches:
       - g2/tmp-itemslot-stable-resize-runner-v2
 
@@ -9,116 +10,36 @@ permissions:
   contents: write
 
 jobs:
-  patch-shift-ratio:
+  apply-final-itemslot-gate:
+    if: github.event.pull_request.head.ref == 'g2/fix-item-slot-interaction-performance' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: g2/fix-item-slot-interaction-performance
-          fetch-depth: 0
+          fetch-depth: 2
 
-      - name: Apply Shift ratio on official ItemSlot MouseArea path
+      - name: Execute the guarded applicator already staged on the head
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-
-          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
-          text = path.read_text(encoding='utf-8')
-
-          required_base = [
-              'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds',
-              'function itemSlotDisplayTransform(node)',
-          ]
-          for token in required_base:
-              if token not in text:
-                  raise SystemExit(f'missing stable ItemSlot path: {token}')
-          if 'manualItemSlotResizeHandler' in text or 'DragHandler {' in text[text.find('objectName: "smartSlotHandle-"'):text.find('Item {\n                                id: selectionOverlay')]:
-              raise SystemExit('experimental ItemSlot DragHandler still present')
-
-          if 'function resizedBounds(px, py, modifiers)' not in text:
-              old = '                                                function resizedBounds(px, py) {\n'
-              if text.count(old) != 1:
-                  raise SystemExit(f'resizedBounds signature count={text.count(old)}')
-              text = text.replace(old, '                                                function resizedBounds(px, py, modifiers) {\n', 1)
-
-              old = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
-                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
-                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
-'''
-              new = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
-                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
-                                                    if (slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)) {
-                                                        var aspect = Math.max(0.000001, startW) / Math.max(0.000001, startH)
-                                                        var hasH = modelData.dir.indexOf("e") >= 0 || modelData.dir.indexOf("w") >= 0
-                                                        var hasV = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
-                                                        var targetW = nw
-                                                        var targetH = nh
-                                                        if (hasH && hasV) {
-                                                            var relW = Math.abs(nw - startW) / Math.max(1, startW)
-                                                            var relH = Math.abs(nh - startH) / Math.max(1, startH)
-                                                            if (relW >= relH)
-                                                                targetH = Math.max(1, targetW / aspect)
-                                                            else
-                                                                targetW = Math.max(1, targetH * aspect)
-                                                        } else if (hasH) {
-                                                            targetH = Math.max(1, targetW / aspect)
-                                                        } else if (hasV) {
-                                                            targetW = Math.max(1, targetH * aspect)
-                                                        }
-                                                        if (modelData.dir.indexOf("w") >= 0)
-                                                            nx = startX + startW - targetW
-                                                        if (modelData.dir.indexOf("n") >= 0)
-                                                            ny = startY + startH - targetH
-                                                        nw = targetW
-                                                        nh = targetH
-                                                    }
-                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
-'''
-              if text.count(old) != 1:
-                  raise SystemExit(f'resizedBounds body count={text.count(old)}')
-              text = text.replace(old, new, 1)
-
-              old = 'slotOverlay.queuePreview(resizedBounds(point.x, point.y), false)'
-              if text.count(old) != 1:
-                  raise SystemExit(f'queue call count={text.count(old)}')
-              text = text.replace(old, 'slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)', 1)
-
-              old = 'slotOverlay.commitPreview(resizedBounds(point.x, point.y), "resize")'
-              if text.count(old) != 1:
-                  raise SystemExit(f'commit call count={text.count(old)}')
-              text = text.replace(old, 'slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")', 1)
-
-          final_tokens = [
-              'function resizedBounds(px, py, modifiers)',
-              'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)',
-              'slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)',
-              'slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")',
-          ]
-          for token in final_tokens:
-              if token not in text:
-                  raise SystemExit(f'missing Shift token: {token}')
-
-          path.write_text(text, encoding='utf-8')
+          workflow = Path('.github/workflows/g2-item-slot-interaction-performance.yml')
+          lines = workflow.read_text(encoding='utf-8').splitlines()
+          marker = '        run: |'
+          positions = [i for i, line in enumerate(lines) if line == marker]
+          if len(positions) != 1:
+              raise SystemExit(f'expected one applicator run block, got {len(positions)}')
+          body = []
+          for line in lines[positions[0] + 1:]:
+              if line.startswith('          '):
+                  body.append(line[10:])
+              elif not line.strip():
+                  body.append('')
+              else:
+                  break
+          if not body or "git commit -m 'fix(g2): finalize stable ItemSlot preview certification path'" not in '\n'.join(body):
+              raise SystemExit('guarded final applicator body not found')
+          Path('/tmp/apply-final-itemslot.sh').write_text('\n'.join(body) + '\n', encoding='utf-8')
           PY
-          git diff --check
-
-      - name: Commit QML and remove head scaffolding
-        shell: bash
-        run: |
-          git config user.name github-actions[bot]
-          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -- src/srstudio/graphics2/qml/GraphicsEditor.qml
-          for path in \
-            .github/workflows/g2-itemslot-shift-ratio-patch-once.yml \
-            .github/workflows/g2-itemslot-final-overlay-patch-once.yml \
-            .github/workflows/g2-itemslot-stable-overlay-fix-once.yml \
-            .github/workflows/g2-item-slot-stable-resize-capture-once.yml; do
-            if [ -f "$path" ]; then git rm -- "$path"; fi
-          done
-          if git diff --cached --quiet; then
-            echo 'ItemSlot Shift ratio already applied and scaffolding absent'
-            exit 0
-          fi
-          git commit -m 'fix(g2): preserve ItemSlot aspect ratio with Shift'
-          git push origin HEAD:g2/fix-item-slot-interaction-performance
+          bash /tmp/apply-final-itemslot.sh
