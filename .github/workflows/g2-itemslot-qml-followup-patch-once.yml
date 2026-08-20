@@ -12,15 +12,8 @@ jobs:
           from pathlib import Path
           path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
           text = path.read_text(encoding='utf-8')
-          old = '''    function slotBounds(slot) {
-        if (!page || !slot)
-            return {"x": 0, "y": 0, "width": 0, "height": 0}
-        var effective = slot.metadata ? slot.metadata.effective_bounds : null
-'''
-          new = '''    function slotBounds(slot) {
-        if (!page || !slot)
-            return {"x": 0, "y": 0, "width": 0, "height": 0}
-        var slotMetadata = slot.metadata || {}
+          old = '        var effective = slot.metadata ? slot.metadata.effective_bounds : null\n'
+          new = '''        var slotMetadata = slot.metadata || {}
         if (slotMetadata.manual_item_slot) {
             var rootId = String(slotMetadata.root_node_id || "")
             var rootNode = rootId && page.nodes ? page.nodes[rootId] : null
@@ -32,6 +25,6 @@ jobs:
         var effective = slot.metadata ? slot.metadata.effective_bounds : null
 '''
           if text.count(old) != 1:
-              raise SystemExit(f'item slot root bounds: expected 1 match, got {text.count(old)}')
+              raise SystemExit(f'item slot root bounds anchor: expected 1 match, got {text.count(old)}')
           path.write_text(text.replace(old, new, 1), encoding='utf-8')
           PY
