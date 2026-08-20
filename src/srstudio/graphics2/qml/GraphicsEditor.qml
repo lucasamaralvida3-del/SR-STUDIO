@@ -902,15 +902,17 @@ ApplicationWindow {
                                     property real previewIntervalMs: 16
                                     property var displayBounds: previewActive ? preview_bounds : bounds
                                     property bool isManualItemSlot: !!(modelData.metadata && modelData.metadata.manual_item_slot)
+                                    property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"
+                                    property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds
                                     property bool slotEditActive: isManualItemSlot || smartSlotEditMode
                                     property bool isDropTarget: productDragActive && dragHoverSlotId === modelData.id
                                     property bool isSelectedSlot: selectedSlotId === modelData.id
                                     property bool isHoveredSlot: hoveredSlotId === modelData.id
                                     property bool showSlotOverlay: smartSlotEditMode || smartSlotInspectionMode || productDragActive || isSelectedSlot || isHoveredSlot
-                                    x: displayBounds.x * zoom
-                                    y: displayBounds.y * zoom
-                                    width: displayBounds.width * zoom
-                                    height: displayBounds.height * zoom
+                                    x: interactionBounds.x * zoom
+                                    y: interactionBounds.y * zoom
+                                    width: interactionBounds.width * zoom
+                                    height: interactionBounds.height * zoom
                                     visible: showSlotOverlay && width > 2 && height > 2
                                     z: 100000
 
@@ -1029,7 +1031,10 @@ ApplicationWindow {
                                     }
 
                                     Rectangle {
-                                        anchors.fill: parent
+                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
+                                        y: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom : 0
+                                        width: slotOverlay.resizePreviewKeepsInteractionGeometry ? Math.max(1, slotOverlay.displayBounds.width * zoom) : parent.width
+                                        height: slotOverlay.resizePreviewKeepsInteractionGeometry ? Math.max(1, slotOverlay.displayBounds.height * zoom) : parent.height
                                         color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
                                         border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)
                                         border.color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#0F5BD855")
@@ -1120,17 +1125,29 @@ ApplicationWindow {
                                             width: 11; height: 11; radius: 2
                                             x: modelData.fx * slotOverlay.width - width / 2
                                             y: modelData.fy * slotOverlay.height - height / 2
-                                            color: "white"
-                                            border.width: 2
+                                            color: slotOverlay.resizePreviewKeepsInteractionGeometry ? "transparent" : "white"
+                                            border.width: slotOverlay.resizePreviewKeepsInteractionGeometry ? 0 : 2
                                             border.color: "#0F5BD8"
                                             z: 10
+                                            Rectangle {
+                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
+                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+                                                   + modelData.fx * (slotOverlay.displayBounds.width - slotOverlay.interactionBounds.width) * zoom
+                                                y: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
+                                                   + modelData.fy * (slotOverlay.displayBounds.height - slotOverlay.interactionBounds.height) * zoom
+                                                width: parent.width
+                                                height: parent.height
+                                                radius: parent.radius
+                                                color: "white"
+                                                border.width: 2
+                                                border.color: "#0F5BD8"
+                                            }
                                             MouseArea {
                                                 id: slotResizeArea
                                                 objectName: "smartSlotResizeArea-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
                                                 anchors.fill: parent
                                                 cursorShape: modelData.cursor
                                                 preventStealing: true
-                                                enabled: !slotOverlay.isManualItemSlot
                                                 property real startGlobalX: 0
                                                 property real startGlobalY: 0
                                                 property real startX: 0
@@ -1183,94 +1200,6 @@ ApplicationWindow {
                                                     previewTimer.stop()
                                                 }
                                             }
-
-                                  DragHandler {
-                                      id: manualItemSlotResizeHandler
-                                      enabled: slotOverlay.isManualItemSlot
-                                      target: null
-                                      acceptedButtons: Qt.LeftButton
-                                      dragThreshold: 0
-                                      property real startX: 0
-                                      property real startY: 0
-                                      property real startW: 1
-                                      property real startH: 1
-                                      property real lastDx: 0
-                                      property real lastDy: 0
-                                      property bool keepRatio: false
-
-                                      function boundsForDelta(dx, dy, proportional) {
-                                          var nx = startX
-                                          var ny = startY
-                                          var nw = startW
-                                          var nh = startH
-                                          if (modelData.dir.indexOf("w") >= 0) { nx += dx; nw -= dx }
-                                          if (modelData.dir.indexOf("e") >= 0) nw += dx
-                                          if (modelData.dir.indexOf("n") >= 0) { ny += dy; nh -= dy }
-                                          if (modelData.dir.indexOf("s") >= 0) nh += dy
-                                          if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
-                                          if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
-                                          if (!proportional)
-                                              return {"x":nx,"y":ny,"width":nw,"height":nh}
-
-                                          var horizontal = modelData.dir.indexOf("w") >= 0 || modelData.dir.indexOf("e") >= 0
-                                          var vertical = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
-                                          var sx = nw / Math.max(0.000001, startW)
-                                          var sy = nh / Math.max(0.000001, startH)
-                                          var scale = horizontal && vertical
-                                                  ? (Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy)
-                                                  : (horizontal ? sx : sy)
-                                          scale = Math.max(Math.max(1 / Math.max(1, startW), 1 / Math.max(1, startH)), scale)
-                                          nw = Math.max(1, startW * scale)
-                                          nh = Math.max(1, startH * scale)
-
-                                          if (modelData.dir.indexOf("w") >= 0)
-                                              nx = startX + startW - nw
-                                          else if (modelData.dir.indexOf("e") >= 0)
-                                              nx = startX
-                                          else
-                                              nx = startX + (startW - nw) / 2
-
-                                          if (modelData.dir.indexOf("n") >= 0)
-                                              ny = startY + startH - nh
-                                          else if (modelData.dir.indexOf("s") >= 0)
-                                              ny = startY
-                                          else
-                                              ny = startY + (startH - nh) / 2
-
-                                          return {"x":nx,"y":ny,"width":nw,"height":nh}
-                                      }
-
-                                      onActiveChanged: {
-                                          if (active) {
-                                              startX = slotOverlay.displayBounds.x
-                                              startY = slotOverlay.displayBounds.y
-                                              startW = slotOverlay.displayBounds.width
-                                              startH = slotOverlay.displayBounds.height
-                                              lastDx = 0
-                                              lastDy = 0
-                                              keepRatio = false
-                                              slotOverlay.beginPreview({"x":startX,"y":startY,"width":startW,"height":startH}, "resize")
-                                          } else if (slotOverlay.previewActive) {
-                                              slotOverlay.commitPreview(boundsForDelta(lastDx, lastDy, keepRatio), "resize")
-                                          }
-                                      }
-                                      onActiveTranslationChanged: {
-                                          if (!active || !slotOverlay.previewActive)
-                                              return
-                                          lastDx = activeTranslation.x / zoom
-                                          lastDy = activeTranslation.y / zoom
-                                          keepRatio = (centroid.modifiers & Qt.ShiftModifier) !== 0
-                                          slotOverlay.queuePreview(boundsForDelta(lastDx, lastDy, keepRatio), false)
-                                      }
-                                      onCanceled: {
-                                          if (slotOverlay.isManualItemSlot) {
-                                              window.itemSlotPreviewActive = false
-                                              window.itemSlotPreviewSlotId = ""
-                                          }
-                                          slotOverlay.previewActive = false
-                                          previewTimer.stop()
-                                      }
-                                  }
                                         }
                                     }
                                 }
