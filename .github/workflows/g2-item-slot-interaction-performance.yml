@@ -84,27 +84,27 @@ jobs:
           & "$root/SRGraphicsEngine2Host.exe" --version
           if ($LASTEXITCODE -ne 0) { throw "Frozen Graphics2Host --version failed" }
 
-      - name: Benchmark 200 move and resize events for all ItemSlot presets
-        shell: pwsh
-        env:
-          QT_QPA_PLATFORM: windows
-          QSG_RHI_BACKEND: software
-        run: |
-          New-Item -ItemType Directory -Force -Path itemslot-perf-evidence | Out-Null
-          python tools/benchmark_frozen_item_slot_interaction.py `
-            --qml "dist/graphics2-host/SRGraphicsEngine2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml" `
-            --output "itemslot-perf-evidence/benchmark.json"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-
       - name: Continuous 3-second move resize and save reopen gate
         shell: pwsh
         env:
           QT_QPA_PLATFORM: windows
           QSG_RHI_BACKEND: software
         run: |
+          New-Item -ItemType Directory -Force -Path itemslot-perf-evidence | Out-Null
           python tools/verify_frozen_item_slot_interaction.py `
             --qml "dist/graphics2-host/SRGraphicsEngine2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml" `
             --output-dir "itemslot-perf-evidence/continuous"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Benchmark 200 move and resize events for all ItemSlot presets
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+          QSG_RHI_BACKEND: software
+        run: |
+          python tools/benchmark_frozen_item_slot_interaction.py `
+            --qml "dist/graphics2-host/SRGraphicsEngine2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml" `
+            --output "itemslot-perf-evidence/benchmark.json"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Enforce hard performance thresholds
