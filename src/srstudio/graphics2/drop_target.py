@@ -39,7 +39,24 @@ class DropTarget:
 
 
 def smart_slot_bounds(page: GraphicsPage, slot: SmartSlot) -> Rect | None:
-    """Retorna a área visual mais representativa de um Smart Slot."""
+    """Retorna a área semântica/interativa efetiva de um Smart Slot."""
+
+    candidates: list[object] = []
+    if str(slot.metadata.get("adjustment_source") or "") == "manual":
+        candidates.append(slot.metadata.get("user_adjusted_bounds"))
+    candidates.append(slot.metadata.get("effective_bounds"))
+    for raw in candidates:
+        if not isinstance(raw, dict):
+            continue
+        width = max(0.0, float(raw.get("width") or 0.0))
+        height = max(0.0, float(raw.get("height") or 0.0))
+        if width > 0 and height > 0:
+            return Rect(
+                float(raw.get("x") or 0.0),
+                float(raw.get("y") or 0.0),
+                width,
+                height,
+            ).normalized()
 
     card_id = str(slot.metadata.get("semantic_product_card_id") or "")
     card = semantic_block(page, card_id) if card_id else None

@@ -22,6 +22,7 @@ from .item_slots import (
     list_item_slot_presets,
     list_item_slots,
     refresh_all_item_slots,
+    refresh_item_slot_metadata,
     save_item_slot_as_preset,
     set_item_slot_role_bounds,
 )
@@ -38,7 +39,7 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         editor["item_slots"] = list_item_slots(self.session.document)
         return payload
 
-    def dispatch_json(self, raw: str) -> str:
+    def dispatch_json(self, raw: str, *, include_scene_payload: bool = True) -> str:
         try:
             command = json.loads(raw)
             if not isinstance(command, dict):
@@ -46,7 +47,8 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
             result = self.dispatch(command)
         except Exception as exc:
             result = CommandResult(False, False, f"Erro: {exc}")
-        result.payload = self.payload()
+        if include_scene_payload:
+            result.payload = self.payload()
         return json.dumps(result.to_dict(), ensure_ascii=False, separators=(",", ":"))
 
     def dispatch(self, command: dict[str, Any]) -> CommandResult:
@@ -76,6 +78,40 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
             self.session.selection = {root_id}
             self.session.anchor_id = root_id
             return CommandResult(True, False, "ItemSlot selecionado.", {"slot_id": slot.id, "root_node_id": root_id})
+
+        if name == "commit_item_slot_bounds":
+            slot = self.session.page.slots.get(str(command.get("slot_id") or ""))
+            if not is_manual_item_slot(slot):
+                return CommandResult(False, False, "ItemSlot não encontrado.")
+            root_id = str(slot.metadata.get("root_node_id") or "")
+            root = self.session.page.node(root_id)
+            if root is None:
+                return CommandResult(False, False, "Raiz do ItemSlot não encontrada.")
+            x = float(command.get("x") if command.get("x") is not None else root.transform.x)
+            y = float(command.get("y") if command.get("y") is not None else root.transform.y)
+            width = max(1.0, float(command.get("width") if command.get("width") is not None else root.transform.width))
+            height = max(1.0, float(command.get("height") if command.get("height") is not None else root.transform.height))
+            changed = any(
+                abs(current - target) > 1e-6
+                for current, target in (
+                    (float(root.transform.x), x),
+                    (float(root.transform.y), y),
+                    (float(root.transform.width), width),
+                    (float(root.transform.height), height),
+                )
+            )
+            if changed:
+                # One logical backend commit: resize_node owns the single history
+                # transaction and transforms the GROUP subtree atomically. QML keeps
+                # all per-pixel preview work local until this release command.
+                self.session.resize_node(root_id, x=x, y=y, width=width, height=height)
+                refresh_item_slot_metadata(self.session.page, slot)
+            return CommandResult(
+                True,
+                changed,
+                "Geometria do ItemSlot atualizada." if changed else "Geometria do ItemSlot preservada.",
+                {"slot_id": slot.id, "root_node_id": root_id, "bounds": {"x": x, "y": y, "width": width, "height": height}},
+            )
 
         if name == "set_item_slot_role_bounds":
             changed = set_item_slot_role_bounds(

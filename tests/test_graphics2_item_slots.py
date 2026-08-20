@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+
+from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
 from srstudio.graphics2.item_slots import (
     bind_product_to_item_slot,
     create_item_slot,
@@ -217,3 +220,23 @@ def test_save_close_reopen_package_preserves_manual_item_slot(tmp_path) -> None:
     assert after["state"] == "filled"
     assert after["product_id"] == "p-4"
     assert after["price_block"]["combined_value"] == "33.63"
+
+
+def test_qml_dispatch_contract_creates_item_slot_without_scene_payload() -> None:
+    session = _session()
+    router = ItemSlotCommandRouter(session)
+
+    raw = router.dispatch_json(
+        json.dumps({"name": "add_item_slot", "preset_id": "simples"}),
+        include_scene_payload=False,
+    )
+    result = json.loads(raw)
+
+    assert result["ok"] is True
+    assert result["changed"] is True
+    assert result["payload"]["preset_id"] == "simples"
+    slot_id = result["payload"]["slot_id"]
+    assert slot_id in session.page.slots
+    slot = session.page.slots[slot_id]
+    assert slot.metadata["state"] == "empty"
+    assert session.page.node(slot.metadata["root_node_id"]) is not None

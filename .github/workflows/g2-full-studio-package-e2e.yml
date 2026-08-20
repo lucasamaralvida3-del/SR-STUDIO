@@ -1,0 +1,146 @@
+name: G2 Full Studio Package E2E
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - g2/integrate-studio-shell
+    paths:
+      - 'src/srstudio/app/turbo_posters.py'
+      - 'src/srstudio/graphics2/full_studio_bridge.py'
+      - 'src/srstudio/graphics2/studio_bridge.py'
+      - 'src/srstudio/graphics2/item_slot_host.py'
+      - 'src/srstudio/graphics2/item_slots.py'
+      - 'src/srstudio/graphics2/qml/**'
+      - 'tests/test_graphics2_full_studio_entrypoint.py'
+      - 'tests/test_graphics2_studio_bridge.py'
+      - 'tests/test_graphics2_item_slots.py'
+      - 'tools/verify_full_studio_g2_package_e2e.py'
+      - 'build/build_graphics2_host.py'
+      - '.github/workflows/g2-full-studio-package-e2e.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  full-package-windows-e2e:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install focused E2E dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2,graphics2-build]" pyinstaller pywinauto psutil
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Record exact source SHA
+        shell: pwsh
+        run: |
+          $sha = git rev-parse HEAD
+          "SOURCE_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "SOURCE_SHA=$sha"
+          git diff --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked working tree changed before E2E" }
+
+      - name: Focused G2-only routing and ItemSlot contracts
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/app/turbo_posters.py src/srstudio/graphics2/full_studio_bridge.py tools/verify_full_studio_g2_package_e2e.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_graphics2_full_studio_entrypoint.py tests/test_graphics2_studio_bridge.py tests/test_graphics2_item_slots.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build exact full SR Studio shell
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "SR Studio 5.exe missing" }
+
+      - name: Build and embed certified Graphics2 child host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $source = "dist/graphics2-host/SRGraphicsEngine2Host"
+          if (!(Test-Path "$source/SRGraphicsEngine2Host.exe")) { throw "Graphics2 host missing" }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
+          Copy-Item "$source/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Embedded host missing" }
+
+      - name: Repack and unpack exact user payload
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path e2e | Out-Null
+          $zip = "e2e/SR-Studio-G2-Full-E2E.zip"
+          Compress-Archive -Path "dist/SR Studio 5/*" -DestinationPath $zip -Force
+          if (!(Test-Path $zip)) { throw "E2E package was not created" }
+          Expand-Archive -Path $zip -DestinationPath "e2e/package" -Force
+          if (!(Test-Path "e2e/package/SR Studio 5.exe")) { throw "Unpacked shell missing" }
+          if (!(Test-Path "e2e/package/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Unpacked child host missing" }
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "E2E_PACKAGE_SHA256=$hash"
+
+      - name: Missing-host fail-closed then SR Studio to G2 to SIMPLES visible
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+          QSG_RHI_BACKEND: software
+          QT_ACCESSIBILITY: '1'
+        run: |
+          New-Item -ItemType Directory -Force -Path "e2e/evidence" | Out-Null
+          python tools/verify_full_studio_g2_package_e2e.py --package-root "e2e/package" --output-dir "e2e/evidence"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Enforce E2E evidence
+        shell: pwsh
+        run: |
+          if (!(Test-Path "e2e/evidence/result.json")) { throw "result.json missing" }
+          if (!(Test-Path "e2e/evidence/failure-windows-after-click.json")) { throw "Post-click Win32 inventory missing" }
+          if (!(Test-Path "e2e/evidence/failure-window-samples.json")) { throw "Post-click window timeline missing" }
+          if (!(Test-Path "e2e/evidence/g2-error-visible.png")) { throw "G2 error screenshot missing" }
+          if (!(Test-Path "e2e/evidence/failure-localappdata/SRStudio/logs/g2-launch.log")) { throw "G2 failure diagnostic log missing" }
+          if (!(Test-Path "e2e/evidence/g2-before-slot.png")) { throw "before screenshot missing" }
+          if (!(Test-Path "e2e/evidence/g2-after-simples.png")) { throw "after screenshot missing" }
+          $result = Get-Content "e2e/evidence/result.json" -Raw | ConvertFrom-Json
+          if (!$result.pass) { throw "Full package E2E did not pass" }
+          if (!$result.legacy_route_contract) { throw "G2-only source routing contract not verified" }
+          if (!$result.g2_error_window_exists) { throw "Missing-host G2 error window not found" }
+          if (!$result.g2_error_message_present) { throw "Missing-host G2 error message not proven" }
+          if (!$result.g2_launch_log_exists) { throw "Missing-host G2 diagnostic log not proven" }
+          if ($result.g2_child_opened_on_failure) { throw "G2 child unexpectedly opened in missing-host gate" }
+          if ($result.legacy_studio_opened) { throw "Legacy Studio opened during G2 failure" }
+          if (!$result.g2_identity_verified) { throw "G2 identity not verified" }
+          if (!$result.slot_button_clicked) { throw "+ SLOT DE ITEM not clicked" }
+          if (!$result.simples_clicked) { throw "SIMPLES not clicked" }
+          if (!$result.simples_visible) { throw "SIMPLES not visually proven" }
+          if ([int64]$result.visual.changed_pixels -lt 800) { throw "Insufficient canvas visual delta" }
+          Write-Host "ERROR_WINDOW_EXISTS=TRUE"
+          Write-Host "G2_ERROR_MESSAGE_PRESENT=TRUE"
+          Write-Host "G2_LAUNCH_LOG_EXISTS=TRUE"
+          Write-Host "LEGACY_STUDIO_OPENED=FALSE"
+          Write-Host "FULL_FROZEN_PACKAGE_E2E=PASS"
+          Write-Host "G2_IDENTITY_VERIFIED=PASS"
+          Write-Host "SLOT_CLICK=PASS"
+          Write-Host "SIMPLES_VISIBLE=PASS"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g2-full-studio-package-e2e-${{ github.run_id }}
+          path: |
+            e2e/evidence/**
+            e2e/SR-Studio-G2-Full-E2E.zip
+          if-no-files-found: warn
+          retention-days: 30

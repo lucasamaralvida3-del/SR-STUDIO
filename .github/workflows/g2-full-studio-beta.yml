@@ -1,0 +1,340 @@
+name: G2 Full Studio Beta
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - g2/integrate-studio-shell
+    paths:
+      - 'src/srstudio/app/turbo_posters.py'
+      - 'src/srstudio/graphics2/full_studio_bridge.py'
+      - 'src/srstudio/graphics2/studio_bridge.py'
+      - 'tests/test_graphics2_full_studio_entrypoint.py'
+      - 'tests/test_graphics2_studio_bridge.py'
+      - 'build/build_graphics2_host.py'
+      - 'pyproject.toml'
+      - '.github/workflows/g2-full-studio-beta.yml'
+  pull_request:
+    branches:
+      - g2/integration-beta
+    paths:
+      - 'src/srstudio/app/turbo_posters.py'
+      - 'src/srstudio/graphics2/full_studio_bridge.py'
+      - 'src/srstudio/graphics2/studio_bridge.py'
+      - 'tests/test_graphics2_full_studio_entrypoint.py'
+      - 'tests/test_graphics2_studio_bridge.py'
+      - 'build/build_graphics2_host.py'
+      - 'pyproject.toml'
+      - '.github/workflows/g2-full-studio-beta.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  full-studio-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install focused build dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2-build]" pyinstaller
+
+      - name: Record exact source SHA
+        shell: pwsh
+        run: |
+          $sha = git rev-parse HEAD
+          "SOURCE_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "SOURCE SHA: $sha"
+
+      - name: Focused integration tests
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_full_studio_entrypoint.py tests/test_graphics2_studio_bridge.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m compileall -q src/srstudio/app/turbo_posters.py src/srstudio/graphics2/full_studio_bridge.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Real PPTX import bridge smoke
+        shell: pwsh
+        run: |
+          $pptx = "src/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx"
+          if (!(Test-Path $pptx)) { throw "PPTX real de smoke não encontrado: $pptx" }
+          @'
+          from pathlib import Path
+          from srstudio.graphics2.qt_host import load_launch_context
+          from srstudio.graphics2.operations import GraphicsSession
+
+          source = Path(r"src/srstudio/assets/poster_templates/legacy/models/ATACADO.pptx").resolve()
+          context = load_launch_context(source)
+          document = context.document
+          assert document.pages, "PPTX real não produziu páginas no G2"
+          session = GraphicsSession(document)
+          before = document.name
+          document.name = before + " · E2E"
+          assert document.name.endswith(" · E2E"), "documento importado não ficou editável"
+          assert context.import_audit is not None, "PPTX não passou pelo GraphicsImportService/import bridge"
+          print(f"REAL_PPTX={source.name}")
+          print(f"PAGES={len(document.pages)}")
+          print(f"NODES={sum(len(p.nodes) for p in document.pages)}")
+          print("IMPORT_BRIDGE=PASS")
+          print("EDITABLE=PASS")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build full SR Studio shell
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "SR Studio 5.exe não foi gerado" }
+
+      - name: Build certified Graphics2 child host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $source = "dist/graphics2-host/SRGraphicsEngine2Host"
+          if (!(Test-Path "$source/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host não foi gerado" }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
+          Copy-Item "$source/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host não foi incorporado ao SR Studio" }
+
+      - name: Verify packaged host discovery and runtime integrity
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import json
+          from srstudio.graphics2.host_runtime import validate_runtime_host
+
+          root = Path(r"dist/SR Studio 5/Graphics2Host").resolve()
+          report = validate_runtime_host(root, full=True)
+          assert report.ok, report
+          assert report.executable.name == "SRGraphicsEngine2Host.exe"
+          manifest = json.loads((root / "graphics2-host-runtime.json").read_text(encoding="utf-8"))
+          print(f"RUNTIME_FILES={len(manifest.get('files') or [])}")
+          print(f"RUNTIME_OK={report.ok}")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hostExe = "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe"
+          $process = Start-Process -FilePath $hostExe -ArgumentList "--version" -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) { throw "Graphics2Host --version falhou com exit code $($process.ExitCode)" }
+
+      - name: Verify full-package layout
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Shell ausente" }
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "G2 ausente" }
+          $qtQuick = Get-ChildItem "dist/SR Studio 5/Graphics2Host" -Recurse -File | Where-Object { $_.Name -match 'Qt6Quick|QtQuick' } | Select-Object -First 1
+          if ($null -eq $qtQuick) { throw "Runtime Qt Quick ausente do host" }
+          $logo = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "SR_logo.png" | Select-Object -First 1
+          if ($null -eq $logo) { throw "Assets do SR Studio ausentes" }
+          $model = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "ATACADO.pptx" | Select-Object -First 1
+          if ($null -eq $model) { throw "Pipeline/modelos PPTX do SR Studio ausentes" }
+
+      - name: Create full user package and provenance
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $package = "release/SR-Studio-G2-Full-Beta-Windows-x64.zip"
+          Compress-Archive -Path "dist/SR Studio 5/*" -DestinationPath $package -Force
+          $hash = (Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $package).Length
+          $runtimeManifest = Get-Content "dist/SR Studio 5/Graphics2Host/graphics2-host-runtime.json" -Raw | ConvertFrom-Json
+          $runtimeFiles = @($runtimeManifest.files).Count
+          $provenance = [ordered]@{
+            schema = "srstudio/g2-full-studio-beta-1"
+            source_sha = $env:SOURCE_SHA
+            package = "SR-Studio-G2-Full-Beta-Windows-x64.zip"
+            package_sha256 = $hash
+            package_bytes = $size
+            shell_executable = "SR Studio 5.exe"
+            graphics2_executable = "Graphics2Host/SRGraphicsEngine2Host.exe"
+            graphics2_runtime_files = $runtimeFiles
+            import_pipeline = "PPTX/Canva -> GraphicsImportService -> UnifiedImportPipeline/Office Layout -> SR Scene 2 -> Editor G2"
+          }
+          $provenance | ConvertTo-Json -Depth 6 | Out-File "release/g2-full-studio-provenance.json" -Encoding utf8
+          Write-Host "PACKAGE=$package"
+          Write-Host "PACKAGE_SHA256=$hash"
+          Write-Host "PACKAGE_BYTES=$size"
+          Write-Host "RUNTIME_FILES=$runtimeFiles"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR-Studio-G2-Full-Beta-Windows-x64
+          path: |
+            release/SR-Studio-G2-Full-Beta-Windows-x64.zip
+            release/g2-full-studio-provenance.json
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Create launcher-compatible Beta bundle
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'g2/integrate-studio-shell'
+        shell: pwsh
+        run: |
+          $run = "${{ github.run_number }}"
+          $version = "5.0.0-hybrid.g2beta.$run"
+          $tag = "g2-beta-$run"
+          $bundleName = "SR_STUDIO_G2_BETA_${run}_PROFESSIONAL.zip"
+          $betaRoot = "release/channel-beta"
+          $filesRoot = Join-Path $betaRoot "files"
+          $studioRoot = Join-Path $filesRoot "SRStudio5"
+          New-Item -ItemType Directory -Force -Path $studioRoot | Out-Null
+          Copy-Item "dist/SR Studio 5/*" $studioRoot -Recurse -Force
+
+          $wrapper = @'
+          from pathlib import Path
+          import subprocess
+          import sys
+
+          root = Path(__file__).resolve().parent
+          exe = root / "SRStudio5" / "SR Studio 5.exe"
+          if not exe.is_file():
+              raise FileNotFoundError(f"SR Studio G2 executable not found: {exe}")
+          subprocess.Popen([str(exe)], cwd=str(exe.parent))
+          sys.exit(0)
+          '@
+          [IO.File]::WriteAllText((Join-Path $filesRoot "SR_Studio_Gerador.py"), $wrapper, (New-Object Text.UTF8Encoding($false)))
+
+          $bundle = Join-Path "release" $bundleName
+          Push-Location $betaRoot
+          try {
+            $destination = Join-Path (Resolve-Path "../").Path $bundleName
+            Compress-Archive -Path "files" -DestinationPath $destination -Force
+          } finally {
+            Pop-Location
+          }
+          $hash = (Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $bundle).Length
+          "BETA_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_TAG=$tag" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_BUNDLE_NAME=$bundleName" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_BUNDLE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_BUNDLE_SIZE=$size" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "BETA_VERSION=$version"
+          Write-Host "BETA_TAG=$tag"
+          Write-Host "BETA_BUNDLE=$bundleName"
+          Write-Host "BETA_SHA256=$hash"
+          Write-Host "BETA_SIZE=$size"
+
+      - name: Publish G2 Beta release
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'g2/integrate-studio-shell'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $bundle = Join-Path "release" $env:BETA_BUNDLE_NAME
+          $notes = @"
+          SR Studio G2 Beta ${{ github.run_number }}
+
+          Canal Beta de teste contínuo do novo Studio de Encartes G2 integrado ao SR Studio.
+
+          Source SHA: $env:SOURCE_SHA
+          Workflow run: ${{ github.run_id }}
+          Studio de Encartes G2: fluxo principal
+          Graphics2Host: incluído
+          Importação PPTX/Canva: incluída
+
+          BETA / TEST BUILD — não é Stable.
+          "@
+          gh release view $env:BETA_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:BETA_TAG $bundle --clobber
+            if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar asset Beta" }
+            gh release edit $env:BETA_TAG --title "SR Studio — G2 Beta ${{ github.run_number }}" --notes $notes --prerelease
+          } else {
+            gh release create $env:BETA_TAG $bundle --title "SR Studio — G2 Beta ${{ github.run_number }}" --notes $notes --prerelease --target $env:SOURCE_SHA
+          }
+          if ($LASTEXITCODE -ne 0) { throw "Falha ao publicar release Beta" }
+
+      - name: Promote G2 build to official beta manifest
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'g2/integrate-studio-shell'
+        shell: pwsh
+        run: |
+          $channelRoot = Join-Path $env:RUNNER_TEMP "srstudio-beta-main"
+          git fetch origin main
+          git worktree add --detach $channelRoot origin/main
+          try {
+            $manifestPath = Join-Path $channelRoot "beta/manifest.json"
+            $previous = ""
+            if (Test-Path $manifestPath) {
+              try {
+                $old = Get-Content -Raw $manifestPath | ConvertFrom-Json
+                $previous = [string]$old.version
+              } catch { }
+            }
+            $url = "https://github.com/${{ github.repository }}/releases/download/$env:BETA_TAG/$env:BETA_BUNDLE_NAME"
+            $manifest = [ordered]@{
+              format = "SRSTUDIO_HYBRID_BUNDLE_1"
+              product = "SR Studio"
+              channel = "beta"
+              version = $env:BETA_VERSION
+              product_version = "5.0.0"
+              release_label = "G2 Beta ${{ github.run_number }} — Studio de Encartes"
+              published_at = (Get-Date).ToUniversalTime().ToString("o")
+              min_launcher = "4.0.1-hybrid.base2.5"
+              min_launcher_version = "4.0.1-hybrid.base2.5"
+              bundle = [ordered]@{
+                url = $url
+                sha256 = $env:BETA_BUNDLE_SHA256
+                size = [int64]$env:BETA_BUNDLE_SIZE
+                member_prefix = "files/"
+              }
+              url = $url
+              bundle_url = $url
+              sha256 = $env:BETA_BUNDLE_SHA256
+              size = [int64]$env:BETA_BUNDLE_SIZE
+              member_prefix = "files/"
+              previous_version = $previous
+              entrypoint = "SR_Studio_Gerador.py"
+              graphics2_test = $true
+              graphics2_primary = $true
+              launcher_path_safe = $true
+              source_commit = $env:SOURCE_SHA
+              workflow_run = "${{ github.run_id }}"
+              notes = "Canal Beta contínuo — novo Studio de Encartes G2 integrado ao SR Studio."
+            }
+            $json = $manifest | ConvertTo-Json -Depth 8
+            [IO.File]::WriteAllText($manifestPath, $json + [Environment]::NewLine, (New-Object Text.UTF8Encoding($false)))
+
+            Push-Location $channelRoot
+            try {
+              git config user.name "github-actions[bot]"
+              git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+              git add beta/manifest.json
+              git diff --cached --quiet
+              if ($LASTEXITCODE -ne 0) {
+                git commit -m "chore(beta): promote Studio de Encartes G2 $env:BETA_VERSION"
+                if ($LASTEXITCODE -ne 0) { throw "Falha ao criar commit do canal Beta" }
+                git push origin HEAD:main
+                if ($LASTEXITCODE -ne 0) { throw "Falha ao atualizar main/beta/manifest.json" }
+              }
+            } finally {
+              Pop-Location
+            }
+          } finally {
+            git worktree remove $channelRoot --force 2>$null
+          }
+
+      - name: Verify published beta manifest
+        if: github.event_name == 'pull_request' && github.event.pull_request.head.ref == 'g2/integrate-studio-shell'
+        shell: pwsh
+        run: |
+          Start-Sleep -Seconds 5
+          $url = "https://raw.githubusercontent.com/${{ github.repository }}/main/beta/manifest.json?run=${{ github.run_id }}"
+          $beta = Invoke-RestMethod -Uri $url -Headers @{"Cache-Control"="no-cache"}
+          if ([string]$beta.channel -ne "beta") { throw "Canal publicado não é beta" }
+          if ([string]$beta.version -ne $env:BETA_VERSION) { throw "Manifest Beta não aponta para a versão recém-publicada" }
+          if ([string]$beta.source_commit -ne $env:SOURCE_SHA) { throw "Manifest Beta não aponta para o source SHA recém-publicado" }
+          if ([string]$beta.bundle.sha256 -ne $env:BETA_BUNDLE_SHA256) { throw "SHA do bundle publicado diverge" }
+          Write-Host "BETA CHANNEL PROMOTED: $($beta.version)"
+          Write-Host "BUNDLE: $($beta.bundle.url)"

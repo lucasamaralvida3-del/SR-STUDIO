@@ -22,6 +22,9 @@ from .pptx_structure import PptxMappingAudit, PptxStructureReport, inspect_pptx_
 from .scene_fingerprint import store_scene_fingerprint
 from .semantic_blocks import build_semantic_blocks
 from .semantic_recovery import recover_canva_semantic_cards
+from .smart_slot_detection import consolidate_smart_slot_false_positives
+from .smart_slot_geometry import refresh_smart_slot_geometry
+from .smart_slot_import_reset import reset_new_pptx_import_product_content
 
 _SLOT_ROLE_MAP: dict[str, BindingRole] = {
     "name": BindingRole.NAME,
@@ -95,9 +98,22 @@ class GraphicsImportService:
         # que slots criados na segunda passagem também recebam binding IMAGE.
         recover_canva_semantic_cards(document)
         if structure is not None:
+            # Final semantic arbitration: recovered PriceBlocks/backplates
+            # may be useful intermediate candidates, but artwork alone is
+            # never sufficient product identity. This pass removes/merges
+            # false Smart Slots without touching any visual node.
+            consolidate_smart_slot_false_positives(document)
+            refresh_smart_slot_geometry(document)
             mapping = structure.audit_document(document)
             _apply_exact_fill_rect_mapping(mapping, document)
             document.metadata["pptx_mapping_audit"] = mapping.to_dict()
+
+            # NOVA IMPORTAÇÃO PPTX/CANVA começa semanticamente vazia. Executar
+            # somente aqui mantém a estrutura já detectada e garante que
+            # load_package(.srscene/.zip), SAVE/REOPEN e "Projeto atual" nunca
+            # passem pelo reset.
+            reset_new_pptx_import_product_content(document, project, source=source)
+
         fingerprint = store_scene_fingerprint(document)
         document.metadata["import_fingerprint_sha256"] = fingerprint.sha256
         audit = audit_import(document)
@@ -332,6 +348,7 @@ def _element_to_node(document: GraphicsDocument, element: dict[str, Any], index:
         "group_depth": int(element.get("group_depth", 0) or 0),
         "source_font_name": str(element.get("source_font_name") or ""),
         "shape_geometry": str(element.get("shape_geometry") or ""),
+        "semantic_synthetic_image_slot": bool(element.get("synthetic_canva_image_slot", False)),
     }
     if source:
         metadata["bound_image_source"] = source
@@ -457,11 +474,15 @@ class CanvaBindingService:
         with session.transaction("Preencher produto Canva"):
             slot.product_id = str(product.get("id") or product.get("product_id") or "")
             slot.metadata["product_snapshot"] = dict(product)
+            slot.metadata["product_binding_state"] = "filled"
+            slot.metadata["product_content_empty"] = False
+            slot.metadata.pop("product_reset_reason", None)
             for role, node_ids in bindings.items():
                 for node_id in node_ids:
                     node = session.page.node(node_id)
                     if node is None:
                         continue
+                    node.metadata["product_binding_empty"] = False
                     if role in {"image", BindingRole.IMAGE.value}:
                         source = str(product.get("image_path") or product.get("image") or "")
                         if source:

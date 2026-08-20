@@ -6,8 +6,9 @@ import QtQuick.Window
 
 Rectangle {
     id: panel
+    objectName: "smartSlotProjectActionsPanel"
     width: Math.min(1230, parent ? parent.width - 340 : 1230)
-    height: 42
+    height: 122
     anchors.left: parent ? parent.left : undefined
     anchors.top: parent ? parent.top : undefined
     anchors.leftMargin: 324
@@ -41,6 +42,10 @@ Rectangle {
         return scene.pages ? scene.pages.length : 0
     }
 
+    function productCount() {
+        return scene.editor && scene.editor.products ? scene.editor.products.length : 0
+    }
+
     function activePageIndex() {
         if (!scene.pages)
             return -1
@@ -48,6 +53,30 @@ Rectangle {
             if (String(scene.pages[i].id) === String(scene.active_page_id || ""))
                 return i
         return scene.pages.length ? 0 : -1
+    }
+
+    function activePage() {
+        var index = activePageIndex()
+        return index >= 0 && scene.pages && index < scene.pages.length ? scene.pages[index] : null
+    }
+
+    function slotCount() {
+        var page = activePage()
+        return page && page.slots ? Object.keys(page.slots).length : 0
+    }
+
+    function editorWindow() {
+        return panel.Window.window
+    }
+
+    function smartSlotEditActive() {
+        var root = editorWindow()
+        return !!(root && root.smartSlotEditMode)
+    }
+
+    function selectedSlotId() {
+        var root = editorWindow()
+        return root ? String(root.selectedSlotId || "") : ""
     }
 
     function itemSlotPresets() {
@@ -126,79 +155,270 @@ Rectangle {
 
     Component.onCompleted: refreshScene()
 
-    Shortcut { sequence: StandardKey.Save; onActivated: saveDialog.open() }
-    Shortcut { sequence: StandardKey.Copy; onActivated: sceneBridge.dispatch('{"name":"copy"}') }
-    Shortcut { sequence: StandardKey.Paste; onActivated: sceneBridge.dispatch('{"name":"paste"}') }
+    Shortcut {
+        sequence: StandardKey.Save
+        onActivated: saveDialog.open()
+    }
+    Shortcut {
+        sequence: StandardKey.Copy
+        onActivated: sceneBridge.dispatch('{"name":"copy"}')
+    }
+    Shortcut {
+        sequence: StandardKey.Paste
+        onActivated: sceneBridge.dispatch('{"name":"paste"}')
+    }
 
-    RowLayout {
+    ColumnLayout {
         anchors.fill: parent
         anchors.margins: 5
-        spacing: 5
+        spacing: 2
 
-        Label { text: "Página"; color: "#475569"; font.bold: true; font.pixelSize: 10 }
-        ComboBox {
-            id: pageCombo
-            Layout.preferredWidth: 118
-            enabled: !sceneBridge.busy && panel.pageCount() > 0
-            model: panel.scene.pages || []
-            textRole: "name"
-            currentIndex: panel.activePageIndex()
-            ToolTip.text: "Navegar entre páginas do encarte"
-            ToolTip.visible: hovered
-            onActivated: {
-                if (currentIndex >= 0 && panel.scene.pages && currentIndex < panel.scene.pages.length)
-                    sceneBridge.dispatch(JSON.stringify({"name": "select_page", "page_id": panel.scene.pages[currentIndex].id}))
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 32
+            spacing: 5
+
+            Label {
+                text: "Página"
+                color: "#475569"
+                font.bold: true
+                font.pixelSize: 10
+            }
+            ComboBox {
+                id: pageCombo
+                Layout.preferredWidth: 128
+                enabled: !sceneBridge.busy && panel.pageCount() > 0
+                model: panel.scene.pages || []
+                textRole: "name"
+                currentIndex: panel.activePageIndex()
+                ToolTip.text: "Navegar entre páginas do encarte"
+                ToolTip.visible: hovered
+                onActivated: {
+                    if (currentIndex >= 0 && panel.scene.pages && currentIndex < panel.scene.pages.length)
+                        sceneBridge.dispatch(JSON.stringify({"name": "select_page", "page_id": panel.scene.pages[currentIndex].id}))
+                }
+            }
+            ToolButton {
+                text: "+"
+                enabled: !sceneBridge.busy
+                ToolTip.text: "Adicionar página"
+                ToolTip.visible: hovered
+                onClicked: sceneBridge.dispatch('{"name":"add_page"}')
+            }
+            ToolButton {
+                text: "⧉"
+                enabled: !sceneBridge.busy && panel.pageCount() > 0
+                ToolTip.text: "Duplicar página com IDs internos seguros"
+                ToolTip.visible: hovered
+                onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}')
+            }
+            ToolButton {
+                text: "←"
+                enabled: !sceneBridge.busy && panel.activePageIndex() > 0
+                ToolTip.text: "Mover página para a esquerda"
+                ToolTip.visible: hovered
+                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"reorder_page", "page_id": panel.scene.active_page_id || "", "mode":"previous"}))
+            }
+            ToolButton {
+                text: "→"
+                enabled: !sceneBridge.busy && panel.activePageIndex() >= 0 && panel.activePageIndex() < panel.pageCount() - 1
+                ToolTip.text: "Mover página para a direita"
+                ToolTip.visible: hovered
+                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"reorder_page", "page_id": panel.scene.active_page_id || "", "mode":"next"}))
+            }
+            ToolButton {
+                text: "×"
+                enabled: !sceneBridge.busy && panel.pageCount() > 1
+                ToolTip.text: panel.pageCount() > 1 ? "Excluir página atual · desfazer disponível" : "O projeto precisa manter uma página"
+                ToolTip.visible: hovered
+                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"delete_page", "page_id": panel.scene.active_page_id || ""}))
+            }
+            ToolSeparator {}
+            ToolButton {
+                id: addItemSlotButton
+                text: "+ SLOT DE ITEM"
+                enabled: !sceneBridge.busy
+                font.bold: true
+                ToolTip.text: "Adicionar componente de produto manual · não depende de detecção automática"
+                ToolTip.visible: hovered
+                onClicked: presetMenu.open()
+            }
+            ToolButton {
+                text: "Editar Slot"
+                enabled: panel.manualSlots().length > 0 && !sceneBridge.busy
+                onClicked: itemSlotPopup.open()
+            }
+            ToolSeparator {}
+            ToolButton {
+                text: "Copiar"
+                enabled: !sceneBridge.busy
+                ToolTip.text: "Copiar seleção · preserva ProductCard/PriceBlock/SmartSlot · Ctrl+C"
+                ToolTip.visible: hovered
+                onClicked: sceneBridge.dispatch('{"name":"copy"}')
+            }
+            ToolButton {
+                text: "Colar"
+                enabled: !sceneBridge.busy
+                ToolTip.text: "Colar preservando ProductCard/PriceBlock/SmartSlot · Ctrl+V"
+                ToolTip.visible: hovered
+                onClicked: sceneBridge.dispatch('{"name":"paste"}')
+            }
+            ToolSeparator {}
+            ToolButton {
+                text: "💾 Salvar"
+                enabled: !sceneBridge.busy
+                ToolTip.text: "Salvar projeto portátil .srscene · Ctrl+S"
+                ToolTip.visible: hovered
+                onClicked: saveDialog.open()
+            }
+            ToolButton {
+                text: "↺ Recuperar"
+                enabled: !sceneBridge.busy
+                ToolTip.text: "Restaurar o ponto de autosave mais recente deste projeto"
+                ToolTip.visible: hovered
+                onClicked: sceneBridge.recoverLatest()
+            }
+            ToolButton {
+                text: "PDF"
+                enabled: !sceneBridge.busy
+                ToolTip.text: "Exportar todas as páginas em PDF de produção"
+                ToolTip.visible: hovered
+                onClicked: pdfDialog.open()
+            }
+            ToolButton {
+                text: "PNG"
+                enabled: !sceneBridge.busy
+                ToolTip.text: "Exportar a página atual em PNG de alta resolução"
+                ToolTip.visible: hovered
+                onClicked: pngDialog.open()
+            }
+            Item { Layout.fillWidth: true }
+            BusyIndicator {
+                running: sceneBridge.busy
+                visible: running
+                implicitWidth: 24
+                implicitHeight: 24
             }
         }
-        ToolButton { text: "+"; enabled: !sceneBridge.busy; ToolTip.text: "Adicionar página"; ToolTip.visible: hovered; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
-        ToolButton { text: "⧉"; enabled: !sceneBridge.busy && panel.pageCount() > 0; ToolTip.text: "Duplicar página"; ToolTip.visible: hovered; onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}') }
-        ToolButton { text: "←"; enabled: !sceneBridge.busy && panel.activePageIndex() > 0; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"reorder_page", "page_id": panel.scene.active_page_id || "", "mode":"previous"})) }
-        ToolButton { text: "→"; enabled: !sceneBridge.busy && panel.activePageIndex() >= 0 && panel.activePageIndex() < panel.pageCount() - 1; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"reorder_page", "page_id": panel.scene.active_page_id || "", "mode":"next"})) }
-        ToolButton { text: "×"; enabled: !sceneBridge.busy && panel.pageCount() > 1; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"delete_page", "page_id": panel.scene.active_page_id || ""})) }
 
-        ToolSeparator {}
-        ToolButton {
-            id: addItemSlotButton
-            text: "+ SLOT DE ITEM"
-            enabled: !sceneBridge.busy
-            font.bold: true
-            ToolTip.text: "Adicionar componente de produto manual · não depende de detecção automática"
-            ToolTip.visible: hovered
-            onClicked: presetMenu.open()
-        }
-        ToolButton {
-            text: "Editar Slot"
-            enabled: panel.manualSlots().length > 0 && !sceneBridge.busy
-            onClicked: itemSlotPopup.open()
+        Rectangle {
+            objectName: "productionImportStrip"
+            Layout.fillWidth: true
+            Layout.preferredHeight: 34
+            radius: 6
+            color: "#F0FDF4"
+            border.width: 1
+            border.color: "#86EFAC"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                spacing: 7
+
+                Label {
+                    text: "PRODUÇÃO"
+                    color: "#166534"
+                    font.bold: true
+                    font.pixelSize: 9
+                }
+                ToolButton {
+                    objectName: "importTemplateButton"
+                    text: "IMPORTAR CANVA / PPTX"
+                    enabled: !sceneBridge.busy
+                    font.bold: true
+                    ToolTip.text: "Carregar ou trocar o layout do encarte sem perder a planilha de produtos já importada"
+                    ToolTip.visible: hovered
+                    onClicked: templateDialog.open()
+                }
+                ToolButton {
+                    objectName: "importSpreadsheetButton"
+                    text: "IMPORTAR PLANILHA"
+                    enabled: !sceneBridge.busy
+                    font.bold: true
+                    ToolTip.text: "Carregar produtos XLSX/XLSM neste mesmo projeto sem substituir o Canva/PPTX"
+                    ToolTip.visible: hovered
+                    onClicked: spreadsheetDialog.open()
+                }
+                Item { Layout.fillWidth: true }
+                Label {
+                    text: panel.productCount() + " produto(s) · " + panel.slotCount() + " slot(s)"
+                    color: "#166534"
+                    font.pixelSize: 9
+                    font.bold: panel.productCount() > 0
+                }
+            }
         }
 
-        ToolSeparator {}
-        ToolButton {
-            text: "Copiar"
-            enabled: !sceneBridge.busy
-            ToolTip.text: "Copiar seleção · preserva ProductCard/PriceBlock/SmartSlot · Ctrl+C"
-            ToolTip.visible: hovered
-            onClicked: sceneBridge.dispatch('{"name":"copy"}')
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 36
+            radius: 6
+            color: panel.smartSlotEditActive() ? "#E8F1FF" : "#F8FAFC"
+            border.width: 1
+            border.color: panel.smartSlotEditActive() ? "#0F5BD8" : "#D9E2EF"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 8
+                anchors.rightMargin: 8
+                spacing: 6
+
+                Label {
+                    text: "SMART SLOTS · " + panel.slotCount()
+                    color: "#0F5BD8"
+                    font.bold: true
+                    font.pixelSize: 9
+                }
+                ToolButton {
+                    id: smartSlotAdjustButton
+                    objectName: "smartSlotAdjustButton"
+                    text: "AJUSTAR SMART SLOTS"
+                    checkable: true
+                    checked: panel.smartSlotEditActive()
+                    enabled: !sceneBridge.busy
+                    font.bold: true
+                    ToolTip.text: "Mostrar, selecionar, mover e redimensionar Smart Slots com 8 handles"
+                    ToolTip.visible: hovered
+                    onClicked: {
+                        var root = panel.editorWindow()
+                        if (!root)
+                            return
+                        root.smartSlotEditMode = checked
+                        if (checked)
+                            root.smartSlotInspectionMode = true
+                    }
+                }
+                ToolButton {
+                    objectName: "smartSlotRestoreButton"
+                    text: "Restaurar Auto"
+                    visible: panel.smartSlotEditActive() && panel.selectedSlotId() !== ""
+                    enabled: visible && !sceneBridge.busy
+                    onClicked: sceneBridge.dispatch(JSON.stringify({"name":"restore_smart_slot_auto","slot_id":panel.selectedSlotId()}))
+                }
+                ToolButton {
+                    objectName: "smartSlotNonProductButton"
+                    text: "Não-produto"
+                    visible: panel.smartSlotEditActive() && panel.selectedSlotId() !== ""
+                    enabled: visible && !sceneBridge.busy
+                    onClicked: sceneBridge.dispatch(JSON.stringify({"name":"mark_smart_slot_non_product","slot_id":panel.selectedSlotId()}))
+                }
+                ToolButton {
+                    objectName: "smartSlotDeleteButton"
+                    text: "Excluir Slot"
+                    visible: panel.smartSlotEditActive() && panel.selectedSlotId() !== ""
+                    enabled: visible && !sceneBridge.busy
+                    onClicked: sceneBridge.dispatch(JSON.stringify({"name":"delete_smart_slot","slot_id":panel.selectedSlotId()}))
+                }
+                Item { Layout.fillWidth: true }
+                Label {
+                    text: panel.smartSlotEditActive() ? "MODO ATIVO" : "Clique para ajustar áreas sem alterar a arte"
+                    color: panel.smartSlotEditActive() ? "#0F5BD8" : "#64748B"
+                    font.bold: panel.smartSlotEditActive()
+                    font.pixelSize: 9
+                }
+            }
         }
-        ToolButton {
-            text: "Colar"
-            enabled: !sceneBridge.busy
-            ToolTip.text: "Colar preservando ProductCard/PriceBlock/SmartSlot · Ctrl+V"
-            ToolTip.visible: hovered
-            onClicked: sceneBridge.dispatch('{"name":"paste"}')
-        }
-        ToolButton { text: "💾 Salvar"; enabled: !sceneBridge.busy; onClicked: saveDialog.open() }
-        ToolButton {
-            text: "↺"
-            enabled: !sceneBridge.busy
-            ToolTip.text: "Restaurar o ponto de autosave mais recente deste projeto"
-            ToolTip.visible: hovered
-            onClicked: sceneBridge.recoverLatest()
-        }
-        ToolButton { text: "PDF"; enabled: !sceneBridge.busy; onClicked: pdfDialog.open() }
-        ToolButton { text: "PNG"; enabled: !sceneBridge.busy; onClicked: pngDialog.open() }
-        Item { Layout.fillWidth: true }
-        BusyIndicator { running: sceneBridge.busy; visible: running; implicitWidth: 24; implicitHeight: 24 }
     }
 
     Menu {
@@ -357,12 +577,29 @@ Rectangle {
     }
 
     FileDialog {
+        id: templateDialog
+        title: "Importar Canva / PowerPoint neste projeto"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Canva / PowerPoint (*.pptx)"]
+        onAccepted: sceneBridge.dispatch(JSON.stringify({"name":"import_template_source", "path":selectedFile.toString()}))
+    }
+
+    FileDialog {
+        id: spreadsheetDialog
+        title: "Importar planilha de produtos neste projeto"
+        fileMode: FileDialog.OpenFile
+        nameFilters: ["Planilha de produtos (*.xlsx *.xlsm)"]
+        onAccepted: sceneBridge.dispatch(JSON.stringify({"name":"import_product_catalog", "path":selectedFile.toString()}))
+    }
+
+    FileDialog {
         id: saveDialog
         title: "Salvar projeto SR Scene"
         fileMode: FileDialog.SaveFile
         nameFilters: ["Projeto SR Scene (*.srscene)", "Todos os arquivos (*)"]
         onAccepted: sceneBridge.saveSceneAs(selectedFile.toString())
     }
+
     FileDialog {
         id: pdfDialog
         title: "Exportar PDF de produção"
@@ -370,6 +607,7 @@ Rectangle {
         nameFilters: ["Documento PDF (*.pdf)"]
         onAccepted: sceneBridge.exportPdf(selectedFile.toString())
     }
+
     FileDialog {
         id: pngDialog
         title: "Exportar página atual em PNG"

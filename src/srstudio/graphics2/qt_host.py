@@ -450,7 +450,10 @@ def launch_qt_quick_editor(
 
         @Slot(str, result=str)
         def dispatch(self, payload: str) -> str:
-            result_raw = router.dispatch_json(payload)
+            # sceneChanged publishes the canonical scene once after commit. Avoid
+            # embedding a second full-scene serialization in the synchronous QML
+            # command response, which is latency-sensitive on mouse release.
+            result_raw = router.dispatch_json(payload, include_scene_payload=False)
             try:
                 result_data = json.loads(result_raw)
                 self._status = str(result_data.get("message") or "")
