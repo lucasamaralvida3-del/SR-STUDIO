@@ -243,6 +243,10 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
     scene_center = resize_area.mapToScene(local_center)
     global_center = resize_area.mapToGlobal(local_center)
     center = root.mapFromGlobal(QPoint(round(global_center.x()), round(global_center.y())))
+    parent_for_map = resize_area.parentItem()
+    assert parent_for_map is not None
+    to_parent = resize_area.mapToItem(parent_for_map, local_center)
+    from_parent = resize_area.mapFromItem(parent_for_map, to_parent)
 
     parent_chain: list[dict] = []
     clipped_exclusions: list[dict] = []
@@ -285,8 +289,6 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
             break
         current = child
 
-    to_parent = resize_area.mapToItem(resize_area.parentItem(), local_center)
-    from_parent = resize_area.mapFromItem(resize_area.parentItem(), to_parent)
     focused_snapshot = {
         "target": {
             "class": cls(resize_area),
