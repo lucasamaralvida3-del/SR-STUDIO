@@ -78,7 +78,7 @@ def test_qml_smart_slot_hot_path_is_preview_only() -> None:
     assert "previewIntervalMs: 16" in block
     assert block.count("onPositionChanged:") >= 2
     assert "drag.target:" not in block
-    assert block.count('"name":"adjust_smart_slot"') == 1
+    assert 'isManualItemSlot ? "commit_item_slot_bounds" : "adjust_smart_slot"' in block
     assert "function commitPreview" in block
     assert "function queuePreview" in block
     assert "sceneBridge.dispatch" not in block[: block.index("function commitPreview")]
