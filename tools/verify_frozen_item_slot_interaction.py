@@ -32,8 +32,8 @@ def main() -> int:
     output_dir.mkdir(parents=True, exist_ok=True)
     assert qml_path.is_file(), qml_path
 
-    from PySide6.QtCore import QObject, Property, QPoint, QPointF, Qt, Signal, Slot, QUrl
-    from PySide6.QtGui import QGuiApplication
+    from PySide6.QtCore import QCoreApplication, QEvent, QObject, Property, QPoint, QPointF, Qt, Signal, Slot, QUrl
+    from PySide6.QtGui import QGuiApplication, QMouseEvent
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuick import QQuickItem
     from PySide6.QtTest import QTest
@@ -133,6 +133,21 @@ def main() -> int:
             value = value.toVariant()
         return dict(value or {})
 
+    def mouse_move_with_left_button(pos: QPoint) -> None:
+        # QTest.mouseMove(QWindow, ...) carries no buttons argument. Pointer
+        # Handlers need the real held-button state on every move event.
+        local = QPointF(pos)
+        global_pos = QPointF(root.mapToGlobal(pos))
+        event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            local,
+            global_pos,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        QCoreApplication.sendEvent(root, event)
+
     def resize_state(label: str, before_events: int, before_commits: int) -> dict:
         state = {
             "label": label,
@@ -198,7 +213,7 @@ def main() -> int:
     while monotonic() < resize_deadline:
         resize_index += 1
         resize_final = QPoint(resize_start.x() + min(160, resize_index), resize_start.y() + min(120, round(resize_index * 0.7)))
-        QTest.mouseMove(root, resize_final, 0)
+        mouse_move_with_left_button(resize_final)
         app.processEvents()
         if resize_index == 1:
             first_state = resize_state("after_first_move", before_resize_events, before_resize_commits)
