@@ -107,9 +107,7 @@ def main() -> int:
     root = roots[0]
     root.setProperty("smartSlotSnap", False)
     root.setProperty("selectedSlotId", slot_id)
-    app.processEvents()
-    QTest.qWait(180)
-    app.processEvents()
+    app.processEvents(); QTest.qWait(180); app.processEvents()
     content_item = root.contentItem()
     assert content_item is not None
 
@@ -125,64 +123,52 @@ def main() -> int:
         value = qvariant(value)
         return dict(value) if isinstance(value, dict) else {}
 
-    def item_window_point(item: QQuickItem, x: float, y: float) -> QPoint:
-        # QTest.mousePress(QWindow, pos) expects window-local coordinates.
-        # mapToScene() is relative to the content scene and may differ by the
-        # ApplicationWindow header offset, which is enough to miss an 11px handle.
+    def window_point(item: QQuickItem, x: float, y: float) -> QPoint:
         global_point = item.mapToGlobal(QPointF(x, y))
         return root.mapFromGlobal(QPoint(round(global_point.x()), round(global_point.y())))
 
+    def center(item: QQuickItem) -> QPoint:
+        return window_point(item, max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)
+
     def diagnostic(item: QQuickItem) -> dict:
         scene = item.mapToScene(QPointF(0, 0))
-        window = item_window_point(item, 0, 0)
+        win = window_point(item, 0, 0)
         return {
             "name": str(item.objectName() or ""),
             "visible": bool(item.isVisible()),
             "enabled": bool(item.isEnabled()),
             "scene_x": float(scene.x()),
             "scene_y": float(scene.y()),
-            "window_x": int(window.x()),
-            "window_y": int(window.y()),
+            "window_x": int(win.x()),
+            "window_y": int(win.y()),
             "width": float(item.width()),
             "height": float(item.height()),
             "z": float(item.z()),
         }
 
-    def quick_item(name: str, *, visible: bool = True) -> QQuickItem:
+    def quick_item(name: str, *, require_visible: bool = True) -> QQuickItem:
         matches = [item for item in iter_visual(content_item) if str(item.objectName() or "") == name]
         usable = [item for item in matches if item.isEnabled() and item.width() > 0 and item.height() > 0]
         active = [item for item in usable if item.isVisible()]
-        selected = active if visible else usable
+        selected = active if require_visible else usable
         if selected:
             return selected[-1]
         raise AssertionError({"missing": name, "candidates": [diagnostic(item) for item in matches]})
 
-    def center(item: QQuickItem) -> QPoint:
-        return item_window_point(item, max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)
-
-    def safe_handle_point(item: QQuickItem) -> QPoint:
-        # The SE handle is visually centered on the slot edge. Exercise a point
-        # safely inside both handle and overlay, converted to QWindow coordinates.
-        return item_window_point(
-            item,
-            min(1.5, max(0.5, item.width() - 0.5)),
-            min(1.5, max(0.5, item.height() - 0.5)),
-        )
-
     def visual_rect(item: QQuickItem) -> dict[str, float]:
-        p = item.mapToScene(QPointF(0, 0))
-        return {"x": float(p.x()), "y": float(p.y()), "width": float(item.width()), "height": float(item.height())}
+        point = item.mapToScene(QPointF(0, 0))
+        return {"x": float(point.x()), "y": float(point.y()), "width": float(item.width()), "height": float(item.height())}
 
     def node_item(node_id: str) -> QQuickItem:
-        matches = []
+        candidates = []
         for item in iter_visual(content_item):
             data = qml_map(item.property("modelData"))
             display = qml_map(item.property("displayTransform"))
             if str(data.get("id") or "") == str(node_id) and all(key in display for key in ("x", "y", "width", "height")):
-                matches.append(item)
-        active = [item for item in matches if item.isVisible() and item.width() > 0 and item.height() > 0]
-        if active or matches:
-            return (active or matches)[-1]
+                candidates.append(item)
+        active = [item for item in candidates if item.isVisible() and item.width() > 0 and item.height() > 0]
+        if active or candidates:
+            return (active or candidates)[-1]
         raise AssertionError(f"node delegate not found: {node_id}")
 
     def role_ids(snapshot: dict) -> dict[str, list[str]]:
@@ -228,7 +214,7 @@ def main() -> int:
     initial = item_slot_snapshot(session.page, slot)
     ids = role_ids(initial)
     root_id = str(initial["root_node_id"])
-    semantics_before = {
+    semantic_contract = {
         "node_by_role": dict(slot.node_by_role),
         "price_block": dict(initial["price_block"]),
         "preset_id": initial["preset_id"],
@@ -239,25 +225,27 @@ def main() -> int:
     frame_before_move = visual_rect(quick_item(f"smartSlotVisualFrame-{slot_id}"))
     backend_before_move = item_slot_snapshot(session.page, slot)
     move_area = quick_item(f"smartSlotMoveArea-{slot_id}")
-    start = center(move_area)
-    dispatch_before = bridge.dispatch_count
-    QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start, 0)
+    move_start = center(move_area)
+    dispatch_before_move = bridge.dispatch_count
+    QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, move_start, 0)
     app.processEvents()
     assert bool(root.property("itemSlotPreviewActive"))
     assert str(root.property("itemSlotInteractionKind") or "") == "move"
 
     deadline = monotonic() + 3.05
     index = 0
-    move_final = start
+    move_final = move_start
     while monotonic() < deadline:
         index += 1
-        move_final = QPoint(start.x() + min(180, index), start.y() + min(95, index // 2))
+        move_final = QPoint(move_start.x() + min(180, index), move_start.y() + min(95, index // 2))
         move_with_left(move_final)
         app.processEvents()
+        if index in (1, 20, 80):
+            assert bool(root.property("itemSlotPreviewActive")), f"MOVE preview canceled at event {index}"
         QTest.qWait(16)
 
     assert bool(root.property("itemSlotPreviewActive")), "MOVE preview canceled before release"
-    assert bridge.dispatch_count == dispatch_before, bridge.commands
+    assert bridge.dispatch_count == dispatch_before_move, bridge.commands
     assert item_slot_snapshot(session.page, slot) == backend_before_move, "backend changed during MOVE preview"
     preview_move = qml_map(root.property("itemSlotPreviewBounds"))
     roles_move_preview = capture_roles(ids)
@@ -268,8 +256,8 @@ def main() -> int:
     assert rect_changed(frame_before_move, frame_move_preview)
 
     QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, move_final, 0)
-    app.processEvents(); QTest.qWait(80); app.processEvents()
-    assert bridge.dispatch_count == dispatch_before + 1
+    app.processEvents(); QTest.qWait(100); app.processEvents()
+    assert bridge.dispatch_count == dispatch_before_move + 1
     assert bridge.commands[-1] == "commit_item_slot_bounds"
     assert not bool(root.property("itemSlotPreviewActive"))
     after_move = item_slot_snapshot(session.page, slot)
@@ -278,17 +266,17 @@ def main() -> int:
     assert_roles_close(roles_move_preview, capture_roles(ids))
 
     root.setProperty("selectedSlotId", slot_id)
-    app.processEvents(); QTest.qWait(100); app.processEvents()
+    app.processEvents(); QTest.qWait(120); app.processEvents()
     resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
-    resize_start = safe_handle_point(resize_area)
+    resize_start = center(resize_area)
     backend_before_resize = item_slot_snapshot(session.page, slot)
     roles_before_resize = capture_roles(ids)
     root_before_resize = visual_rect(node_item(root_id))
-    interaction_overlay_before = visual_rect(quick_item(f"smartSlotOverlay-{slot_id}"))
-    interaction_handle_before = visual_rect(quick_item(f"smartSlotHandle-se-{slot_id}"))
+    overlay_before_resize = visual_rect(quick_item(f"smartSlotOverlay-{slot_id}"))
+    physical_handle_before = visual_rect(quick_item(f"smartSlotHandle-se-{slot_id}"))
     visual_frame_before = visual_rect(quick_item(f"smartSlotVisualFrame-{slot_id}"))
-    visual_handle_before = visual_rect(quick_item(f"smartSlotVisualHandle-se-{slot_id}", visible=False))
-    resize_dispatch_before = bridge.dispatch_count
+    visual_handle_before = visual_rect(quick_item(f"smartSlotVisualHandle-se-{slot_id}", require_visible=False))
+    dispatch_before_resize = bridge.dispatch_count
     resize_events_before = int(root.property("itemSlotPreviewEvents") or 0)
 
     print("ITEMSLOT_RESIZE_TARGET=" + json.dumps({"target": diagnostic(resize_area), "window_point": {"x": resize_start.x(), "y": resize_start.y()}}, sort_keys=True), flush=True)
@@ -315,25 +303,25 @@ def main() -> int:
     assert bool(root.property("itemSlotPreviewActive")), "RESIZE preview canceled before release"
     assert bool(resize_area.property("pressed")), "resize MouseArea lost grab before release"
     assert int(root.property("itemSlotPreviewEvents") or 0) > resize_events_before
-    assert bridge.dispatch_count == resize_dispatch_before, bridge.commands
+    assert bridge.dispatch_count == dispatch_before_resize, bridge.commands
     assert item_slot_snapshot(session.page, slot) == backend_before_resize, "backend changed during RESIZE preview"
     preview_resize = qml_map(root.property("itemSlotPreviewBounds"))
     roles_resize_preview = capture_roles(ids)
     root_resize_preview = visual_rect(node_item(root_id))
-    interaction_overlay_during = visual_rect(quick_item(f"smartSlotOverlay-{slot_id}"))
-    interaction_handle_during = visual_rect(quick_item(f"smartSlotHandle-se-{slot_id}"))
+    overlay_during_resize = visual_rect(quick_item(f"smartSlotOverlay-{slot_id}"))
+    physical_handle_during = visual_rect(quick_item(f"smartSlotHandle-se-{slot_id}"))
     visual_frame_during = visual_rect(quick_item(f"smartSlotVisualFrame-{slot_id}"))
     visual_handle_during = visual_rect(quick_item(f"smartSlotVisualHandle-se-{slot_id}"))
     assert_roles_changed(roles_before_resize, roles_resize_preview)
     assert rect_changed(root_before_resize, root_resize_preview)
-    assert rect_close(interaction_overlay_before, interaction_overlay_during, 0.01), "interaction overlay moved during RESIZE"
-    assert rect_close(interaction_handle_before, interaction_handle_during, 0.01), "physical handle moved during RESIZE"
+    assert rect_close(overlay_before_resize, overlay_during_resize, 0.01), "interaction overlay moved during RESIZE"
+    assert rect_close(physical_handle_before, physical_handle_during, 0.01), "physical handle moved during RESIZE"
     assert rect_changed(visual_frame_before, visual_frame_during), "visual frame did not follow RESIZE"
     assert rect_changed(visual_handle_before, visual_handle_during), "visual handle did not follow RESIZE"
 
     QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_final, 0)
-    app.processEvents(); QTest.qWait(100); app.processEvents()
-    assert bridge.dispatch_count == resize_dispatch_before + 1
+    app.processEvents(); QTest.qWait(120); app.processEvents()
+    assert bridge.dispatch_count == dispatch_before_resize + 1
     assert bridge.commands[-1] == "commit_item_slot_bounds"
     assert not bool(root.property("itemSlotPreviewActive"))
     final_snapshot = item_slot_snapshot(session.page, slot)
@@ -341,31 +329,34 @@ def main() -> int:
     assert final_snapshot["bounds"]["height"] == pytest.approx(float(preview_resize["height"]), abs=1.0)
     assert_roles_close(roles_resize_preview, capture_roles(ids))
 
-    # Shift uses the exact same official MouseArea path and keeps ratio.
     root.setProperty("selectedSlotId", slot_id)
     app.processEvents(); QTest.qWait(100); app.processEvents()
     shift_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
-    shift_start = safe_handle_point(shift_area)
+    shift_start = center(shift_area)
     before_shift = item_slot_snapshot(session.page, slot)
     ratio_before = before_shift["bounds"]["width"] / before_shift["bounds"]["height"]
     shift_dispatch_before = bridge.dispatch_count
     QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ShiftModifier, shift_start, 0)
     app.processEvents()
     assert bool(root.property("itemSlotPreviewActive"))
+    assert bool(shift_area.property("pressed"))
     shift_final = QPoint(shift_start.x() + 65, shift_start.y() + 18)
     for step in range(1, 31):
-        pos = QPoint(shift_start.x() + round((shift_final.x() - shift_start.x()) * step / 30), shift_start.y() + round((shift_final.y() - shift_start.y()) * step / 30))
-        move_with_left(pos, Qt.KeyboardModifier.ShiftModifier)
+        position = QPoint(
+            shift_start.x() + round((shift_final.x() - shift_start.x()) * step / 30),
+            shift_start.y() + round((shift_final.y() - shift_start.y()) * step / 30),
+        )
+        move_with_left(position, Qt.KeyboardModifier.ShiftModifier)
         app.processEvents(); QTest.qWait(5)
     assert bridge.dispatch_count == shift_dispatch_before
+    assert bool(shift_area.property("pressed"))
     QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ShiftModifier, shift_final, 0)
-    app.processEvents(); QTest.qWait(80); app.processEvents()
+    app.processEvents(); QTest.qWait(100); app.processEvents()
     assert bridge.dispatch_count == shift_dispatch_before + 1
     after_shift = item_slot_snapshot(session.page, slot)
     ratio_after = after_shift["bounds"]["width"] / after_shift["bounds"]["height"]
     assert ratio_after == pytest.approx(ratio_before, rel=0.015)
 
-    # Save/reopen final committed GROUP + all semantic roles and relative geometry.
     expected = item_slot_snapshot(session.page, slot)
     package = output_dir / "continuous-final.srscene"
     save_package(session.document, package, embed_local_assets=True)
@@ -376,7 +367,9 @@ def main() -> int:
     assert restored["internal_roles"] == expected["internal_roles"]
     assert restored["price_block"] == expected["price_block"]
     assert restored["preset_id"] == expected["preset_id"]
-    assert dict(restored_slot.node_by_role) == semantics_before["node_by_role"]
+    assert dict(restored_slot.node_by_role) == semantic_contract["node_by_role"]
+    assert semantic_contract["price_block"] == expected["price_block"]
+    assert semantic_contract["preset_id"] == expected["preset_id"]
 
     result = {
         "pass": True,
@@ -407,8 +400,7 @@ def main() -> int:
     }
     (output_dir / "continuous-result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     print("ITEMSLOT_CONTINUOUS_RESULT=" + json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
-    root.close()
-    app.processEvents()
+    root.close(); root.deleteLater(); app.processEvents()
     return 0
 
 
