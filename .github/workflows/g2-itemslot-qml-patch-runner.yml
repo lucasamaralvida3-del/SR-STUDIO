@@ -16,56 +16,30 @@ jobs:
         with:
           ref: g2/fix-item-slot-interaction-performance
           fetch-depth: 0
-      - name: Execute guarded patch embedded in staging workflow
+      - name: Execute guarded ItemSlot root-bounds followup
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          source = Path('.github/workflows/g2-itemslot-qml-patch-once.yml').read_text(encoding='utf-8')
+          source = Path('.github/workflows/g2-itemslot-qml-followup-patch-once.yml').read_text(encoding='utf-8')
           marker = "          python - <<'PY'\n"
           start = source.index(marker) + len(marker)
           end = source.index("\n          PY\n", start)
           lines = source[start:end].splitlines()
           script = "\n".join(line[10:] if line.startswith("          ") else line for line in lines)
-          # The move and resize cancel handlers have different nesting indentation.
-          # Let the guarded source patch own the move handler, then patch the nested
-          # resize handler explicitly below.
-          script = script.replace('if count != 2:', 'if count != 1:').replace('expected 2 matches', 'expected 1 match')
-          exec(compile(script, '<guarded-itemslot-qml-patch>', 'exec'), {'__name__': '__main__'})
-
-          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
-          text = path.read_text(encoding='utf-8')
-          old = (
-              '                                                onCanceled: {\n'
-              '                                                    slotOverlay.previewActive = false\n'
-              '                                                    previewTimer.stop()\n'
-              '                                                }\n'
-          )
-          new = (
-              '                                                onCanceled: {\n'
-              '                                                    if (slotOverlay.isManualItemSlot) {\n'
-              '                                                        window.itemSlotPreviewActive = false\n'
-              '                                                        window.itemSlotPreviewSlotId = ""\n'
-              '                                                    }\n'
-              '                                                    slotOverlay.previewActive = false\n'
-              '                                                    previewTimer.stop()\n'
-              '                                                }\n'
-          )
-          if text.count(old) != 1:
-              raise SystemExit(f'resize cancel handler: expected 1 match, got {text.count(old)}')
-          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          exec(compile(script, '<guarded-itemslot-root-bounds-patch>', 'exec'), {'__name__': '__main__'})
           PY
           git diff --check
           git diff -- src/srstudio/graphics2/qml/GraphicsEditor.qml
-      - name: Commit QML source change to performance branch
+      - name: Commit QML followup to performance branch
         shell: bash
         run: |
           if git diff --quiet -- src/srstudio/graphics2/qml/GraphicsEditor.qml; then
-            echo "No QML patch generated"
+            echo "No QML followup generated"
             exit 0
           fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/srstudio/graphics2/qml/GraphicsEditor.qml
-          git commit -m 'fix(g2): add local ItemSlot preview interaction'
+          git commit -m 'fix(g2): use ItemSlot root bounds for local preview'
           git push origin HEAD:g2/fix-item-slot-interaction-performance
