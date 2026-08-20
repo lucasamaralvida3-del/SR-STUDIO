@@ -125,14 +125,24 @@ def main() -> int:
         value = qvariant(value)
         return dict(value) if isinstance(value, dict) else {}
 
+    def item_window_point(item: QQuickItem, x: float, y: float) -> QPoint:
+        # QTest.mousePress(QWindow, pos) expects window-local coordinates.
+        # mapToScene() is relative to the content scene and may differ by the
+        # ApplicationWindow header offset, which is enough to miss an 11px handle.
+        global_point = item.mapToGlobal(QPointF(x, y))
+        return root.mapFromGlobal(QPoint(round(global_point.x()), round(global_point.y())))
+
     def diagnostic(item: QQuickItem) -> dict:
-        p = item.mapToScene(QPointF(0, 0))
+        scene = item.mapToScene(QPointF(0, 0))
+        window = item_window_point(item, 0, 0)
         return {
             "name": str(item.objectName() or ""),
             "visible": bool(item.isVisible()),
             "enabled": bool(item.isEnabled()),
-            "x": float(p.x()),
-            "y": float(p.y()),
+            "scene_x": float(scene.x()),
+            "scene_y": float(scene.y()),
+            "window_x": int(window.x()),
+            "window_y": int(window.y()),
             "width": float(item.width()),
             "height": float(item.height()),
             "z": float(item.z()),
@@ -148,15 +158,16 @@ def main() -> int:
         raise AssertionError({"missing": name, "candidates": [diagnostic(item) for item in matches]})
 
     def center(item: QQuickItem) -> QPoint:
-        p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0))
-        return QPoint(round(p.x()), round(p.y()))
+        return item_window_point(item, max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)
 
     def safe_handle_point(item: QQuickItem) -> QPoint:
-        # The SE handle is visually centered on the slot edge. Qt hit-testing of
-        # children outside an ancestor is platform-sensitive, so exercise the
-        # same MouseArea at a point safely inside both handle and slot overlay.
-        p = item.mapToScene(QPointF(min(1.5, max(0.5, item.width() - 0.5)), min(1.5, max(0.5, item.height() - 0.5))))
-        return QPoint(round(p.x()), round(p.y()))
+        # The SE handle is visually centered on the slot edge. Exercise a point
+        # safely inside both handle and overlay, converted to QWindow coordinates.
+        return item_window_point(
+            item,
+            min(1.5, max(0.5, item.width() - 0.5)),
+            min(1.5, max(0.5, item.height() - 0.5)),
+        )
 
     def visual_rect(item: QQuickItem) -> dict[str, float]:
         p = item.mapToScene(QPointF(0, 0))
@@ -280,10 +291,10 @@ def main() -> int:
     resize_dispatch_before = bridge.dispatch_count
     resize_events_before = int(root.property("itemSlotPreviewEvents") or 0)
 
-    print("ITEMSLOT_RESIZE_TARGET=" + json.dumps({"target": diagnostic(resize_area), "point": {"x": resize_start.x(), "y": resize_start.y()}}, sort_keys=True), flush=True)
+    print("ITEMSLOT_RESIZE_TARGET=" + json.dumps({"target": diagnostic(resize_area), "window_point": {"x": resize_start.x(), "y": resize_start.y()}}, sort_keys=True), flush=True)
     QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_start, 0)
     app.processEvents()
-    print("ITEMSLOT_RESIZE_PRESS=" + json.dumps({"preview_active": bool(root.property("itemSlotPreviewActive")), "kind": str(root.property("itemSlotInteractionKind") or ""), "pressed": bool(resize_area.property("pressed"))}, sort_keys=True), flush=True)
+    print("ITEMSLOT_RESIZE_PRESS=" + json.dumps({"preview_active": bool(root.property("itemSlotPreviewActive")), "kind": str(root.property("itemSlotInteractionKind") or ""), "pressed": bool(resize_area.property("pressed")), "contains_mouse": bool(resize_area.property("containsMouse"))}, sort_keys=True), flush=True)
     assert bool(root.property("itemSlotPreviewActive")), "RESIZE press did not activate preview"
     assert str(root.property("itemSlotInteractionKind") or "") == "resize"
     assert bool(resize_area.property("pressed")), "resize MouseArea does not own the press"
