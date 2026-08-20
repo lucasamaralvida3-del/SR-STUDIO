@@ -1,4 +1,5 @@
 # activation touch
+# retrigger hardened base runner
 name: G2 ItemSlot Stable Resize Capture Once
 
 on:
