@@ -109,6 +109,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           QSG_RHI_BACKEND: software
           QT_SCALE_FACTOR: '1'
+          QT_QPA_FONTDIR: 'C:\Windows\Fonts'
         run: |
           New-Item -ItemType Directory -Force -Path item-slot-frozen-evidence/studio-viewports | Out-Null
           python tools/capture_studio_ui_viewports.py --runtime-root "dist/graphics2-host/SRGraphicsEngine2Host" --output-dir item-slot-frozen-evidence/studio-viewports
