@@ -101,6 +101,14 @@ def test_qml_manual_item_slot_uses_stable_resize_hitbox_and_one_release_command(
     assert "!window.manualItemSlotForNode(anchorNode.id)" in qml
     assert "if (slotMetadata.manual_item_slot)" in qml
     assert "root_node_id" in qml
+    assert 'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"' in qml
+    assert 'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds' in qml
+    assert 'objectName: "smartSlotVisualFrame-"' in qml
+    assert 'objectName: "smartSlotVisualHandle-"' in qml
+    assert 'function resizedBounds(px, py, modifiers)' in qml
+    assert 'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)' in qml
+    assert 'manualItemSlotResizeHandler' not in qml
+    assert 'enabled: !slotOverlay.isManualItemSlot' not in qml
 
     # During manual resize the real MouseArea and its ancestor keep the original
     # geometry, while frame/handle visuals and the ItemSlot subtree follow the
