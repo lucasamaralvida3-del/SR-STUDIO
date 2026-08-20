@@ -1,0 +1,138 @@
+name: G2 ItemSlot Internal Handle Patch Once
+
+on:
+  push:
+    branches:
+      - g2/fix-item-slot-interaction-performance
+    paths:
+      - '.github/workflows/g2-itemslot-internal-handle-patch-once.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/fix-item-slot-interaction-performance
+          fetch-depth: 0
+
+      - name: Apply stable physical hitbox and visual handle split
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          qml_path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = qml_path.read_text(encoding='utf-8')
+          if 'manualItemSlotResizeHandler' in text:
+              raise SystemExit('experimental DragHandler remains')
+          for token in [
+              'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds',
+              'objectName: "smartSlotVisualHandle-"',
+              'function itemSlotDisplayTransform(node)',
+          ]:
+              if token not in text:
+                  raise SystemExit(f'missing stable-preview token: {token}')
+
+          old = '''                                            width: 11; height: 11; radius: 2
+                                            x: modelData.fx * slotOverlay.width - width / 2
+                                            y: modelData.fy * slotOverlay.height - height / 2
+                                            color: slotOverlay.resizePreviewKeepsInteractionGeometry ? "transparent" : "white"
+                                            border.width: slotOverlay.resizePreviewKeepsInteractionGeometry ? 0 : 2
+                                            border.color: "#0F5BD8"
+                                            z: 10
+                                            Rectangle {
+                                                objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
+                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+                                                   + modelData.fx * (slotOverlay.displayBounds.width - slotOverlay.interactionBounds.width) * zoom
+                                                y: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
+                                                   + modelData.fy * (slotOverlay.displayBounds.height - slotOverlay.interactionBounds.height) * zoom
+                                                width: parent.width
+                                                height: parent.height
+                                                radius: parent.radius
+                                                color: "white"
+                                                border.width: 2
+                                                border.color: "#0F5BD8"
+                                            }
+'''
+          new = '''                                            width: 11; height: 11; radius: 2
+                                            // Keep the physical MouseArea fully inside interactionBounds.
+                                            // The visible handle is independent and follows displayBounds.
+                                            property real desiredVisualX: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+                                                                          + modelData.fx * slotOverlay.displayBounds.width * zoom - width / 2
+                                            property real desiredVisualY: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
+                                                                          + modelData.fy * slotOverlay.displayBounds.height * zoom - height / 2
+                                            x: Math.max(0, Math.min(Math.max(0, slotOverlay.width - width), modelData.fx * slotOverlay.width - width / 2))
+                                            y: Math.max(0, Math.min(Math.max(0, slotOverlay.height - height), modelData.fy * slotOverlay.height - height / 2))
+                                            color: "transparent"
+                                            border.width: 0
+                                            border.color: "transparent"
+                                            z: 10
+                                            Rectangle {
+                                                objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                                visible: parent.visible
+                                                x: parent.desiredVisualX - parent.x
+                                                y: parent.desiredVisualY - parent.y
+                                                width: parent.width
+                                                height: parent.height
+                                                radius: parent.radius
+                                                color: "white"
+                                                border.width: 2
+                                                border.color: "#0F5BD8"
+                                            }
+'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif 'property real desiredVisualX:' not in text:
+              raise SystemExit('resize handle block not found')
+          qml_path.write_text(text, encoding='utf-8')
+
+          for filename, center_name in [
+              ('tools/verify_frozen_item_slot_interaction.py', 'center'),
+              ('tools/benchmark_frozen_item_slot_interaction.py', 'scene_center'),
+          ]:
+              path = Path(filename)
+              src = path.read_text(encoding='utf-8')
+              src = src.replace('resize_start = inner_handle_point(resize_area)', f'resize_start = {center_name}(resize_area)')
+              src = src.replace('shift_start = inner_handle_point(shift_area)', f'shift_start = {center_name}(shift_area)')
+              marker = '    def inner_handle_point(item: QQuickItem, inset: float = 2.0) -> QPoint:\n'
+              if marker in src:
+                  start = src.index(marker)
+                  next_def = src.index('    def ', start + len(marker))
+                  src = src[:start] + src[next_def:]
+              if 'inner_handle_point(' in src:
+                  raise SystemExit(f'obsolete edge hit helper remains: {filename}')
+              path.write_text(src, encoding='utf-8')
+
+          test_path = Path('tests/test_graphics2_item_slot_interaction_performance.py')
+          test = test_path.read_text(encoding='utf-8')
+          anchor = '    assert \'objectName: "smartSlotVisualHandle-"\' in qml\n'
+          extra = '''    assert 'property real desiredVisualX:' in qml
+    assert 'property real desiredVisualY:' in qml
+    assert 'Math.min(Math.max(0, slotOverlay.width - width)' in qml
+    assert 'visible: parent.visible' in qml
+    assert 'x: parent.desiredVisualX - parent.x' in qml
+    assert 'y: parent.desiredVisualY - parent.y' in qml
+'''
+          if extra.strip() not in test:
+              if test.count(anchor) != 1:
+                  raise SystemExit(f'test anchor count={test.count(anchor)}')
+              test = test.replace(anchor, anchor + extra, 1)
+          test_path.write_text(test, encoding='utf-8')
+          PY
+
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/srstudio/graphics2/qml/GraphicsEditor.qml tests/test_graphics2_item_slot_interaction_performance.py tools/verify_frozen_item_slot_interaction.py tools/benchmark_frozen_item_slot_interaction.py
+          if git diff --cached --quiet; then
+            echo 'Patch already applied'
+          else
+            git commit -m 'fix(g2): keep ItemSlot resize hitbox inside stable overlay'
+            git push origin HEAD:g2/fix-item-slot-interaction-performance
+          fi
