@@ -119,9 +119,6 @@ def test_qml_manual_item_slot_uses_direct_stable_resize_mousearea_and_one_releas
     assert 'DragHandler {' not in itemslot_region
     assert 'enabled: !slotOverlay.isManualItemSlot' not in itemslot_region
 
-    # During manual resize the direct physical MouseArea and its ancestor stay on
-    # the original interaction bounds. Only the independent visual handle/frame and
-    # the ItemSlot subtree follow displayBounds / itemSlotDisplayTransform().
     assert "x: interactionBounds.x * zoom" in itemslot_region
     assert "width: interactionBounds.width * zoom" in itemslot_region
     assert "slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x" in itemslot_region
@@ -211,9 +208,7 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
     root = roots[0]
     root.setProperty("smartSlotSnap", False)
     root.setProperty("selectedSlotId", slot.id)
-    app.processEvents()
-    QTest.qWait(120)
-    app.processEvents()
+    app.processEvents(); QTest.qWait(120); app.processEvents()
     content = root.contentItem()
     assert content is not None
 
@@ -234,9 +229,13 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
         return str(value)
 
     name = f"smartSlotResizeArea-se-{slot.id}"
-    candidates = [item for item in walk(content) if str(item.objectName() or "") == name]
-    assert candidates
-    resize_area = [item for item in candidates if item.isVisible() and item.isEnabled()][-1]
+
+    def find_resize_area() -> QQuickItem:
+        candidates = [item for item in walk(content) if str(item.objectName() or "") == name]
+        assert candidates
+        return [item for item in candidates if item.isVisible() and item.isEnabled()][-1]
+
+    resize_area = find_resize_area()
     assert resize_area.width() == pytest.approx(18.0)
     assert resize_area.height() == pytest.approx(18.0)
     local_center = QPointF(resize_area.width() / 2, resize_area.height() / 2)
@@ -247,6 +246,25 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
     assert parent_for_map is not None
     to_parent = resize_area.mapToItem(parent_for_map, local_center)
     from_parent = resize_area.mapFromItem(parent_for_map, to_parent)
+    target_snapshot = {
+        "class": cls(resize_area),
+        "name": str(resize_area.objectName() or ""),
+        "visible": bool(resize_area.isVisible()),
+        "enabled": bool(resize_area.isEnabled()),
+        "opacity": float(resize_area.opacity()),
+        "accepted_buttons": prop(resize_area, "acceptedButtons"),
+        "prevent_stealing": prop(resize_area, "preventStealing"),
+        "propagate_composed_events": prop(resize_area, "propagateComposedEvents"),
+        "contains_mouse": bool(prop(resize_area, "containsMouse") or False),
+        "hovered": prop(resize_area, "hovered"),
+        "clip": bool(prop(resize_area, "clip") or False),
+        "z": float(resize_area.z()),
+        "width": float(resize_area.width()),
+        "height": float(resize_area.height()),
+        "x": float(resize_area.x()),
+        "y": float(resize_area.y()),
+    }
+    contains_local = bool(resize_area.contains(local_center))
 
     parent_chain: list[dict] = []
     clipped_exclusions: list[dict] = []
@@ -290,29 +308,12 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
         current = child
 
     focused_snapshot = {
-        "target": {
-            "class": cls(resize_area),
-            "name": str(resize_area.objectName() or ""),
-            "visible": bool(resize_area.isVisible()),
-            "enabled": bool(resize_area.isEnabled()),
-            "opacity": float(resize_area.opacity()),
-            "accepted_buttons": prop(resize_area, "acceptedButtons"),
-            "prevent_stealing": prop(resize_area, "preventStealing"),
-            "propagate_composed_events": prop(resize_area, "propagateComposedEvents"),
-            "contains_mouse": bool(prop(resize_area, "containsMouse") or False),
-            "hovered": prop(resize_area, "hovered"),
-            "clip": bool(prop(resize_area, "clip") or False),
-            "z": float(resize_area.z()),
-            "width": float(resize_area.width()),
-            "height": float(resize_area.height()),
-            "x": float(resize_area.x()),
-            "y": float(resize_area.y()),
-        },
+        "target": target_snapshot,
         "local": {"x": float(local_center.x()), "y": float(local_center.y())},
         "scene": {"x": float(scene_center.x()), "y": float(scene_center.y())},
         "window": {"x": int(center.x()), "y": int(center.y())},
         "global": {"x": float(global_center.x()), "y": float(global_center.y())},
-        "contains_local": bool(resize_area.contains(local_center)),
+        "contains_local": contains_local,
         "map_to_parent": {"x": float(to_parent.x()), "y": float(to_parent.y())},
         "map_from_parent_roundtrip": {"x": float(from_parent.x()), "y": float(from_parent.y())},
         "parent_chain": parent_chain,
@@ -323,6 +324,9 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
     assert focused_snapshot["contains_local"] is True
     assert not clipped_exclusions
 
+    resize_area = find_resize_area()
+    global_center = resize_area.mapToGlobal(QPointF(resize_area.width() / 2, resize_area.height() / 2))
+    center = root.mapFromGlobal(QPoint(round(global_center.x()), round(global_center.y())))
     QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, center, 0)
     app.processEvents()
     assert bool(resize_area.property("pressed")) is True
@@ -340,20 +344,15 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
         Qt.KeyboardModifier.NoModifier,
     )
     QCoreApplication.sendEvent(root, event)
-    app.processEvents()
-    QTest.qWait(20)
-    app.processEvents()
+    app.processEvents(); QTest.qWait(20); app.processEvents()
     assert bool(resize_area.property("pressed")) is True
     assert bool(root.property("itemSlotPreviewActive")) is True
     assert int(root.property("itemSlotPreviewEvents") or 0) >= 1
     assert bridge.dispatch_count == 0
 
     QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, moved, 0)
-    app.processEvents()
-    QTest.qWait(40)
-    app.processEvents()
+    app.processEvents(); QTest.qWait(40); app.processEvents()
     assert bridge.dispatch_count == 1
     assert not bool(root.property("itemSlotPreviewActive"))
     assert int(root.property("itemSlotBackendCommits") or 0) == 1
-    root.close()
-    app.processEvents()
+    root.close(); app.processEvents()
