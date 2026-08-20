@@ -175,8 +175,6 @@ Rectangle {
         onReleased: {
             if (dragging)
                 root.dragFinished(pointer, mouse.x, mouse.y, root.productData)
-            else if (root.canBind)
-                root.bindRequested(root.productData)
             else
                 root.dragCanceled()
             dragging = false
