@@ -43,19 +43,28 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 1
 
-      - name: Apply final visual-only target adjustments once
+      - name: Apply responsive and zoom visual adjustments once
         shell: pwsh
         run: |
-          $code = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCnA9UGF0aCgic3JjL3Nyc3R1ZGlvL2dyYXBoaWNzMi9xbWwvR3JhcGhpY3NFZGl0b3IucW1sIikKcz1wLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQpjaGFuZ2VkPUZhbHNlCmlmICJyZWFkb25seSBwcm9wZXJ0eSBib29sIHRpZ2h0VWk6IHdpZHRoIDwgMTMyMCIgaW4gczoKICAgIHM9cy5yZXBsYWNlKCJyZWFkb25seSBwcm9wZXJ0eSBib29sIHRpZ2h0VWk6IHdpZHRoIDwgMTMyMCIsInJlYWRvbmx5IHByb3BlcnR5IGJvb2wgdGlnaHRVaTogd2lkdGggPCAxNDAwIiwxKTsgY2hhbmdlZD1UcnVlCmhlYWRlcj0nJycgICAgICAgICAgICBncmFkaWVudDogR3JhZGllbnQgewogICAgICAgICAgICAgICAgb3JpZW50YXRpb246IEdyYWRpZW50Lkhvcml6b250YWwKICAgICAgICAgICAgICAgIEdyYWRpZW50U3RvcCB7IHBvc2l0aW9uOiAwLjA7IGNvbG9yOiAiIzIwMUI0QyIgfQogICAgICAgICAgICAgICAgR3JhZGllbnRTdG9wIHsgcG9zaXRpb246IDAuMjM7IGNvbG9yOiAiIzVCM0ZFQSIgfQogICAgICAgICAgICAgICAgR3JhZGllbnRTdG9wIHsgcG9zaXRpb246IDAuNzI7IGNvbG9yOiAiIzQ3N0FGMSIgfQogICAgICAgICAgICAgICAgR3JhZGllbnRTdG9wIHsgcG9zaXRpb246IDEuMDsgY29sb3I6ICIjMThCRUJCIiB9CiAgICAgICAgICAgIH0KCiAgICAgICAgICAgIFJvd0xheW91dCB7JycnCmhlYWRlcl9uZXc9JycnICAgICAgICAgICAgZ3JhZGllbnQ6IEdyYWRpZW50IHsKICAgICAgICAgICAgICAgIG9yaWVudGF0aW9uOiBHcmFkaWVudC5Ib3Jpem9udGFsCiAgICAgICAgICAgICAgICBHcmFkaWVudFN0b3AgeyBwb3NpdGlvbjogMC4wOyBjb2xvcjogIiMyMDFCNEMiIH0KICAgICAgICAgICAgICAgIEdyYWRpZW50U3RvcCB7IHBvc2l0aW9uOiAwLjIzOyBjb2xvcjogIiM1QjNGRUEiIH0KICAgICAgICAgICAgICAgIEdyYWRpZW50U3RvcCB7IHBvc2l0aW9uOiAwLjcyOyBjb2xvcjogIiM0NzdBRjEiIH0KICAgICAgICAgICAgICAgIEdyYWRpZW50U3RvcCB7IHBvc2l0aW9uOiAxLjA7IGNvbG9yOiAiIzE4QkVCQiIgfQogICAgICAgICAgICB9CgogICAgICAgICAgICBSZWN0YW5nbGUgewogICAgICAgICAgICAgICAgYW5jaG9ycy5sZWZ0OiBwYXJlbnQubGVmdAogICAgICAgICAgICAgICAgYW5jaG9ycy50b3A6IHBhcmVudC50b3AKICAgICAgICAgICAgICAgIGFuY2hvcnMuYm90dG9tOiBwYXJlbnQuYm90dG9tCiAgICAgICAgICAgICAgICB3aWR0aDogd2luZG93LnN0dWRpb0xlZnREb2NrV2lkdGgKICAgICAgICAgICAgICAgIGNvbG9yOiB0aGVtZS5uYXZQYW5lbAogICAgICAgICAgICB9CgogICAgICAgICAgICBSb3dMYXlvdXQgeycnJwppZiBoZWFkZXIgaW4gczoKICAgIHM9cy5yZXBsYWNlKGhlYWRlcixoZWFkZXJfbmV3LDEpOyBjaGFuZ2VkPVRydWUKZm9vdGVyPScnJyAgICBSZWN0YW5nbGUgewogICAgICAgIGlkOiBwYWdlRm9vdGVyCiAgICAgICAgYW5jaG9ycy5sZWZ0OiBwYXJlbnQubGVmdCcnJwpmb290ZXJfbmV3PScnJyAgICBSZWN0YW5nbGUgewogICAgICAgIGlkOiBwYWdlRm9vdGVyCiAgICAgICAgdmlzaWJsZTogKHNjZW5lLnBhZ2VzIHx8IFtdKS5sZW5ndGggPiAxCiAgICAgICAgYW5jaG9ycy5sZWZ0OiBwYXJlbnQubGVmdCcnJwppZiBmb290ZXIgaW4gczoKICAgIHM9cy5yZXBsYWNlKGZvb3Rlcixmb290ZXJfbmV3LDEpOyBjaGFuZ2VkPVRydWUKZm9yIHRva2VuIGluICgicHJvcGVydHkgYm9vbCBpdGVtU2xvdFByZXZpZXdBY3RpdmU6IGZhbHNlIiwicHJvcGVydHkgc3RyaW5nIGl0ZW1TbG90UHJldmlld1Nsb3RJZDogIiIiLCJmdW5jdGlvbiBtYW51YWxJdGVtU2xvdEZvck5vZGUobm9kZUlkKSIsImZ1bmN0aW9uIGl0ZW1TbG90RGlzcGxheVRyYW5zZm9ybShub2RlKSIsImZ1bmN0aW9uIHF1ZXVlUHJldmlldyIsImZ1bmN0aW9uIGNvbW1pdFByZXZpZXciLCIibmFtZSI6ICJjb21taXRfaXRlbV9zbG90X2JvdW5kcyIiKToKICAgIGFzc2VydCB0b2tlbiBpbiBzLCB0b2tlbgppZiBjaGFuZ2VkOgogICAgcC53cml0ZV90ZXh0KHMsZW5jb2Rpbmc9InV0Zi04IikKcHJpbnQoIlZJU1VBTF9QQVRDSF9DSEFOR0VEPSIrc3RyKGNoYW5nZWQpLmxvd2VyKCkpCg=='))
-          python -c $code
+          $path = 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+          $text = [IO.File]::ReadAllText($path)
+          $text = $text.Replace('readonly property bool tightUi: width < 1320', 'readonly property bool tightUi: width < 1400')
+          if (-not $text.Contains('visible: (scene.pages || []).length > 1')) {
+            $text = [regex]::Replace($text, '(id: pageFooter\r?\n)(\s+anchors\.left: parent\.left)', "`$1        visible: (scene.pages || []).length > 1`n`$2", 1)
+          }
+          if (-not $text.Contains('readonly property bool tightUi: width < 1400')) { throw 'responsive breakpoint patch failed' }
+          if (-not $text.Contains('visible: (scene.pages || []).length > 1')) { throw 'single-page footer patch failed' }
+          foreach ($token in @('property bool itemSlotPreviewActive: false','property string itemSlotPreviewSlotId: ""','function manualItemSlotForNode(nodeId)','function itemSlotDisplayTransform(node)','function queuePreview','function commitPreview','"name": "commit_item_slot_bounds"')) {
+            if (-not $text.Contains($token)) { throw "performance invariant missing: $token" }
+          }
+          [IO.File]::WriteAllText($path, $text, [Text.UTF8Encoding]::new($false))
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if (Test-Path '.github/workflows/g2-visual-final-one-shot.yml') { git rm '.github/workflows/g2-visual-final-one-shot.yml' }
-          git add src/srstudio/graphics2/qml/GraphicsEditor.qml
+          git add $path
           git diff --cached --check
           git diff --cached --quiet
           if ($LASTEXITCODE -ne 0) {
-            git commit -m "style(g2): finalize Studio chrome against approved target"
+            git commit -m "style(g2): protect 1366 canvas and expose floating zoom"
             git push origin HEAD:g2/reconcile-studio-ui-with-itemslot-perf
           }
 
