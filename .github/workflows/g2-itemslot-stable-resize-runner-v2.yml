@@ -1,4 +1,4 @@
-name: G2 ItemSlot Stable Resize Runner V2
+name: G2 ItemSlot Shift Ratio Runner
 
 on:
   pull_request:
@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-stable-resize:
+  patch-shift-ratio:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,7 +17,7 @@ jobs:
           ref: g2/fix-item-slot-interaction-performance
           fetch-depth: 0
 
-      - name: Apply stable manual ItemSlot resize capture
+      - name: Apply Shift ratio on official ItemSlot MouseArea path
         shell: bash
         run: |
           python - <<'PY'
@@ -26,159 +26,99 @@ jobs:
           path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
           text = path.read_text(encoding='utf-8')
 
-          handler_id = 'id: manualItemSlotResizeHandler'
-          if text.count(handler_id) != 1:
-              raise SystemExit(f'expected one manualItemSlotResizeHandler, got {text.count(handler_id)}')
-          id_pos = text.index(handler_id)
-          start = text.rfind('DragHandler {', 0, id_pos)
-          if start < 0:
-              raise SystemExit('DragHandler start not found')
-          start = text.rfind('\n', 0, start) + 1
-          brace_start = text.index('{', start)
-          depth = 0
-          in_string = False
-          quote = ''
-          escape = False
-          end = None
-          for i in range(brace_start, len(text)):
-              ch = text[i]
-              if in_string:
-                  if escape:
-                      escape = False
-                  elif ch == '\\':
-                      escape = True
-                  elif ch == quote:
-                      in_string = False
-                  continue
-              if ch in ('"', "'"):
-                  in_string = True
-                  quote = ch
-              elif ch == '{':
-                  depth += 1
-              elif ch == '}':
-                  depth -= 1
-                  if depth == 0:
-                      end = i + 1
-                      break
-          if end is None:
-              raise SystemExit('DragHandler closing brace not found')
-          while end < len(text) and text[end] in ' \t':
-              end += 1
-          if end < len(text) and text[end] == '\n':
-              end += 1
-          text = text[:start] + text[end:]
-
-          disable = '                                                enabled: !slotOverlay.isManualItemSlot\n'
-          if text.count(disable) != 1:
-              raise SystemExit(f'expected one manual MouseArea disable, got {text.count(disable)}')
-          text = text.replace(disable, '', 1)
-
-          manual_anchor = '                                    property bool isManualItemSlot: !!(modelData.metadata && modelData.metadata.manual_item_slot)\n'
-          if text.count(manual_anchor) != 1:
-              raise SystemExit(f'isManualItemSlot anchor count={text.count(manual_anchor)}')
-          text = text.replace(
-              manual_anchor,
-              manual_anchor
-              + '                                    // Keep the pressed resize MouseArea fixed while preview_bounds drives only visuals.\n'
-              + '                                    property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"\n'
-              + '                                    property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds\n',
-              1,
-          )
-
-          geometry_old = (
-              '                                    x: displayBounds.x * zoom\n'
-              '                                    y: displayBounds.y * zoom\n'
-              '                                    width: displayBounds.width * zoom\n'
-              '                                    height: displayBounds.height * zoom\n'
-          )
-          geometry_new = (
-              '                                    x: interactionBounds.x * zoom\n'
-              '                                    y: interactionBounds.y * zoom\n'
-              '                                    width: interactionBounds.width * zoom\n'
-              '                                    height: interactionBounds.height * zoom\n'
-          )
-          if text.count(geometry_old) != 1:
-              raise SystemExit(f'overlay geometry anchor count={text.count(geometry_old)}')
-          text = text.replace(geometry_old, geometry_new, 1)
-
-          frame_old = '''                                    Rectangle {
-                                        anchors.fill: parent
-                                        color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
-                                        border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)
-                                        border.color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#0F5BD855")
-                                        radius: 4
-                                    }
-'''
-          frame_new = '''                                    Rectangle {
-                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
-                                        y: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom : 0
-                                        width: slotOverlay.resizePreviewKeepsInteractionGeometry ? Math.max(1, slotOverlay.displayBounds.width * zoom) : parent.width
-                                        height: slotOverlay.resizePreviewKeepsInteractionGeometry ? Math.max(1, slotOverlay.displayBounds.height * zoom) : parent.height
-                                        color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
-                                        border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)
-                                        border.color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#0F5BD855")
-                                        radius: 4
-                                    }
-'''
-          if text.count(frame_old) != 1:
-              raise SystemExit(f'preview frame anchor count={text.count(frame_old)}')
-          text = text.replace(frame_old, frame_new, 1)
-
-          handle_old = '''                                            color: "white"
-                                            border.width: 2
-                                            border.color: "#0F5BD8"
-                                            z: 10
-                                            MouseArea {
-'''
-          handle_new = '''                                            color: slotOverlay.resizePreviewKeepsInteractionGeometry ? "transparent" : "white"
-                                            border.width: slotOverlay.resizePreviewKeepsInteractionGeometry ? 0 : 2
-                                            border.color: "#0F5BD8"
-                                            z: 10
-                                            Rectangle {
-                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
-                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
-                                                   + modelData.fx * (slotOverlay.displayBounds.width - slotOverlay.interactionBounds.width) * zoom
-                                                y: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
-                                                   + modelData.fy * (slotOverlay.displayBounds.height - slotOverlay.interactionBounds.height) * zoom
-                                                width: parent.width
-                                                height: parent.height
-                                                radius: parent.radius
-                                                color: "white"
-                                                border.width: 2
-                                                border.color: "#0F5BD8"
-                                            }
-                                            MouseArea {
-'''
-          if text.count(handle_old) != 1:
-              raise SystemExit(f'handle visual anchor count={text.count(handle_old)}')
-          text = text.replace(handle_old, handle_new, 1)
-
-          required = [
-              'property bool resizePreviewKeepsInteractionGeometry:',
+          required_base = [
               'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds',
-              'x: interactionBounds.x * zoom',
-              'slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x',
+              'function itemSlotDisplayTransform(node)',
           ]
-          for token in required:
+          for token in required_base:
               if token not in text:
-                  raise SystemExit(f'missing stable resize token: {token}')
-          if 'manualItemSlotResizeHandler' in text:
-              raise SystemExit('experimental DragHandler still present')
+                  raise SystemExit(f'missing stable ItemSlot path: {token}')
+          if 'manualItemSlotResizeHandler' in text or 'DragHandler {' in text[text.find('objectName: "smartSlotHandle-"'):text.find('Item {\n                                id: selectionOverlay')]:
+              raise SystemExit('experimental ItemSlot DragHandler still present')
+
+          if 'function resizedBounds(px, py, modifiers)' not in text:
+              old = '                                                function resizedBounds(px, py) {\n'
+              if text.count(old) != 1:
+                  raise SystemExit(f'resizedBounds signature count={text.count(old)}')
+              text = text.replace(old, '                                                function resizedBounds(px, py, modifiers) {\n', 1)
+
+              old = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
+'''
+              new = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                                    if (slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)) {
+                                                        var aspect = Math.max(0.000001, startW) / Math.max(0.000001, startH)
+                                                        var hasH = modelData.dir.indexOf("e") >= 0 || modelData.dir.indexOf("w") >= 0
+                                                        var hasV = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
+                                                        var targetW = nw
+                                                        var targetH = nh
+                                                        if (hasH && hasV) {
+                                                            var relW = Math.abs(nw - startW) / Math.max(1, startW)
+                                                            var relH = Math.abs(nh - startH) / Math.max(1, startH)
+                                                            if (relW >= relH)
+                                                                targetH = Math.max(1, targetW / aspect)
+                                                            else
+                                                                targetW = Math.max(1, targetH * aspect)
+                                                        } else if (hasH) {
+                                                            targetH = Math.max(1, targetW / aspect)
+                                                        } else if (hasV) {
+                                                            targetW = Math.max(1, targetH * aspect)
+                                                        }
+                                                        if (modelData.dir.indexOf("w") >= 0)
+                                                            nx = startX + startW - targetW
+                                                        if (modelData.dir.indexOf("n") >= 0)
+                                                            ny = startY + startH - targetH
+                                                        nw = targetW
+                                                        nh = targetH
+                                                    }
+                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
+'''
+              if text.count(old) != 1:
+                  raise SystemExit(f'resizedBounds body count={text.count(old)}')
+              text = text.replace(old, new, 1)
+
+              old = 'slotOverlay.queuePreview(resizedBounds(point.x, point.y), false)'
+              if text.count(old) != 1:
+                  raise SystemExit(f'queue call count={text.count(old)}')
+              text = text.replace(old, 'slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)', 1)
+
+              old = 'slotOverlay.commitPreview(resizedBounds(point.x, point.y), "resize")'
+              if text.count(old) != 1:
+                  raise SystemExit(f'commit call count={text.count(old)}')
+              text = text.replace(old, 'slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")', 1)
+
+          final_tokens = [
+              'function resizedBounds(px, py, modifiers)',
+              'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)',
+              'slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)',
+              'slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")',
+          ]
+          for token in final_tokens:
+              if token not in text:
+                  raise SystemExit(f'missing Shift token: {token}')
 
           path.write_text(text, encoding='utf-8')
           PY
           git diff --check
 
-      - name: Commit production patch and remove head scaffolding
+      - name: Commit QML and remove head scaffolding
         shell: bash
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add -- src/srstudio/graphics2/qml/GraphicsEditor.qml
           for path in \
+            .github/workflows/g2-itemslot-shift-ratio-patch-once.yml \
+            .github/workflows/g2-itemslot-final-overlay-patch-once.yml \
             .github/workflows/g2-itemslot-stable-overlay-fix-once.yml \
             .github/workflows/g2-item-slot-stable-resize-capture-once.yml; do
             if [ -f "$path" ]; then git rm -- "$path"; fi
           done
-          git commit -m 'fix(g2): keep ItemSlot resize interaction geometry stable'
+          if git diff --cached --quiet; then
+            echo 'ItemSlot Shift ratio already applied and scaffolding absent'
+            exit 0
+          fi
+          git commit -m 'fix(g2): preserve ItemSlot aspect ratio with Shift'
           git push origin HEAD:g2/fix-item-slot-interaction-performance
