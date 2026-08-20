@@ -15,6 +15,7 @@ from .model import BindingRole, GraphicsNode, NodeKind, Rect, Transform
 from .operations import GraphicsSession
 from .slot_corpus_calibration import profile_parameters
 from .slot_corpus_families import QUINTA3_FAMILY_PRESETS, install_quinta3_family_presets
+from .slot_corpus_full_card import MEAT_FAMILY_ID, apply_meat_strip_full_card
 
 _SECONDARY_COMPONENTS: dict[tuple[str, str], dict[str, list[float]]] = {
     ("quinta3-wood-plaque", "club-promo"): {
@@ -130,6 +131,20 @@ def apply_quinta3_variant(
             node = _add_label(page, root.id, root_rect, optional["club"], "CLUB ROLE", "NO SR CLUBE SMART")
             extras["club_label"] = [node.id]
             created.append(node.id)
+
+        # New full-card fidelity definition.  Only Meat Strip is enabled in
+        # this round: its real PPTX visual subtree replaces the synthetic
+        # image/price backplates while the existing ItemSlot architecture and
+        # bindings remain intact.  Do not apply this path to the other four
+        # families until Meat Strip passes the visual/manual gate.
+        if family_id == MEAT_FAMILY_ID:
+            root_rect, full_card_nodes = apply_meat_strip_full_card(
+                page,
+                slot,
+                profile_id=profile_id or "costela",
+                requested_position=str(resolved.get("stripPosition") or ""),
+            )
+            created.extend(full_card_nodes)
 
         slot.metadata["quinta3_family"] = family_id
         slot.metadata["quinta3_variant"] = variant_key

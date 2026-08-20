@@ -4,7 +4,9 @@ from __future__ import annotations
 
 Metrics are geometric and normalized to the ProductCard/root.  They deliberately
 remain separate by role; no global score can hide a bad UNIT/NAME behind a good
-IMAGE.  Pixel renderer fidelity is outside this corpus-only calibration layer.
+IMAGE.  The Meat Strip expectation now uses the full visual ProductCard root;
+the other four families stay on their previous supervised role contracts until
+they enter the full-card migration in later rounds.
 """
 
 from collections import defaultdict
@@ -14,6 +16,7 @@ from typing import Any
 from .model import BindingRole, GraphicsDocument, Rect
 from .operations import GraphicsSession
 from .slot_corpus_calibration import QUINTA3_SUPERVISED_PROFILES
+from .slot_corpus_full_card import MEAT_FAMILY_ID, meat_full_card_profile
 from .slot_corpus_variant_runtime import create_quinta3_item_slot
 
 BASELINE_FAMILY_METRICS: dict[str, dict[str, float]] = {
@@ -45,7 +48,7 @@ def measure_supervised_family_metrics() -> dict[str, dict[str, float]]:
         buckets[family]["card"].append(1.0)
         buckets[family]["product_center_error"].append(0.0)
         areas = slot.metadata["role_area_nodes"]
-        expected = profile["roleBounds"]
+        expected = _expected_role_bounds(profile_id, profile)
 
         image_nodes = [page.node(slot.node_by_role[BindingRole.IMAGE.value])]
         extras = slot.metadata.get("extra_bindings") or {}
@@ -75,6 +78,31 @@ def measure_supervised_family_metrics() -> dict[str, dict[str, float]]:
         family: {role: round(mean(values), 6) for role, values in sorted(roles.items()) if values}
         for family, roles in sorted(buckets.items())
     }
+
+
+def _expected_role_bounds(profile_id: str, profile: dict[str, Any]) -> dict[str, list[float]]:
+    if profile["family_id"] != MEAT_FAMILY_ID:
+        return dict(profile["roleBounds"])
+    full = meat_full_card_profile(profile_id)
+    roles = full["roles"]
+    return {
+        "image": list(roles["image"]["relative"]),
+        "name": list(roles["name"]["relative"]),
+        "price": _union_relative([
+            roles["currency"]["relative"],
+            roles["integer"]["relative"],
+            roles["decimal"]["relative"],
+        ]),
+        "unit": list(roles["unit"]["relative"]),
+    }
+
+
+def _union_relative(rects: list[list[float]]) -> list[float]:
+    left = min(float(rect[0]) for rect in rects)
+    top = min(float(rect[1]) for rect in rects)
+    right = max(float(rect[0]) + float(rect[2]) for rect in rects)
+    bottom = max(float(rect[1]) + float(rect[3]) for rect in rects)
+    return [left, top, right - left, bottom - top]
 
 
 def _relative(rect: Rect, root: Rect) -> list[float]:
