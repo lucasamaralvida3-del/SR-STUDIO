@@ -203,6 +203,22 @@ Rectangle {
             MouseArea { id: resizeHint; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
         }
 
+        ToolButton {
+            text: "Copiar"
+            visible: !(panel.Window.window && panel.Window.window.tightUi)
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Copiar seleção · Ctrl+C"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.dispatch('{"name":"copy"}')
+        }
+        ToolButton {
+            text: "Colar"
+            visible: !(panel.Window.window && panel.Window.window.tightUi)
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Colar seleção · Ctrl+V"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.dispatch('{"name":"paste"}')
+        }
         ToolButton { text: "Agrupar"; onClicked: sceneBridge.dispatch('{"name":"group"}') }
         ToolButton {
             text: "Alinhar"
@@ -253,6 +269,13 @@ Rectangle {
             text: "Salvar"
             enabled: !sceneBridge.busy
             onClicked: saveDialog.open()
+        }
+        ToolButton {
+            text: "↺"
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Restaurar o ponto de autosave mais recente"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.recoverLatest()
         }
         Button {
             text: "Exportar"
