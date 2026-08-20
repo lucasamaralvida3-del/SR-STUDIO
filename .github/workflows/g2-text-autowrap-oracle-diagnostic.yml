@@ -1,0 +1,40 @@
+name: G2 Text Autowrap Oracle Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - g2/integration-beta
+    paths:
+      - 'tests/test_graphics2_text_autowrap_oracle_diagnostic.py'
+      - '.github/workflows/g2-text-autowrap-oracle-diagnostic.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  linux-oracle:
+    runs-on: ubuntu-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+      - run: python -m pip install -e '.[dev,graphics2]'
+      - run: python -m pytest -q -s tests/test_graphics2_text_autowrap_oracle_diagnostic.py
+
+  windows-oracle:
+    runs-on: windows-latest
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - shell: pwsh
+        run: python -m pip install -e '.[dev,graphics2]'
+      - shell: pwsh
+        run: python -m pytest -q -s tests/test_graphics2_text_autowrap_oracle_diagnostic.py
