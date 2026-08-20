@@ -133,6 +133,23 @@ def main() -> int:
             value = value.toVariant()
         return dict(value or {})
 
+    def resize_state(label: str, before_events: int, before_commits: int) -> dict:
+        state = {
+            "label": label,
+            "preview_active": bool(root.property("itemSlotPreviewActive")),
+            "interaction_kind": str(root.property("itemSlotInteractionKind") or ""),
+            "preview_events": int(root.property("itemSlotPreviewEvents") or 0),
+            "preview_events_delta": int(root.property("itemSlotPreviewEvents") or 0) - before_events,
+            "preview_updates": int(root.property("itemSlotPreviewUpdates") or 0),
+            "backend_commits": int(root.property("itemSlotBackendCommits") or 0),
+            "backend_commits_delta": int(root.property("itemSlotBackendCommits") or 0) - before_commits,
+            "bridge_dispatches": bridge.dispatch_count,
+            "commands": list(bridge.commands),
+            "preview_bounds": qml_map(root.property("itemSlotPreviewBounds")),
+        }
+        print("ITEMSLOT_RESIZE_STATE=" + json.dumps(state, ensure_ascii=False, sort_keys=True), flush=True)
+        return state
+
     slot = session.page.slots[slot_id]
     initial = item_slot_snapshot(session.page, slot)
 
@@ -168,24 +185,40 @@ def main() -> int:
     resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
     resize_start = center(resize_area)
     before_resize_dispatch = bridge.dispatch_count
+    before_resize_events = int(root.property("itemSlotPreviewEvents") or 0)
+    before_resize_commits = int(root.property("itemSlotBackendCommits") or 0)
+    resize_state("before_press", before_resize_events, before_resize_commits)
     QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_start, 0)
     app.processEvents()
+    resize_state("after_press", before_resize_events, before_resize_commits)
     resize_deadline = monotonic() + 3.05
     resize_index = 0
     resize_final = resize_start
+    first_state = None
     while monotonic() < resize_deadline:
         resize_index += 1
         resize_final = QPoint(resize_start.x() + min(160, resize_index), resize_start.y() + min(120, round(resize_index * 0.7)))
         QTest.mouseMove(root, resize_final, 0)
         app.processEvents()
+        if resize_index == 1:
+            first_state = resize_state("after_first_move", before_resize_events, before_resize_commits)
         QTest.qWait(16)
     preview_resize = qml_map(root.property("itemSlotPreviewBounds"))
+    before_release_state = resize_state("before_release", before_resize_events, before_resize_commits)
     assert bridge.dispatch_count == before_resize_dispatch, bridge.commands
     QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_final, 0)
     app.processEvents()
     QTest.qWait(60)
     app.processEvents()
-    assert bridge.dispatch_count == before_resize_dispatch + 1
+    after_release_state = resize_state("after_release", before_resize_events, before_resize_commits)
+    diagnostic = {
+        "first_state": first_state,
+        "before_release": before_release_state,
+        "after_release": after_release_state,
+        "expected_dispatches_after_release": before_resize_dispatch + 1,
+        "actual_dispatches_after_release": bridge.dispatch_count,
+    }
+    assert bridge.dispatch_count == before_resize_dispatch + 1, diagnostic
     assert bridge.commands[-1] == "commit_item_slot_bounds"
     final_snapshot = item_slot_snapshot(session.page, slot)
     for key in ("x", "y", "width", "height"):
