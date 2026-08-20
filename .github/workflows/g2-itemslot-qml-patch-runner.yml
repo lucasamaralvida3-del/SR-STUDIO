@@ -9,45 +9,179 @@ permissions:
   contents: write
 
 jobs:
-  restore-tests:
+  patch-itemslot-resize-grab:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: g2/fix-item-slot-interaction-performance
           fetch-depth: 0
-      - name: Restore Smart Slot tests from certified base and patch only assertions
+
+      - name: Apply guarded manual ItemSlot DragHandler patch
         shell: bash
         run: |
-          git checkout f60b65644b9adb0671b4a410aaf7849012ec635b -- \
-            tests/test_graphics2_smart_slot_interaction_perf.py \
-            tests/test_graphics2_smart_slot_detection_manual.py
           python - <<'PY'
           from pathlib import Path
 
-          perf = Path('tests/test_graphics2_smart_slot_interaction_perf.py')
-          text = perf.read_text(encoding='utf-8')
-          old = '    assert block.count(\'"name":"adjust_smart_slot"\') == 1\n'
-          new = '    assert \'isManualItemSlot ? "commit_item_slot_bounds" : "adjust_smart_slot"\' in block\n'
-          if text.count(old) != 1:
-              raise SystemExit(f'perf assertion: expected 1 match, got {text.count(old)}')
-          perf.write_text(text.replace(old, new, 1), encoding='utf-8')
+          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = path.read_text(encoding='utf-8')
+          marker = '                                                id: slotResizeArea\n'
+          if text.count(marker) != 1:
+              raise SystemExit(f'expected exactly one slotResizeArea, got {text.count(marker)}')
 
-          detection = Path('tests/test_graphics2_smart_slot_detection_manual.py')
-          text = detection.read_text(encoding='utf-8')
-          old = '    assert \'"name":"adjust_smart_slot"\' in qml or \'"name": "adjust_smart_slot"\' in qml\n'
-          new = '    assert \'isManualItemSlot ? "commit_item_slot_bounds" : "adjust_smart_slot"\' in qml\n'
-          if text.count(old) != 1:
-              raise SystemExit(f'detection assertion: expected 1 match, got {text.count(old)}')
-          detection.write_text(text.replace(old, new, 1), encoding='utf-8')
+          id_pos = text.index(marker)
+          start = text.rfind('                                            MouseArea {\n', 0, id_pos)
+          if start < 0:
+              raise SystemExit('slotResizeArea MouseArea start not found')
+
+          brace_start = text.index('{', start)
+          depth = 0
+          in_string = False
+          quote = ''
+          escape = False
+          end = None
+          for i in range(brace_start, len(text)):
+              ch = text[i]
+              if in_string:
+                  if escape:
+                      escape = False
+                  elif ch == '\\':
+                      escape = True
+                  elif ch == quote:
+                      in_string = False
+                  continue
+              if ch in ('"', "'"):
+                  in_string = True
+                  quote = ch
+              elif ch == '{':
+                  depth += 1
+              elif ch == '}':
+                  depth -= 1
+                  if depth == 0:
+                      end = i + 1
+                      break
+          if end is None:
+              raise SystemExit('slotResizeArea MouseArea closing brace not found')
+
+          block = text[start:end]
+          enable_anchor = '                                                preventStealing: true\n'
+          if block.count(enable_anchor) != 1:
+              raise SystemExit(f'expected one preventStealing in resize MouseArea, got {block.count(enable_anchor)}')
+          block = block.replace(
+              enable_anchor,
+              enable_anchor + '                                                enabled: !slotOverlay.isManualItemSlot\n',
+              1,
+          )
+
+          handler = r'''
+
+                                            DragHandler {
+                                                id: manualItemSlotResizeHandler
+                                                enabled: slotOverlay.isManualItemSlot
+                                                target: null
+                                                acceptedButtons: Qt.LeftButton
+                                                dragThreshold: 0
+                                                property real startX: 0
+                                                property real startY: 0
+                                                property real startW: 1
+                                                property real startH: 1
+                                                property real lastDx: 0
+                                                property real lastDy: 0
+                                                property bool keepRatio: false
+
+                                                function boundsForDelta(dx, dy, proportional) {
+                                                    var nx = startX
+                                                    var ny = startY
+                                                    var nw = startW
+                                                    var nh = startH
+                                                    if (modelData.dir.indexOf("w") >= 0) { nx += dx; nw -= dx }
+                                                    if (modelData.dir.indexOf("e") >= 0) nw += dx
+                                                    if (modelData.dir.indexOf("n") >= 0) { ny += dy; nh -= dy }
+                                                    if (modelData.dir.indexOf("s") >= 0) nh += dy
+                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                                    if (!proportional)
+                                                        return {"x":nx,"y":ny,"width":nw,"height":nh}
+
+                                                    var horizontal = modelData.dir.indexOf("w") >= 0 || modelData.dir.indexOf("e") >= 0
+                                                    var vertical = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
+                                                    var sx = nw / Math.max(0.000001, startW)
+                                                    var sy = nh / Math.max(0.000001, startH)
+                                                    var scale = horizontal && vertical
+                                                            ? (Math.abs(sx - 1) >= Math.abs(sy - 1) ? sx : sy)
+                                                            : (horizontal ? sx : sy)
+                                                    scale = Math.max(Math.max(1 / Math.max(1, startW), 1 / Math.max(1, startH)), scale)
+                                                    nw = Math.max(1, startW * scale)
+                                                    nh = Math.max(1, startH * scale)
+
+                                                    if (modelData.dir.indexOf("w") >= 0)
+                                                        nx = startX + startW - nw
+                                                    else if (modelData.dir.indexOf("e") >= 0)
+                                                        nx = startX
+                                                    else
+                                                        nx = startX + (startW - nw) / 2
+
+                                                    if (modelData.dir.indexOf("n") >= 0)
+                                                        ny = startY + startH - nh
+                                                    else if (modelData.dir.indexOf("s") >= 0)
+                                                        ny = startY
+                                                    else
+                                                        ny = startY + (startH - nh) / 2
+
+                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
+                                                }
+
+                                                onActiveChanged: {
+                                                    if (active) {
+                                                        startX = slotOverlay.displayBounds.x
+                                                        startY = slotOverlay.displayBounds.y
+                                                        startW = slotOverlay.displayBounds.width
+                                                        startH = slotOverlay.displayBounds.height
+                                                        lastDx = 0
+                                                        lastDy = 0
+                                                        keepRatio = false
+                                                        slotOverlay.beginPreview({"x":startX,"y":startY,"width":startW,"height":startH}, "resize")
+                                                    } else if (slotOverlay.previewActive) {
+                                                        slotOverlay.commitPreview(boundsForDelta(lastDx, lastDy, keepRatio), "resize")
+                                                    }
+                                                }
+                                                onActiveTranslationChanged: {
+                                                    if (!active || !slotOverlay.previewActive)
+                                                        return
+                                                    lastDx = activeTranslation.x / zoom
+                                                    lastDy = activeTranslation.y / zoom
+                                                    keepRatio = (centroid.modifiers & Qt.ShiftModifier) !== 0
+                                                    slotOverlay.queuePreview(boundsForDelta(lastDx, lastDy, keepRatio), false)
+                                                }
+                                                onCanceled: {
+                                                    if (slotOverlay.isManualItemSlot) {
+                                                        window.itemSlotPreviewActive = false
+                                                        window.itemSlotPreviewSlotId = ""
+                                                    }
+                                                    slotOverlay.previewActive = false
+                                                    previewTimer.stop()
+                                                }
+                                            }'''
+
+          updated = text[:start] + block + handler + text[end:]
+          if updated.count('id: manualItemSlotResizeHandler') != 1:
+              raise SystemExit('manual DragHandler insertion failed')
+          if updated.count('enabled: !slotOverlay.isManualItemSlot') != 1:
+              raise SystemExit('manual MouseArea disable insertion failed')
+          path.write_text(updated, encoding='utf-8')
           PY
           git diff --check
-          git diff --stat
-      - name: Commit repaired tests to performance branch
+          git diff -- src/srstudio/graphics2/qml/GraphicsEditor.qml
+
+      - name: Commit patch to performance branch
         shell: bash
         run: |
+          if git diff --quiet -- src/srstudio/graphics2/qml/GraphicsEditor.qml; then
+            echo "No QML patch generated"
+            exit 0
+          fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add tests/test_graphics2_smart_slot_interaction_perf.py tests/test_graphics2_smart_slot_detection_manual.py
-          git commit -m 'test(g2): update Smart Slot contract for shared release selector'
+          git add src/srstudio/graphics2/qml/GraphicsEditor.qml
+          git commit -m 'fix(g2): keep ItemSlot resize grab stable during local preview'
           git push origin HEAD:g2/fix-item-slot-interaction-performance
