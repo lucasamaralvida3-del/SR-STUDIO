@@ -13,6 +13,7 @@ on:
       - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
       - 'tests/test_graphics2_item_slots.py'
       - 'tools/verify_frozen_item_slot_ui.py'
+      - 'tools/capture_studio_ui_viewports.py'
       - 'build/build_graphics2_host.py'
       - '.github/workflows/g2-item-slot-frozen-ui.yml'
   pull_request:
@@ -26,6 +27,7 @@ on:
       - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
       - 'tests/test_graphics2_item_slots.py'
       - 'tools/verify_frozen_item_slot_ui.py'
+      - 'tools/capture_studio_ui_viewports.py'
       - 'build/build_graphics2_host.py'
       - '.github/workflows/g2-item-slot-frozen-ui.yml'
 
@@ -73,7 +75,7 @@ jobs:
           QT_QPA_PLATFORM: offscreen
           QSG_RHI_BACKEND: software
         run: |
-          python -m compileall -q src/srstudio/graphics2 tools/verify_frozen_item_slot_ui.py tests/test_graphics2_item_slots.py
+          python -m compileall -q src/srstudio/graphics2 tools/verify_frozen_item_slot_ui.py tools/capture_studio_ui_viewports.py tests/test_graphics2_item_slots.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           python -m pytest -q tests/test_graphics2_item_slots.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -95,9 +97,13 @@ jobs:
         env:
           QT_QPA_PLATFORM: windows
           QSG_RHI_BACKEND: software
+          QT_SCALE_FACTOR: '1'
         run: |
           New-Item -ItemType Directory -Force -Path item-slot-frozen-evidence | Out-Null
           python tools/verify_frozen_item_slot_ui.py --runtime-root "dist/graphics2-host/SRGraphicsEngine2Host" --output-dir item-slot-frozen-evidence
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path item-slot-frozen-evidence/studio-viewports | Out-Null
+          python tools/capture_studio_ui_viewports.py --runtime-root "dist/graphics2-host/SRGraphicsEngine2Host" --output-dir item-slot-frozen-evidence/studio-viewports
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Enforce final visible-slot evidence
@@ -126,7 +132,21 @@ jobs:
             $shotHash = (Get-FileHash $shot -Algorithm SHA256).Hash.ToLowerInvariant()
             Write-Host "$($preset.preset_id.ToUpper())_SCREENSHOT_SHA256=$shotHash"
           }
+
+          $viewports = Get-Content "item-slot-frozen-evidence/studio-viewports/studio-ui-viewports.json" -Raw | ConvertFrom-Json
+          if (-not [bool]$viewports.pass) { throw "Studio viewport gate failed" }
+          if ([int]$viewports.products_panel_count -lt 5) { throw "Products panel did not receive spreadsheet-like product data" }
+          if (@($viewports.viewports).Count -ne 3) { throw "Expected exactly three Studio viewports" }
+          foreach ($viewport in @($viewports.viewports)) {
+            if ([int]$viewport.window_width -ne [int]$viewport.image_width) { throw "$($viewport.viewport): screenshot width mismatch" }
+            if ([int]$viewport.window_height -ne [int]$viewport.image_height) { throw "$($viewport.viewport): screenshot height mismatch" }
+            $viewportShot = "item-slot-frozen-evidence/studio-viewports/$($viewport.screenshot)"
+            if (!(Test-Path $viewportShot)) { throw "$($viewport.viewport): Studio screenshot missing" }
+            $viewportHash = (Get-FileHash $viewportShot -Algorithm SHA256).Hash.ToLowerInvariant()
+            Write-Host "STUDIO_$($viewport.viewport)_SHA256=$viewportHash"
+          }
           Write-Host "FROZEN_CLICK_TO_VISIBLE=true"
+          Write-Host "STUDIO_VIEWPORTS=PASS"
           Write-Host "SOURCE_SHA=$env:SOURCE_SHA"
 
       - uses: actions/upload-artifact@v4
