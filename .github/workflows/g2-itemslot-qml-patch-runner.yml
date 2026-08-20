@@ -22,12 +22,8 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
-
           path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
           text = path.read_text(encoding='utf-8')
-
-          # Match by semantic id instead of whitespace so QML indentation
-          # normalization cannot break this temporary one-shot runner.
           handler_id = 'id: manualItemSlotResizeHandler'
           if text.count(handler_id) != 1:
               raise SystemExit(f'expected one manualItemSlotResizeHandler, got {text.count(handler_id)}')
@@ -69,12 +65,10 @@ jobs:
           if end < len(text) and text[end] == '\n':
               end += 1
           text = text[:start] + text[end:]
-
           disable = '                                                enabled: !slotOverlay.isManualItemSlot\n'
           if text.count(disable) != 1:
               raise SystemExit(f'expected one manual MouseArea disable, got {text.count(disable)}')
           text = text.replace(disable, '', 1)
-
           manual_anchor = '                                    property bool isManualItemSlot: !!(modelData.metadata && modelData.metadata.manual_item_slot)\n'
           if text.count(manual_anchor) != 1:
               raise SystemExit(f'isManualItemSlot anchor count={text.count(manual_anchor)}')
@@ -85,7 +79,6 @@ jobs:
               + '                                    property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds\n'
           )
           text = text.replace(manual_anchor, stable_props, 1)
-
           geometry_old = (
               '                                    x: displayBounds.x * zoom\n'
               '                                    y: displayBounds.y * zoom\n'
@@ -101,7 +94,6 @@ jobs:
           if text.count(geometry_old) != 1:
               raise SystemExit(f'overlay geometry anchor count={text.count(geometry_old)}')
           text = text.replace(geometry_old, geometry_new, 1)
-
           frame_old = '''                                    Rectangle {
                                         anchors.fill: parent
                                         color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
@@ -124,7 +116,6 @@ jobs:
           if text.count(frame_old) != 1:
               raise SystemExit(f'preview frame anchor count={text.count(frame_old)}')
           text = text.replace(frame_old, frame_new, 1)
-
           if 'manualItemSlotResizeHandler' in text:
               raise SystemExit('experimental DragHandler still present')
           if text.count('resizePreviewKeepsInteractionGeometry') < 5:
