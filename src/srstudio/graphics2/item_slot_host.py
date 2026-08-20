@@ -25,12 +25,33 @@ from .item_slots import (
     save_item_slot_as_preset,
     set_item_slot_role_bounds,
 )
+from .slot_corpus_bindings import bind_product_to_quinta3_slot
+from .slot_corpus_calibration import QUINTA3_SUPERVISED_PROFILES
+from .slot_corpus_families import QUINTA3_FAMILY_PRESETS, install_quinta3_family_presets
+from .slot_corpus_variant_runtime import apply_quinta3_variant, create_quinta3_item_slot
+
+
+# One certified source example is used only to materialize the initial visual
+# variant when the user creates a family from the Studio menu.  Applying a
+# product tagged with another supervised profile can switch parameters inside
+# the same base family; it never creates another preset/family.
+_QUINTA3_DEFAULT_PROFILE_BY_FAMILY = {
+    "quinta3-meat-strip": "costela",
+    "quinta3-wood-plaque": "bolacha",
+    "quinta3-compact-promo": "odor-boom",
+    "quinta3-club-side": "amaciante",
+    "quinta3-stationery-round": "cadernos",
+}
 
 
 class ItemSlotCommandRouter(GraphicsCommandRouter):
     """Adds manual authoring commands without changing automatic detection."""
 
     def payload(self) -> dict[str, Any]:
+        # The five certified Quinta3 families live in the existing custom
+        # preset store. Installing them here makes the generic QML preset menu
+        # see them in every real Studio session without a UI-specific fork.
+        install_quinta3_family_presets(self.session.document)
         refresh_all_item_slots(self.session.document)
         payload = super().payload()
         editor = payload.setdefault("editor", {})
@@ -54,12 +75,24 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         name = str(command.get("name") or "").strip().lower()
         if name == "add_item_slot":
             preset_id = str(command.get("preset_id") or "simples")
-            slot = create_item_slot(
-                self.session,
-                preset_id,
-                x=_optional_number(command.get("x")),
-                y=_optional_number(command.get("y")),
-            )
+            if preset_id in QUINTA3_FAMILY_PRESETS:
+                profile_id = _QUINTA3_DEFAULT_PROFILE_BY_FAMILY[preset_id]
+                profile = QUINTA3_SUPERVISED_PROFILES[profile_id]
+                slot = create_quinta3_item_slot(
+                    self.session,
+                    preset_id,
+                    variant=str(profile["variant"]),
+                    parameters={"supervisedProfile": profile_id},
+                    x=_optional_number(command.get("x")),
+                    y=_optional_number(command.get("y")),
+                )
+            else:
+                slot = create_item_slot(
+                    self.session,
+                    preset_id,
+                    x=_optional_number(command.get("x")),
+                    y=_optional_number(command.get("y")),
+                )
             return CommandResult(
                 True,
                 True,
@@ -142,7 +175,20 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                     product = next((item for item in products if str(item.get("id") or "") == product_id), None)
                 if not isinstance(product, dict):
                     return CommandResult(False, False, "Produto não encontrado.")
-                changed = bind_product_to_item_slot(self.session, slot_id, product)
+
+                if slot.metadata.get("quinta3_family"):
+                    profile_id = str(product.get("quinta3_supervised_profile") or "").strip()
+                    profile = QUINTA3_SUPERVISED_PROFILES.get(profile_id)
+                    if profile and str(profile.get("family_id") or "") == str(slot.metadata.get("preset_id") or ""):
+                        apply_quinta3_variant(
+                            self.session,
+                            slot.id,
+                            variant=str(profile["variant"]),
+                            parameters={"supervisedProfile": profile_id},
+                        )
+                    changed = bind_product_to_quinta3_slot(self.session, slot_id, product)
+                else:
+                    changed = bind_product_to_item_slot(self.session, slot_id, product)
                 return CommandResult(True, changed, "Produto aplicado ao ItemSlot.")
 
         result = super().dispatch(command)
