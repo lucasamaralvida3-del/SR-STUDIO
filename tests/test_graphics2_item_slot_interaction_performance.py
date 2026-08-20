@@ -25,7 +25,6 @@ def test_commit_item_slot_bounds_is_one_logical_group_commit_and_preserves_relat
     root = session.page.node(str(slot.metadata["root_node_id"]))
     assert root is not None
     before = item_slot_snapshot(session.page, slot)
-    before_history = len(session.history.undo_stack)
 
     result = router.dispatch(
         {
@@ -40,7 +39,6 @@ def test_commit_item_slot_bounds_is_one_logical_group_commit_and_preserves_relat
 
     assert result.ok is True
     assert result.changed is True
-    assert len(session.history.undo_stack) == before_history + 1
     after = item_slot_snapshot(session.page, slot)
     assert after["bounds"] == result.payload["bounds"]
     assert after["preset_id"] == before["preset_id"]
@@ -50,6 +48,16 @@ def test_commit_item_slot_bounds_is_one_logical_group_commit_and_preserves_relat
         before_relative = before["internal_roles"][role]["relative"]
         after_relative = after["internal_roles"][role]["relative"]
         assert after_relative == pytest.approx(before_relative, abs=1e-9)
+
+    # Public history contract: one undo must revert the whole release commit and
+    # one redo must restore it. If release created multiple logical transactions,
+    # a single undo would not return to the exact pre-release ItemSlot snapshot.
+    assert session.undo() is True
+    undone_slot = session.page.slots[slot.id]
+    assert item_slot_snapshot(session.page, undone_slot) == before
+    assert session.redo() is True
+    redone_slot = session.page.slots[slot.id]
+    assert item_slot_snapshot(session.page, redone_slot) == after
 
 
 @pytest.mark.parametrize("preset_id", ["simples", "destaque", "card"])
