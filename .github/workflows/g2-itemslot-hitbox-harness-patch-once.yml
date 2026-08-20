@@ -5,7 +5,7 @@ on:
     branches:
       - g2/fix-item-slot-interaction-performance
     paths:
-      - 'tools/.g2-itemslot-hitbox-harness-activate'
+      - 'tools/g2-itemslot-hitbox-harness-activate.txt'
 
 permissions:
   contents: write
