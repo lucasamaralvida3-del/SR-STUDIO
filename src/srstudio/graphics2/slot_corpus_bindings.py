@@ -2,12 +2,13 @@ from __future__ import annotations
 
 """Product binding adapter for supervised Quinta 3 ItemSlot families.
 
-The adapter deliberately reuses the existing ItemSlot/Product binding path and
-then applies only source-specific semantics that cannot be expressed by the
-legacy generic role formatter: exact UNIT text (KG/UN/CADA/QUILO without an
-invented slash) and an optional second split promotional price.
+The generic ItemSlot path is reused.  This adapter preserves source-specific
+surface semantics that older templates intentionally format differently:
+literal UNIT text, a second split promotional PriceBlock, independent labels
+and multi-node IMAGE copies sharing the same product asset.
 """
 
+from copy import deepcopy
 from typing import Any
 
 from .item_slots import bind_product_to_item_slot, refresh_item_slot_metadata
@@ -24,9 +25,8 @@ def bind_product_to_quinta3_slot(session: GraphicsSession, slot_id: str, product
 
     page = session.page
     with session.transaction("Aplicar Bindings Quinta 3"):
-        # The exact corpus spells these as KG / UN / CADA / QUILO.  The generic
-        # ItemSlot formatter prepends '/', which is valid for older templates but
-        # would mutate this supervised source style.
+        # Older ItemSlots use '/KG'.  Quinta 3 deliberately uses the exact PPTX
+        # spelling KG/UN/CADA/QUILO, so only this supervised adapter removes '/'.
         unit_node = page.node(str(slot.node_by_role.get(BindingRole.UNIT.value) or ""))
         unit = str(product.get("unit") or "UN").strip().upper().lstrip("/")
         if unit_node is not None and unit_node.kind is NodeKind.TEXT:
@@ -34,6 +34,8 @@ def bind_product_to_quinta3_slot(session: GraphicsSession, slot_id: str, product
 
         extras = slot.metadata.get("extra_bindings")
         extras = extras if isinstance(extras, dict) else {}
+        _bind_image_copies(page, slot, extras)
+
         secondary = _secondary_price_value(product)
         if secondary not in (None, "") and all(key in extras for key in ("app_price_integer", "app_price_cents")):
             whole, cents = _price_parts(secondary)
@@ -55,8 +57,30 @@ def bind_product_to_quinta3_slot(session: GraphicsSession, slot_id: str, product
             snapshot["quinta3_unit"] = unit
             snapshot["quinta3_secondary_price"] = "" if secondary in (None, "") else str(secondary)
             snapshot["quinta3_secondary_unit"] = str(product.get("secondary_unit") or product.get("promotion_unit") or "").strip().upper().lstrip("/")
+            snapshot["quinta3_variant"] = str(slot.metadata.get("quinta3_variant") or "")
+            snapshot["quinta3_parameters"] = deepcopy(slot.metadata.get("quinta3_parameters") or {})
+            snapshot["image_copies"] = int(slot.metadata.get("image_copies") or 1)
         refresh_item_slot_metadata(page, slot)
     return True
+
+
+def _bind_image_copies(page, slot, extras: dict[str, Any]) -> None:
+    source = page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
+    if source is None:
+        return
+    raw_ids = extras.get(BindingRole.IMAGE.value)
+    ids = raw_ids if isinstance(raw_ids, (list, tuple)) else []
+    for raw_id in ids:
+        node = page.node(str(raw_id or ""))
+        if node is None or node.kind is not NodeKind.IMAGE:
+            continue
+        node.asset_id = source.asset_id
+        node.style = deepcopy(source.style)
+        node.metadata.pop("placeholder", None)
+        if source.metadata.get("bound_image_source"):
+            node.metadata["bound_image_source"] = source.metadata["bound_image_source"]
+        if source.metadata.get("image_sha256"):
+            node.metadata["image_sha256"] = source.metadata["image_sha256"]
 
 
 def _secondary_price_value(product: dict[str, Any]) -> Any:
