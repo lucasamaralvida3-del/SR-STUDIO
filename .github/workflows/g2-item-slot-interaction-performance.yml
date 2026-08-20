@@ -28,43 +28,26 @@ jobs:
               raise SystemExit('experimental DragHandler still present')
 
           if 'objectName: "smartSlotVisualFrame-"' not in text:
-              old = '''                                    Rectangle {
-                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
-'''
-              new = '''                                    Rectangle {
-                                        objectName: "smartSlotVisualFrame-" + String(slotOverlay.modelData.id || "")
-                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
-'''
-              if text.count(old) != 1:
-                  raise SystemExit(f'visual frame anchor count={text.count(old)}')
-              text = text.replace(old, new, 1)
+              anchor = '                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'visual frame line count={text.count(anchor)}')
+              text = text.replace(anchor, '                                        objectName: "smartSlotVisualFrame-" + String(slotOverlay.modelData.id || "")\n' + anchor, 1)
 
           if 'objectName: "smartSlotVisualHandle-"' not in text:
-              old = '''                                            Rectangle {
-                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
-                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
-'''
-              new = '''                                            Rectangle {
-                                                objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
-                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
-                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
-'''
-              if text.count(old) != 1:
-                  raise SystemExit(f'visual handle anchor count={text.count(old)}')
-              text = text.replace(old, new, 1)
+              anchor = '                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'visual handle line count={text.count(anchor)}')
+              text = text.replace(anchor, '                                                objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")\n' + anchor, 1)
 
           if 'function resizedBounds(px, py, modifiers)' not in text:
-              old = '                                                function resizedBounds(px, py) {\n'
-              if text.count(old) != 1:
-                  raise SystemExit(f'resizedBounds signature count={text.count(old)}')
-              text = text.replace(old, '                                                function resizedBounds(px, py, modifiers) {\n', 1)
-              old = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
-                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
-                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
-'''
-              new = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
-                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
-                                                    if (slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)) {
+              anchor = '                                                function resizedBounds(px, py) {\n'
+              if text.count(anchor) != 1:
+                  raise SystemExit(f'resizedBounds signature count={text.count(anchor)}')
+              text = text.replace(anchor, '                                                function resizedBounds(px, py, modifiers) {\n', 1)
+              ret = '                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}\n'
+              if text.count(ret) != 1:
+                  raise SystemExit(f'resizedBounds return count={text.count(ret)}')
+              shift = '''                                                    if (slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)) {
                                                         var aspect = Math.max(0.000001, startW) / Math.max(0.000001, startH)
                                                         var hasH = modelData.dir.indexOf("e") >= 0 || modelData.dir.indexOf("w") >= 0
                                                         var hasV = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
@@ -89,11 +72,8 @@ jobs:
                                                         nw = targetW
                                                         nh = targetH
                                                     }
-                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
 '''
-              if text.count(old) != 1:
-                  raise SystemExit(f'resizedBounds body count={text.count(old)}')
-              text = text.replace(old, new, 1)
+              text = text.replace(ret, shift + ret, 1)
               old = 'slotOverlay.queuePreview(resizedBounds(point.x, point.y), false)'
               if text.count(old) != 1:
                   raise SystemExit(f'queue call count={text.count(old)}')
@@ -108,6 +88,8 @@ jobs:
               'objectName: "smartSlotVisualHandle-"',
               'function resizedBounds(px, py, modifiers)',
               'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)',
+              'slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)',
+              'slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")',
           ]:
               if token not in text:
                   raise SystemExit(f'missing final QML token: {token}')
