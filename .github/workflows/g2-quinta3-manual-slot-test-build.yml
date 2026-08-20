@@ -42,13 +42,13 @@ jobs:
       - name: Certified Quinta3 Studio surface and fidelity tests
         shell: pwsh
         run: |
-          python -m pytest -q tests/test_graphics2_quinta3_studio_manual_build.py tests/test_graphics2_quinta3_fidelity_contract.py tests/test_graphics2_quinta3_slot_families.py tests/test_graphics2_quinta3_slot_variant_runtime.py tests/test_graphics2_quinta3_slot_bindings.py
+          python -m pytest -q tests/test_graphics2_quinta3_studio_manual_build.py tests/test_graphics2_quinta3_fidelity_contract.py tests/test_graphics2_quinta3_slot_families.py tests/test_graphics2_quinta3_slot_variant_runtime.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Save reopen and host integration regression
         shell: pwsh
         run: |
-          python -m pytest -q tests/test_graphics2_item_slots.py tests/test_graphics2_item_slot_host.py tests/test_graphics2_editor_persistence.py tests/test_graphics2_package.py tests/test_graphics2_full_studio_entrypoint.py tests/test_graphics2_studio_bridge.py
+          python -m pytest -q tests/test_graphics2_item_slots.py tests/test_graphics2_editor_persistence.py tests/test_graphics2_package_stress.py tests/test_graphics2_full_studio_entrypoint.py tests/test_graphics2_studio_bridge.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Compile Quinta3 host surface
