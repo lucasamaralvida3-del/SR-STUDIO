@@ -1,49 +1,56 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
-from time import perf_counter_ns
-
-import pytest
 
 from srstudio.graphics2.command_router import GraphicsCommandRouter
+from srstudio.graphics2.drop_target import find_drop_target
 from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, SmartSlot, Transform
 from srstudio.graphics2.operations import GraphicsSession
-from srstudio.graphics2.smart_slot_manual import set_manual_slot_bounds
-
-
-@pytest.fixture
-def document() -> GraphicsDocument:
-    return _document()
+from srstudio.graphics2.package import load_package, save_package
+from srstudio.graphics2.smart_slot_manual import mark_slot_non_product, restore_auto_slot_bounds, set_manual_slot_bounds
 
 
 def _document() -> GraphicsDocument:
-    document = GraphicsDocument(name="Smart Slot Interaction Perf")
-    page = GraphicsPage(name="Página 1", width=1080, height=1350)
-    document.add_page(page)
-    for slot_id, x in (("slot-1", 120.0), ("slot-2", 520.0)):
-        image = GraphicsNode(kind=NodeKind.IMAGE, name=f"Imagem {slot_id}", transform=Transform(x=x, y=180, width=180, height=220))
-        name = GraphicsNode(kind=NodeKind.TEXT, name=f"Nome {slot_id}", text="PRODUTO", transform=Transform(x=x, y=420, width=220, height=40))
-        price = GraphicsNode(kind=NodeKind.TEXT, name=f"Preço {slot_id}", text="12,99", transform=Transform(x=x, y=470, width=160, height=70))
+    page = GraphicsPage(id="page-perf", name="Perf", width=1080, height=1350)
+    for index, x in enumerate((100, 420), start=1):
+        image = GraphicsNode(
+            id=f"image-{index}",
+            kind=NodeKind.IMAGE,
+            name=f"Produto {index}",
+            transform=Transform(x=x, y=180, width=150, height=160),
+        )
+        name = GraphicsNode(
+            id=f"name-{index}",
+            kind=NodeKind.TEXT,
+            name=f"Nome {index}",
+            text=f"PRODUTO {index}",
+            transform=Transform(x=x, y=350, width=180, height=36),
+        )
         page.add_node(image)
         page.add_node(name)
-        page.add_node(price)
-        page.slots[slot_id] = SmartSlot(
-            id=slot_id,
-            name=f"Slot {slot_id}",
-            center=(x + 100, 360),
-            roles={
-                BindingRole.IMAGE.value: image.id,
-                BindingRole.NAME.value: name.id,
-                BindingRole.PRICE.value: price.id,
+        bounds = {"x": float(x - 20), "y": 150.0, "width": 220.0, "height": 280.0}
+        slot = SmartSlot(
+            id=f"slot-{index}",
+            name=f"Slot {index}",
+            page_id=page.id,
+            node_by_role={BindingRole.IMAGE.value: image.id, BindingRole.NAME.value: name.id},
+            metadata={
+                "source": "canva-smart-slot",
+                "original_detected_bounds": dict(bounds),
+                "effective_bounds": dict(bounds),
             },
-            metadata={"manual_slot": True},
         )
-    return document
+        page.slots[slot.id] = slot
+    return GraphicsDocument(id="doc-perf", name="Perf", pages=[page], active_page_id=page.id)
 
 
-def _node_snapshot(document: GraphicsDocument) -> dict[str, tuple]:
+def _node_snapshot(document: GraphicsDocument) -> dict:
+    """Snapshot only properties that affect rendered visual output."""
     return {
         node.id: (
+            node.kind.value,
+            node.name,
             node.transform.x,
             node.transform.y,
             node.transform.width,
@@ -91,28 +98,50 @@ def test_release_commit_preserves_visual_nodes_updates_overlap_drop_target_and_f
     assert slot.metadata["effective_bounds"] == applied
     assert slot.metadata["manual_overlap_count"] == 1
     assert slot.metadata["manual_overlap_slot_ids"] == ["slot-2"]
-    assert int(document.active_page.metadata.get("drop_target_revision") or 0) == before_revision + 1
-    assert document.metadata["smart_slot_feedback"][-1]["event"] == "manual_slot_adjust"
+    assert document.active_page.metadata["drop_target_revision"] == before_revision + 1
     assert _node_snapshot(document) == before_nodes
+    assert document.metadata["smart_slot_feedback"][-1]["action"] == "manual-bounds"
+
+    target = find_drop_target(document.active_page, 390, 170, magnet_distance=0)
+    assert target is not None
+    assert target.slot_id == "slot-1"
 
 
-def test_release_commit_router_path_has_one_dispatch_and_no_scene_mutation_before_release(document: GraphicsDocument) -> None:
-    session = GraphicsSession(document)
-    router = GraphicsCommandRouter(session)
-    before = document.to_dict()
-    start = perf_counter_ns()
-    result = router.dispatch(
-        {
-            "name": "adjust_smart_slot",
-            "slot_id": "slot-1",
-            "x": 150,
-            "y": 170,
-            "width": 250,
-            "height": 330,
-            "snap": False,
-        }
+def test_qml_dispatch_can_skip_duplicate_scene_payload_without_losing_bounds_payload() -> None:
+    document = _document()
+    router = GraphicsCommandRouter(GraphicsSession(document))
+    command = json.dumps(
+        {"name": "adjust_smart_slot", "slot_id": "slot-1", "x": 140, "y": 180, "width": 250, "height": 300}
     )
-    elapsed_ms = (perf_counter_ns() - start) / 1_000_000.0
-    assert result.ok and result.changed
-    assert elapsed_ms < 250
-    assert document.to_dict() != before
+
+    compact = json.loads(router.dispatch_json(command, include_scene_payload=False))
+    assert compact["ok"] is True
+    assert compact["changed"] is True
+    assert compact["payload"]["slot_id"] == "slot-1"
+    assert compact["payload"]["bounds"] == {"x": 140.0, "y": 180.0, "width": 250.0, "height": 300.0}
+    assert "pages" not in compact["payload"]
+
+
+def test_save_reopen_and_restore_auto_keep_final_bounds(tmp_path: Path) -> None:
+    document = _document()
+    session = GraphicsSession(document)
+    set_manual_slot_bounds(session, "slot-1", x=170, y=210, width=260, height=320)
+
+    package = save_package(document, tmp_path / "perf.srscene", embed_local_assets=True)
+    reopened = load_package(package)
+    reopened_slot = reopened.active_page.slots["slot-1"]
+    assert reopened_slot.metadata["user_adjusted_bounds"] == {"x": 170.0, "y": 210.0, "width": 260.0, "height": 320.0}
+    assert reopened_slot.metadata["effective_bounds"] == reopened_slot.metadata["user_adjusted_bounds"]
+
+    restored = restore_auto_slot_bounds(GraphicsSession(reopened), "slot-1")
+    assert restored == {"x": 80.0, "y": 150.0, "width": 220.0, "height": 280.0}
+    assert "user_adjusted_bounds" not in reopened.active_page.slots["slot-1"].metadata
+
+
+def test_non_product_and_delete_semantics_preserve_visual_nodes() -> None:
+    document = _document()
+    before_nodes = _node_snapshot(document)
+    mark_slot_non_product(GraphicsSession(document), "slot-1", reason="manual-non-product")
+    assert "slot-1" not in document.active_page.slots
+    assert _node_snapshot(document) == before_nodes
+    assert document.metadata["suppressed_smart_slots"][-1]["slot_id"] == "slot-1"

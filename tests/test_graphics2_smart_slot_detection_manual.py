@@ -399,7 +399,7 @@ def test_qml_exposes_smart_slot_adjust_mode_without_serializing_overlay_nodes():
 
     assert "property bool smartSlotEditMode: false" in qml
     assert "Ajustar Smart Slot" in qml
-    assert '"name":"adjust_smart_slot"' in qml or '"name": "adjust_smart_slot"' in qml
+    assert 'isManualItemSlot ? "commit_item_slot_bounds" : "adjust_smart_slot"' in qml
     assert '"name":"restore_smart_slot_auto"' in qml or '"name": "restore_smart_slot_auto"' in qml
     assert '"name":"mark_smart_slot_non_product"' in qml or '"name": "mark_smart_slot_non_product"' in qml
     assert "smartSlotEditMode || smartSlotInspectionMode" in qml
