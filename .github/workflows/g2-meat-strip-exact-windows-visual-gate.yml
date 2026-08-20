@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - g2/quinta3-meat-strip-windows-visual-gate
+  pull_request:
+    branches:
+      - g2/quinta3-meat-strip-full-card
+    paths:
+      - '.github/workflows/g2-meat-strip-exact-windows-visual-gate.yml'
   workflow_dispatch:
 
 permissions:
