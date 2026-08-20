@@ -207,7 +207,7 @@ Rectangle {
             text: "Copiar"
             visible: !(panel.Window.window && panel.Window.window.tightUi)
             enabled: !sceneBridge.busy
-            ToolTip.text: "Copiar seleção · Ctrl+C"
+            ToolTip.text: "Copiar seleção · Ctrl+C · preservando ProductCard/PriceBlock/SmartSlot"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch('{"name":"copy"}')
         }
