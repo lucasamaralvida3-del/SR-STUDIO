@@ -89,7 +89,7 @@ def test_commit_item_slot_bounds_save_reopen_preserves_final_geometry(tmp_path: 
     assert actual["preset_id"] == expected["preset_id"]
 
 
-def test_qml_manual_item_slot_uses_local_subtree_preview_and_one_release_command() -> None:
+def test_qml_manual_item_slot_uses_stable_resize_hitbox_and_one_release_command() -> None:
     qml = Path("src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
     assert "property bool itemSlotPreviewActive: false" in qml
     assert "function itemSlotDisplayTransform(node)" in qml
@@ -102,11 +102,16 @@ def test_qml_manual_item_slot_uses_local_subtree_preview_and_one_release_command
     assert "if (slotMetadata.manual_item_slot)" in qml
     assert "root_node_id" in qml
 
-    # Manual resize must remain preview-only. The Pointer Handler owns no target,
-    # so it never mutates the slot/handle tree while the pointer is moving.
-    assert "id: manualItemSlotResizeHandler" in qml
-    assert "enabled: slotOverlay.isManualItemSlot" in qml
-    assert "target: null" in qml
-    assert "dragThreshold: 0" in qml
-    assert "slotOverlay.queuePreview(boundsForDelta(lastDx, lastDy, keepRatio), false)" in qml
-    assert "slotOverlay.commitPreview(boundsForDelta(lastDx, lastDy, keepRatio), \"resize\")" in qml
+    # During manual resize the real MouseArea and its ancestor keep the original
+    # geometry, while frame/handle visuals and the ItemSlot subtree follow the
+    # local preview. This prevents Qt from cancelling the mouse grab mid-gesture.
+    assert 'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"' in qml
+    assert "property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds" in qml
+    assert "x: interactionBounds.x * zoom" in qml
+    assert "width: interactionBounds.width * zoom" in qml
+    assert "slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x" in qml
+    assert "slotOverlay.displayBounds.width - slotOverlay.interactionBounds.width" in qml
+    assert "enabled: !slotOverlay.isManualItemSlot" not in qml
+    assert "manualItemSlotResizeHandler" not in qml
+    assert "slotOverlay.queuePreview(resizedBounds(point.x, point.y), false)" in qml
+    assert "slotOverlay.commitPreview(resizedBounds(point.x, point.y), \"resize\")" in qml
