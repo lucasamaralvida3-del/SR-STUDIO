@@ -29,7 +29,7 @@ Rectangle {
             color: theme ? theme.primary : "#5B45F6"
             font.pixelSize: theme ? theme.fontTiny : 9
             font.bold: true
-            letterSpacing: 0.4
+            font.letterSpacing: 0.4
         }
 
         ColumnLayout {
