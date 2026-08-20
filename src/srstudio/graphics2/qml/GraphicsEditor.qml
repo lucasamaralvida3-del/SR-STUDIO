@@ -1119,9 +1119,9 @@ ApplicationWindow {
                                             {"dir":"sw","fx":0,"fy":1,"cursor":Qt.SizeBDiagCursor},
                                             {"dir":"w","fx":0,"fy":0.5,"cursor":Qt.SizeHorCursor}
                                         ]
-                                        delegate: Rectangle {
+                                        delegate: MouseArea {
                                             required property var modelData
-                                            objectName: "smartSlotHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                            objectName: "smartSlotResizeArea-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
                                             visible: slotOverlay.slotEditActive && slotOverlay.isSelectedSlot
                                             property real visualSize: 11
                                             property real desiredVisualX: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
@@ -1132,12 +1132,16 @@ ApplicationWindow {
                                                                           - visualSize / 2
                                             width: 18
                                             height: 18
-                                            radius: 2
                                             x: Math.max(0, Math.min(Math.max(0, slotOverlay.width - width), modelData.fx * slotOverlay.width - width / 2))
                                             y: Math.max(0, Math.min(Math.max(0, slotOverlay.height - height), modelData.fy * slotOverlay.height - height / 2))
-                                            color: "transparent"
-                                            border.width: 0
                                             z: 10
+                                            acceptedButtons: Qt.LeftButton
+                                            cursorShape: modelData.cursor
+                                            preventStealing: true
+                                            Item {
+                                                objectName: "smartSlotHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                                anchors.fill: parent
+                                            }
                                             Rectangle {
                                                 objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
                                                 visible: parent.visible
@@ -1150,88 +1154,81 @@ ApplicationWindow {
                                                 border.width: 2
                                                 border.color: "#0F5BD8"
                                             }
-                                            MouseArea {
-                                                id: slotResizeArea
-                                                objectName: "smartSlotResizeArea-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
-                                                anchors.fill: parent
-                                                cursorShape: modelData.cursor
-                                                preventStealing: true
-                                                property real startGlobalX: 0
-                                                property real startGlobalY: 0
-                                                property real startX: 0
-                                                property real startY: 0
-                                                property real startW: 0
-                                                property real startH: 0
-                                                function resizedBounds(px, py, modifiers) {
-                                                    var dx = px / zoom - startGlobalX
-                                                    var dy = py / zoom - startGlobalY
-                                                    var nx = startX
-                                                    var ny = startY
-                                                    var nw = startW
-                                                    var nh = startH
-                                                    if (modelData.dir.indexOf("w") >= 0) { nx += dx; nw -= dx }
-                                                    if (modelData.dir.indexOf("e") >= 0) nw += dx
-                                                    if (modelData.dir.indexOf("n") >= 0) { ny += dy; nh -= dy }
-                                                    if (modelData.dir.indexOf("s") >= 0) nh += dy
-                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
-                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
-                                                    if (slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)) {
-                                                        var aspect = Math.max(0.000001, startW) / Math.max(0.000001, startH)
-                                                        var hasH = modelData.dir.indexOf("e") >= 0 || modelData.dir.indexOf("w") >= 0
-                                                        var hasV = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
-                                                        var targetW = nw
-                                                        var targetH = nh
-                                                        if (hasH && hasV) {
-                                                            var relW = Math.abs(nw - startW) / Math.max(1, startW)
-                                                            var relH = Math.abs(nh - startH) / Math.max(1, startH)
-                                                            if (relW >= relH)
-                                                                targetH = Math.max(1, targetW / aspect)
-                                                            else
-                                                                targetW = Math.max(1, targetH * aspect)
-                                                        } else if (hasH) {
+                                            property real startGlobalX: 0
+                                            property real startGlobalY: 0
+                                            property real startX: 0
+                                            property real startY: 0
+                                            property real startW: 0
+                                            property real startH: 0
+                                            function resizedBounds(px, py, modifiers) {
+                                                var dx = px / zoom - startGlobalX
+                                                var dy = py / zoom - startGlobalY
+                                                var nx = startX
+                                                var ny = startY
+                                                var nw = startW
+                                                var nh = startH
+                                                if (modelData.dir.indexOf("w") >= 0) { nx += dx; nw -= dx }
+                                                if (modelData.dir.indexOf("e") >= 0) nw += dx
+                                                if (modelData.dir.indexOf("n") >= 0) { ny += dy; nh -= dy }
+                                                if (modelData.dir.indexOf("s") >= 0) nh += dy
+                                                if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                                if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                                if (slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)) {
+                                                    var aspect = Math.max(0.000001, startW) / Math.max(0.000001, startH)
+                                                    var hasH = modelData.dir.indexOf("e") >= 0 || modelData.dir.indexOf("w") >= 0
+                                                    var hasV = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
+                                                    var targetW = nw
+                                                    var targetH = nh
+                                                    if (hasH && hasV) {
+                                                        var relW = Math.abs(nw - startW) / Math.max(1, startW)
+                                                        var relH = Math.abs(nh - startH) / Math.max(1, startH)
+                                                        if (relW >= relH)
                                                             targetH = Math.max(1, targetW / aspect)
-                                                        } else if (hasV) {
+                                                        else
                                                             targetW = Math.max(1, targetH * aspect)
-                                                        }
-                                                        if (modelData.dir.indexOf("w") >= 0)
-                                                            nx = startX + startW - targetW
-                                                        if (modelData.dir.indexOf("n") >= 0)
-                                                            ny = startY + startH - targetH
-                                                        nw = targetW
-                                                        nh = targetH
+                                                    } else if (hasH) {
+                                                        targetH = Math.max(1, targetW / aspect)
+                                                    } else if (hasV) {
+                                                        targetW = Math.max(1, targetH * aspect)
                                                     }
-                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
+                                                    if (modelData.dir.indexOf("w") >= 0)
+                                                        nx = startX + startW - targetW
+                                                    if (modelData.dir.indexOf("n") >= 0)
+                                                        ny = startY + startH - targetH
+                                                    nw = targetW
+                                                    nh = targetH
                                                 }
-                                                onPressed: {
-                                                    var point = mapToItem(sheet, mouse.x, mouse.y)
-                                                    startGlobalX = point.x / zoom
-                                                    startGlobalY = point.y / zoom
-                                                    startX = slotOverlay.displayBounds.x
-                                                    startY = slotOverlay.displayBounds.y
-                                                    startW = slotOverlay.displayBounds.width
-                                                    startH = slotOverlay.displayBounds.height
-                                                    slotOverlay.beginPreview({"x":startX,"y":startY,"width":startW,"height":startH}, "resize")
+                                                return {"x":nx,"y":ny,"width":nw,"height":nh}
+                                            }
+                                            onPressed: {
+                                                var point = mapToItem(sheet, mouse.x, mouse.y)
+                                                startGlobalX = point.x / zoom
+                                                startGlobalY = point.y / zoom
+                                                startX = slotOverlay.displayBounds.x
+                                                startY = slotOverlay.displayBounds.y
+                                                startW = slotOverlay.displayBounds.width
+                                                startH = slotOverlay.displayBounds.height
+                                                slotOverlay.beginPreview({"x":startX,"y":startY,"width":startW,"height":startH}, "resize")
+                                            }
+                                            onPositionChanged: {
+                                                if (!pressed || !slotOverlay.previewActive)
+                                                    return
+                                                var point = mapToItem(sheet, mouse.x, mouse.y)
+                                                slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)
+                                            }
+                                            onReleased: {
+                                                if (!slotOverlay.previewActive)
+                                                    return
+                                                var point = mapToItem(sheet, mouse.x, mouse.y)
+                                                slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")
+                                            }
+                                            onCanceled: {
+                                                if (slotOverlay.isManualItemSlot) {
+                                                    window.itemSlotPreviewActive = false
+                                                    window.itemSlotPreviewSlotId = ""
                                                 }
-                                                onPositionChanged: {
-                                                    if (!pressed || !slotOverlay.previewActive)
-                                                        return
-                                                    var point = mapToItem(sheet, mouse.x, mouse.y)
-                                                    slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)
-                                                }
-                                                onReleased: {
-                                                    if (!slotOverlay.previewActive)
-                                                        return
-                                                    var point = mapToItem(sheet, mouse.x, mouse.y)
-                                                    slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")
-                                                }
-                                                onCanceled: {
-                                                    if (slotOverlay.isManualItemSlot) {
-                                                        window.itemSlotPreviewActive = false
-                                                        window.itemSlotPreviewSlotId = ""
-                                                    }
-                                                    slotOverlay.previewActive = false
-                                                    previewTimer.stop()
-                                                }
+                                                slotOverlay.previewActive = false
+                                                previewTimer.stop()
                                             }
                                         }
                                     }
