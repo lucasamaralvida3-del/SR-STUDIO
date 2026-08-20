@@ -1123,23 +1123,29 @@ ApplicationWindow {
                                             required property var modelData
                                             objectName: "smartSlotHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
                                             visible: slotOverlay.slotEditActive && slotOverlay.isSelectedSlot
-                                            width: 11; height: 11; radius: 2
-                                            x: modelData.fx * slotOverlay.width - width / 2
-                                            y: modelData.fy * slotOverlay.height - height / 2
-                                            color: slotOverlay.resizePreviewKeepsInteractionGeometry ? "transparent" : "white"
-                                            border.width: slotOverlay.resizePreviewKeepsInteractionGeometry ? 0 : 2
-                                            border.color: "#0F5BD8"
+                                            property real visualSize: 11
+                                            property real desiredVisualX: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+                                                                          + modelData.fx * slotOverlay.displayBounds.width * zoom
+                                                                          - visualSize / 2
+                                            property real desiredVisualY: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
+                                                                          + modelData.fy * slotOverlay.displayBounds.height * zoom
+                                                                          - visualSize / 2
+                                            width: 18
+                                            height: 18
+                                            radius: 2
+                                            x: Math.max(0, Math.min(Math.max(0, slotOverlay.width - width), modelData.fx * slotOverlay.width - width / 2))
+                                            y: Math.max(0, Math.min(Math.max(0, slotOverlay.height - height), modelData.fy * slotOverlay.height - height / 2))
+                                            color: "transparent"
+                                            border.width: 0
                                             z: 10
                                             Rectangle {
                                                 objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
-                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
-                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
-                                                   + modelData.fx * (slotOverlay.displayBounds.width - slotOverlay.interactionBounds.width) * zoom
-                                                y: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
-                                                   + modelData.fy * (slotOverlay.displayBounds.height - slotOverlay.interactionBounds.height) * zoom
-                                                width: parent.width
-                                                height: parent.height
-                                                radius: parent.radius
+                                                visible: parent.visible
+                                                x: parent.desiredVisualX - parent.x
+                                                y: parent.desiredVisualY - parent.y
+                                                width: parent.visualSize
+                                                height: parent.visualSize
+                                                radius: 2
                                                 color: "white"
                                                 border.width: 2
                                                 border.color: "#0F5BD8"
@@ -1170,30 +1176,30 @@ ApplicationWindow {
                                                     if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
                                                     if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
                                                     if (slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)) {
-                                              var aspect = Math.max(0.000001, startW) / Math.max(0.000001, startH)
-                                              var hasH = modelData.dir.indexOf("e") >= 0 || modelData.dir.indexOf("w") >= 0
-                                              var hasV = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
-                                              var targetW = nw
-                                              var targetH = nh
-                                              if (hasH && hasV) {
-                                                  var relW = Math.abs(nw - startW) / Math.max(1, startW)
-                                                  var relH = Math.abs(nh - startH) / Math.max(1, startH)
-                                                  if (relW >= relH)
-                                                      targetH = Math.max(1, targetW / aspect)
-                                                  else
-                                                      targetW = Math.max(1, targetH * aspect)
-                                              } else if (hasH) {
-                                                  targetH = Math.max(1, targetW / aspect)
-                                              } else if (hasV) {
-                                                  targetW = Math.max(1, targetH * aspect)
-                                              }
-                                              if (modelData.dir.indexOf("w") >= 0)
-                                                  nx = startX + startW - targetW
-                                              if (modelData.dir.indexOf("n") >= 0)
-                                                  ny = startY + startH - targetH
-                                              nw = targetW
-                                              nh = targetH
-                                          }
+                                                        var aspect = Math.max(0.000001, startW) / Math.max(0.000001, startH)
+                                                        var hasH = modelData.dir.indexOf("e") >= 0 || modelData.dir.indexOf("w") >= 0
+                                                        var hasV = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
+                                                        var targetW = nw
+                                                        var targetH = nh
+                                                        if (hasH && hasV) {
+                                                            var relW = Math.abs(nw - startW) / Math.max(1, startW)
+                                                            var relH = Math.abs(nh - startH) / Math.max(1, startH)
+                                                            if (relW >= relH)
+                                                                targetH = Math.max(1, targetW / aspect)
+                                                            else
+                                                                targetW = Math.max(1, targetH * aspect)
+                                                        } else if (hasH) {
+                                                            targetH = Math.max(1, targetW / aspect)
+                                                        } else if (hasV) {
+                                                            targetW = Math.max(1, targetH * aspect)
+                                                        }
+                                                        if (modelData.dir.indexOf("w") >= 0)
+                                                            nx = startX + startW - targetW
+                                                        if (modelData.dir.indexOf("n") >= 0)
+                                                            ny = startY + startH - targetH
+                                                        nw = targetW
+                                                        nh = targetH
+                                                    }
                                                     return {"x":nx,"y":ny,"width":nw,"height":nh}
                                                 }
                                                 onPressed: {
