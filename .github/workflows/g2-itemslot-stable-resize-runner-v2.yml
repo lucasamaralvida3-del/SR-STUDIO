@@ -108,23 +108,32 @@ jobs:
                   raise SystemExit(f'missing internal-handle token: {token}')
           qml_path.write_text(text, encoding='utf-8')
 
-          for filename, center_name in [
-              ('tools/verify_frozen_item_slot_interaction.py', 'center'),
-              ('tools/benchmark_frozen_item_slot_interaction.py', 'scene_center'),
-          ]:
-              path = Path(filename)
-              src = path.read_text(encoding='utf-8')
-              src = src.replace('resize_start = inner_handle_point(resize_area)', f'resize_start = {center_name}(resize_area)')
-              src = src.replace('shift_start = inner_handle_point(shift_area)', f'shift_start = {center_name}(shift_area)')
-              # Remove the obsolete helper now that the physical hitbox is entirely internal.
-              marker = '    def inner_handle_point(item: QQuickItem, inset: float = 2.0) -> QPoint:\n'
-              if marker in src:
-                  start = src.index(marker)
-                  next_def = src.index('    def ', start + len(marker))
-                  src = src[:start] + src[next_def:]
-              if 'inner_handle_point(' in src:
-                  raise SystemExit(f'obsolete edge-hit helper remains in {filename}')
-              path.write_text(src, encoding='utf-8')
+          # Benchmark must send QTest gestures in QWindow-local coordinates,
+          # exactly like the permanent continuous gate.
+          bench_path = Path('tools/benchmark_frozen_item_slot_interaction.py')
+          bench = bench_path.read_text(encoding='utf-8')
+          old_center = '''    def scene_center(item: QQuickItem) -> QPoint:
+        p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)); return QPoint(round(p.x()), round(p.y()))
+'''
+          new_center = '''    def window_point(item: QQuickItem, x: float, y: float) -> QPoint:
+        global_point = item.mapToGlobal(QPointF(x, y))
+        return root.mapFromGlobal(QPoint(round(global_point.x()), round(global_point.y())))
+    def scene_center(item: QQuickItem) -> QPoint:
+        return window_point(item, max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)
+'''
+          if old_center in bench:
+              bench = bench.replace(old_center, new_center, 1)
+          elif 'def window_point(item: QQuickItem' not in bench:
+              raise SystemExit('benchmark coordinate anchor not found')
+          bench = bench.replace('resize_start = inner_handle_point(resize_area)', 'resize_start = scene_center(resize_area)')
+          marker = '    def inner_handle_point(item: QQuickItem, inset: float = 2.0) -> QPoint:\n'
+          if marker in bench:
+              start = bench.index(marker)
+              next_def = bench.index('    def ', start + len(marker))
+              bench = bench[:start] + bench[next_def:]
+          if 'inner_handle_point(' in bench:
+              raise SystemExit('obsolete benchmark edge-hit helper remains')
+          bench_path.write_text(bench, encoding='utf-8')
 
           test_path = Path('tests/test_graphics2_item_slot_interaction_performance.py')
           test = test_path.read_text(encoding='utf-8')
@@ -146,7 +155,7 @@ jobs:
           git diff --check
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/srstudio/graphics2/qml/GraphicsEditor.qml tests/test_graphics2_item_slot_interaction_performance.py tools/verify_frozen_item_slot_interaction.py tools/benchmark_frozen_item_slot_interaction.py
+          git add src/srstudio/graphics2/qml/GraphicsEditor.qml tests/test_graphics2_item_slot_interaction_performance.py tools/benchmark_frozen_item_slot_interaction.py
           if git diff --cached --quiet; then
             echo 'Stable internal-handle contract already present'
           else
