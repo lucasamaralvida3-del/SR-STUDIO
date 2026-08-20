@@ -16,6 +16,12 @@ def _all_objects(root):
     return [root, *root.findChildren(QObject)]
 
 
+def _walk_items(item):
+    yield item
+    for child in item.childItems():
+        yield from _walk_items(child)
+
+
 def _has_text(root, expected: str) -> bool:
     for obj in _all_objects(root):
         try:
@@ -35,6 +41,45 @@ def _grab_window(root, target: Path) -> tuple[int, int]:
     return image.width(), image.height()
 
 
+def _find_sheet(root, page_width: float, page_height: float, zoom: float):
+    from PySide6.QtGui import QColor
+
+    expected_w = page_width * zoom
+    expected_h = page_height * zoom
+    matches = []
+    for item in _walk_items(root.contentItem()):
+        if abs(float(item.width()) - expected_w) > 2 or abs(float(item.height()) - expected_h) > 2:
+            continue
+        color = item.property("color")
+        if (
+            isinstance(color, QColor)
+            and color.alpha() >= 240
+            and color.red() >= 235
+            and color.green() >= 235
+            and color.blue() >= 235
+        ):
+            matches.append(item)
+    assert matches, f"canvas sheet not found at {expected_w}x{expected_h}"
+    return matches[0]
+
+
+def _variant_map(value):
+    if hasattr(value, "toVariant"):
+        value = value.toVariant()
+    return value if isinstance(value, dict) else None
+
+
+def _find_product_item(root, product_id: str):
+    for item in _walk_items(root.contentItem()):
+        try:
+            data = _variant_map(item.property("productData"))
+        except Exception:
+            continue
+        if data and str(data.get("id") or "") == product_id:
+            return item
+    raise AssertionError(f"ProductListItem not found for {product_id}")
+
+
 def _build_document():
     from srstudio.graphics2.item_slots import bind_product_to_item_slot, create_item_slot
     from srstudio.graphics2.model import GraphicsDocument, GraphicsPage
@@ -50,8 +95,8 @@ def _build_document():
     document = GraphicsDocument(
         name="Studio UI Reconciliation",
         pages=[GraphicsPage(name="Encarte Principal", width=1080, height=1350)],
-        metadata={"products": products},
     )
+    document.metadata["products"] = products
     document.active_page_id = document.pages[0].id
     session = GraphicsSession(document)
     placements = (
@@ -64,7 +109,8 @@ def _build_document():
         slot = create_item_slot(session, preset, x=x, y=y)
         assert bind_product_to_item_slot(session, slot.id, product)
         slot_ids.append(slot.id)
-    session.clear_selection()
+    session.selection.clear()
+    session.anchor_id = None
     return document, session, products, slot_ids
 
 
@@ -75,7 +121,7 @@ def main() -> int:
     args = parser.parse_args()
 
     from shiboken6 import Shiboken
-    from PySide6.QtCore import QObject, Property, Signal, Slot, QUrl
+    from PySide6.QtCore import QObject, QPointF, Property, Signal, Slot, QUrl
     from PySide6.QtGui import QGuiApplication
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuick import QQuickWindow
@@ -99,6 +145,7 @@ def main() -> int:
         def __init__(self) -> None:
             super().__init__()
             self._status = "Studio UI viewport validation"
+            self.commands: list[dict] = []
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
@@ -115,6 +162,8 @@ def main() -> int:
 
         @Slot(str, result=str)
         def dispatch(self, raw: str) -> str:
+            command = json.loads(raw)
+            self.commands.append(command)
             result = router.dispatch_json(raw, include_scene_payload=False)
             parsed = json.loads(result)
             self._status = str(parsed.get("message") or "")
@@ -186,8 +235,38 @@ def main() -> int:
 
     root.setProperty("zoom", 0.58)
     app.processEvents()
-    QTest.qWait(120)
+    QTest.qWait(160)
     assert abs(float(root.property("zoom")) - 0.58) < 0.001
+
+    sheet = _find_sheet(root, session.page.width, session.page.height, float(root.property("zoom")))
+    target_slot = session.page.slots[slot_ids[0]]
+    target_root = session.page.node(str(target_slot.metadata.get("root_node_id") or ""))
+    assert target_root is not None
+    drag_product = products[4]
+    source_item = _find_product_item(root, drag_product["id"])
+    target_sheet_point = QPointF(
+        (target_root.transform.x + target_root.transform.width / 2.0) * float(root.property("zoom")),
+        (target_root.transform.y + target_root.transform.height / 2.0) * float(root.property("zoom")),
+    )
+    target_source_point = source_item.mapFromItem(sheet, target_sheet_point)
+
+    begin_drag = getattr(root, "beginProductDrag", None)
+    update_drag = getattr(root, "updateProductDrag", None)
+    finish_drag = getattr(root, "finishProductDrag", None)
+    assert callable(begin_drag) and callable(update_drag) and callable(finish_drag), "QML product drag functions are not callable"
+    begin_drag(source_item, float(source_item.width()) / 2.0, float(source_item.height()) / 2.0, drag_product)
+    update_drag(source_item, target_source_point.x(), target_source_point.y(), drag_product)
+    app.processEvents()
+    hit_slot_id = str(root.property("dragHoverSlotId") or "")
+    assert hit_slot_id == target_slot.id, (hit_slot_id, target_slot.id)
+    assert bool(root.property("productDragActive")) is True
+    finish_drag(source_item, target_source_point.x(), target_source_point.y(), drag_product)
+    app.processEvents()
+    QTest.qWait(180)
+    app.processEvents()
+    assert target_slot.product_id == drag_product["id"], (target_slot.product_id, drag_product["id"])
+    assert any(command.get("name") == "drop_product" for command in bridge.commands)
+    assert bool(root.property("productDragActive")) is False
 
     evidence = []
     for width, height in ((1920, 1080), (1600, 900), (1366, 768)):
@@ -217,12 +296,21 @@ def main() -> int:
         )
 
     result = {
-        "schema": "srstudio/g2-studio-ui-viewports-1",
+        "schema": "srstudio/g2-studio-ui-viewports-2",
         "pass": True,
         "required_chrome_text": required_text,
         "missing_chrome_text": missing_text,
         "products_panel_count": len(products),
         "item_slot_presets_visible": ["simples", "card", "destaque"],
+        "zoom_runtime": {"set_to": 0.58, "read_back": float(root.property("zoom")), "pass": True},
+        "product_drag_runtime": {
+            "pass": True,
+            "product_id": drag_product["id"],
+            "target_slot_id": target_slot.id,
+            "hit_test_slot_id": hit_slot_id,
+            "drop_product_dispatched": any(command.get("name") == "drop_product" for command in bridge.commands),
+            "slot_product_id_after_drop": target_slot.product_id,
+        },
         "viewports": evidence,
     }
     (output_dir / "studio-ui-viewports.json").write_text(json.dumps(result, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
