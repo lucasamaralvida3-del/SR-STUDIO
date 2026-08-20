@@ -16,85 +16,46 @@ jobs:
         with:
           ref: g2/fix-item-slot-interaction-performance
           fetch-depth: 0
-
-      - name: Replace manual DragHandler with certified Smart Slot interaction geometry
+      - name: Apply stable ItemSlot resize overlay contract
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
-          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
-          text = path.read_text(encoding='utf-8')
-          handler_id = 'id: manualItemSlotResizeHandler'
-          if text.count(handler_id) != 1:
-              raise SystemExit(f'expected one manualItemSlotResizeHandler, got {text.count(handler_id)}')
-          id_pos = text.index(handler_id)
-          start = text.rfind('DragHandler {', 0, id_pos)
-          if start < 0:
-              raise SystemExit('DragHandler start not found')
-          start = text.rfind('\n', 0, start) + 1
-          brace_start = text.index('{', start)
-          depth = 0
-          in_string = False
-          quote = ''
-          escape = False
-          end = None
-          for i in range(brace_start, len(text)):
-              ch = text[i]
-              if in_string:
-                  if escape:
-                      escape = False
-                  elif ch == '\\':
-                      escape = True
-                  elif ch == quote:
-                      in_string = False
+          p=Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          t=p.read_text(encoding='utf-8')
+          handler='id: manualItemSlotResizeHandler'
+          if t.count(handler)!=1: raise SystemExit(f'handler count={t.count(handler)}')
+          pos=t.index(handler); start=t.rfind('DragHandler {',0,pos)
+          if start<0: raise SystemExit('DragHandler start missing')
+          start=t.rfind('\n',0,start)+1; brace=t.index('{',start)
+          depth=0; quote=None; esc=False; end=None
+          for i in range(brace,len(t)):
+              c=t[i]
+              if quote:
+                  if esc: esc=False
+                  elif c=='\\': esc=True
+                  elif c==quote: quote=None
                   continue
-              if ch in ('"', "'"):
-                  in_string = True
-                  quote = ch
-              elif ch == '{':
-                  depth += 1
-              elif ch == '}':
-                  depth -= 1
-                  if depth == 0:
-                      end = i + 1
-                      break
-          if end is None:
-              raise SystemExit('DragHandler closing brace not found')
-          while end < len(text) and text[end] in ' \t':
-              end += 1
-          if end < len(text) and text[end] == '\n':
-              end += 1
-          text = text[:start] + text[end:]
-          disable = '                                                enabled: !slotOverlay.isManualItemSlot\n'
-          if text.count(disable) != 1:
-              raise SystemExit(f'expected one manual MouseArea disable, got {text.count(disable)}')
-          text = text.replace(disable, '', 1)
-          manual_anchor = '                                    property bool isManualItemSlot: !!(modelData.metadata && modelData.metadata.manual_item_slot)\n'
-          if text.count(manual_anchor) != 1:
-              raise SystemExit(f'isManualItemSlot anchor count={text.count(manual_anchor)}')
-          stable_props = (
-              manual_anchor
-              + '                                    // Keep the pressed resize MouseArea in stable geometry while preview_bounds drives only visuals.\n'
-              + '                                    property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"\n'
-              + '                                    property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds\n'
-          )
-          text = text.replace(manual_anchor, stable_props, 1)
-          geometry_old = (
-              '                                    x: displayBounds.x * zoom\n'
-              '                                    y: displayBounds.y * zoom\n'
-              '                                    width: displayBounds.width * zoom\n'
-              '                                    height: displayBounds.height * zoom\n'
-          )
-          geometry_new = (
-              '                                    x: interactionBounds.x * zoom\n'
-              '                                    y: interactionBounds.y * zoom\n'
-              '                                    width: interactionBounds.width * zoom\n'
-              '                                    height: interactionBounds.height * zoom\n'
-          )
-          if text.count(geometry_old) != 1:
-              raise SystemExit(f'overlay geometry anchor count={text.count(geometry_old)}')
-          text = text.replace(geometry_old, geometry_new, 1)
-          frame_old = '''                                    Rectangle {
+              if c in ('"',"'"): quote=c
+              elif c=='{': depth+=1
+              elif c=='}':
+                  depth-=1
+                  if depth==0: end=i+1; break
+          if end is None: raise SystemExit('DragHandler end missing')
+          while end<len(t) and t[end] in ' \t': end+=1
+          if end<len(t) and t[end]=='\n': end+=1
+          t=t[:start]+t[end:]
+          disabled='                                                enabled: !slotOverlay.isManualItemSlot\n'
+          if t.count(disabled)!=1: raise SystemExit(f'disable count={t.count(disabled)}')
+          t=t.replace(disabled,'',1)
+          anchor='                                    property bool isManualItemSlot: !!(modelData.metadata && modelData.metadata.manual_item_slot)\n'
+          if t.count(anchor)!=1: raise SystemExit(f'anchor count={t.count(anchor)}')
+          t=t.replace(anchor,anchor+'                                    // Keep the pressed resize MouseArea in stable geometry while preview_bounds drives only visuals.\n'+'                                    property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"\n'+'                                    property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds\n',1)
+          old='                                    x: displayBounds.x * zoom\n                                    y: displayBounds.y * zoom\n                                    width: displayBounds.width * zoom\n                                    height: displayBounds.height * zoom\n'
+          new='                                    x: interactionBounds.x * zoom\n                                    y: interactionBounds.y * zoom\n                                    width: interactionBounds.width * zoom\n                                    height: interactionBounds.height * zoom\n'
+          if t.count(old)!=1: raise SystemExit(f'geometry count={t.count(old)}')
+          t=t.replace(old,new,1)
+          old='''                                    Rectangle {
                                         anchors.fill: parent
                                         color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
                                         border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)
@@ -102,7 +63,7 @@ jobs:
                                         radius: 4
                                     }
 '''
-          frame_new = '''                                    Rectangle {
+          new='''                                    Rectangle {
                                         x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
                                         y: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom : 0
                                         width: slotOverlay.resizePreviewKeepsInteractionGeometry ? Math.max(1, slotOverlay.displayBounds.width * zoom) : parent.width
@@ -113,25 +74,16 @@ jobs:
                                         radius: 4
                                     }
 '''
-          if text.count(frame_old) != 1:
-              raise SystemExit(f'preview frame anchor count={text.count(frame_old)}')
-          text = text.replace(frame_old, frame_new, 1)
-          if 'manualItemSlotResizeHandler' in text:
-              raise SystemExit('experimental DragHandler still present')
-          if text.count('resizePreviewKeepsInteractionGeometry') < 5:
-              raise SystemExit('stable interaction geometry patch incomplete')
-          path.write_text(text, encoding='utf-8')
+          if t.count(old)!=1: raise SystemExit(f'frame count={t.count(old)}')
+          t=t.replace(old,new,1)
+          if 'manualItemSlotResizeHandler' in t: raise SystemExit('DragHandler still present')
+          if t.count('resizePreviewKeepsInteractionGeometry')<5: raise SystemExit('stable contract incomplete')
+          p.write_text(t,encoding='utf-8')
           PY
           git diff --check
-          git diff -- src/srstudio/graphics2/qml/GraphicsEditor.qml
-
-      - name: Commit stable-overlay patch to performance branch
+      - name: Commit to performance branch
         shell: bash
         run: |
-          if git diff --quiet -- src/srstudio/graphics2/qml/GraphicsEditor.qml; then
-            echo "No QML patch generated"
-            exit 0
-          fi
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add src/srstudio/graphics2/qml/GraphicsEditor.qml
