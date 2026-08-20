@@ -130,10 +130,30 @@ def main() -> int:
     def center(item: QQuickItem) -> QPoint:
         return window_point(item, max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)
 
+    def class_name(item: QObject | None) -> str:
+        if item is None:
+            return ""
+        try:
+            return str(item.metaObject().className())
+        except Exception:
+            return type(item).__name__
+
+    def property_value(item: QObject, name: str):
+        try:
+            value = qvariant(item.property(name))
+            if isinstance(value, QObject):
+                return {"class": class_name(value), "name": str(value.objectName() or "")}
+            if value is None or isinstance(value, (bool, int, float, str, list, dict)):
+                return value
+            return str(value)
+        except Exception as exc:
+            return f"<error:{type(exc).__name__}>"
+
     def diagnostic(item: QQuickItem) -> dict:
         scene = item.mapToScene(QPointF(0, 0))
         win = window_point(item, 0, 0)
         return {
+            "class": class_name(item),
             "name": str(item.objectName() or ""),
             "visible": bool(item.isVisible()),
             "enabled": bool(item.isEnabled()),
@@ -144,6 +164,11 @@ def main() -> int:
             "width": float(item.width()),
             "height": float(item.height()),
             "z": float(item.z()),
+            "clip": bool(property_value(item, "clip") or False),
+            "contains_mouse": bool(property_value(item, "containsMouse") or False),
+            "pressed": bool(property_value(item, "pressed") or False),
+            "accepted_buttons": property_value(item, "acceptedButtons"),
+            "containment_mask": property_value(item, "containmentMask"),
         }
 
     def quick_item(name: str, *, require_visible: bool = True) -> QQuickItem:
@@ -154,6 +179,47 @@ def main() -> int:
         if selected:
             return selected[-1]
         raise AssertionError({"missing": name, "candidates": [diagnostic(item) for item in matches]})
+
+    def parent_chain(item: QQuickItem, scene_point: QPointF) -> list[dict]:
+        result = []
+        current: QQuickItem | None = item
+        depth = 0
+        while current is not None and depth < 24:
+            entry = diagnostic(current)
+            try:
+                local = current.mapFromScene(scene_point)
+                entry["point_local"] = {"x": float(local.x()), "y": float(local.y())}
+                entry["contains_point"] = bool(current.contains(local))
+                child = current.childAt(local.x(), local.y())
+                entry["child_at"] = {
+                    "class": class_name(child),
+                    "name": str(child.objectName() or "") if child is not None else "",
+                    "z": float(child.z()) if child is not None else None,
+                }
+            except Exception as exc:
+                entry["child_at_error"] = type(exc).__name__
+            result.append(entry)
+            current = current.parentItem()
+            depth += 1
+        return result
+
+    def child_at_chain(item: QQuickItem, scene_point: QPointF) -> list[dict]:
+        result = []
+        current: QQuickItem | None = item
+        depth = 0
+        while current is not None and depth < 40:
+            local = current.mapFromScene(scene_point)
+            child = current.childAt(local.x(), local.y())
+            result.append({
+                "owner": {"class": class_name(current), "name": str(current.objectName() or ""), "z": float(current.z())},
+                "local": {"x": float(local.x()), "y": float(local.y())},
+                "child": {"class": class_name(child), "name": str(child.objectName() or ""), "z": float(child.z())} if child is not None else None,
+            })
+            if child is None or child is current:
+                break
+            current = child
+            depth += 1
+        return result
 
     def visual_rect(item: QQuickItem) -> dict[str, float]:
         point = item.mapToScene(QPointF(0, 0))
@@ -269,6 +335,7 @@ def main() -> int:
     app.processEvents(); QTest.qWait(120); app.processEvents()
     resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
     resize_start = center(resize_area)
+    resize_scene_point = resize_area.mapToScene(QPointF(resize_area.width() / 2.0, resize_area.height() / 2.0))
     backend_before_resize = item_slot_snapshot(session.page, slot)
     roles_before_resize = capture_roles(ids)
     root_before_resize = visual_rect(node_item(root_id))
@@ -280,6 +347,11 @@ def main() -> int:
     resize_events_before = int(root.property("itemSlotPreviewEvents") or 0)
 
     print("ITEMSLOT_RESIZE_TARGET=" + json.dumps({"target": diagnostic(resize_area), "window_point": {"x": resize_start.x(), "y": resize_start.y()}}, sort_keys=True), flush=True)
+    print("ITEMSLOT_RESIZE_PARENT_CHAIN=" + json.dumps(parent_chain(resize_area, resize_scene_point), sort_keys=True), flush=True)
+    print("ITEMSLOT_RESIZE_CHILD_AT_CHAIN=" + json.dumps(child_at_chain(content_item, resize_scene_point), sort_keys=True), flush=True)
+    QTest.mouseMove(root, resize_start, 0)
+    app.processEvents(); QTest.qWait(30); app.processEvents()
+    print("ITEMSLOT_RESIZE_AFTER_HOVER=" + json.dumps({"target": diagnostic(resize_area)}, sort_keys=True), flush=True)
     QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_start, 0)
     app.processEvents()
     print("ITEMSLOT_RESIZE_PRESS=" + json.dumps({"preview_active": bool(root.property("itemSlotPreviewActive")), "kind": str(root.property("itemSlotInteractionKind") or ""), "pressed": bool(resize_area.property("pressed")), "contains_mouse": bool(resize_area.property("containsMouse"))}, sort_keys=True), flush=True)
@@ -333,6 +405,8 @@ def main() -> int:
     app.processEvents(); QTest.qWait(100); app.processEvents()
     shift_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
     shift_start = center(shift_area)
+    QTest.mouseMove(root, shift_start, 0)
+    app.processEvents(); QTest.qWait(20); app.processEvents()
     before_shift = item_slot_snapshot(session.page, slot)
     ratio_before = before_shift["bounds"]["width"] / before_shift["bounds"]["height"]
     shift_dispatch_before = bridge.dispatch_count
