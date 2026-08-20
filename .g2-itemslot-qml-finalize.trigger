@@ -1,1 +1,1 @@
-activate final QML write-back; remove before exact-SHA certification
+registered workflow activation; remove before exact-SHA certification
