@@ -185,8 +185,14 @@ def _run_preset(app, qml_path: Path, preset_id: str) -> dict:
     dispatch_after_resize_press = bridge.dispatch_count
     resize_samples: list[float] = []
     final_resize = resize_start
+    # High-frequency microbenchmark: keep the synthetic pointer within the
+    # 11px handle while dispatching 200 events as fast as possible. A separate
+    # frozen gate below covers a large 3-second resize at real frame cadence.
+    # This preserves the grab while measuring only per-event preview cost.
     for index in range(1, EVENTS + 1):
-        final_resize = QPoint(resize_start.x() + index, resize_start.y() + round(index * 0.45))
+        dx = (index % 7) - 3
+        dy = ((index * 3) % 7) - 3
+        final_resize = QPoint(resize_start.x() + dx, resize_start.y() + dy)
         started = perf_counter_ns()
         QTest.mouseMove(root, final_resize, 0)
         app.processEvents()
