@@ -1,4 +1,4 @@
-name: G2 ItemSlot Stable Hitbox Harness Runner
+name: G2 ItemSlot Direct Stable MouseArea Runner
 
 on:
   pull_request_target:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-stable-hitbox-harness:
+  patch-direct-stable-mousearea:
     if: github.event.pull_request.head.ref == 'g2/fix-item-slot-interaction-performance' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
@@ -19,64 +19,127 @@ jobs:
           ref: g2/fix-item-slot-interaction-performance
           fetch-depth: 0
 
-      - name: Target the center of the stable physical resize hitbox
+      - name: Make stable resize delegate the MouseArea itself
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          verify_path = Path('tools/verify_frozen_item_slot_interaction.py')
-          verify = verify_path.read_text(encoding='utf-8')
-          verify = verify.replace('resize_start = safe_handle_point(resize_area)', 'resize_start = center(resize_area)')
-          start_token = '    def safe_handle_point(item: QQuickItem) -> QPoint:\n'
-          if start_token in verify:
-              start = verify.index(start_token)
-              next_def = verify.index('    def visual_rect(', start)
-              verify = verify[:start] + verify[next_def:]
-          if 'safe_handle_point(' in verify:
-              raise SystemExit('obsolete continuous edge-hit helper remains')
-          if 'resize_start = center(resize_area)' not in verify:
-              raise SystemExit('continuous resize does not target stable hitbox center')
-          verify_path.write_text(verify, encoding='utf-8')
+          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = path.read_text(encoding='utf-8')
+          if 'manualItemSlotResizeHandler' in text:
+              raise SystemExit('experimental DragHandler remains')
+          marker = 'objectName: "smartSlotHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")'
+          pos = text.index(marker)
+          start = text.rfind('                                        delegate: Rectangle {', 0, pos)
+          if start < 0:
+              if '                                        delegate: MouseArea {' in text[max(0, pos-500):pos]:
+                  raise SystemExit(0)
+              raise SystemExit('ItemSlot resize delegate start not found')
 
-          bench_path = Path('tools/benchmark_frozen_item_slot_interaction.py')
-          bench = bench_path.read_text(encoding='utf-8')
-          old_center = '''    def scene_center(item: QQuickItem) -> QPoint:
-        p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)); return QPoint(round(p.x()), round(p.y()))
+          def matching_brace(source: str, block_start: int) -> int:
+              opening = source.index('{', block_start)
+              depth = 0
+              quote = None
+              escape = False
+              for i in range(opening, len(source)):
+                  ch = source[i]
+                  if quote:
+                      if escape:
+                          escape = False
+                      elif ch == '\\':
+                          escape = True
+                      elif ch == quote:
+                          quote = None
+                      continue
+                  if ch in ('"', "'"):
+                      quote = ch
+                      continue
+                  if ch == '{':
+                      depth += 1
+                  elif ch == '}':
+                      depth -= 1
+                      if depth == 0:
+                          return i
+              raise RuntimeError('unbalanced QML braces')
+
+          end = matching_brace(text, start)
+          block = text[start:end + 1]
+          nested_marker = '                                            MouseArea {\n                                                id: slotResizeArea\n'
+          nested_start = block.index(nested_marker)
+          nested_end = matching_brace(block, nested_start)
+          nested = block[nested_start:nested_end + 1]
+          open_brace = nested.index('{')
+          body = nested[open_brace + 1:-1]
+          remove_lines = [
+              '                                                id: slotResizeArea\n',
+              '                                                objectName: "smartSlotResizeArea-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")\n',
+              '                                                anchors.fill: parent\n',
+              '                                                cursorShape: modelData.cursor\n',
+              '                                                preventStealing: true\n',
+          ]
+          for line in remove_lines:
+              if line not in body:
+                  raise SystemExit(f'nested MouseArea contract missing: {line.strip()}')
+              body = body.replace(line, '', 1)
+          body = ''.join(line[4:] if line.startswith('    ') else line for line in body.splitlines(keepends=True))
+
+          prefix = block[:nested_start]
+          prefix = prefix.replace('                                        delegate: Rectangle {', '                                        delegate: MouseArea {', 1)
+          prefix = prefix.replace(marker, 'objectName: "smartSlotResizeArea-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")', 1)
+          for obsolete in [
+              '                                            radius: 2\n',
+              '                                            color: "transparent"\n',
+              '                                            border.width: 0\n',
+          ]:
+              prefix = prefix.replace(obsolete, '', 1)
+          z_line = '                                            z: 10\n'
+          addition = '''                                            acceptedButtons: Qt.LeftButton
+                                            cursorShape: modelData.cursor
+                                            preventStealing: true
+                                            Item {
+                                                objectName: "smartSlotHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                                anchors.fill: parent
+                                            }
 '''
-          new_center = '''    def window_point(item: QQuickItem, x: float, y: float) -> QPoint:
-        global_point = item.mapToGlobal(QPointF(x, y))
-        return root.mapFromGlobal(QPoint(round(global_point.x()), round(global_point.y())))
-    def scene_center(item: QQuickItem) -> QPoint:
-        return window_point(item, max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)
-'''
-          if old_center in bench:
-              bench = bench.replace(old_center, new_center, 1)
-          elif 'def window_point(item: QQuickItem' not in bench:
-              raise SystemExit('benchmark window-coordinate anchor not found')
-          bench = bench.replace('resize_start = inner_handle_point(resize_area)', 'resize_start = scene_center(resize_area)')
-          marker = '    def inner_handle_point(item: QQuickItem, inset: float = 2.0) -> QPoint:\n'
-          if marker in bench:
-              start = bench.index(marker)
-              next_def = bench.index('    def visual_rect(', start)
-              bench = bench[:start] + bench[next_def:]
-          if 'inner_handle_point(' in bench:
-              raise SystemExit('obsolete benchmark edge-hit helper remains')
-          if 'resize_start = scene_center(resize_area)' not in bench:
-              raise SystemExit('benchmark resize does not target stable hitbox center')
-          if 'def window_point(item: QQuickItem' not in bench:
-              raise SystemExit('benchmark still lacks QWindow-local coordinate conversion')
-          bench_path.write_text(bench, encoding='utf-8')
+          if z_line not in prefix:
+              raise SystemExit('stable resize z anchor missing')
+          prefix = prefix.replace(z_line, z_line + addition, 1)
+          suffix = block[nested_end + 1:]
+          replacement = prefix + body + suffix
+          text = text[:start] + replacement + text[end + 1:]
+
+          region_start = text.index('model: slots()')
+          region_end = text.index('id: selectionOverlay')
+          region = text[region_start:region_end]
+          required = [
+              'delegate: MouseArea {',
+              'objectName: "smartSlotResizeArea-"',
+              'objectName: "smartSlotHandle-"',
+              'objectName: "smartSlotVisualHandle-"',
+              'preventStealing: true',
+              'onPressed: {',
+              'onPositionChanged: {',
+              'onReleased: {',
+          ]
+          for token in required:
+              if token not in region:
+                  raise SystemExit(f'direct stable MouseArea token missing: {token}')
+          if 'id: slotResizeArea' in region:
+              raise SystemExit('nested resize MouseArea remains')
+          if 'DragHandler {' in region:
+              raise SystemExit('experimental DragHandler remains')
+          path.write_text(text, encoding='utf-8')
           PY
 
           git diff --check
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add tools/verify_frozen_item_slot_interaction.py tools/benchmark_frozen_item_slot_interaction.py
+          git add src/srstudio/graphics2/qml/GraphicsEditor.qml
           if git diff --cached --quiet; then
-            echo 'Stable hitbox harness already current'
+            echo 'Direct stable MouseArea already present'
           else
-            git commit -m 'test(g2): target center of stable resize hitbox'
+            git commit -m 'fix(g2): make stable ItemSlot handle own mouse grab directly'
             git push origin HEAD:g2/fix-item-slot-interaction-performance
           fi
