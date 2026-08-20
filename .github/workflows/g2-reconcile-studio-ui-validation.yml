@@ -1,0 +1,133 @@
+name: G2 Studio UI Reconciliation Validation
+
+on:
+  push:
+    branches:
+      - g2/reconcile-studio-ui-with-itemslot-perf
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-qt-reconciliation:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install Graphics2 dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2,graphics2-build]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Confirm exact SHA and clean checkout
+        shell: pwsh
+        run: |
+          $sha = git rev-parse HEAD
+          Write-Host "SOURCE_SHA=$sha"
+          if ($sha -ne "${{ github.sha }}") { throw "Exact SHA mismatch" }
+          git diff --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked worktree is dirty" }
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked index is dirty" }
+
+      - name: Reconciliation contracts and ItemSlot runtime tests
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: |
+          python -m compileall -q src/srstudio/graphics2 tests/test_graphics2_studio_ui_reconciliation_contract.py tests/test_graphics2_item_slot_interaction_performance.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q -s tests/test_graphics2_studio_ui_reconciliation_contract.py tests/test_graphics2_item_slots.py tests/test_graphics2_item_slot_interaction_performance.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build frozen Graphics2 host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $root = "dist/graphics2-host/SRGraphicsEngine2Host"
+          if (!(Test-Path "$root/SRGraphicsEngine2Host.exe")) { throw "Frozen host missing" }
+          if (!(Test-Path "$root/_internal/srstudio/graphics2/qml/GraphicsEditor.qml")) { throw "Frozen GraphicsEditor.qml missing" }
+          & "$root/SRGraphicsEngine2Host.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "Frozen host --version failed" }
+
+      - name: Frozen ItemSlot visible sanity and screenshots
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+          QSG_RHI_BACKEND: software
+        run: |
+          New-Item -ItemType Directory -Force -Path reconciliation-evidence/itemslot-visible | Out-Null
+          python tools/verify_frozen_item_slot_ui.py --runtime-root "dist/graphics2-host/SRGraphicsEngine2Host" --output-dir reconciliation-evidence/itemslot-visible
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Continuous move resize sanity
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+          QSG_RHI_BACKEND: software
+        run: |
+          New-Item -ItemType Directory -Force -Path reconciliation-evidence/interaction | Out-Null
+          python tools/verify_frozen_item_slot_interaction.py --qml "dist/graphics2-host/SRGraphicsEngine2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml" --output-dir reconciliation-evidence/interaction
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Benchmark all three ItemSlot presets
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+          QSG_RHI_BACKEND: software
+        run: |
+          python tools/benchmark_frozen_item_slot_interaction.py --qml "dist/graphics2-host/SRGraphicsEngine2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml" --output "reconciliation-evidence/benchmark.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Enforce certified performance invariants
+        shell: pwsh
+        run: |
+          $perf = Get-Content "reconciliation-evidence/benchmark.json" -Raw | ConvertFrom-Json
+          foreach ($preset in $perf.presets) {
+            if ([double]$preset.move.median_ms -ge 1.0) { throw "$($preset.preset) move median >= 1ms" }
+            if ([double]$preset.move.p95_ms -ge 4.0) { throw "$($preset.preset) move p95 >= 4ms" }
+            if ([double]$preset.resize.median_ms -ge 1.0) { throw "$($preset.preset) resize median >= 1ms" }
+            if ([double]$preset.resize.p95_ms -ge 4.0) { throw "$($preset.preset) resize p95 >= 4ms" }
+            if ([int]$preset.backend_dispatches_during_move -ne 0) { throw "$($preset.preset) dispatched during move" }
+            if ([int]$preset.backend_dispatches_during_resize -ne 0) { throw "$($preset.preset) dispatched during resize" }
+            if ([int]$preset.backend_commits_move_release -ne 1) { throw "$($preset.preset) move release commits != 1" }
+            if ([int]$preset.backend_commits_resize_release -ne 1) { throw "$($preset.preset) resize release commits != 1" }
+            if (-not [bool]$preset.resize_pressed) { throw "$($preset.preset) resize press not owned" }
+            if (-not [bool]$preset.backend_model_unchanged_during_preview) { throw "$($preset.preset) backend changed during preview" }
+            if (-not [bool]$preset.interaction_overlay_stable_during_resize) { throw "$($preset.preset) interaction overlay moved during resize" }
+            if ($preset.post_reveal_clipped_exclusions.Count -ne 0) { throw "$($preset.preset) resize target clipped" }
+          }
+          $continuous = Get-Content "reconciliation-evidence/interaction/continuous-result.json" -Raw | ConvertFrom-Json
+          if (-not [bool]$continuous.pass) { throw "Continuous frozen gate failed" }
+          if (-not [bool]$continuous.resize_pressed) { throw "Resize press not owned" }
+          if (-not [bool]$continuous.resize_preview_active_until_release) { throw "Resize preview inactive" }
+          if (-not [bool]$continuous.mouse_grab_preserved) { throw "Mouse grab lost" }
+          Write-Host "MOVE_MEDIAN_MAX_MS=$($perf.aggregate.move_median_max_ms)"
+          Write-Host "MOVE_P95_MAX_MS=$($perf.aggregate.move_p95_max_ms)"
+          Write-Host "RESIZE_MEDIAN_MAX_MS=$($perf.aggregate.resize_median_max_ms)"
+          Write-Host "RESIZE_P95_MAX_MS=$($perf.aggregate.resize_p95_max_ms)"
+          Write-Host "BACKEND_DISPATCH_DURING_MOVE=$($perf.aggregate.backend_dispatches_during_move)"
+          Write-Host "BACKEND_DISPATCH_DURING_RESIZE=$($perf.aggregate.backend_dispatches_during_resize)"
+          Write-Host "ITEM_SLOT_PERFORMANCE_BASE_PRESERVED=PASS"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g2-studio-ui-reconciliation-${{ github.run_id }}
+          path: reconciliation-evidence/**
+          if-no-files-found: warn
+          retention-days: 30
