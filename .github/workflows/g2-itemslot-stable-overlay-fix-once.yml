@@ -1,36 +1,40 @@
-# Activation push: this file is deleted immediately after the guarded QML patch lands.
 name: G2 ItemSlot Stable Overlay Fix Once
 
 on:
   push:
     branches:
       - g2/fix-item-slot-interaction-performance
+    paths:
+      - '.github/workflows/g2-itemslot-stable-overlay-fix-once.yml'
 
 permissions:
   contents: write
 
 jobs:
   patch:
-    if: github.event.head_commit.message != 'fix(g2): keep ItemSlot resize interaction geometry stable'
+    if: github.event.head_commit.message == 'chore(g2): arm robust stable ItemSlot resize patch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           ref: g2/fix-item-slot-interaction-performance
           fetch-depth: 0
-      - name: Apply guarded stable-overlay patch
+      - name: Apply stable resize capture and visual preview
         shell: bash
         run: |
           python - <<'PY'
           from pathlib import Path
+
           path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
           text = path.read_text(encoding='utf-8')
 
-          marker = '                                                id: manualItemSlotResizeHandler\n'
-          if text.count(marker) != 1:
-              raise SystemExit(f'expected one manualItemSlotResizeHandler, got {text.count(marker)}')
-          id_pos = text.index(marker)
+          handler_id = 'id: manualItemSlotResizeHandler'
+          if text.count(handler_id) != 1:
+              raise SystemExit(f'expected one manualItemSlotResizeHandler, got {text.count(handler_id)}')
+          id_pos = text.index(handler_id)
           start = text.rfind('DragHandler {', 0, id_pos)
+          if start < 0:
+              raise SystemExit('DragHandler start not found')
           start = text.rfind('\n', 0, start) + 1
           brace_start = text.index('{', start)
           depth = 0
@@ -77,20 +81,24 @@ jobs:
           text = text.replace(
               manual_anchor,
               manual_anchor
-              + '                                    // Keep resize interaction geometry stable while preview_bounds drives only visuals.\n'
+              + '                                    // Keep the pressed resize MouseArea fixed while preview_bounds drives the visuals.\n'
               + '                                    property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"\n'
               + '                                    property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds\n',
               1,
           )
 
-          geometry_old = ('                                    x: displayBounds.x * zoom\n'
-                          '                                    y: displayBounds.y * zoom\n'
-                          '                                    width: displayBounds.width * zoom\n'
-                          '                                    height: displayBounds.height * zoom\n')
-          geometry_new = ('                                    x: interactionBounds.x * zoom\n'
-                          '                                    y: interactionBounds.y * zoom\n'
-                          '                                    width: interactionBounds.width * zoom\n'
-                          '                                    height: interactionBounds.height * zoom\n')
+          geometry_old = (
+              '                                    x: displayBounds.x * zoom\n'
+              '                                    y: displayBounds.y * zoom\n'
+              '                                    width: displayBounds.width * zoom\n'
+              '                                    height: displayBounds.height * zoom\n'
+          )
+          geometry_new = (
+              '                                    x: interactionBounds.x * zoom\n'
+              '                                    y: interactionBounds.y * zoom\n'
+              '                                    width: interactionBounds.width * zoom\n'
+              '                                    height: interactionBounds.height * zoom\n'
+          )
           if text.count(geometry_old) != 1:
               raise SystemExit(f'overlay geometry anchor count={text.count(geometry_old)}')
           text = text.replace(geometry_old, geometry_new, 1)
@@ -118,13 +126,55 @@ jobs:
               raise SystemExit(f'preview frame anchor count={text.count(frame_old)}')
           text = text.replace(frame_old, frame_new, 1)
 
+          handle_old = '''                                            color: "white"
+                                            border.width: 2
+                                            border.color: "#0F5BD8"
+                                            z: 10
+                                            MouseArea {
+'''
+          handle_new = '''                                            color: slotOverlay.resizePreviewKeepsInteractionGeometry ? "transparent" : "white"
+                                            border.width: slotOverlay.resizePreviewKeepsInteractionGeometry ? 0 : 2
+                                            border.color: "#0F5BD8"
+                                            z: 10
+                                            Rectangle {
+                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
+                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+                                                   + modelData.fx * (slotOverlay.displayBounds.width - slotOverlay.interactionBounds.width) * zoom
+                                                y: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
+                                                   + modelData.fy * (slotOverlay.displayBounds.height - slotOverlay.interactionBounds.height) * zoom
+                                                width: parent.width
+                                                height: parent.height
+                                                radius: parent.radius
+                                                color: "white"
+                                                border.width: 2
+                                                border.color: "#0F5BD8"
+                                            }
+                                            MouseArea {
+'''
+          if text.count(handle_old) != 1:
+              raise SystemExit(f'handle visual anchor count={text.count(handle_old)}')
+          text = text.replace(handle_old, handle_new, 1)
+
           if 'manualItemSlotResizeHandler' in text:
               raise SystemExit('experimental DragHandler still present')
+          required = [
+              'property bool resizePreviewKeepsInteractionGeometry:',
+              'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds',
+              'x: interactionBounds.x * zoom',
+              'slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x',
+          ]
+          for token in required:
+              if token not in text:
+                  raise SystemExit(f'missing stable resize token: {token}')
           path.write_text(text, encoding='utf-8')
           PY
           git diff --check
+      - name: Commit production patch and remove one-shot runners
+        shell: bash
+        run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/srstudio/graphics2/qml/GraphicsEditor.qml
+          git add -- src/srstudio/graphics2/qml/GraphicsEditor.qml
+          git rm -- .github/workflows/g2-itemslot-stable-overlay-fix-once.yml .github/workflows/g2-item-slot-stable-resize-capture-once.yml
           git commit -m 'fix(g2): keep ItemSlot resize interaction geometry stable'
           git push origin HEAD:g2/fix-item-slot-interaction-performance
