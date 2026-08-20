@@ -1,4 +1,4 @@
-name: G2 ItemSlot Stable Internal Handle Runner
+name: G2 ItemSlot Stable Hitbox Harness Runner
 
 on:
   pull_request_target:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  patch-stable-internal-handle:
+  patch-stable-hitbox-harness:
     if: github.event.pull_request.head.ref == 'g2/fix-item-slot-interaction-performance' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
@@ -19,97 +19,27 @@ jobs:
           ref: g2/fix-item-slot-interaction-performance
           fetch-depth: 0
 
-      - name: Keep physical resize hitbox fully inside stable interaction overlay
+      - name: Target the center of the stable physical resize hitbox
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
 
-          qml_path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
-          text = qml_path.read_text(encoding='utf-8')
-          required = [
-              'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"',
-              'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds',
-              'function itemSlotDisplayTransform(node)',
-              'objectName: "smartSlotVisualFrame-"',
-              'objectName: "smartSlotVisualHandle-"',
-          ]
-          for token in required:
-              if token not in text:
-                  raise SystemExit(f'missing stable overlay token: {token}')
-          if 'manualItemSlotResizeHandler' in text or 'DragHandler {' in text[text.index('model: slots()'):text.index('id: selectionOverlay')]:
-              raise SystemExit('experimental DragHandler path still present')
+          verify_path = Path('tools/verify_frozen_item_slot_interaction.py')
+          verify = verify_path.read_text(encoding='utf-8')
+          verify = verify.replace('resize_start = safe_handle_point(resize_area)', 'resize_start = center(resize_area)')
+          start_token = '    def safe_handle_point(item: QQuickItem) -> QPoint:\n'
+          if start_token in verify:
+              start = verify.index(start_token)
+              next_def = verify.index('    def visual_rect(', start)
+              verify = verify[:start] + verify[next_def:]
+          if 'safe_handle_point(' in verify:
+              raise SystemExit('obsolete continuous edge-hit helper remains')
+          if 'resize_start = center(resize_area)' not in verify:
+              raise SystemExit('continuous resize does not target stable hitbox center')
+          verify_path.write_text(verify, encoding='utf-8')
 
-          old = '''                                            width: 11; height: 11; radius: 2
-                                            x: modelData.fx * slotOverlay.width - width / 2
-                                            y: modelData.fy * slotOverlay.height - height / 2
-                                            color: slotOverlay.resizePreviewKeepsInteractionGeometry ? "transparent" : "white"
-                                            border.width: slotOverlay.resizePreviewKeepsInteractionGeometry ? 0 : 2
-                                            border.color: "#0F5BD8"
-                                            z: 10
-                                            Rectangle {
-                                                objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
-                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
-                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
-                                                   + modelData.fx * (slotOverlay.displayBounds.width - slotOverlay.interactionBounds.width) * zoom
-                                                y: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
-                                                   + modelData.fy * (slotOverlay.displayBounds.height - slotOverlay.interactionBounds.height) * zoom
-                                                width: parent.width
-                                                height: parent.height
-                                                radius: parent.radius
-                                                color: "white"
-                                                border.width: 2
-                                                border.color: "#0F5BD8"
-                                            }
-'''
-          new = '''                                            width: 11; height: 11; radius: 2
-                                            // The physical interaction handle is always fully inside the
-                                            // stable overlay. The visible handle is a separate child driven
-                                            // only by displayBounds, so native Windows hit-testing and the
-                                            // MouseArea grab never depend on preview geometry.
-                                            property real desiredVisualX: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
-                                                                          + modelData.fx * slotOverlay.displayBounds.width * zoom - width / 2
-                                            property real desiredVisualY: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
-                                                                          + modelData.fy * slotOverlay.displayBounds.height * zoom - height / 2
-                                            x: Math.max(0, Math.min(Math.max(0, slotOverlay.width - width), modelData.fx * slotOverlay.width - width / 2))
-                                            y: Math.max(0, Math.min(Math.max(0, slotOverlay.height - height), modelData.fy * slotOverlay.height - height / 2))
-                                            color: "transparent"
-                                            border.width: 0
-                                            border.color: "transparent"
-                                            z: 10
-                                            Rectangle {
-                                                objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
-                                                visible: parent.visible
-                                                x: parent.desiredVisualX - parent.x
-                                                y: parent.desiredVisualY - parent.y
-                                                width: parent.width
-                                                height: parent.height
-                                                radius: parent.radius
-                                                color: "white"
-                                                border.width: 2
-                                                border.color: "#0F5BD8"
-                                            }
-'''
-          if old in text:
-              text = text.replace(old, new, 1)
-          elif 'property real desiredVisualX:' not in text:
-              raise SystemExit('physical handle block not found')
-
-          for token in [
-              'property real desiredVisualX:',
-              'property real desiredVisualY:',
-              'Math.min(Math.max(0, slotOverlay.width - width)',
-              'visible: parent.visible',
-              'x: parent.desiredVisualX - parent.x',
-              'y: parent.desiredVisualY - parent.y',
-          ]:
-              if token not in text:
-                  raise SystemExit(f'missing internal-handle token: {token}')
-          qml_path.write_text(text, encoding='utf-8')
-
-          # Benchmark must send QTest gestures in QWindow-local coordinates,
-          # exactly like the permanent continuous gate.
           bench_path = Path('tools/benchmark_frozen_item_slot_interaction.py')
           bench = bench_path.read_text(encoding='utf-8')
           old_center = '''    def scene_center(item: QQuickItem) -> QPoint:
@@ -124,41 +54,29 @@ jobs:
           if old_center in bench:
               bench = bench.replace(old_center, new_center, 1)
           elif 'def window_point(item: QQuickItem' not in bench:
-              raise SystemExit('benchmark coordinate anchor not found')
+              raise SystemExit('benchmark window-coordinate anchor not found')
           bench = bench.replace('resize_start = inner_handle_point(resize_area)', 'resize_start = scene_center(resize_area)')
           marker = '    def inner_handle_point(item: QQuickItem, inset: float = 2.0) -> QPoint:\n'
           if marker in bench:
               start = bench.index(marker)
-              next_def = bench.index('    def ', start + len(marker))
+              next_def = bench.index('    def visual_rect(', start)
               bench = bench[:start] + bench[next_def:]
           if 'inner_handle_point(' in bench:
               raise SystemExit('obsolete benchmark edge-hit helper remains')
+          if 'resize_start = scene_center(resize_area)' not in bench:
+              raise SystemExit('benchmark resize does not target stable hitbox center')
+          if 'def window_point(item: QQuickItem' not in bench:
+              raise SystemExit('benchmark still lacks QWindow-local coordinate conversion')
           bench_path.write_text(bench, encoding='utf-8')
-
-          test_path = Path('tests/test_graphics2_item_slot_interaction_performance.py')
-          test = test_path.read_text(encoding='utf-8')
-          anchor = '    assert \'objectName: "smartSlotVisualHandle-"\' in qml\n'
-          additions = '''    assert 'property real desiredVisualX:' in qml
-    assert 'property real desiredVisualY:' in qml
-    assert 'Math.min(Math.max(0, slotOverlay.width - width)' in qml
-    assert 'visible: parent.visible' in qml
-    assert 'x: parent.desiredVisualX - parent.x' in qml
-    assert 'y: parent.desiredVisualY - parent.y' in qml
-'''
-          if additions.strip() not in test:
-              if test.count(anchor) != 1:
-                  raise SystemExit(f'test anchor count={test.count(anchor)}')
-              test = test.replace(anchor, anchor + additions, 1)
-          test_path.write_text(test, encoding='utf-8')
           PY
 
           git diff --check
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/srstudio/graphics2/qml/GraphicsEditor.qml tests/test_graphics2_item_slot_interaction_performance.py tools/benchmark_frozen_item_slot_interaction.py
+          git add tools/verify_frozen_item_slot_interaction.py tools/benchmark_frozen_item_slot_interaction.py
           if git diff --cached --quiet; then
-            echo 'Stable internal-handle contract already present'
+            echo 'Stable hitbox harness already current'
           else
-            git commit -m 'fix(g2): keep ItemSlot resize grab hitbox fully stable'
+            git commit -m 'test(g2): target center of stable resize hitbox'
             git push origin HEAD:g2/fix-item-slot-interaction-performance
           fi
