@@ -5,7 +5,9 @@ import json
 import os
 from pathlib import Path
 
-os.environ.setdefault("QT_QPA_PLATFORM", "windows")
+# Use a real Qt Quick window, but default to the offscreen platform so the CI
+# runner's small virtual desktop does not clamp the requested capture size.
+os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 os.environ.setdefault("QSG_RHI_BACKEND", "software")
 os.environ.setdefault("QT_SCALE_FACTOR", "1")
 
@@ -86,11 +88,11 @@ def _build_document():
     from srstudio.graphics2.operations import GraphicsSession
 
     products = [
-        {"id": "prod-1", "display_name": "ALCATRA BOVINA KG", "name": "ALCATRA BOVINA KG", "category": "Carnes", "unit": "KG", "price": 39.99},
-        {"id": "prod-2", "display_name": "COCA-COLA 2L", "name": "COCA-COLA 2L", "category": "Bebidas", "unit": "UN", "price": 8.99},
-        {"id": "prod-3", "display_name": "ARROZ TIPO 1 5KG", "name": "ARROZ TIPO 1 5KG", "category": "Mercearia", "unit": "UN", "price": 24.90},
-        {"id": "prod-4", "display_name": "DETERGENTE 500ML", "name": "DETERGENTE 500ML", "category": "Limpeza", "unit": "UN", "price": 2.49},
-        {"id": "prod-5", "display_name": "LEITE INTEGRAL 1L", "name": "LEITE INTEGRAL 1L", "category": "Mercearia", "unit": "UN", "price": 4.79},
+        {"id": "prod-1", "display_name": "ALCATRA BOVINA KG", "name": "ALCATRA BOVINA KG", "category": "Carnes", "unit": "KG", "price": 39.99, "image": "fixture://prod-1.png"},
+        {"id": "prod-2", "display_name": "COCA-COLA 2L", "name": "COCA-COLA 2L", "category": "Bebidas", "unit": "UN", "price": 8.99, "image": "fixture://prod-2.png"},
+        {"id": "prod-3", "display_name": "ARROZ TIPO 1 5KG", "name": "ARROZ TIPO 1 5KG", "category": "Mercearia", "unit": "UN", "price": 24.90, "image": "fixture://prod-3.png"},
+        {"id": "prod-4", "display_name": "DETERGENTE 500ML", "name": "DETERGENTE 500ML", "category": "Limpeza", "unit": "UN", "price": 2.49, "image": "fixture://prod-4.png"},
+        {"id": "prod-5", "display_name": "LEITE INTEGRAL 1L", "name": "LEITE INTEGRAL 1L", "category": "Mercearia", "unit": "UN", "price": 4.79, "image": "fixture://prod-5.png"},
     ]
     document = GraphicsDocument(
         name="Studio UI Reconciliation",
@@ -128,6 +130,7 @@ def main() -> int:
     from PySide6.QtTest import QTest
 
     from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter, prepare_qml_payload
+    from srstudio.graphics2.model import BindingRole
 
     runtime_root = args.runtime_root.resolve()
     output_dir = args.output_dir.resolve()
@@ -264,9 +267,22 @@ def main() -> int:
     app.processEvents()
     QTest.qWait(180)
     app.processEvents()
+
     assert target_slot.product_id == drag_product["id"], (target_slot.product_id, drag_product["id"])
     assert any(command.get("name") == "drop_product" for command in bridge.commands)
     assert bool(root.property("productDragActive")) is False
+
+    name_node = session.page.node(target_slot.node_by_role[BindingRole.NAME.value])
+    integer_node = session.page.node(target_slot.node_by_role[BindingRole.PRICE_REAIS.value])
+    decimal_node = session.page.node(target_slot.node_by_role[BindingRole.PRICE_CENTS.value])
+    unit_node = session.page.node(target_slot.node_by_role[BindingRole.UNIT.value])
+    image_node = session.page.node(target_slot.node_by_role[BindingRole.IMAGE.value])
+    assert name_node is not None and name_node.text == "LEITE INTEGRAL 1L"
+    assert integer_node is not None and integer_node.text == "4"
+    assert decimal_node is not None and decimal_node.text == ",79"
+    assert unit_node is not None and unit_node.text == "/UN"
+    assert image_node is not None and image_node.metadata.get("bound_image_source") == drag_product["image"]
+    assert image_node.metadata.get("placeholder") is False
 
     evidence = []
     for width, height in ((1920, 1080), (1600, 900), (1366, 768)):
@@ -278,6 +294,7 @@ def main() -> int:
         assert int(root.height()) == height, (root.height(), height)
         shot = output_dir / f"studio-{width}x{height}.png"
         image_width, image_height = _grab_window(root, shot)
+        assert image_width == width and image_height == height, (shot.name, image_width, image_height)
         evidence.append(
             {
                 "viewport": f"{width}x{height}",
@@ -296,8 +313,10 @@ def main() -> int:
         )
 
     result = {
-        "schema": "srstudio/g2-studio-ui-viewports-2",
+        "schema": "srstudio/g2-studio-ui-viewports-3",
         "pass": True,
+        "qt_platform": os.environ.get("QT_QPA_PLATFORM", ""),
+        "grab_method": "QQuickWindow.grabWindow",
         "required_chrome_text": required_text,
         "missing_chrome_text": missing_text,
         "products_panel_count": len(products),
@@ -306,10 +325,18 @@ def main() -> int:
         "product_drag_runtime": {
             "pass": True,
             "product_id": drag_product["id"],
+            "product_name": drag_product["name"],
             "target_slot_id": target_slot.id,
             "hit_test_slot_id": hit_slot_id,
+            "highlight_active_before_drop": hit_slot_id == target_slot.id,
             "drop_product_dispatched": any(command.get("name") == "drop_product" for command in bridge.commands),
             "slot_product_id_after_drop": target_slot.product_id,
+            "name_applied": name_node.text,
+            "price_integer_applied": integer_node.text,
+            "price_decimal_applied": decimal_node.text,
+            "unit_applied": unit_node.text,
+            "image_applied": image_node.metadata.get("bound_image_source"),
+            "image_placeholder_after_drop": image_node.metadata.get("placeholder"),
         },
         "viewports": evidence,
     }
