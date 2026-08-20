@@ -1,0 +1,109 @@
+name: G2 ItemSlot Resize Grab Fix Once
+
+on:
+  push:
+    branches:
+      - g2/fix-item-slot-interaction-performance
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.head_commit.message != 'fix(g2): keep ItemSlot resize grab stable'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/fix-item-slot-interaction-performance
+          fetch-depth: 0
+      - name: Apply guarded resize-grab patch
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = path.read_text(encoding='utf-8')
+          marker = 'property bool resizePreviewKeepsInteractionGeometry:'
+          if marker in text:
+              print('resize-grab patch already present')
+              raise SystemExit(0)
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, got {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''                                    property real previewIntervalMs: 16
+                                    property var displayBounds: previewActive ? preview_bounds : bounds
+                                    property bool isManualItemSlot: !!(modelData.metadata && modelData.metadata.manual_item_slot)
+                                    property bool slotEditActive: isManualItemSlot || smartSlotEditMode
+                                    property bool isDropTarget: productDragActive && dragHoverSlotId === modelData.id
+                                    property bool isSelectedSlot: selectedSlotId === modelData.id
+                                    property bool isHoveredSlot: hoveredSlotId === modelData.id
+                                    property bool showSlotOverlay: smartSlotEditMode || smartSlotInspectionMode || productDragActive || isSelectedSlot || isHoveredSlot
+                                    x: displayBounds.x * zoom
+                                    y: displayBounds.y * zoom
+                                    width: displayBounds.width * zoom
+                                    height: displayBounds.height * zoom
+''',
+              '''                                    property real previewIntervalMs: 16
+                                    property bool isManualItemSlot: !!(modelData.metadata && modelData.metadata.manual_item_slot)
+                                    property var displayBounds: previewActive ? preview_bounds : bounds
+                                    // Resizing an ancestor of the pressed MouseArea cancels the Qt mouse grab.
+                                    // Keep the interaction tree stable for manual ItemSlots while the visual
+                                    // frame and node subtree continue to follow preview_bounds locally.
+                                    property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"
+                                    property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds
+                                    property bool slotEditActive: isManualItemSlot || smartSlotEditMode
+                                    property bool isDropTarget: productDragActive && dragHoverSlotId === modelData.id
+                                    property bool isSelectedSlot: selectedSlotId === modelData.id
+                                    property bool isHoveredSlot: hoveredSlotId === modelData.id
+                                    property bool showSlotOverlay: smartSlotEditMode || smartSlotInspectionMode || productDragActive || isSelectedSlot || isHoveredSlot
+                                    x: interactionBounds.x * zoom
+                                    y: interactionBounds.y * zoom
+                                    width: interactionBounds.width * zoom
+                                    height: interactionBounds.height * zoom
+''',
+              'stable interaction geometry',
+          )
+
+          replace_once(
+              '''                                    Rectangle {
+                                        anchors.fill: parent
+                                        color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
+                                        border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)
+                                        border.color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#0F5BD855")
+                                        radius: 4
+                                    }
+''',
+              '''                                    Rectangle {
+                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
+                                        y: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom : 0
+                                        width: slotOverlay.resizePreviewKeepsInteractionGeometry ? Math.max(1, slotOverlay.displayBounds.width * zoom) : parent.width
+                                        height: slotOverlay.resizePreviewKeepsInteractionGeometry ? Math.max(1, slotOverlay.displayBounds.height * zoom) : parent.height
+                                        color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
+                                        border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)
+                                        border.color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#0F5BD855")
+                                        radius: 4
+                                    }
+''',
+              'preview frame follows resize',
+          )
+
+          path.write_text(text, encoding='utf-8')
+          PY
+          git diff --check
+          if git diff --quiet; then
+            echo 'No QML change required'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- src/srstudio/graphics2/qml/GraphicsEditor.qml
+          git commit -m 'fix(g2): keep ItemSlot resize grab stable'
+          git push origin HEAD:g2/fix-item-slot-interaction-performance
