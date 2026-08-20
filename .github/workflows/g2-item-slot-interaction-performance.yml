@@ -1,4 +1,4 @@
-# Permanent P1 gate: do not relax the 1ms median / 4ms p95 thresholds.
+# Permanent P1 gate: do not relax the 1ms median / 4ms p95 thresholds. Certifies stable manual ItemSlot resize grab.
 name: G2 ItemSlot Interaction Performance
 
 on:
