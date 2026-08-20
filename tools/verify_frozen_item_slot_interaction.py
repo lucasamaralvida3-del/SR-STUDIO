@@ -436,15 +436,20 @@ def main() -> int:
 
     root.setProperty("selectedSlotId", slot_id)
     app.processEvents(); QTest.qWait(120); app.processEvents()
-    resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+    resize_name = f"smartSlotResizeArea-se-{slot_id}"
+    resize_area = quick_item(resize_name)
     pre_reveal = point_snapshot(resize_area)
+    resize_area = quick_item(resize_name)
     pre_reveal_exclusions = clipped_exclusions(resize_area)
+    resize_area = quick_item(resize_name)
     print("ITEMSLOT_RESIZE_PRE_REVEAL=" + json.dumps({"snapshot": pre_reveal, "clipped_exclusions": pre_reveal_exclusions}, sort_keys=True), flush=True)
     reveal_adjustments = reveal_in_clipped_flickables(resize_area)
     app.processEvents(); QTest.qWait(100); app.processEvents()
-    resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+    resize_area = quick_item(resize_name)
     post_reveal_exclusions = clipped_exclusions(resize_area)
+    resize_area = quick_item(resize_name)
     post_reveal = point_snapshot(resize_area)
+    resize_area = quick_item(resize_name)
     print("ITEMSLOT_RESIZE_POST_REVEAL=" + json.dumps({"snapshot": post_reveal, "clipped_exclusions": post_reveal_exclusions, "adjustments": reveal_adjustments}, sort_keys=True), flush=True)
     assert not post_reveal_exclusions, post_reveal_exclusions
     resize_start = center(resize_area)
@@ -509,11 +514,14 @@ def main() -> int:
 
     root.setProperty("selectedSlotId", slot_id)
     app.processEvents(); QTest.qWait(100); app.processEvents()
-    shift_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+    shift_name = f"smartSlotResizeArea-se-{slot_id}"
+    shift_area = quick_item(shift_name)
     shift_reveal_adjustments = reveal_in_clipped_flickables(shift_area)
     app.processEvents(); QTest.qWait(80); app.processEvents()
-    shift_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
-    assert not clipped_exclusions(shift_area)
+    shift_area = quick_item(shift_name)
+    shift_exclusions = clipped_exclusions(shift_area)
+    shift_area = quick_item(shift_name)
+    assert not shift_exclusions, shift_exclusions
     shift_start = center(shift_area)
     before_shift = item_slot_snapshot(session.page, slot)
     ratio_before = before_shift["bounds"]["width"] / before_shift["bounds"]["height"]
