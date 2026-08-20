@@ -192,15 +192,36 @@ def _run_preset(app, qml_path: Path, preset_id: str) -> dict:
         app.processEvents()
         resize_samples.append((perf_counter_ns() - started) / 1_000_000.0)
     dispatch_before_resize_release = bridge.dispatch_count
+    preview_active_before_release = bool(root.property("itemSlotPreviewActive"))
+    preview_events_before_release = int(root.property("itemSlotPreviewEvents") or 0)
+    preview_updates_before_release = int(root.property("itemSlotPreviewUpdates") or 0)
+    backend_commits_before_release = int(root.property("itemSlotBackendCommits") or 0)
     QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, final_resize, 0)
     app.processEvents()
     QTest.qWait(50)
     app.processEvents()
     dispatch_after_resize_release = bridge.dispatch_count
-    assert dispatch_after_resize_press == dispatch_before_resize
-    assert dispatch_before_resize_release == dispatch_before_resize
-    assert dispatch_after_resize_release - dispatch_before_resize_release == 1
-    assert bridge.commands[-1] == "commit_item_slot_bounds"
+    resize_release_delta = dispatch_after_resize_release - dispatch_before_resize_release
+    diagnostic = {
+        "preset": preset_id,
+        "dispatch_before_resize": dispatch_before_resize,
+        "dispatch_after_resize_press": dispatch_after_resize_press,
+        "dispatch_before_resize_release": dispatch_before_resize_release,
+        "dispatch_after_resize_release": dispatch_after_resize_release,
+        "resize_release_delta": resize_release_delta,
+        "preview_active_before_release": preview_active_before_release,
+        "preview_active_after_release": bool(root.property("itemSlotPreviewActive")),
+        "preview_events_before_release": preview_events_before_release,
+        "preview_updates_before_release": preview_updates_before_release,
+        "backend_commits_before_release": backend_commits_before_release,
+        "backend_commits_after_release": int(root.property("itemSlotBackendCommits") or 0),
+        "commands": list(bridge.commands),
+    }
+    print("ITEMSLOT_RESIZE_RELEASE_DIAGNOSTIC=" + json.dumps(diagnostic, ensure_ascii=False, sort_keys=True), flush=True)
+    assert dispatch_after_resize_press == dispatch_before_resize, diagnostic
+    assert dispatch_before_resize_release == dispatch_before_resize, diagnostic
+    assert resize_release_delta == 1, diagnostic
+    assert bridge.commands[-1] == "commit_item_slot_bounds", diagnostic
 
     move_summary = _summary(move_samples)
     resize_summary = _summary(resize_samples)
@@ -211,7 +232,7 @@ def _run_preset(app, qml_path: Path, preset_id: str) -> dict:
         "backend_dispatches_during_move": dispatch_before_move_release - dispatch_before_move,
         "backend_dispatches_during_resize": dispatch_before_resize_release - dispatch_before_resize,
         "backend_commits_move_release": dispatch_after_move_release - dispatch_before_move_release,
-        "backend_commits_resize_release": dispatch_after_resize_release - dispatch_before_resize_release,
+        "backend_commits_resize_release": resize_release_delta,
         "itemslot_preview_events": int(root.property("itemSlotPreviewEvents") or 0),
         "itemslot_preview_updates": int(root.property("itemSlotPreviewUpdates") or 0),
         "itemslot_backend_commits": int(root.property("itemSlotBackendCommits") or 0),
@@ -249,7 +270,6 @@ def main() -> int:
 
     app = QGuiApplication.instance() or QGuiApplication(["item-slot-perf"])
     results = [_run_preset(app, qml_path, preset) for preset in PRESETS]
-    move_all = [float(item["move"][key]) for item in results for key in ()]  # structural marker
     aggregate = {
         "move_median_max_ms": max(float(item["move"]["median_ms"]) for item in results),
         "move_p95_max_ms": max(float(item["move"]["p95_ms"]) for item in results),
