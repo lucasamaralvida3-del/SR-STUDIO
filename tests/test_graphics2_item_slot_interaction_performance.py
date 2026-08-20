@@ -220,10 +220,18 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
             yield from walk(child)
 
     def cls(item: QQuickItem | None) -> str:
-        return str(item.metaObject().className()) if item is not None else ""
+        if item is None:
+            return ""
+        try:
+            return str(item.metaObject().className())
+        except RuntimeError:
+            return "<deleted>"
 
     def prop(item: QQuickItem, key: str):
-        value = item.property(key)
+        try:
+            value = item.property(key)
+        except RuntimeError:
+            return None
         if hasattr(value, "toVariant"):
             value = value.toVariant()
         if value is None or isinstance(value, (bool, int, float, str)):
@@ -249,6 +257,25 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
     assert parent is not None
     to_parent = resize_area.mapToItem(parent, local_center)
     from_parent = resize_area.mapFromItem(parent, to_parent)
+    target_snapshot = {
+        "class": cls(resize_area),
+        "name": str(resize_area.objectName() or ""),
+        "visible": bool(resize_area.isVisible()),
+        "enabled": bool(resize_area.isEnabled()),
+        "opacity": float(resize_area.opacity()),
+        "accepted_buttons": prop(resize_area, "acceptedButtons"),
+        "prevent_stealing": prop(resize_area, "preventStealing"),
+        "propagate_composed_events": prop(resize_area, "propagateComposedEvents"),
+        "contains_mouse": bool(prop(resize_area, "containsMouse") or False),
+        "hovered": prop(resize_area, "hovered"),
+        "clip": bool(prop(resize_area, "clip") or False),
+        "z": float(resize_area.z()),
+        "width": float(resize_area.width()),
+        "height": float(resize_area.height()),
+        "x": float(resize_area.x()),
+        "y": float(resize_area.y()),
+    }
+    contains_local = bool(resize_area.contains(local_center))
 
     parent_chain: list[dict] = []
     clipped_exclusions: list[dict] = []
@@ -294,29 +321,12 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
         current = child
 
     focused_snapshot = {
-        "target": {
-            "class": cls(resize_area),
-            "name": str(resize_area.objectName() or ""),
-            "visible": bool(resize_area.isVisible()),
-            "enabled": bool(resize_area.isEnabled()),
-            "opacity": float(resize_area.opacity()),
-            "accepted_buttons": prop(resize_area, "acceptedButtons"),
-            "prevent_stealing": prop(resize_area, "preventStealing"),
-            "propagate_composed_events": prop(resize_area, "propagateComposedEvents"),
-            "contains_mouse": bool(prop(resize_area, "containsMouse") or False),
-            "hovered": prop(resize_area, "hovered"),
-            "clip": bool(prop(resize_area, "clip") or False),
-            "z": float(resize_area.z()),
-            "width": float(resize_area.width()),
-            "height": float(resize_area.height()),
-            "x": float(resize_area.x()),
-            "y": float(resize_area.y()),
-        },
+        "target": target_snapshot,
         "local": {"x": float(local_center.x()), "y": float(local_center.y())},
         "scene": {"x": float(scene_center.x()), "y": float(scene_center.y())},
         "window": {"x": int(center.x()), "y": int(center.y())},
         "global": {"x": float(global_center.x()), "y": float(global_center.y())},
-        "contains_local": bool(resize_area.contains(local_center)),
+        "contains_local": contains_local,
         "map_to_parent": {"x": float(to_parent.x()), "y": float(to_parent.y())},
         "map_from_parent_roundtrip": {"x": float(from_parent.x()), "y": float(from_parent.y())},
         "parent_chain": parent_chain,
