@@ -771,7 +771,7 @@ ApplicationWindow {
                                 ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
                                 delegate: ProductListItem {
                                     required property var modelData
-                                    width: productList.width - (productList.ScrollBar.vertical && productList.ScrollBar.vertical.visible ? 8 : 2)
+                                    width: Math.max(120, productList.width - 8)
                                     theme: theme
                                     productData: modelData
                                     imageSource: productImageSource(modelData)
@@ -1621,7 +1621,7 @@ ApplicationWindow {
                 Image {
                     anchors.fill: parent
                     anchors.margins: 3
-                    source: productImageSource(draggedProduct)
+                    source: localSource(draggedProduct ? (draggedProduct.image_path || draggedProduct.image || draggedProduct.image_url || draggedProduct.source || "") : "")
                     fillMode: Image.PreserveAspectFit
                     asynchronous: true
                 }
@@ -1635,7 +1635,7 @@ ApplicationWindow {
                     implicitHeight: 28
                     radius: theme.radiusPill
                     color: dragHoverSlotId ? theme.success : theme.primary
-                    Label { anchors.centerIn: parent; text: dragHoverSlotId ? "Solte o produto no encarte" : "Arraste o produto para o encarte"; color: "white"; font.bold: true; font.pixelSize: theme.fontTiny }
+                    Label { anchors.centerIn: parent; text: dragHoverSlotId ? "Solte para aplicar o produto" : "Arraste o produto para o encarte"; color: "white"; font.bold: true; font.pixelSize: theme.fontTiny }
                 }
             }
         }
