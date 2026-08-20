@@ -155,8 +155,11 @@ def main() -> int:
         return {
             "class": class_name(item),
             "name": str(item.objectName() or ""),
+            "x": float(item.x()),
+            "y": float(item.y()),
             "visible": bool(item.isVisible()),
             "enabled": bool(item.isEnabled()),
+            "opacity": float(item.opacity()),
             "scene_x": float(scene.x()),
             "scene_y": float(scene.y()),
             "window_x": int(win.x()),
@@ -166,8 +169,11 @@ def main() -> int:
             "z": float(item.z()),
             "clip": bool(property_value(item, "clip") or False),
             "contains_mouse": bool(property_value(item, "containsMouse") or False),
+            "hovered": property_value(item, "hovered"),
             "pressed": bool(property_value(item, "pressed") or False),
             "accepted_buttons": property_value(item, "acceptedButtons"),
+            "prevent_stealing": property_value(item, "preventStealing"),
+            "propagate_composed_events": property_value(item, "propagateComposedEvents"),
             "containment_mask": property_value(item, "containmentMask"),
         }
 
@@ -220,6 +226,103 @@ def main() -> int:
             current = child
             depth += 1
         return result
+
+    def point_snapshot(item: QQuickItem) -> dict:
+        local = QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)
+        scene = item.mapToScene(local)
+        global_point = item.mapToGlobal(local)
+        window = root.mapFromGlobal(QPoint(round(global_point.x()), round(global_point.y())))
+        parent = item.parentItem()
+        to_parent = item.mapToItem(parent, local) if parent is not None else local
+        from_parent = item.mapFromItem(parent, to_parent) if parent is not None else local
+        to_content = item.mapToItem(content_item, local)
+        from_content = item.mapFromItem(content_item, to_content)
+        return {
+            "target": diagnostic(item),
+            "local": {"x": float(local.x()), "y": float(local.y())},
+            "scene": {"x": float(scene.x()), "y": float(scene.y())},
+            "window": {"x": int(window.x()), "y": int(window.y())},
+            "global": {"x": float(global_point.x()), "y": float(global_point.y())},
+            "contains_local": bool(item.contains(local)),
+            "map_to_parent": {"x": float(to_parent.x()), "y": float(to_parent.y())},
+            "map_from_parent_roundtrip": {"x": float(from_parent.x()), "y": float(from_parent.y())},
+            "map_to_content": {"x": float(to_content.x()), "y": float(to_content.y())},
+            "map_from_content_roundtrip": {"x": float(from_content.x()), "y": float(from_content.y())},
+            "parent_chain": parent_chain(item, scene),
+            "topmost_chain": child_at_chain(content_item, scene),
+        }
+
+    def clipped_exclusions(item: QQuickItem) -> list[dict]:
+        local = QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)
+        scene = item.mapToScene(local)
+        exclusions: list[dict] = []
+        current = item.parentItem()
+        while current is not None:
+            point = current.mapFromScene(scene)
+            if bool(property_value(current, "clip") or False):
+                inside = 0.0 <= point.x() <= current.width() and 0.0 <= point.y() <= current.height()
+                if not inside:
+                    exclusions.append({
+                        "class": class_name(current),
+                        "name": str(current.objectName() or ""),
+                        "local_x": float(point.x()),
+                        "local_y": float(point.y()),
+                        "width": float(current.width()),
+                        "height": float(current.height()),
+                        "clip": True,
+                        "z": float(current.z()),
+                    })
+            current = current.parentItem()
+        return exclusions
+
+    def reveal_in_clipped_flickables(item: QQuickItem, margin: float = 32.0) -> list[dict]:
+        adjustments: list[dict] = []
+        current = item.parentItem()
+        while current is not None:
+            cls = class_name(current)
+            content_x_raw = property_value(current, "contentX")
+            content_y_raw = property_value(current, "contentY")
+            is_flickable = "Flickable" in cls or (isinstance(content_x_raw, (int, float)) and isinstance(content_y_raw, (int, float)))
+            if bool(property_value(current, "clip") or False) and is_flickable:
+                local = item.mapToItem(current, QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0))
+                before_x = float(content_x_raw or 0.0)
+                before_y = float(content_y_raw or 0.0)
+                target_x = before_x
+                target_y = before_y
+                if local.x() > current.width() - margin:
+                    target_x += float(local.x() - (current.width() - margin))
+                elif local.x() < margin:
+                    target_x -= float(margin - local.x())
+                if local.y() > current.height() - margin:
+                    target_y += float(local.y() - (current.height() - margin))
+                elif local.y() < margin:
+                    target_y -= float(margin - local.y())
+                content_width = property_value(current, "contentWidth")
+                content_height = property_value(current, "contentHeight")
+                max_x = max(0.0, float(content_width) - float(current.width())) if isinstance(content_width, (int, float)) else max(0.0, target_x)
+                max_y = max(0.0, float(content_height) - float(current.height())) if isinstance(content_height, (int, float)) else max(0.0, target_y)
+                target_x = max(0.0, min(max_x, target_x))
+                target_y = max(0.0, min(max_y, target_y))
+                if abs(target_x - before_x) > 0.01:
+                    current.setProperty("contentX", target_x)
+                if abs(target_y - before_y) > 0.01:
+                    current.setProperty("contentY", target_y)
+                if abs(target_x - before_x) > 0.01 or abs(target_y - before_y) > 0.01:
+                    adjustments.append({
+                        "class": cls,
+                        "name": str(current.objectName() or ""),
+                        "before_content_x": before_x,
+                        "before_content_y": before_y,
+                        "after_content_x": target_x,
+                        "after_content_y": target_y,
+                        "target_local_x_before": float(local.x()),
+                        "target_local_y_before": float(local.y()),
+                        "width": float(current.width()),
+                        "height": float(current.height()),
+                    })
+                    app.processEvents(); QTest.qWait(80); app.processEvents()
+            current = current.parentItem()
+        return adjustments
 
     def visual_rect(item: QQuickItem) -> dict[str, float]:
         point = item.mapToScene(QPointF(0, 0))
@@ -334,8 +437,17 @@ def main() -> int:
     root.setProperty("selectedSlotId", slot_id)
     app.processEvents(); QTest.qWait(120); app.processEvents()
     resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+    pre_reveal = point_snapshot(resize_area)
+    pre_reveal_exclusions = clipped_exclusions(resize_area)
+    print("ITEMSLOT_RESIZE_PRE_REVEAL=" + json.dumps({"snapshot": pre_reveal, "clipped_exclusions": pre_reveal_exclusions}, sort_keys=True), flush=True)
+    reveal_adjustments = reveal_in_clipped_flickables(resize_area)
+    app.processEvents(); QTest.qWait(100); app.processEvents()
+    resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+    post_reveal_exclusions = clipped_exclusions(resize_area)
+    post_reveal = point_snapshot(resize_area)
+    print("ITEMSLOT_RESIZE_POST_REVEAL=" + json.dumps({"snapshot": post_reveal, "clipped_exclusions": post_reveal_exclusions, "adjustments": reveal_adjustments}, sort_keys=True), flush=True)
+    assert not post_reveal_exclusions, post_reveal_exclusions
     resize_start = center(resize_area)
-    resize_scene_point = resize_area.mapToScene(QPointF(resize_area.width() / 2.0, resize_area.height() / 2.0))
     backend_before_resize = item_slot_snapshot(session.page, slot)
     roles_before_resize = capture_roles(ids)
     root_before_resize = visual_rect(node_item(root_id))
@@ -346,15 +458,9 @@ def main() -> int:
     dispatch_before_resize = bridge.dispatch_count
     resize_events_before = int(root.property("itemSlotPreviewEvents") or 0)
 
-    print("ITEMSLOT_RESIZE_TARGET=" + json.dumps({"target": diagnostic(resize_area), "window_point": {"x": resize_start.x(), "y": resize_start.y()}}, sort_keys=True), flush=True)
-    print("ITEMSLOT_RESIZE_PARENT_CHAIN=" + json.dumps(parent_chain(resize_area, resize_scene_point), sort_keys=True), flush=True)
-    print("ITEMSLOT_RESIZE_CHILD_AT_CHAIN=" + json.dumps(child_at_chain(content_item, resize_scene_point), sort_keys=True), flush=True)
-    QTest.mouseMove(root, resize_start, 0)
-    app.processEvents(); QTest.qWait(30); app.processEvents()
-    print("ITEMSLOT_RESIZE_AFTER_HOVER=" + json.dumps({"target": diagnostic(resize_area)}, sort_keys=True), flush=True)
     QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_start, 0)
     app.processEvents()
-    print("ITEMSLOT_RESIZE_PRESS=" + json.dumps({"preview_active": bool(root.property("itemSlotPreviewActive")), "kind": str(root.property("itemSlotInteractionKind") or ""), "pressed": bool(resize_area.property("pressed")), "contains_mouse": bool(resize_area.property("containsMouse"))}, sort_keys=True), flush=True)
+    print("ITEMSLOT_RESIZE_PRESS=" + json.dumps({"preview_active": bool(root.property("itemSlotPreviewActive")), "kind": str(root.property("itemSlotInteractionKind") or ""), "pressed": bool(resize_area.property("pressed")), "contains_mouse": bool(resize_area.property("containsMouse")), "event_target": str(resize_area.objectName() or "") if bool(resize_area.property("pressed")) else "other"}, sort_keys=True), flush=True)
     assert bool(root.property("itemSlotPreviewActive")), "RESIZE press did not activate preview"
     assert str(root.property("itemSlotInteractionKind") or "") == "resize"
     assert bool(resize_area.property("pressed")), "resize MouseArea does not own the press"
@@ -404,9 +510,11 @@ def main() -> int:
     root.setProperty("selectedSlotId", slot_id)
     app.processEvents(); QTest.qWait(100); app.processEvents()
     shift_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+    shift_reveal_adjustments = reveal_in_clipped_flickables(shift_area)
+    app.processEvents(); QTest.qWait(80); app.processEvents()
+    shift_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+    assert not clipped_exclusions(shift_area)
     shift_start = center(shift_area)
-    QTest.mouseMove(root, shift_start, 0)
-    app.processEvents(); QTest.qWait(20); app.processEvents()
     before_shift = item_slot_snapshot(session.page, slot)
     ratio_before = before_shift["bounds"]["width"] / before_shift["bounds"]["height"]
     shift_dispatch_before = bridge.dispatch_count
@@ -448,8 +556,14 @@ def main() -> int:
     result = {
         "pass": True,
         "preset": "simples",
+        "root_cause_class": "TEST/HARNESS TOPOLOGY BUG",
+        "pre_reveal_clipped_exclusions": pre_reveal_exclusions,
+        "post_reveal_clipped_exclusions": post_reveal_exclusions,
+        "viewport_reveal_adjustments": reveal_adjustments,
+        "shift_viewport_reveal_adjustments": shift_reveal_adjustments,
         "move_preview_active_until_release": True,
         "resize_preview_active_until_release": True,
+        "resize_pressed": True,
         "mouse_grab_preserved": True,
         "unexpected_cancel": False,
         "backend_dispatches_during_move": 0,
@@ -473,6 +587,7 @@ def main() -> int:
         "backend_commits_counter": int(root.property("itemSlotBackendCommits") or 0),
     }
     (output_dir / "continuous-result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
+    (output_dir / "hit-test-focused-vs-frozen.json").write_text(json.dumps({"frozen_pre_reveal": pre_reveal, "frozen_post_reveal": post_reveal, "root_cause_class": result["root_cause_class"]}, ensure_ascii=False, indent=2, sort_keys=True), encoding="utf-8")
     print("ITEMSLOT_CONTINUOUS_RESULT=" + json.dumps(result, ensure_ascii=False, sort_keys=True), flush=True)
     root.close(); root.deleteLater(); app.processEvents()
     return 0
