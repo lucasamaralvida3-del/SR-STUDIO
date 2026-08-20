@@ -108,18 +108,22 @@ def test_qml_manual_item_slot_uses_stable_resize_hitbox_and_one_release_command(
     assert 'function resizedBounds(px, py, modifiers)' in qml
     assert 'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)' in qml
     assert 'manualItemSlotResizeHandler' not in qml
+    assert 'DragHandler {' not in qml[qml.index('model: slots()'):qml.index('id: selectionOverlay')]
     assert 'enabled: !slotOverlay.isManualItemSlot' not in qml
 
-    # During manual resize the real MouseArea and its ancestor keep the original
-    # geometry, while frame/handle visuals and the ItemSlot subtree follow the
-    # local preview. This prevents Qt from cancelling the mouse grab mid-gesture.
-    assert 'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"' in qml
-    assert "property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds" in qml
+    # During manual resize the physical MouseArea and its ancestor stay on the
+    # original interaction bounds. Only the independent visual handle/frame and
+    # the ItemSlot subtree follow displayBounds / itemSlotDisplayTransform().
     assert "x: interactionBounds.x * zoom" in qml
     assert "width: interactionBounds.width * zoom" in qml
     assert "slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x" in qml
-    assert "slotOverlay.displayBounds.width - slotOverlay.interactionBounds.width" in qml
-    assert "enabled: !slotOverlay.isManualItemSlot" not in qml
-    assert "manualItemSlotResizeHandler" not in qml
+    assert "modelData.fx * slotOverlay.displayBounds.width * zoom" in qml
+    assert "property real desiredVisualX:" in qml
+    assert "property real desiredVisualY:" in qml
+    assert "Math.min(Math.max(0, slotOverlay.width - width)" in qml
+    assert "Math.min(Math.max(0, slotOverlay.height - height)" in qml
+    assert "visible: parent.visible" in qml
+    assert "x: parent.desiredVisualX - parent.x" in qml
+    assert "y: parent.desiredVisualY - parent.y" in qml
     assert "slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)" in qml
     assert "slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), \"resize\")" in qml
