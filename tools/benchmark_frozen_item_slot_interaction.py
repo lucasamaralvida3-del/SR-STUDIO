@@ -318,12 +318,15 @@ def _run_preset(app, qml_path: Path, preset_id: str) -> dict:
 
     root.setProperty("selectedSlotId", slot_id)
     app.processEvents(); QTest.qWait(60); app.processEvents()
-    resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+    resize_name = f"smartSlotResizeArea-se-{slot_id}"
+    resize_area = quick_item(resize_name)
     pre_reveal_exclusions = clipped_exclusions(resize_area)
+    resize_area = quick_item(resize_name)
     viewport_adjustments = reveal_in_clipped_flickables(resize_area)
     app.processEvents(); QTest.qWait(80); app.processEvents()
-    resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+    resize_area = quick_item(resize_name)
     post_reveal_exclusions = clipped_exclusions(resize_area)
+    resize_area = quick_item(resize_name)
     assert not post_reveal_exclusions, {"preset": preset_id, "pre": pre_reveal_exclusions, "post": post_reveal_exclusions, "adjustments": viewport_adjustments}
     resize_start = scene_center(resize_area)
     roles_before_resize = capture_roles(ids)
