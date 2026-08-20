@@ -116,16 +116,32 @@ jobs:
             if ([double]$preset.move.p95_ms -ge 4.0) { throw "$($preset.preset) move p95 >= 4ms" }
             if ([double]$preset.resize.median_ms -ge 1.0) { throw "$($preset.preset) resize median >= 1ms" }
             if ([double]$preset.resize.p95_ms -ge 4.0) { throw "$($preset.preset) resize p95 >= 4ms" }
+            if ([int]$preset.move_preview_events -ne 200) { throw "$($preset.preset) move preview events != 200" }
+            if ([int]$preset.resize_preview_events -ne 200) { throw "$($preset.preset) resize preview events != 200" }
             if ([int]$preset.backend_dispatches_during_move -ne 0) { throw "$($preset.preset) dispatched during move" }
             if ([int]$preset.backend_dispatches_during_resize -ne 0) { throw "$($preset.preset) dispatched during resize" }
             if ([int]$preset.backend_commits_move_release -ne 1) { throw "$($preset.preset) move release commits != 1" }
             if ([int]$preset.backend_commits_resize_release -ne 1) { throw "$($preset.preset) resize release commits != 1" }
             if (-not [bool]$preset.resize_pressed) { throw "$($preset.preset) resize press not owned" }
-            if (-not [bool]$preset.resize_preview_active) { throw "$($preset.preset) resize preview inactive" }
-            if (-not [bool]$preset.resize_grab_preserved) { throw "$($preset.preset) resize grab lost" }
-            if (-not [bool]$preset.save_reopen_preserved) { throw "$($preset.preset) save/reopen failed" }
+            if ($preset.children_preview.IMAGE -ne "PASS") { throw "$($preset.preset) IMAGE preview failed" }
+            if ($preset.children_preview.NAME -ne "PASS") { throw "$($preset.preset) NAME preview failed" }
+            if ($preset.children_preview.PRICE -ne "PASS") { throw "$($preset.preset) PRICE preview failed" }
+            if ($preset.children_preview.UNIT -ne "PASS") { throw "$($preset.preset) UNIT preview failed" }
+            if (-not [bool]$preset.backend_model_unchanged_during_preview) { throw "$($preset.preset) backend changed during preview" }
+            if (-not [bool]$preset.interaction_overlay_stable_during_resize) { throw "$($preset.preset) interaction overlay moved during resize" }
             if ($preset.post_reveal_clipped_exclusions.Count -ne 0) { throw "$($preset.preset) resize target still clipped" }
+            if ($preset.save_reopen.bounds -ne "PASS") { throw "$($preset.preset) save/reopen bounds failed" }
+            if ($preset.save_reopen.IMAGE -ne "PASS") { throw "$($preset.preset) save/reopen IMAGE failed" }
+            if ($preset.save_reopen.NAME -ne "PASS") { throw "$($preset.preset) save/reopen NAME failed" }
+            if ($preset.save_reopen.PRICE -ne "PASS") { throw "$($preset.preset) save/reopen PRICE failed" }
+            if ($preset.save_reopen.UNIT -ne "PASS") { throw "$($preset.preset) save/reopen UNIT failed" }
+            if ($preset.save_reopen.internal_roles -ne "PASS") { throw "$($preset.preset) save/reopen internal_roles failed" }
+            if ($preset.save_reopen.price_block -ne "PASS") { throw "$($preset.preset) save/reopen PriceBlock failed" }
+            if ($preset.save_reopen.preset -ne "PASS") { throw "$($preset.preset) save/reopen preset failed" }
+            if ($preset.save_reopen.node_by_role -ne "PASS") { throw "$($preset.preset) save/reopen node_by_role failed" }
+            if ($preset.save_reopen.relative_geometry -ne "PASS") { throw "$($preset.preset) save/reopen relative geometry failed" }
           }
+          if ([int]$perf.aggregate.preview_events -ne 1200) { throw "Aggregate preview events != 1200" }
           if (-not [bool]$perf.all_presets_save_reopen) { throw "All-presets save/reopen gate failed" }
           $continuous = Get-Content "itemslot-perf-evidence/continuous/continuous-result.json" -Raw | ConvertFrom-Json
           if (-not [bool]$continuous.pass) { throw "Continuous frozen gate failed" }
@@ -141,6 +157,7 @@ jobs:
           Write-Host "RESIZE_P95_MAX_MS=$($perf.aggregate.resize_p95_max_ms)"
           Write-Host "BACKEND_DISPATCH_DURING_MOVE=$($perf.aggregate.backend_dispatches_during_move)"
           Write-Host "BACKEND_DISPATCH_DURING_RESIZE=$($perf.aggregate.backend_dispatches_during_resize)"
+          Write-Host "PREVIEW_EVENTS=$($perf.aggregate.preview_events)"
           Write-Host "FROZEN_WINDOWS_ITEMSLOT_INTERACTION=PASS"
           Write-Host "SAVE_REOPEN=PASS"
 
