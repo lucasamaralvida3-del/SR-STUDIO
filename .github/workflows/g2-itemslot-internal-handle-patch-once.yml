@@ -1,17 +1,16 @@
 name: G2 ItemSlot Internal Handle Patch Once
 
 on:
-  push:
+  pull_request:
     branches:
-      - g2/fix-item-slot-interaction-performance
-    paths:
-      - '.github/workflows/g2-itemslot-internal-handle-patch-once.yml'
+      - g2/tmp-itemslot-stable-resize-runner-v2
 
 permissions:
   contents: write
 
 jobs:
   patch:
+    if: github.event.pull_request.head.ref == 'g2/fix-item-slot-interaction-performance' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
