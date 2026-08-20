@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
-from time import monotonic, perf_counter_ns
+from time import monotonic
 
 import pytest
 
@@ -128,6 +128,11 @@ def main() -> int:
         p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0))
         return QPoint(round(p.x()), round(p.y()))
 
+    def qml_map(value) -> dict:
+        if hasattr(value, "toVariant"):
+            value = value.toVariant()
+        return dict(value or {})
+
     slot = session.page.slots[slot_id]
     initial = item_slot_snapshot(session.page, slot)
 
@@ -145,7 +150,7 @@ def main() -> int:
         QTest.mouseMove(root, final, 0)
         app.processEvents()
         QTest.qWait(16)
-    preview_move = dict(root.property("itemSlotPreviewBounds") or {})
+    preview_move = qml_map(root.property("itemSlotPreviewBounds"))
     assert bridge.dispatch_count == before_dispatch, bridge.commands
     QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, final, 0)
     app.processEvents()
@@ -174,7 +179,7 @@ def main() -> int:
         QTest.mouseMove(root, resize_final, 0)
         app.processEvents()
         QTest.qWait(16)
-    preview_resize = dict(root.property("itemSlotPreviewBounds") or {})
+    preview_resize = qml_map(root.property("itemSlotPreviewBounds"))
     assert bridge.dispatch_count == before_resize_dispatch, bridge.commands
     QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_final, 0)
     app.processEvents()
