@@ -1,0 +1,142 @@
+name: G2 ItemSlot Interaction Performance
+
+on:
+  push:
+    branches:
+      - g2/fix-item-slot-interaction-performance
+    paths:
+      - 'src/srstudio/graphics2/item_slot_host.py'
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'tests/test_graphics2_item_slot_interaction_performance.py'
+      - 'tests/test_graphics2_item_slots.py'
+      - 'tools/benchmark_frozen_item_slot_interaction.py'
+      - 'tools/verify_frozen_item_slot_interaction.py'
+      - '.github/workflows/g2-item-slot-interaction-performance.yml'
+  pull_request:
+    branches:
+      - g2/fix-full-studio-entrypoint-beta27
+      - g2/integrate-studio-shell
+    paths:
+      - 'src/srstudio/graphics2/item_slot_host.py'
+      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
+      - 'tests/test_graphics2_item_slot_interaction_performance.py'
+      - 'tests/test_graphics2_item_slots.py'
+      - 'tools/benchmark_frozen_item_slot_interaction.py'
+      - 'tools/verify_frozen_item_slot_interaction.py'
+      - '.github/workflows/g2-item-slot-interaction-performance.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  frozen-windows-itemslot-performance:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install focused dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2,graphics2-build]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Record exact source SHA
+        shell: pwsh
+        run: |
+          $sha = git rev-parse HEAD
+          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          Write-Host "SOURCE_SHA=$sha"
+          Write-Host "EXPECTED_SHA=$expected"
+          if ($sha -ne $expected) { throw "Exact SHA mismatch" }
+          git diff --quiet
+          if ($LASTEXITCODE -ne 0) { throw "Tracked working tree changed before ItemSlot gate" }
+
+      - name: Focused ItemSlot interaction regression suite
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: |
+          python -m compileall -q src/srstudio/graphics2/item_slot_host.py tests/test_graphics2_item_slot_interaction_performance.py tools/benchmark_frozen_item_slot_interaction.py tools/verify_frozen_item_slot_interaction.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_graphics2_item_slots.py tests/test_graphics2_item_slot_interaction_performance.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build exact frozen Graphics2 host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $root = "dist/graphics2-host/SRGraphicsEngine2Host"
+          if (!(Test-Path "$root/SRGraphicsEngine2Host.exe")) { throw "Frozen Graphics2Host missing" }
+          if (!(Test-Path "$root/_internal/srstudio/graphics2/qml/GraphicsEditor.qml")) { throw "Frozen GraphicsEditor.qml missing" }
+          & "$root/SRGraphicsEngine2Host.exe" --version
+          if ($LASTEXITCODE -ne 0) { throw "Frozen Graphics2Host --version failed" }
+
+      - name: Benchmark 200 move and resize events for all ItemSlot presets
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+          QSG_RHI_BACKEND: software
+        run: |
+          New-Item -ItemType Directory -Force -Path itemslot-perf-evidence | Out-Null
+          python tools/benchmark_frozen_item_slot_interaction.py `
+            --qml "dist/graphics2-host/SRGraphicsEngine2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml" `
+            --output "itemslot-perf-evidence/benchmark.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Continuous 3-second move resize and save reopen gate
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+          QSG_RHI_BACKEND: software
+        run: |
+          python tools/verify_frozen_item_slot_interaction.py `
+            --qml "dist/graphics2-host/SRGraphicsEngine2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml" `
+            --output-dir "itemslot-perf-evidence/continuous"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Enforce hard performance thresholds
+        shell: pwsh
+        run: |
+          $perf = Get-Content "itemslot-perf-evidence/benchmark.json" -Raw | ConvertFrom-Json
+          foreach ($preset in $perf.presets) {
+            if ([double]$preset.move.median_ms -ge 1.0) { throw "$($preset.preset) move median >= 1ms" }
+            if ([double]$preset.move.p95_ms -ge 4.0) { throw "$($preset.preset) move p95 >= 4ms" }
+            if ([double]$preset.resize.median_ms -ge 1.0) { throw "$($preset.preset) resize median >= 1ms" }
+            if ([double]$preset.resize.p95_ms -ge 4.0) { throw "$($preset.preset) resize p95 >= 4ms" }
+            if ([int]$preset.backend_dispatches_during_move -ne 0) { throw "$($preset.preset) dispatched during move" }
+            if ([int]$preset.backend_dispatches_during_resize -ne 0) { throw "$($preset.preset) dispatched during resize" }
+            if ([int]$preset.backend_commits_move_release -ne 1) { throw "$($preset.preset) move release commits != 1" }
+            if ([int]$preset.backend_commits_resize_release -ne 1) { throw "$($preset.preset) resize release commits != 1" }
+          }
+          $continuous = Get-Content "itemslot-perf-evidence/continuous/continuous-result.json" -Raw | ConvertFrom-Json
+          if (-not [bool]$continuous.pass) { throw "Continuous frozen gate failed" }
+          if (-not [bool]$continuous.children_relative_alignment_preserved) { throw "Child alignment changed" }
+          if (-not [bool]$continuous.save_reopen_preserved) { throw "Save/reopen did not preserve ItemSlot" }
+          Write-Host "MOVE_MEDIAN_MAX_MS=$($perf.aggregate.move_median_max_ms)"
+          Write-Host "MOVE_P95_MAX_MS=$($perf.aggregate.move_p95_max_ms)"
+          Write-Host "RESIZE_MEDIAN_MAX_MS=$($perf.aggregate.resize_median_max_ms)"
+          Write-Host "RESIZE_P95_MAX_MS=$($perf.aggregate.resize_p95_max_ms)"
+          Write-Host "BACKEND_DISPATCH_DURING_MOVE=$($perf.aggregate.backend_dispatches_during_move)"
+          Write-Host "BACKEND_DISPATCH_DURING_RESIZE=$($perf.aggregate.backend_dispatches_during_resize)"
+          Write-Host "FROZEN_WINDOWS_ITEMSLOT_INTERACTION=PASS"
+          Write-Host "SAVE_REOPEN=PASS"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g2-item-slot-interaction-performance-${{ github.run_id }}
+          path: itemslot-perf-evidence/**
+          if-no-files-found: warn
+          retention-days: 30
