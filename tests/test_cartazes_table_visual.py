@@ -1,4 +1,8 @@
+from decimal import Decimal
+from types import SimpleNamespace
+
 from srstudio.app.cartazes_table_visual import (
+    POSTER_COPIES_MAX,
     ROW_EDITED,
     ROW_ERROR,
     ROW_EVEN,
@@ -8,6 +12,9 @@ from srstudio.app.cartazes_table_visual import (
     SELECTION_FOREGROUND,
     cartazes_row_tag,
     cartazes_status_label,
+    expand_promotion_products,
+    poster_copy_count,
+    promotion_price_text,
     should_clear_initial_promotion_selection,
 )
 from srstudio.posters.commercial import PosterCommercialValidator
@@ -42,8 +49,8 @@ def test_rendering_state_keeps_clear_status() -> None:
     assert cartazes_status_label("", "PRONTO") == "✓ OK"
 
 
-def test_initial_promotion_mass_selection_is_cleared() -> None:
-    assert should_clear_initial_promotion_selection(
+def test_initial_promotion_selection_is_preserved_for_print_control() -> None:
+    assert not should_clear_initial_promotion_selection(
         is_wholesale=False,
         item_count=37,
         selected_count=37,
@@ -58,6 +65,28 @@ def test_initial_promotion_mass_selection_is_cleared() -> None:
         item_count=37,
         selected_count=37,
     )
+
+
+def test_promotion_price_text_never_appends_unit() -> None:
+    assert promotion_price_text(Decimal("33.64")) == "R$ 33,64"
+    assert promotion_price_text(Decimal("9.87")) == "R$ 9,87"
+    assert "UN" not in promotion_price_text(Decimal("17.78"))
+    assert promotion_price_text(None) == "—"
+
+
+def test_poster_copy_count_defaults_to_one_and_clamps_invalid_values() -> None:
+    assert poster_copy_count(SimpleNamespace(metadata={})) == 1
+    assert poster_copy_count(SimpleNamespace(metadata={"poster_copies": "3"})) == 3
+    assert poster_copy_count(SimpleNamespace(metadata={"poster_copies": 0})) == 1
+    assert poster_copy_count(SimpleNamespace(metadata={"poster_copies": 999})) == POSTER_COPIES_MAX
+    assert poster_copy_count(SimpleNamespace(metadata={"poster_copies": "abc"})) == 1
+
+
+def test_expand_promotion_products_repeats_each_selected_product() -> None:
+    first = SimpleNamespace(metadata={"poster_copies": 2})
+    second = SimpleNamespace(metadata={"poster_copies": 3})
+    expanded = expand_promotion_products([first, second])
+    assert expanded == [first, first, second, second, second]
 
 
 def test_selection_palette_keeps_text_readable() -> None:
