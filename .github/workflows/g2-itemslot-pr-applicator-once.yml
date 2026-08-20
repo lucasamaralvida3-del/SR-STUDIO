@@ -31,12 +31,7 @@ jobs:
               raise SystemExit(f'expected one applicator run block, got {len(positions)}')
           body = []
           for line in lines[positions[0] + 1:]:
-              if line.startswith('          '):
-                  body.append(line[10:])
-              elif not line.strip():
-                  body.append('')
-              else:
-                  break
+              body.append(line[10:] if line.startswith('          ') else line)
           script = '\n'.join(body) + '\n'
           required = [
               "git commit -m 'fix(g2): finalize stable ItemSlot preview certification path'",
