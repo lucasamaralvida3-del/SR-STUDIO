@@ -6,6 +6,10 @@ from . import _semantic_placeholders_legacy as _legacy
 from .semantic_vocabulary import is_name_forbidden_token
 
 PlaceholderRecoveryReport = _legacy.PlaceholderRecoveryReport
+_attach_to_semantic_card = _legacy._attach_to_semantic_card
+_ensure_synthetic_image_node = _legacy._ensure_synthetic_image_node
+_image_box = _legacy._image_box
+_price_rect = _legacy._price_rect
 
 
 def _configure_name_vocabulary() -> None:
