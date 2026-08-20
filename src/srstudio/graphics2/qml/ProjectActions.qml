@@ -6,17 +6,19 @@ import QtQuick.Window
 
 Rectangle {
     id: panel
-    width: Math.min(1230, parent ? parent.width - 340 : 1230)
-    height: 42
+    StudioTheme { id: theme }
+
     anchors.left: parent ? parent.left : undefined
+    anchors.right: parent ? parent.right : undefined
     anchors.top: parent ? parent.top : undefined
-    anchors.leftMargin: 324
-    anchors.topMargin: 7
+    anchors.leftMargin: {
+        var window = panel.Window.window
+        return window && window.studioLeftDockWidth !== undefined ? Number(window.studioLeftDockWidth) : 408
+    }
+    height: theme.toolBarHeight
     z: 897000
-    radius: 8
-    color: "#FFFFFFF5"
-    border.width: 1
-    border.color: "#CBD5E1"
+    color: theme.surface
+    border.width: 0
 
     property var scene: ({})
     property string activeManualSlotId: ""
@@ -130,75 +132,182 @@ Rectangle {
     Shortcut { sequence: StandardKey.Copy; onActivated: sceneBridge.dispatch('{"name":"copy"}') }
     Shortcut { sequence: StandardKey.Paste; onActivated: sceneBridge.dispatch('{"name":"paste"}') }
 
+    Rectangle {
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.bottom: parent.bottom
+        height: 1
+        color: theme.border
+    }
+
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 5
+        anchors.leftMargin: 12
+        anchors.rightMargin: 12
         spacing: 5
 
-        Label { text: "Página"; color: "#475569"; font.bold: true; font.pixelSize: 10 }
-        ComboBox {
-            id: pageCombo
-            Layout.preferredWidth: 118
-            enabled: !sceneBridge.busy && panel.pageCount() > 0
-            model: panel.scene.pages || []
-            textRole: "name"
-            currentIndex: panel.activePageIndex()
-            ToolTip.text: "Navegar entre páginas do encarte"
+        ToolButton {
+            text: "↶"
+            enabled: scene.editor ? scene.editor.can_undo : false
+            ToolTip.text: "Desfazer"
             ToolTip.visible: hovered
-            onActivated: {
-                if (currentIndex >= 0 && panel.scene.pages && currentIndex < panel.scene.pages.length)
-                    sceneBridge.dispatch(JSON.stringify({"name": "select_page", "page_id": panel.scene.pages[currentIndex].id}))
+            onClicked: sceneBridge.undo()
+        }
+        ToolButton {
+            text: "↷"
+            enabled: scene.editor ? scene.editor.can_redo : false
+            ToolTip.text: "Refazer"
+            ToolTip.visible: hovered
+            onClicked: sceneBridge.redo()
+        }
+        ToolSeparator {}
+
+        Rectangle {
+            implicitWidth: 66
+            implicitHeight: 42
+            radius: theme.radiusSmall
+            color: theme.primarySoft
+            Column {
+                anchors.centerIn: parent
+                spacing: 1
+                Label { anchors.horizontalCenter: parent.horizontalCenter; text: "➤"; color: theme.primary; font.pixelSize: 13; font.bold: true }
+                Label { anchors.horizontalCenter: parent.horizontalCenter; text: "Selecionar"; color: theme.primary; font.pixelSize: theme.fontTiny; font.bold: true }
             }
         }
-        ToolButton { text: "+"; enabled: !sceneBridge.busy; ToolTip.text: "Adicionar página"; ToolTip.visible: hovered; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
-        ToolButton { text: "⧉"; enabled: !sceneBridge.busy && panel.pageCount() > 0; ToolTip.text: "Duplicar página"; ToolTip.visible: hovered; onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}') }
-        ToolButton { text: "←"; enabled: !sceneBridge.busy && panel.activePageIndex() > 0; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"reorder_page", "page_id": panel.scene.active_page_id || "", "mode":"previous"})) }
-        ToolButton { text: "→"; enabled: !sceneBridge.busy && panel.activePageIndex() >= 0 && panel.activePageIndex() < panel.pageCount() - 1; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"reorder_page", "page_id": panel.scene.active_page_id || "", "mode":"next"})) }
-        ToolButton { text: "×"; enabled: !sceneBridge.busy && panel.pageCount() > 1; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"delete_page", "page_id": panel.scene.active_page_id || ""})) }
-
-        ToolSeparator {}
-        ToolButton {
-            id: addItemSlotButton
-            text: "+ SLOT DE ITEM"
-            enabled: !sceneBridge.busy
-            font.bold: true
-            ToolTip.text: "Adicionar componente de produto manual · não depende de detecção automática"
-            ToolTip.visible: hovered
-            onClicked: presetMenu.open()
+        Rectangle {
+            implicitWidth: 54
+            implicitHeight: 42
+            color: "transparent"
+            Column {
+                anchors.centerIn: parent
+                spacing: 1
+                Label { anchors.horizontalCenter: parent.horizontalCenter; text: "✥"; color: theme.textMuted; font.pixelSize: 13 }
+                Label { anchors.horizontalCenter: parent.horizontalCenter; text: "Mover"; color: theme.textMuted; font.pixelSize: theme.fontTiny }
+            }
+            ToolTip.text: "Mover diretamente no canvas"
+            ToolTip.visible: moveHint.containsMouse
+            MouseArea { id: moveHint; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
         }
-        ToolButton {
-            text: "Editar Slot"
-            enabled: panel.manualSlots().length > 0 && !sceneBridge.busy
-            onClicked: itemSlotPopup.open()
+        Rectangle {
+            implicitWidth: 72
+            implicitHeight: 42
+            color: "transparent"
+            Column {
+                anchors.centerIn: parent
+                spacing: 1
+                Label { anchors.horizontalCenter: parent.horizontalCenter; text: "↗"; color: theme.textMuted; font.pixelSize: 13 }
+                Label { anchors.horizontalCenter: parent.horizontalCenter; text: "Redimensionar"; color: theme.textMuted; font.pixelSize: theme.fontTiny }
+            }
+            ToolTip.text: "Use os 8 handles da seleção"
+            ToolTip.visible: resizeHint.containsMouse
+            MouseArea { id: resizeHint; anchors.fill: parent; hoverEnabled: true; acceptedButtons: Qt.NoButton }
         }
 
-        ToolSeparator {}
         ToolButton {
             text: "Copiar"
+            visible: !(panel.Window.window && panel.Window.window.tightUi)
             enabled: !sceneBridge.busy
-            ToolTip.text: "Copiar seleção · preserva ProductCard/PriceBlock/SmartSlot · Ctrl+C"
+            ToolTip.text: "Copiar seleção · Ctrl+C · preservando ProductCard/PriceBlock/SmartSlot"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch('{"name":"copy"}')
         }
         ToolButton {
             text: "Colar"
+            visible: !(panel.Window.window && panel.Window.window.tightUi)
             enabled: !sceneBridge.busy
-            ToolTip.text: "Colar preservando ProductCard/PriceBlock/SmartSlot · Ctrl+V"
+            ToolTip.text: "Colar seleção · Ctrl+V"
             ToolTip.visible: hovered
             onClicked: sceneBridge.dispatch('{"name":"paste"}')
         }
-        ToolButton { text: "💾 Salvar"; enabled: !sceneBridge.busy; onClicked: saveDialog.open() }
+        ToolButton { text: "Agrupar"; onClicked: sceneBridge.dispatch('{"name":"group"}') }
+        ToolButton {
+            text: "Alinhar"
+            onClicked: alignMenu.open()
+            Menu {
+                id: alignMenu
+                y: parent.height
+                MenuItem { text: "Esquerda"; onTriggered: sceneBridge.dispatch('{"name":"align","mode":"left"}') }
+                MenuItem { text: "Centro"; onTriggered: sceneBridge.dispatch('{"name":"align","mode":"center"}') }
+                MenuItem { text: "Direita"; onTriggered: sceneBridge.dispatch('{"name":"align","mode":"right"}') }
+                MenuSeparator {}
+                MenuItem { text: "Topo"; onTriggered: sceneBridge.dispatch('{"name":"align","mode":"top"}') }
+                MenuItem { text: "Meio"; onTriggered: sceneBridge.dispatch('{"name":"align","mode":"middle"}') }
+                MenuItem { text: "Base"; onTriggered: sceneBridge.dispatch('{"name":"align","mode":"bottom"}') }
+            }
+        }
+        ToolButton {
+            text: "Distribuir"
+            onClicked: distributeMenu.open()
+            Menu {
+                id: distributeMenu
+                y: parent.height
+                MenuItem { text: "Horizontal"; onTriggered: sceneBridge.dispatch('{"name":"distribute","axis":"horizontal"}') }
+                MenuItem { text: "Vertical"; onTriggered: sceneBridge.dispatch('{"name":"distribute","axis":"vertical"}') }
+            }
+        }
+
+        ToolSeparator {}
+        ToolButton { text: "+ Página"; enabled: !sceneBridge.busy; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
+        ToolButton {
+            text: "+ Slot"
+            enabled: !sceneBridge.busy
+            ToolTip.text: "Adicionar Slot de Item usando presets existentes"
+            ToolTip.visible: hovered
+            onClicked: presetMenu.open()
+        }
+
+        Item { Layout.fillWidth: true }
+        BusyIndicator { running: sceneBridge.busy; visible: running; implicitWidth: 22; implicitHeight: 22 }
+
+        Button {
+            text: "Compartilhar"
+            enabled: false
+            ToolTip.text: "Compartilhamento ainda não possui backend no host G2"
+            ToolTip.visible: hovered
+        }
+        Button {
+            text: "Salvar"
+            enabled: !sceneBridge.busy
+            onClicked: saveDialog.open()
+        }
         ToolButton {
             text: "↺"
             enabled: !sceneBridge.busy
-            ToolTip.text: "Restaurar o ponto de autosave mais recente deste projeto"
+            ToolTip.text: "Restaurar o ponto de autosave mais recente"
             ToolTip.visible: hovered
             onClicked: sceneBridge.recoverLatest()
         }
-        ToolButton { text: "PDF"; enabled: !sceneBridge.busy; onClicked: pdfDialog.open() }
-        ToolButton { text: "PNG"; enabled: !sceneBridge.busy; onClicked: pngDialog.open() }
-        Item { Layout.fillWidth: true }
-        BusyIndicator { running: sceneBridge.busy; visible: running; implicitWidth: 24; implicitHeight: 24 }
+        Button {
+            text: "Exportar"
+            enabled: !sceneBridge.busy
+            onClicked: exportMenu.open()
+            Menu {
+                id: exportMenu
+                y: parent.height
+                MenuItem { text: "Exportar PDF"; onTriggered: pdfDialog.open() }
+                MenuItem { text: "Exportar PNG"; onTriggered: pngDialog.open() }
+            }
+        }
+        Button {
+            id: publishButton
+            text: "Publicar"
+            enabled: false
+            opacity: 0.72
+            ToolTip.text: "Publicação ainda não possui backend no host G2"
+            ToolTip.visible: hovered
+            contentItem: Text {
+                text: publishButton.text
+                color: "white"
+                font.pixelSize: theme.fontButton
+                font.bold: true
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+            }
+            background: Rectangle {
+                radius: theme.radiusSmall
+                color: theme.primary
+            }
+        }
     }
 
     Menu {
@@ -225,7 +334,7 @@ Rectangle {
         y: 62
         padding: 14
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: Rectangle { color: "#FFFFFF"; border.color: "#CBD5E1"; radius: 10 }
+        background: Rectangle { color: theme.surface; border.color: theme.borderStrong; radius: theme.radiusLarge }
 
         ColumnLayout {
             anchors.fill: parent
@@ -233,7 +342,7 @@ Rectangle {
 
             RowLayout {
                 Layout.fillWidth: true
-                Label { text: "EDITAR SLOT DE ITEM"; font.bold: true; font.pixelSize: 16; color: "#111827" }
+                Label { text: "EDITAR SLOT DE ITEM"; font.bold: true; font.pixelSize: 16; color: theme.text }
                 Item { Layout.fillWidth: true }
                 ToolButton { text: "×"; onClicked: itemSlotPopup.close() }
             }
@@ -241,11 +350,11 @@ Rectangle {
                 Layout.fillWidth: true
                 text: "Ajuste IMAGE, NAME, PRICE e UNIT separadamente. Alterar uma área não deforma as demais."
                 wrapMode: Text.WordWrap
-                color: "#64748B"
-                font.pixelSize: 10
+                color: theme.textMuted
+                font.pixelSize: theme.fontSmall
             }
 
-            Label { text: "Slot atual"; color: "#475569"; font.bold: true; font.pixelSize: 10 }
+            Label { text: "Slot atual"; color: theme.textMuted; font.bold: true; font.pixelSize: theme.fontSmall }
             ComboBox {
                 id: itemSlotCombo
                 Layout.fillWidth: true
@@ -286,8 +395,8 @@ Rectangle {
                 }
             }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#E2E8F0" }
-            Label { text: "Área interna"; color: "#475569"; font.bold: true; font.pixelSize: 10 }
+            Rectangle { Layout.fillWidth: true; height: 1; color: theme.border }
+            Label { text: "Área interna"; color: theme.textMuted; font.bold: true; font.pixelSize: theme.fontSmall }
             ComboBox {
                 id: roleCombo
                 Layout.fillWidth: true
@@ -306,10 +415,10 @@ Rectangle {
                 columns: 4
                 columnSpacing: 6
                 rowSpacing: 4
-                Label { text: "X"; color: "#64748B" }
-                Label { text: "Y"; color: "#64748B" }
-                Label { text: "Largura"; color: "#64748B" }
-                Label { text: "Altura"; color: "#64748B" }
+                Label { text: "X"; color: theme.textMuted }
+                Label { text: "Y"; color: theme.textMuted }
+                Label { text: "Largura"; color: theme.textMuted }
+                Label { text: "Altura"; color: theme.textMuted }
                 TextField { id: roleX; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
                 TextField { id: roleY; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
                 TextField { id: roleW; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
@@ -330,8 +439,8 @@ Rectangle {
                 }))
             }
 
-            Rectangle { Layout.fillWidth: true; height: 1; color: "#E2E8F0" }
-            Label { text: "Salvar slot como modelo"; color: "#475569"; font.bold: true; font.pixelSize: 10 }
+            Rectangle { Layout.fillWidth: true; height: 1; color: theme.border }
+            Label { text: "Salvar slot como modelo"; color: theme.textMuted; font.bold: true; font.pixelSize: theme.fontSmall }
             RowLayout {
                 Layout.fillWidth: true
                 TextField { id: presetName; Layout.fillWidth: true; placeholderText: "Nome do novo preset" }
@@ -348,10 +457,10 @@ Rectangle {
             Item { Layout.fillHeight: true }
             Label {
                 Layout.fillWidth: true
-                text: "Dica: com o slot selecionado, os 8 handles normais do Editor G2 movem/redimensionam o componente inteiro. Ctrl+D duplica a estrutura sem o produto atual."
+                text: "Com o slot selecionado, os 8 handles do Editor G2 continuam movendo e redimensionando o componente inteiro."
                 wrapMode: Text.WordWrap
-                color: "#64748B"
-                font.pixelSize: 10
+                color: theme.textMuted
+                font.pixelSize: theme.fontSmall
             }
         }
     }
