@@ -47,16 +47,14 @@ def test_commit_item_slot_bounds_is_one_logical_group_commit_and_preserves_relat
     assert after["price_block"] == before["price_block"]
     assert set(after["internal_roles"]) == set(before["internal_roles"])
     for role in before["internal_roles"]:
-        before_relative = before["internal_roles"][role]["relative"]
-        after_relative = after["internal_roles"][role]["relative"]
-        assert after_relative == pytest.approx(before_relative, abs=1e-9)
+        assert after["internal_roles"][role]["relative"] == pytest.approx(
+            before["internal_roles"][role]["relative"], abs=1e-9
+        )
 
     assert session.undo() is True
-    undone_slot = session.page.slots[slot.id]
-    assert item_slot_snapshot(session.page, undone_slot) == before
+    assert item_slot_snapshot(session.page, session.page.slots[slot.id]) == before
     assert session.redo() is True
-    redone_slot = session.page.slots[slot.id]
-    assert item_slot_snapshot(session.page, redone_slot) == after
+    assert item_slot_snapshot(session.page, session.page.slots[slot.id]) == after
 
 
 @pytest.mark.parametrize("preset_id", ["simples", "destaque", "card"])
@@ -87,7 +85,11 @@ def test_commit_item_slot_bounds_save_reopen_preserves_final_geometry(tmp_path: 
 
     assert actual["bounds"] == expected["bounds"]
     assert actual["internal_roles"] == expected["internal_roles"]
+    assert actual["price_block"] == expected["price_block"]
     assert actual["preset_id"] == expected["preset_id"]
+    assert dict(restored_slot.node_by_role) == dict(slot.node_by_role)
+    for role, role_data in expected["internal_roles"].items():
+        assert actual["internal_roles"][role]["relative"] == role_data["relative"]
 
 
 def test_qml_manual_item_slot_uses_direct_stable_resize_mousearea_and_one_release_command() -> None:
@@ -118,7 +120,6 @@ def test_qml_manual_item_slot_uses_direct_stable_resize_mousearea_and_one_releas
     assert 'manualItemSlotResizeHandler' not in itemslot_region
     assert 'DragHandler {' not in itemslot_region
     assert 'enabled: !slotOverlay.isManualItemSlot' not in itemslot_region
-
     assert "x: interactionBounds.x * zoom" in itemslot_region
     assert "width: interactionBounds.width * zoom" in itemslot_region
     assert "slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x" in itemslot_region
@@ -135,6 +136,7 @@ def test_qml_manual_item_slot_uses_direct_stable_resize_mousearea_and_one_releas
 
 
 def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_commit() -> None:
+    pytest.importorskip("PySide6")
     from PySide6.QtCore import QCoreApplication, QEvent, QObject, Property, QPoint, QPointF, Qt, Signal, Slot, QUrl
     from PySide6.QtGui import QGuiApplication, QMouseEvent
     from PySide6.QtQml import QQmlApplicationEngine
@@ -228,12 +230,13 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
             return value
         return str(value)
 
-    name = f"smartSlotResizeArea-se-{slot.id}"
+    area_name = f"smartSlotResizeArea-se-{slot.id}"
 
     def find_resize_area() -> QQuickItem:
-        candidates = [item for item in walk(content) if str(item.objectName() or "") == name]
-        assert candidates
-        return [item for item in candidates if item.isVisible() and item.isEnabled()][-1]
+        candidates = [item for item in walk(content) if str(item.objectName() or "") == area_name]
+        active = [item for item in candidates if item.isVisible() and item.isEnabled() and item.width() > 0 and item.height() > 0]
+        assert active
+        return active[-1]
 
     resize_area = find_resize_area()
     assert resize_area.width() == pytest.approx(18.0)
@@ -242,29 +245,10 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
     scene_center = resize_area.mapToScene(local_center)
     global_center = resize_area.mapToGlobal(local_center)
     center = root.mapFromGlobal(QPoint(round(global_center.x()), round(global_center.y())))
-    parent_for_map = resize_area.parentItem()
-    assert parent_for_map is not None
-    to_parent = resize_area.mapToItem(parent_for_map, local_center)
-    from_parent = resize_area.mapFromItem(parent_for_map, to_parent)
-    target_snapshot = {
-        "class": cls(resize_area),
-        "name": str(resize_area.objectName() or ""),
-        "visible": bool(resize_area.isVisible()),
-        "enabled": bool(resize_area.isEnabled()),
-        "opacity": float(resize_area.opacity()),
-        "accepted_buttons": prop(resize_area, "acceptedButtons"),
-        "prevent_stealing": prop(resize_area, "preventStealing"),
-        "propagate_composed_events": prop(resize_area, "propagateComposedEvents"),
-        "contains_mouse": bool(prop(resize_area, "containsMouse") or False),
-        "hovered": prop(resize_area, "hovered"),
-        "clip": bool(prop(resize_area, "clip") or False),
-        "z": float(resize_area.z()),
-        "width": float(resize_area.width()),
-        "height": float(resize_area.height()),
-        "x": float(resize_area.x()),
-        "y": float(resize_area.y()),
-    }
-    contains_local = bool(resize_area.contains(local_center))
+    parent = resize_area.parentItem()
+    assert parent is not None
+    to_parent = resize_area.mapToItem(parent, local_center)
+    from_parent = resize_area.mapFromItem(parent, to_parent)
 
     parent_chain: list[dict] = []
     clipped_exclusions: list[dict] = []
@@ -298,22 +282,41 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
     while current is not None:
         local = current.mapFromScene(scene_center)
         child = current.childAt(local.x(), local.y())
-        topmost_chain.append({
-            "owner": {"class": cls(current), "name": str(current.objectName() or "")},
-            "local": {"x": float(local.x()), "y": float(local.y())},
-            "child": {"class": cls(child), "name": str(child.objectName() or "")} if child is not None else None,
-        })
+        topmost_chain.append(
+            {
+                "owner": {"class": cls(current), "name": str(current.objectName() or "")},
+                "local": {"x": float(local.x()), "y": float(local.y())},
+                "child": {"class": cls(child), "name": str(child.objectName() or "")} if child is not None else None,
+            }
+        )
         if child is None or child is current:
             break
         current = child
 
     focused_snapshot = {
-        "target": target_snapshot,
+        "target": {
+            "class": cls(resize_area),
+            "name": str(resize_area.objectName() or ""),
+            "visible": bool(resize_area.isVisible()),
+            "enabled": bool(resize_area.isEnabled()),
+            "opacity": float(resize_area.opacity()),
+            "accepted_buttons": prop(resize_area, "acceptedButtons"),
+            "prevent_stealing": prop(resize_area, "preventStealing"),
+            "propagate_composed_events": prop(resize_area, "propagateComposedEvents"),
+            "contains_mouse": bool(prop(resize_area, "containsMouse") or False),
+            "hovered": prop(resize_area, "hovered"),
+            "clip": bool(prop(resize_area, "clip") or False),
+            "z": float(resize_area.z()),
+            "width": float(resize_area.width()),
+            "height": float(resize_area.height()),
+            "x": float(resize_area.x()),
+            "y": float(resize_area.y()),
+        },
         "local": {"x": float(local_center.x()), "y": float(local_center.y())},
         "scene": {"x": float(scene_center.x()), "y": float(scene_center.y())},
         "window": {"x": int(center.x()), "y": int(center.y())},
         "global": {"x": float(global_center.x()), "y": float(global_center.y())},
-        "contains_local": contains_local,
+        "contains_local": bool(resize_area.contains(local_center)),
         "map_to_parent": {"x": float(to_parent.x()), "y": float(to_parent.y())},
         "map_from_parent_roundtrip": {"x": float(from_parent.x()), "y": float(from_parent.y())},
         "parent_chain": parent_chain,
