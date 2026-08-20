@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - g2/quinta3-manual-slot-test
+  pull_request:
+    branches:
+      - g2/parallel-slot-corpus-quinta3
   workflow_dispatch:
 
 permissions:
@@ -15,6 +18,8 @@ jobs:
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - uses: actions/setup-python@v5
         with:
