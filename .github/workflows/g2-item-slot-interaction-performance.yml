@@ -70,7 +70,7 @@ jobs:
         run: |
           python -m compileall -q src/srstudio/graphics2/item_slot_host.py tests/test_graphics2_item_slot_interaction_performance.py tools/benchmark_frozen_item_slot_interaction.py tools/verify_frozen_item_slot_interaction.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m pytest -q tests/test_graphics2_item_slots.py tests/test_graphics2_item_slot_interaction_performance.py
+          python -m pytest -q -s tests/test_graphics2_item_slots.py tests/test_graphics2_item_slot_interaction_performance.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build exact frozen Graphics2 host
@@ -120,9 +120,19 @@ jobs:
             if ([int]$preset.backend_dispatches_during_resize -ne 0) { throw "$($preset.preset) dispatched during resize" }
             if ([int]$preset.backend_commits_move_release -ne 1) { throw "$($preset.preset) move release commits != 1" }
             if ([int]$preset.backend_commits_resize_release -ne 1) { throw "$($preset.preset) resize release commits != 1" }
+            if (-not [bool]$preset.resize_pressed) { throw "$($preset.preset) resize press not owned" }
+            if (-not [bool]$preset.resize_preview_active) { throw "$($preset.preset) resize preview inactive" }
+            if (-not [bool]$preset.resize_grab_preserved) { throw "$($preset.preset) resize grab lost" }
+            if (-not [bool]$preset.save_reopen_preserved) { throw "$($preset.preset) save/reopen failed" }
+            if ($preset.post_reveal_clipped_exclusions.Count -ne 0) { throw "$($preset.preset) resize target still clipped" }
           }
+          if (-not [bool]$perf.all_presets_save_reopen) { throw "All-presets save/reopen gate failed" }
           $continuous = Get-Content "itemslot-perf-evidence/continuous/continuous-result.json" -Raw | ConvertFrom-Json
           if (-not [bool]$continuous.pass) { throw "Continuous frozen gate failed" }
+          if (-not [bool]$continuous.resize_pressed) { throw "Continuous resize press not owned" }
+          if (-not [bool]$continuous.resize_preview_active_until_release) { throw "Continuous resize preview inactive" }
+          if (-not [bool]$continuous.mouse_grab_preserved) { throw "Continuous resize grab lost" }
+          if ($continuous.post_reveal_clipped_exclusions.Count -ne 0) { throw "Continuous resize target still clipped" }
           if (-not [bool]$continuous.children_relative_alignment_preserved) { throw "Child alignment changed" }
           if (-not [bool]$continuous.save_reopen_preserved) { throw "Save/reopen did not preserve ItemSlot" }
           Write-Host "MOVE_MEDIAN_MAX_MS=$($perf.aggregate.move_median_max_ms)"
