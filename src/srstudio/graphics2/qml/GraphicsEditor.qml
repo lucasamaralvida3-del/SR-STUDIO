@@ -213,6 +213,15 @@ ApplicationWindow {
     function slotBounds(slot) {
         if (!page || !slot)
             return {"x": 0, "y": 0, "width": 0, "height": 0}
+        var slotMetadata = slot.metadata || {}
+        if (slotMetadata.manual_item_slot) {
+  var rootId = String(slotMetadata.root_node_id || "")
+  var rootNode = rootId && page.nodes ? page.nodes[rootId] : null
+  if (rootNode && rootNode.transform) {
+      var rt = rootNode.transform
+      return {"x": Number(rt.x || 0), "y": Number(rt.y || 0), "width": Math.max(1, Number(rt.width || 1)), "height": Math.max(1, Number(rt.height || 1))}
+  }
+        }
         var effective = slot.metadata ? slot.metadata.effective_bounds : null
         if (effective) {
             var ew = Math.max(0, Number(effective.width || 0))
