@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 # Exact-SHA certification contract for the ItemSlot local-preview performance path.
+import json
 from pathlib import Path
 
 import pytest
@@ -89,8 +90,9 @@ def test_commit_item_slot_bounds_save_reopen_preserves_final_geometry(tmp_path: 
     assert actual["preset_id"] == expected["preset_id"]
 
 
-def test_qml_manual_item_slot_uses_stable_resize_hitbox_and_one_release_command() -> None:
+def test_qml_manual_item_slot_uses_direct_stable_resize_mousearea_and_one_release_command() -> None:
     qml = Path("src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
+    itemslot_region = qml[qml.index("model: slots()"):qml.index("id: selectionOverlay")]
     assert "property bool itemSlotPreviewActive: false" in qml
     assert "function itemSlotDisplayTransform(node)" in qml
     assert "property var displayTransform: window.itemSlotDisplayTransform(modelData)" in qml
@@ -101,29 +103,165 @@ def test_qml_manual_item_slot_uses_stable_resize_hitbox_and_one_release_command(
     assert "!window.manualItemSlotForNode(anchorNode.id)" in qml
     assert "if (slotMetadata.manual_item_slot)" in qml
     assert "root_node_id" in qml
-    assert 'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"' in qml
-    assert 'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds' in qml
-    assert 'objectName: "smartSlotVisualFrame-"' in qml
-    assert 'objectName: "smartSlotVisualHandle-"' in qml
-    assert 'function resizedBounds(px, py, modifiers)' in qml
-    assert 'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)' in qml
-    assert 'manualItemSlotResizeHandler' not in qml
-    assert 'DragHandler {' not in qml[qml.index('model: slots()'):qml.index('id: selectionOverlay')]
-    assert 'enabled: !slotOverlay.isManualItemSlot' not in qml
+    assert 'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"' in itemslot_region
+    assert 'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds' in itemslot_region
+    assert 'delegate: MouseArea {' in itemslot_region
+    assert 'objectName: "smartSlotResizeArea-"' in itemslot_region
+    assert 'acceptedButtons: Qt.LeftButton' in itemslot_region
+    assert 'preventStealing: true' in itemslot_region
+    assert 'objectName: "smartSlotHandle-"' in itemslot_region
+    assert 'objectName: "smartSlotVisualHandle-"' in itemslot_region
+    assert 'objectName: "smartSlotVisualFrame-"' in itemslot_region
+    assert 'function resizedBounds(px, py, modifiers)' in itemslot_region
+    assert 'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)' in itemslot_region
+    assert 'id: slotResizeArea' not in itemslot_region
+    assert 'manualItemSlotResizeHandler' not in itemslot_region
+    assert 'DragHandler {' not in itemslot_region
+    assert 'enabled: !slotOverlay.isManualItemSlot' not in itemslot_region
 
-    # During manual resize the physical MouseArea and its ancestor stay on the
-    # original interaction bounds. Only the independent visual handle/frame and
+    # During manual resize the direct physical MouseArea and its ancestor stay on
+    # the original interaction bounds. Only the independent visual handle/frame and
     # the ItemSlot subtree follow displayBounds / itemSlotDisplayTransform().
-    assert "x: interactionBounds.x * zoom" in qml
-    assert "width: interactionBounds.width * zoom" in qml
-    assert "slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x" in qml
-    assert "modelData.fx * slotOverlay.displayBounds.width * zoom" in qml
-    assert "property real desiredVisualX:" in qml
-    assert "property real desiredVisualY:" in qml
-    assert "Math.min(Math.max(0, slotOverlay.width - width)" in qml
-    assert "Math.min(Math.max(0, slotOverlay.height - height)" in qml
-    assert "visible: parent.visible" in qml
-    assert "x: parent.desiredVisualX - parent.x" in qml
-    assert "y: parent.desiredVisualY - parent.y" in qml
-    assert "slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)" in qml
-    assert "slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), \"resize\")" in qml
+    assert "x: interactionBounds.x * zoom" in itemslot_region
+    assert "width: interactionBounds.width * zoom" in itemslot_region
+    assert "slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x" in itemslot_region
+    assert "modelData.fx * slotOverlay.displayBounds.width * zoom" in itemslot_region
+    assert "property real desiredVisualX:" in itemslot_region
+    assert "property real desiredVisualY:" in itemslot_region
+    assert "Math.min(Math.max(0, slotOverlay.width - width)" in itemslot_region
+    assert "Math.min(Math.max(0, slotOverlay.height - height)" in itemslot_region
+    assert "visible: parent.visible" in itemslot_region
+    assert "x: parent.desiredVisualX - parent.x" in itemslot_region
+    assert "y: parent.desiredVisualY - parent.y" in itemslot_region
+    assert "slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)" in itemslot_region
+    assert "slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), \"resize\")" in itemslot_region
+
+
+def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_commit() -> None:
+    from PySide6.QtCore import QCoreApplication, QEvent, QObject, Property, QPoint, QPointF, Qt, Signal, Slot, QUrl
+    from PySide6.QtGui import QGuiApplication, QMouseEvent
+    from PySide6.QtQml import QQmlApplicationEngine
+    from PySide6.QtQuick import QQuickItem
+    from PySide6.QtTest import QTest
+
+    session = _session()
+    slot = create_item_slot(session, "simples", x=210, y=250)
+    router = ItemSlotCommandRouter(session)
+
+    class SceneBridge(QObject):
+        sceneChanged = Signal()
+        statusChanged = Signal()
+
+        def __init__(self) -> None:
+            super().__init__()
+            self.dispatch_count = 0
+            self._status = "direct resize focused runtime"
+
+        @Property(str, notify=sceneChanged)
+        def sceneJson(self) -> str:
+            return json.dumps(router.payload(), ensure_ascii=False, separators=(",", ":"))
+
+        @Property(str, notify=statusChanged)
+        def status(self) -> str:
+            return self._status
+
+        @Property(bool, notify=statusChanged)
+        def busy(self) -> bool:
+            return False
+
+        @Slot(str, result=str)
+        def dispatch(self, raw: str) -> str:
+            self.dispatch_count += 1
+            result_raw = router.dispatch_json(raw, include_scene_payload=False)
+            result = json.loads(result_raw)
+            self._status = str(result.get("message") or "")
+            self.statusChanged.emit()
+            if result.get("changed"):
+                self.sceneChanged.emit()
+            return result_raw
+
+        @Slot(str, bool, bool)
+        def selectNodeAdvanced(self, _node_id: str, _additive: bool, _toggle: bool) -> None:
+            return None
+
+        @Slot(float, float, float)
+        def moveSelectionAtZoom(self, _dx: float, _dy: float, _zoom: float) -> None:
+            return None
+
+        @Slot()
+        def undo(self) -> None:
+            return None
+
+        @Slot()
+        def redo(self) -> None:
+            return None
+
+        @Slot(str, str)
+        def editText(self, _node_id: str, _text: str) -> None:
+            return None
+
+    app = QGuiApplication.instance() or QGuiApplication(["item-slot-direct-resize-focused"])
+    engine = QQmlApplicationEngine()
+    bridge = SceneBridge()
+    engine.rootContext().setContextProperty("sceneBridge", bridge)
+    qml_path = Path("src/srstudio/graphics2/qml/GraphicsEditor.qml").resolve()
+    engine.load(QUrl.fromLocalFile(str(qml_path)))
+    roots = engine.rootObjects()
+    assert roots
+    root = roots[0]
+    root.setProperty("smartSlotSnap", False)
+    root.setProperty("selectedSlotId", slot.id)
+    app.processEvents()
+    QTest.qWait(120)
+    app.processEvents()
+    content = root.contentItem()
+    assert content is not None
+
+    def walk(item: QQuickItem):
+        yield item
+        for child in item.childItems():
+            yield from walk(child)
+
+    name = f"smartSlotResizeArea-se-{slot.id}"
+    candidates = [item for item in walk(content) if str(item.objectName() or "") == name]
+    assert candidates
+    resize_area = [item for item in candidates if item.isVisible() and item.isEnabled()][-1]
+    assert resize_area.width() == pytest.approx(18.0)
+    assert resize_area.height() == pytest.approx(18.0)
+    global_center = resize_area.mapToGlobal(QPointF(resize_area.width() / 2, resize_area.height() / 2))
+    center = root.mapFromGlobal(QPoint(round(global_center.x()), round(global_center.y())))
+
+    QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, center, 0)
+    app.processEvents()
+    assert bool(resize_area.property("pressed")) is True
+    assert bool(root.property("itemSlotPreviewActive")) is True
+    assert str(root.property("itemSlotInteractionKind") or "") == "resize"
+    assert bridge.dispatch_count == 0
+
+    moved = QPoint(center.x() + 12, center.y() + 8)
+    event = QMouseEvent(
+        QEvent.Type.MouseMove,
+        QPointF(moved),
+        QPointF(root.mapToGlobal(moved)),
+        Qt.MouseButton.NoButton,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    QCoreApplication.sendEvent(root, event)
+    app.processEvents()
+    QTest.qWait(20)
+    app.processEvents()
+    assert bool(resize_area.property("pressed")) is True
+    assert bool(root.property("itemSlotPreviewActive")) is True
+    assert int(root.property("itemSlotPreviewEvents") or 0) >= 1
+    assert bridge.dispatch_count == 0
+
+    QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, moved, 0)
+    app.processEvents()
+    QTest.qWait(40)
+    app.processEvents()
+    assert bridge.dispatch_count == 1
+    assert not bool(root.property("itemSlotPreviewActive"))
+    assert int(root.property("itemSlotBackendCommits") or 0) == 1
+    root.close()
+    app.processEvents()
