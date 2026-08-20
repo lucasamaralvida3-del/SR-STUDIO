@@ -215,7 +215,10 @@ def apply_meat_strip_full_card(page, slot, *, profile_id: str, requested_positio
     page.add_node(decoration_group, parent_id=root.id)
     created.append(decoration_group.id)
 
-    position = str(requested_position or profile.get("stripPosition") or "single").strip().lower()
+    # A supervised example must retain its real position in the source strip;
+    # the old family default of "single" cannot override first/middle/last.
+    # requested_position is only a fallback for future non-supervised use.
+    position = str(profile.get("stripPosition") or requested_position or "single").strip().lower()
     if position not in {"single", "first", "middle", "last"}:
         position = str(profile.get("stripPosition") or "single")
     strip_path = GraphicsNode(
