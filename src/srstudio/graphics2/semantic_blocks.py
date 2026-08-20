@@ -72,4 +72,5 @@ def is_official_unit_text(value: str) -> bool:
 
 _recover_unbound_price_blocks = _legacy._recover_unbound_price_blocks
 _make_price_block = _legacy._make_price_block
+_mark_recovered_editable = _legacy._mark_recovered_editable
 _clean_text = _legacy._clean_text
