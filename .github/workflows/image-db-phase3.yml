@@ -1,0 +1,446 @@
+name: Image DB Phase 3 Operational Validation
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - g2/parallel-image-database
+    paths:
+      - '.github/workflows/image-db-phase3.yml'
+      - 'scripts/ci/image_db_phase3_corpus.py'
+      - 'scripts/ci/image_db_phase3_inventory_gate.py'
+      - 'scripts/ci/image_db_phase3_analysis.py'
+      - 'src/srstudio/images/**'
+      - 'tests/test_image_*.py'
+      - 'pyproject.toml'
+
+permissions:
+  contents: read
+
+env:
+  ARTIFACT_DIR: artifacts/image-db-phase3
+  CORPUS_DIR: .phase3-corpus
+  LIBRARY_DIR: artifacts/image-library
+  IMPORTS_DIR: artifacts/image-imports
+  PYTHON_VERSION: '3.11'
+
+jobs:
+  validate-image-db:
+    name: Validate Image Database Phase 3A
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout tested SHA
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      - name: Prepare evidence directories
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$ARTIFACT_DIR" "$CORPUS_DIR" "$LIBRARY_DIR" "$IMPORTS_DIR"
+          {
+            echo "repository=$GITHUB_REPOSITORY"
+            echo "ref=$GITHUB_REF"
+            echo "sha=$GITHUB_SHA"
+            echo "run_id=$GITHUB_RUN_ID"
+            echo "run_attempt=$GITHUB_RUN_ATTEMPT"
+            echo "event=$GITHUB_EVENT_NAME"
+            echo "runner_os=$RUNNER_OS"
+            echo "runner_arch=$RUNNER_ARCH"
+            echo "timestamp_utc=$(date -u +%FT%TZ)"
+            echo "standalone_phase=DEFERRED"
+          } > "$ARTIFACT_DIR/environment.txt"
+          git status --short --branch >> "$ARTIFACT_DIR/environment.txt"
+          git log -5 --oneline >> "$ARTIFACT_DIR/environment.txt"
+          echo "$GITHUB_SHA" > "$ARTIFACT_DIR/tested-sha.txt"
+          df -h . > "$ARTIFACT_DIR/disk-before.txt"
+          grep -E '^(MemTotal|MemAvailable):' /proc/meminfo > "$ARTIFACT_DIR/memory-baseline.txt"
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install official project dependencies
+        shell: bash
+        run: |
+          set +e
+          python --version 2>&1 | tee -a "$ARTIFACT_DIR/environment.txt"
+          python -m pip install --upgrade pip 2>&1 | tee "$ARTIFACT_DIR/pip-upgrade.log"
+          python -m pip install -e '.[dev]' 2>&1 | tee "$ARTIFACT_DIR/install.log"
+          install_rc=${PIPESTATUS[0]}
+          sanity_rc=1
+          if [ "$install_rc" -eq 0 ]; then
+            python -m compileall -q src scripts/ci
+            python - <<'PY'
+          import srstudio
+          from srstudio.images.lookup import ProductImageLookupService
+          from srstudio.images.safe_library import SafeImageLibrary
+          print('srstudio', getattr(srstudio, '__version__', 'unknown'))
+          print('image-db-import-sanity=PASS')
+          PY
+            sanity_rc=$?
+          fi
+          if [ "$install_rc" -eq 0 ] && [ "$sanity_rc" -eq 0 ]; then
+            echo 'ENVIRONMENT_PASS=true' >> "$GITHUB_ENV"
+            echo PASS > "$ARTIFACT_DIR/environment-gate.txt"
+          else
+            echo 'ENVIRONMENT_PASS=false' >> "$GITHUB_ENV"
+            echo FAIL > "$ARTIFACT_DIR/environment-gate.txt"
+          fi
+          exit 0
+
+      - name: Run complete Image DB test suite
+        if: env.ENVIRONMENT_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q tests/test_image_*.py \
+            --junitxml="$ARTIFACT_DIR/test-results.xml" \
+            2>&1 | tee "$ARTIFACT_DIR/pytest.log"
+          rc=${PIPESTATUS[0]}
+          echo "$rc" > "$ARTIFACT_DIR/pytest-exit-code.txt"
+          if [ "$rc" -eq 0 ]; then
+            echo 'TESTS_PASS=true' >> "$GITHUB_ENV"
+            echo PASS > "$ARTIFACT_DIR/tests-gate.txt"
+          else
+            echo 'TESTS_PASS=false' >> "$GITHUB_ENV"
+            echo FAIL > "$ARTIFACT_DIR/tests-gate.txt"
+          fi
+          exit 0
+
+      - name: Resolve explicit Release image-db-corpus-v1 and verify Phase 3A assets
+        if: env.ENVIRONMENT_PASS == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set +e
+          python scripts/ci/image_db_phase3_corpus.py \
+            > "$ARTIFACT_DIR/corpus-resolver.stdout.json" \
+            2> "$ARTIFACT_DIR/corpus-resolver.stderr.txt"
+          echo "$?" > "$ARTIFACT_DIR/corpus-resolver-exit-code.txt"
+          exit 0
+
+      - name: PHASE 3A CORPUS GATE — rich corpus + catalog; standalone deferred
+        if: env.ENVIRONMENT_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          if [ "${CORPUS_INTEGRITY_PASS:-false}" = true ] && \
+             [ "${RICH_CORPUS_AVAILABLE:-false}" = true ] && \
+             [ "${CATALOG_AVAILABLE:-false}" = true ]; then
+            echo 'CORPUS_GATE_PASS=true' >> "$GITHUB_ENV"
+            echo PASS > "$ARTIFACT_DIR/corpus-gate.txt"
+          else
+            echo 'CORPUS_GATE_PASS=false' >> "$GITHUB_ENV"
+            echo FAIL > "$ARTIFACT_DIR/corpus-gate.txt"
+          fi
+          {
+            echo 'STANDALONE_AVAILABLE=false'
+            echo 'STANDALONE_PHASE=DEFERRED'
+            echo 'STANDALONE_VALIDATION=DEFERRED'
+          } >> "$GITHUB_ENV"
+          printf '{"status":"DEFERRED","standalone_available":false,"processed":false}\n' > "$ARTIFACT_DIR/standalone-phase.json"
+          exit 0
+
+      - name: Record BEFORE state
+        if: env.CORPUS_GATE_PASS == 'true' && env.TESTS_PASS == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          from srstudio.images.safe_library import SafeImageLibrary
+          root = Path(os.environ['LIBRARY_DIR'])
+          begin = time.perf_counter()
+          assets = list(SafeImageLibrary(root).all())
+          payload = {
+              'canonical_assets': len(assets),
+              'physical_images': sum(Path(str(a.path)).is_file() for a in assets),
+              'index_load_seconds': time.perf_counter() - begin,
+              'library_bytes': sum(p.stat().st_size for p in root.rglob('*') if p.is_file()),
+              'processed_state_exists': Path(os.environ['IMPORTS_DIR'], 'corpus-state.json').is_file(),
+          }
+          Path(os.environ['ARTIFACT_DIR'], 'before.json').write_text(json.dumps(payload, indent=2), encoding='utf-8')
+          PY
+
+      - name: INGEST — rich PPTX corpus
+        if: env.CORPUS_GATE_PASS == 'true' && env.TESTS_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          start=$(date +%s)
+          /usr/bin/time -v python -m srstudio.images.batch_training \
+            --library "$LIBRARY_DIR" \
+            --imports-root "$IMPORTS_DIR" \
+            --state "$IMPORTS_DIR/corpus-state.json" \
+            --report "$ARTIFACT_DIR/ingest-report.json" \
+            --query 'ARROZ VASCONCELOS 5KG' \
+            --query 'ARROZ PATOSUL 5KG' \
+            --query 'FEIJAO PARANA 1KG' \
+            --query 'CAFE VASCONCELOS 500G' \
+            --query 'LEITE TRIANGULO 1L' \
+            --query 'FLOCAO SINHA 400G' \
+            --query 'DETERGENTE YPE 500ML' \
+            --query 'MONSTER 473ML' \
+            --query 'TODDY 370G' \
+            --query 'TODDY 750G' \
+            "$CORPUS_DIR/Downloads(1)(1).zip" \
+            "$CORPUS_DIR/Downloads(2)(1).zip" \
+            > "$ARTIFACT_DIR/ingest.stdout.json" 2> "$ARTIFACT_DIR/ingest-time.txt"
+          ingest_rc=$?
+          echo $(( $(date +%s) - start )) > "$ARTIFACT_DIR/ingest-seconds.txt"
+          echo "$ingest_rc" > "$ARTIFACT_DIR/ingest-exit-code.txt"
+          grep -E '^(MemTotal|MemAvailable):' /proc/meminfo > "$ARTIFACT_DIR/memory-after-ingest.txt"
+
+          python scripts/ci/image_db_phase3_inventory_gate.py \
+            --output "$ARTIFACT_DIR/corpus-inventory-gate.json" \
+            "$CORPUS_DIR/Downloads(1)(1).zip" \
+            "$CORPUS_DIR/Downloads(2)(1).zip" \
+            > "$ARTIFACT_DIR/corpus-inventory-gate.stdout.txt" \
+            2> "$ARTIFACT_DIR/corpus-inventory-gate.stderr.txt"
+          baseline_rc=$?
+
+          if [ "$ingest_rc" -eq 0 ]; then echo 'RICH_INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'RICH_INGEST_PASS=false' >> "$GITHUB_ENV"; fi
+          if [ "$baseline_rc" -eq 0 ]; then echo 'CORPUS_BASELINE_PASS=true' >> "$GITHUB_ENV"; else echo 'CORPUS_BASELINE_PASS=false' >> "$GITHUB_ENV"; fi
+          if [ "$ingest_rc" -eq 0 ] && [ "$baseline_rc" -eq 0 ]; then echo 'INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'INGEST_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: STANDALONE — deferred to incremental Phase 3B
+        if: always()
+        shell: bash
+        run: |
+          echo 'Standalone validation intentionally deferred; no standalone asset is required or processed in Phase 3A.' | tee "$ARTIFACT_DIR/standalone-deferred.txt"
+
+      - name: RELOAD — persistence and field invariants
+        if: env.INGEST_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          import json, os, time
+          from pathlib import Path
+          from srstudio.images.safe_library import SafeImageLibrary
+          root = Path(os.environ['LIBRARY_DIR']); art = Path(os.environ['ARTIFACT_DIR'])
+          begin = time.perf_counter(); library = SafeImageLibrary(root); assets = list(library.all()); elapsed = time.perf_counter()-begin
+          ids = [str(a.id) for a in assets]
+          missing_files = [str(a.path) for a in assets if not Path(str(a.path)).is_file()]
+          malformed = []
+          missing_provenance = 0
+          variants = 0
+          for asset in assets:
+              meta = dict(asset.metadata or {})
+              sha = str(meta.get('sha256_full') or meta.get('sha256') or '')
+              if not asset.id or not asset.perceptual_hash or not (0.0 <= float(asset.confidence) <= 1.0) or asset.review_status not in {'accepted','pending','rejected'}:
+                  malformed.append(str(asset.id))
+              if sha and len(sha) != 64:
+                  malformed.append(str(asset.id))
+              if not meta.get('provenance') and not meta.get('source_provenance') and not asset.source_file and not asset.source:
+                  missing_provenance += 1
+              variants += len(meta.get('variant_sha256') or ())
+          report = {
+              'status':'PASS' if assets and len(ids)==len(set(ids)) and not missing_files and not malformed else 'FAIL',
+              'assets':len(assets), 'physical_images':len(assets)-len(missing_files), 'reload_seconds':elapsed,
+              'duplicate_ids':len(ids)!=len(set(ids)), 'missing_files':missing_files[:100], 'malformed_assets':malformed[:100],
+              'missing_provenance_count':missing_provenance, 'variant_hashes':variants,
+              'index_exists':(root/'index.json').is_file(),
+          }
+          (art/'persistence-report.json').write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding='utf-8')
+          raise SystemExit(0 if report['status']=='PASS' else 13)
+          PY
+          rc=$?
+          if [ "$rc" -eq 0 ]; then echo 'PERSISTENCE_PASS=true' >> "$GITHUB_ENV"; else echo 'PERSISTENCE_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: SECOND INGEST — replay exact same rich corpus
+        if: env.PERSISTENCE_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from srstudio.images.safe_library import SafeImageLibrary
+          root=Path(os.environ['LIBRARY_DIR']); art=Path(os.environ['ARTIFACT_DIR']); assets=list(SafeImageLibrary(root).all())
+          signature=sorted((str(a.id),str(a.product_key),str(a.review_status),str(a.confidence)) for a in assets)
+          report={'canonical_assets':len(assets),'physical_images':sum(Path(str(a.path)).is_file() for a in assets),'logical_signature_sha256':hashlib.sha256(json.dumps(signature,ensure_ascii=False).encode()).hexdigest()}
+          (art/'before-second.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+          PY
+          start=$(date +%s)
+          /usr/bin/time -v python -m srstudio.images.batch_training \
+            --library "$LIBRARY_DIR" --imports-root "$IMPORTS_DIR" --state "$IMPORTS_DIR/corpus-state.json" \
+            --report "$ARTIFACT_DIR/second-ingest-report.json" \
+            "$CORPUS_DIR/Downloads(1)(1).zip" "$CORPUS_DIR/Downloads(2)(1).zip" \
+            > "$ARTIFACT_DIR/second-ingest.stdout.json" 2> "$ARTIFACT_DIR/second-ingest-time.txt"
+          rich_rc=$?
+          echo $(( $(date +%s) - start )) > "$ARTIFACT_DIR/second-ingest-seconds.txt"
+          if [ "$rich_rc" -eq 0 ]; then echo 'SECOND_INGEST_PASS=true' >> "$GITHUB_ENV"; else echo 'SECOND_INGEST_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: IDEMPOTENCY — compare BEFORE SECOND and AFTER SECOND
+        if: env.SECOND_INGEST_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          from srstudio.images.safe_library import SafeImageLibrary
+          root=Path(os.environ['LIBRARY_DIR']); art=Path(os.environ['ARTIFACT_DIR']); before=json.loads((art/'before-second.json').read_text())
+          assets=list(SafeImageLibrary(root).all()); signature=sorted((str(a.id),str(a.product_key),str(a.review_status),str(a.confidence)) for a in assets)
+          after={'canonical_assets':len(assets),'physical_images':sum(Path(str(a.path)).is_file() for a in assets),'logical_signature_sha256':hashlib.sha256(json.dumps(signature,ensure_ascii=False).encode()).hexdigest()}
+          report={'before':before,'after':after,'canonical_count_unchanged':before['canonical_assets']==after['canonical_assets'],'physical_count_unchanged':before['physical_images']==after['physical_images'],'logical_signature_unchanged':before['logical_signature_sha256']==after['logical_signature_sha256']}
+          report['pass']=all((report['canonical_count_unchanged'],report['physical_count_unchanged'],report['logical_signature_unchanged']))
+          (art/'idempotency-report.json').write_text(json.dumps(report,indent=2),encoding='utf-8')
+          raise SystemExit(0 if report['pass'] else 14)
+          PY
+          rc=$?
+          if [ "$rc" -eq 0 ]; then echo 'IDEMPOTENCY_PASS=true' >> "$GITHUB_ENV"; else echo 'IDEMPOTENCY_PASS=false' >> "$GITHUB_ENV"; fi
+          exit 0
+
+      - name: RECOVERY — stale processed state with missing image_id
+        if: env.ENVIRONMENT_PASS == 'true' && env.TESTS_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          python -m pytest -q tests/test_image_standalone_recovery.py \
+            --junitxml="$ARTIFACT_DIR/recovery-test-results.xml" \
+            > "$ARTIFACT_DIR/recovery.log" 2>&1
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo 'RECOVERY_PASS=true' >> "$GITHUB_ENV"
+            echo '{"status":"PASS","method":"runner pytest recovery scenario"}' > "$ARTIFACT_DIR/recovery-report.json"
+          else
+            echo 'RECOVERY_PASS=false' >> "$GITHUB_ENV"
+            echo '{"status":"FAIL","method":"runner pytest recovery scenario"}' > "$ARTIFACT_DIR/recovery-report.json"
+          fi
+          exit 0
+
+      - name: LIBRARY AUDIT → CATALOG 520 → DEPARTMENTS → TOP MISSING → FIND_IMAGE → PERFORMANCE → REVIEW DATASET
+        if: env.IDEMPOTENCY_PASS == 'true' && env.RECOVERY_PASS == 'true'
+        shell: bash
+        run: |
+          set +e
+          /usr/bin/time -v python scripts/ci/image_db_phase3_analysis.py \
+            --library "$LIBRARY_DIR" \
+            --product-db "$PRODUCT_DB" \
+            --corpus-source "$CORPUS_DIR/Downloads(1)(1).zip" \
+            --corpus-source "$CORPUS_DIR/Downloads(2)(1).zip" \
+            --artifact-dir "$ARTIFACT_DIR" \
+            --review-limit 100 \
+            > "$ARTIFACT_DIR/operational-analysis.stdout.txt" 2> "$ARTIFACT_DIR/audit-time.txt"
+          rc=$?
+          if [ "$rc" -eq 0 ]; then
+            echo 'AUDIT_PASS=true' >> "$GITHUB_ENV"
+            echo 'CATALOG_COVERAGE_PASS=true' >> "$GITHUB_ENV"
+            echo 'DEPARTMENT_COVERAGE_PASS=true' >> "$GITHUB_ENV"
+            echo 'TOP_MISSING_PASS=true' >> "$GITHUB_ENV"
+            echo 'FIND_IMAGE_PASS=true' >> "$GITHUB_ENV"
+            echo 'PERFORMANCE_PASS=true' >> "$GITHUB_ENV"
+            echo 'REVIEW_DATASET_PASS=true' >> "$GITHUB_ENV"
+          else
+            echo 'AUDIT_PASS=false' >> "$GITHUB_ENV"
+            echo 'CATALOG_COVERAGE_PASS=false' >> "$GITHUB_ENV"
+            echo 'DEPARTMENT_COVERAGE_PASS=false' >> "$GITHUB_ENV"
+            echo 'TOP_MISSING_PASS=false' >> "$GITHUB_ENV"
+            echo 'FIND_IMAGE_PASS=false' >> "$GITHUB_ENV"
+            echo 'PERFORMANCE_PASS=false' >> "$GITHUB_ENV"
+            echo 'REVIEW_DATASET_PASS=false' >> "$GITHUB_ENV"
+          fi
+          exit 0
+
+      - name: Build approximate CI memory report
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          python - <<'PY'
+          import json, os, re
+          from pathlib import Path
+          art=Path(os.environ['ARTIFACT_DIR'])
+          def read(name):
+              p=art/name; return p.read_text(encoding='utf-8',errors='replace') if p.is_file() else ''
+          def rss(name):
+              m=re.search(r'Maximum resident set size \(kbytes\):\s*(\d+)',read(name)); return int(m.group(1)) if m else None
+          payload={'measurement':'approximate GitHub Actions CI memory evidence','baseline':read('memory-baseline.txt'),'after_ingest':read('memory-after-ingest.txt'),'ingest_peak_rss_kb':rss('ingest-time.txt'),'second_ingest_peak_rss_kb':rss('second-ingest-time.txt'),'audit_peak_rss_kb':rss('audit-time.txt')}
+          (art/'memory.json').write_text(json.dumps(payload,indent=2),encoding='utf-8')
+          PY
+          df -h . > "$ARTIFACT_DIR/disk-after.txt"
+          exit 0
+
+      - name: Build complete Phase 3A summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          art=Path(os.environ['ARTIFACT_DIR'])
+          def envbool(name): return os.environ.get(name,'false').lower()=='true'
+          def load(name, default=None):
+              p=art/name
+              return json.loads(p.read_text(encoding='utf-8')) if p.is_file() else ({} if default is None else default)
+          gates={
+            'Environment':envbool('ENVIRONMENT_PASS'),'Tests':envbool('TESTS_PASS'),'Corpus integrity':envbool('CORPUS_INTEGRITY_PASS'),
+            'Rich corpus available':envbool('RICH_CORPUS_AVAILABLE'),'Catalog available':envbool('CATALOG_AVAILABLE'),
+            'Corpus baseline':envbool('CORPUS_BASELINE_PASS'),'Ingest':envbool('INGEST_PASS'),'Persistence / Reload':envbool('PERSISTENCE_PASS'),
+            'Second ingest':envbool('SECOND_INGEST_PASS'),'Idempotency':envbool('IDEMPOTENCY_PASS'),'Recovery':envbool('RECOVERY_PASS'),
+            'Library audit':envbool('AUDIT_PASS'),'Catalog 520':envbool('CATALOG_COVERAGE_PASS'),'Department coverage':envbool('DEPARTMENT_COVERAGE_PASS'),
+            'Top missing':envbool('TOP_MISSING_PASS'),'Find Image':envbool('FIND_IMAGE_PASS'),'Performance':envbool('PERFORMANCE_PASS'),'Review dataset':envbool('REVIEW_DATASET_PASS')}
+          status='PHASE 3A PASS — STANDALONE PENDING' if all(gates.values()) else 'NOT READY'
+          release_assets=load('release-assets.json')
+          report={'status':status,'phase':'3A','standalone_available':False,'standalone_phase':'DEFERRED','standalone_validation':'DEFERRED',
+                  'tested_sha':os.environ.get('GITHUB_SHA',''),'run_id':os.environ.get('GITHUB_RUN_ID',''),'run_attempt':os.environ.get('GITHUB_RUN_ATTEMPT',''),'gates':gates,
+                  'release_found':bool(release_assets.get('release_found')),'release_assets':release_assets,'release_asset_verification':load('corpus-download-verification.json'),
+                  'catalog_source_validation':load('catalog-source-validation.json'),'corpus_inventory':load('corpus-inventory-gate.json'),'persistence':load('persistence-report.json'),
+                  'idempotency':load('idempotency-report.json'),'database':load('library-audit.json').get('metrics',{}),'coverage':load('coverage-catalog-520.json'),
+                  'departments':load('coverage-departments.json'),'structured_corpus':load('structured-corpus-coverage.json'),'performance':load('performance.json'),'memory':load('memory.json'),
+                  'previous_human_sample':{'size':30,'correct':30,'wrong_auto_accept':0,'uncertain':0},'current_ci_review_sample':'generated only if review dataset gate passed; human judgement remains separate'}
+          (art/'phase3-summary.json').write_text(json.dumps(report,indent=2,ensure_ascii=False),encoding='utf-8')
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a',encoding='utf-8') as f:
+              f.write('# Image DB Phase 3A Operational Validation\n\n')
+              f.write(f"**SHA:** `{report['tested_sha']}`  \n**Run:** `{report['run_id']}` attempt `{report['run_attempt']}`  \n**Status:** **{status}**  \n**Standalone:** **DEFERRED**\n\n")
+              f.write('| Gate | Result |\n|---|---|\n')
+              for name,value in gates.items(): f.write(f"| {name} | {'PASS' if value else 'FAIL'} |\n")
+              inv=report['corpus_inventory'].get('measured',{}); cov=report['coverage']; db=report['database']; perf=report['performance']; cat=report['catalog_source_validation']
+              if cat:
+                  f.write(f"\n## Source catalog\n- products: {cat.get('products')} / 520\n- historical records: {cat.get('historical_records')} / 3116\n")
+              if inv:
+                  f.write(f"\n## Corpus\n- PPTX: {inv.get('pptx')}\n- slides: {inv.get('slides')}\n- embedded unique: {inv.get('embedded_unique')}\n- media occurrences: {inv.get('media_occurrences')}\n- standalone: DEFERRED\n")
+              if db:
+                  f.write(f"\n## Database\n- physical: {db.get('physical_images')}\n- canonical: {db.get('canonical_assets')}\n- exact duplicates: {db.get('exact_duplicate_observations')}\n- near/variant hashes: {db.get('near_duplicate_variants')}\n- decorative: {db.get('decorative')}\n- accepted: {db.get('accepted')}\n- likely: {db.get('likely')}\n- review-required: {db.get('review_required')}\n- rejected: {db.get('rejected')}\n- orphan: {db.get('without_product')}\n- missing provenance: {db.get('missing_provenance')}\n")
+              if cov:
+                  f.write(f"\n## Catalog 520\n- auto-approved: {cov.get('auto_approved')}\n- likely: {cov.get('likely')}\n- review-required: {cov.get('review_required')}\n- missing: {cov.get('missing')}\n- any candidate coverage: {cov.get('any_candidate_coverage_percent')}%\n- auto-approved coverage: {cov.get('auto_approved_coverage_percent')}%\n")
+              if perf:
+                  f.write(f"\n## Performance\n- index load: {perf.get('index_load_seconds')}s\n- exact p95: {perf.get('exact_lookup',{}).get('p95_ms')}ms\n- fuzzy p95: {perf.get('fuzzy_lookup',{}).get('p95_ms')}ms\n- ingest: {perf.get('ingest_seconds')}s\n- incremental: {perf.get('incremental_seconds')}s\n- audit: {perf.get('audit_seconds')}s\n")
+              f.write('\nPrevious human sample: 30 correct / 0 wrong-auto-accept / 0 uncertain. Standalone images were not processed in Phase 3A.\n')
+          PY
+
+      - name: Upload complete Phase 3A evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-db-phase3-report
+          path: |
+            artifacts/image-db-phase3
+            artifacts/image-library/index.json
+            artifacts/image-imports/*.json
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Final Phase 3A operational gate
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          status=$(python -c "import json; print(json.load(open('$ARTIFACT_DIR/phase3-summary.json'))['status'])")
+          echo "Phase 3A status: $status"
+          [ "$status" = 'PHASE 3A PASS — STANDALONE PENDING' ]

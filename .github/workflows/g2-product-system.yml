@@ -1,0 +1,114 @@
+name: G2 Product System
+
+on:
+  push:
+    branches:
+      - g2/parallel-product-system
+      - g2/integration-beta
+    paths:
+      - "src/srstudio/graphics2/**"
+      - "tests/test_graphics2_core.py"
+      - "tests/test_graphics2_complete_price_recovery.py"
+      - "tests/test_graphics2_product_system.py"
+      - "tests/test_graphics2_product_card_creation.py"
+      - "tests/test_graphics2_product_data_cascade.py"
+      - "tests/test_graphics2_product_command_compat.py"
+      - "tests/test_graphics2_product_page_duplicate.py"
+      - "tests/test_graphics2_product_auxiliary_fields.py"
+      - "tests/test_graphics2_slot_detach.py"
+      - "tests/test_graphics2_wholesale_price_slot.py"
+      - "tests/test_graphics2_canonical_commercial_priceblocks.py"
+      - "tests/test_graphics2_binding_integrity.py"
+      - "tests/test_graphics2_named_slot_v2_migration.py"
+      - "tests/test_graphics2_semantic_product_card.py"
+      - "tests/test_graphics2_named_multi_price_slot.py"
+      - "tests/test_graphics2_named_limit_slot.py"
+      - "tests/test_graphics2_page_duplicate.py"
+      - "tests/test_canva_smart_slot_bindings.py"
+      - ".github/workflows/g2-product-system.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g2-product-system-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  product-contracts:
+    name: ProductCard PriceBlock SmartSlot bindings
+    runs-on: windows-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install G2 runtime
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2]"
+
+      - name: Compile Graphics2
+        shell: pwsh
+        run: python -m compileall -q src/srstudio/graphics2
+
+      - name: Lint CHAT 4 scope
+        shell: pwsh
+        run: >-
+          python -m ruff check
+          src/srstudio/graphics2/__init__.py
+          src/srstudio/graphics2/binding_runtime.py
+          src/srstudio/graphics2/commercial_price_runtime.py
+          src/srstudio/graphics2/product_card_runtime.py
+          src/srstudio/graphics2/product_data_runtime.py
+          src/srstudio/graphics2/preflight.py
+          src/srstudio/graphics2/semantic_named_slot_runtime.py
+          src/srstudio/graphics2/semantic_runtime.py
+          tests/test_graphics2_core.py
+          tests/test_graphics2_complete_price_recovery.py
+          tests/test_graphics2_product_system.py
+          tests/test_graphics2_product_card_creation.py
+          tests/test_graphics2_product_data_cascade.py
+          tests/test_graphics2_product_command_compat.py
+          tests/test_graphics2_product_page_duplicate.py
+          tests/test_graphics2_product_auxiliary_fields.py
+          tests/test_graphics2_slot_detach.py
+          tests/test_graphics2_wholesale_price_slot.py
+          tests/test_graphics2_canonical_commercial_priceblocks.py
+          tests/test_graphics2_binding_integrity.py
+          tests/test_graphics2_named_slot_v2_migration.py
+
+      - name: Product system contracts
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QSG_RHI_BACKEND: software
+        run: >-
+          python -m pytest -q -ra
+          tests/test_graphics2_core.py
+          tests/test_graphics2_complete_price_recovery.py
+          tests/test_graphics2_product_system.py
+          tests/test_graphics2_product_card_creation.py
+          tests/test_graphics2_product_data_cascade.py
+          tests/test_graphics2_product_command_compat.py
+          tests/test_graphics2_product_page_duplicate.py
+          tests/test_graphics2_product_auxiliary_fields.py
+          tests/test_graphics2_slot_detach.py
+          tests/test_graphics2_wholesale_price_slot.py
+          tests/test_graphics2_canonical_commercial_priceblocks.py
+          tests/test_graphics2_binding_integrity.py
+          tests/test_graphics2_named_slot_v2_migration.py
+          tests/test_graphics2_semantic_product_card.py
+          tests/test_graphics2_named_multi_price_slot.py
+          tests/test_graphics2_named_limit_slot.py
+          tests/test_graphics2_page_duplicate.py
+          tests/test_canva_smart_slot_bindings.py

@@ -1,0 +1,85 @@
+name: G2 Export Integration
+
+on:
+  push:
+    branches:
+      - g2/integration-beta
+    paths:
+      - "src/srstudio/graphics2/export_output.py"
+      - "src/srstudio/graphics2/export_batch.py"
+      - "src/srstudio/graphics2/pdf_output_renderer.py"
+      - "src/srstudio/graphics2/qt_render_runtime.py"
+      - "src/srstudio/graphics2/__init__.py"
+      - "tests/test_graphics2_export_*.py"
+      - "tests/benchmark_graphics2_export_output.py"
+      - ".github/workflows/g2-export-integration.yml"
+  pull_request:
+    branches:
+      - g2/integration-beta
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  linux-export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install Linux Qt prerequisites
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1
+      - name: Install runtime
+        run: python -m pip install -e ".[dev,graphics2]"
+      - name: Compile export integration
+        run: python -m compileall -q src/srstudio/graphics2/export_output.py src/srstudio/graphics2/export_batch.py src/srstudio/graphics2/pdf_output_renderer.py src/srstudio/graphics2/qt_render_runtime.py
+      - name: Export contracts + renderer regression
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_export_output.py
+          tests/test_graphics2_export_roundtrip.py
+          tests/test_graphics2_export_batch_transaction.py
+          tests/test_graphics2_export_print_contract.py
+          tests/test_graphics2_qt_renderer.py
+
+  windows-export:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install runtime
+        shell: pwsh
+        run: python -m pip install -e ".[dev,graphics2]"
+      - name: Compile export integration
+        shell: pwsh
+        run: python -m compileall -q src/srstudio/graphics2/export_output.py src/srstudio/graphics2/export_batch.py src/srstudio/graphics2/pdf_output_renderer.py src/srstudio/graphics2/qt_render_runtime.py
+      - name: Export contracts + renderer regression
+        shell: pwsh
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_export_output.py
+          tests/test_graphics2_export_roundtrip.py
+          tests/test_graphics2_export_batch_transaction.py
+          tests/test_graphics2_export_print_contract.py
+          tests/test_graphics2_qt_renderer.py
+      - name: Export performance smoke
+        shell: pwsh
+        run: python tests/benchmark_graphics2_export_output.py --output g2-export-benchmark.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g2-export-integration-windows
+          path: g2-export-benchmark.json
+          if-no-files-found: ignore

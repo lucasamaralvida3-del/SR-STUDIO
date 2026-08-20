@@ -14,9 +14,10 @@ from typing import Any
 from xml.etree import ElementTree as ET
 import math
 import posixpath
-import re
 import struct
 import zipfile
+
+from srstudio.importers.pptx.package_order import ordered_slide_paths
 
 from .model import GraphicsDocument, GraphicsNode, NodeKind
 
@@ -100,10 +101,7 @@ def enhance_pptx_document(
             slide_width, slide_height = _presentation_size(archive)
             fonts = _extract_embedded_fonts(archive, font_dir, report)
             _apply_embedded_fonts(document, fonts, report)
-            slides = sorted(
-                (name for name in archive.namelist() if re.fullmatch(r"ppt/slides/slide\d+\.xml", name)),
-                key=_slide_number,
-            )
+            slides = ordered_slide_paths(archive)
             for page_index, slide_path in enumerate(slides):
                 if page_index >= len(document.pages):
                     break
@@ -641,11 +639,6 @@ def _presentation_size(archive: zipfile.ZipFile) -> tuple[int, int]:
     except (KeyError, ET.ParseError, TypeError, ValueError):
         pass
     return 12192000, 6858000
-
-
-def _slide_number(path: str) -> int:
-    match = re.search(r"slide(\d+)\.xml$", path)
-    return int(match.group(1)) if match else 0
 
 
 def _emu_attr(node: ET.Element, key: str) -> float:

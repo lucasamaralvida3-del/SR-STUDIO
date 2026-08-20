@@ -23,7 +23,7 @@ def _build_module():
     return module
 
 
-def test_pyinstaller_contract_is_onedir_windowed_no_upx_and_collects_qt(tmp_path):
+def test_pyinstaller_contract_is_onedir_windowed_no_upx_and_collects_only_required_qt(tmp_path):
     module = _build_module()
     args = module.pyinstaller_args(
         dist_root=tmp_path / "dist",
@@ -35,12 +35,17 @@ def test_pyinstaller_contract_is_onedir_windowed_no_upx_and_collects_qt(tmp_path
     assert "--onedir" in args
     assert "--windowed" in args
     assert "--noupx" in args
-    assert "--collect-all" in args
-    assert args[args.index("--collect-all") + 1] == "PySide6"
+    assert "--collect-all" not in args
     assert "--collect-data" in args
     assert args[args.index("--collect-data") + 1] == "srstudio"
     assert "--collect-submodules" in args
     assert args[args.index("--collect-submodules") + 1] == "srstudio.graphics2"
+    for qt_module in module.QT_RUNTIME_MODULES:
+        assert qt_module in args
+    for excluded in module.QT_EXCLUDED_MODULES:
+        pairs = list(zip(args, args[1:]))
+        assert ("--exclude-module", excluded) in pairs
+    assert "PySide6.QtPdf" not in args
     assert module.HOST_NAME == "SRGraphicsEngine2Host"
 
 
@@ -67,15 +72,62 @@ def test_prune_qt_build_artifacts_removes_only_objects_directories(tmp_path):
     assert (keep / "qmldir").read_text(encoding="utf-8") == "module QtQuick"
 
 
-def test_build_entry_uses_graphics2_qt_host_directly():
+def test_prune_unused_qt_components_removes_only_webengine_named_payload(tmp_path):
+    module = _build_module()
+    bundle = tmp_path / module.HOST_NAME
+    pyside = bundle / "_internal" / "PySide6"
+    qml_quick = pyside / "qml" / "QtQuick"
+    qml_webengine = pyside / "qml" / "QtWebEngine"
+    qml_quick.mkdir(parents=True)
+    qml_webengine.mkdir(parents=True)
+    (qml_quick / "qmldir").write_text("module QtQuick", encoding="utf-8")
+    (qml_webengine / "qmldir").write_text("module QtWebEngine", encoding="utf-8")
+    (pyside / "Qt6Core.dll").write_bytes(b"core")
+    (pyside / "Qt6WebEngineCore.dll").write_bytes(b"webengine")
+    resources = pyside / "resources"
+    resources.mkdir()
+    (resources / "qtwebengine_resources.pak").write_bytes(b"webengine-resource")
+
+    removed = module.prune_unused_qt_components(bundle)
+
+    assert removed
+    assert (pyside / "Qt6Core.dll").is_file()
+    assert (qml_quick / "qmldir").is_file()
+    assert not qml_webengine.exists()
+    assert not (pyside / "Qt6WebEngineCore.dll").exists()
+    assert not (resources / "qtwebengine_resources.pak").exists()
+    module.reject_unexpected_qt_payload(bundle)
+
+
+def test_release_bundle_rejects_webengine_payload_that_survives_prune(tmp_path):
+    module = _build_module()
+    bundle = tmp_path / module.HOST_NAME
+    runtime = bundle / "_internal" / "PySide6"
+    runtime.mkdir(parents=True)
+    (runtime / "Qt6Core.dll").write_bytes(b"core")
+
+    module.reject_unexpected_qt_payload(bundle)
+
+    (runtime / "Qt6WebEngineCore.dll").write_bytes(b"unused-webengine")
+    try:
+        module.reject_unexpected_qt_payload(bundle)
+    except RuntimeError as exc:
+        assert "Qt6WebEngineCore.dll" in str(exc)
+    else:
+        raise AssertionError("Qt WebEngine não utilizado não pode entrar no host G2")
+
+
+def test_build_entry_uses_hardened_graphics2_entrypoint():
     source = (ROOT / "build" / "graphics2_host_entry.py").read_text(encoding="utf-8")
-    assert "from srstudio.graphics2.qt_host import main" in source
+    assert "from srstudio.graphics2.entrypoint import main" in source
     assert "raise SystemExit(main())" in source
 
 
-def test_pyproject_has_dedicated_graphics2_build_extra():
+def test_pyproject_has_dedicated_graphics2_build_extra_and_release_entrypoints():
     source = (ROOT / "pyproject.toml").read_text(encoding="utf-8")
     assert 'graphics2-build = ["PySide6>=6.8,<7", "PyInstaller>=6.21,<7"]' in source
+    assert 'sr-graphics-engine-2 = "srstudio.graphics2.entrypoint:main"' in source
+    assert 'sr-graphics2-release-smoke = "srstudio.graphics2.release_smoke:main"' in source
 
 
 def test_bridge_discovers_explicit_packaged_host(tmp_path, monkeypatch):

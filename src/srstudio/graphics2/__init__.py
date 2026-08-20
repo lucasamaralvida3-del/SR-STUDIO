@@ -55,6 +55,7 @@ from .model import (
     Transform,
 )
 from .operations import GraphicsSession
+from .page_duplicate import clone_page_with_fresh_ids, install_safe_page_duplication
 from .pdf_baseline import PdfBaselinePage, render_pdf_baselines
 from .pptx_artwork import PptxArtworkIssue, PptxArtworkRecoveryReport, recover_pptx_artwork
 from .pptx_effect_mapping import (
@@ -76,7 +77,19 @@ from .pptx_spacing import PptxSpacingIssue, PptxSpacingRecoveryReport, recover_p
 from .pptx_structure import PptxMappingAudit, PptxSlideStructure, PptxStructureReport, inspect_pptx_structure
 from .preflight import PreflightIssue, run_preflight
 from .quality import ProductionGateIssue, ProductionGateReport, inspect_production_gate, store_visual_fidelity
-from .qt_renderer import RenderReport, render_pdf, render_png
+from . import qt_renderer as _qt_renderer
+from .qt_render_runtime import install_headless_renderer_guard
+
+# CHAT 6 output hardening is installed on top of the current renderer rather
+# than replacing it. Existing visual semantics remain owned by qt_renderer;
+# this guard only adds QGuiApplication safety and durable output publication.
+install_headless_renderer_guard(_qt_renderer)
+RenderReport = _qt_renderer.RenderReport
+render_png = _qt_renderer.render_png
+render_pdf = _qt_renderer.render_pdf
+render_jpeg = _qt_renderer.render_jpeg
+render_raster_batch = _qt_renderer.render_raster_batch
+
 from .scene_fingerprint import PageFingerprint, SceneFingerprint, fingerprint_document, store_scene_fingerprint
 from .semantic_blocks import (
     SemanticBlock,
@@ -86,6 +99,26 @@ from .semantic_blocks import (
     semantic_member_ids,
     semantic_owner,
 )
+
+# CHAT 4 was developed on top of these runtime guards. They are explicit here
+# because the official integration base does not include the older 89c package
+# bootstrap that used to install them implicitly.
+from . import semantic_blocks as _semantic_blocks
+from . import semantic_named_slot_runtime as _semantic_named_slots
+from .product_semantic_compat import install_product_semantic_compat_guard
+from .semantic_runtime import install_semantic_recovery_guard
+
+install_semantic_recovery_guard(_semantic_blocks)
+install_product_semantic_compat_guard(_semantic_blocks, _semantic_named_slots)
+build_semantic_blocks = _semantic_blocks.build_semantic_blocks
+
+from . import import_bridge as _import_bridge
+from .binding_runtime import install_template_aware_binding_guard
+from .pptx_native_canvas_runtime import install_pptx_native_canvas_guard
+
+install_pptx_native_canvas_guard(_import_bridge)
+install_template_aware_binding_guard(_import_bridge)
+
 from .semantic_placeholders import PlaceholderRecoveryReport, recover_canva_image_placeholders
 from .semantic_recovery import recover_canva_semantic_cards
 from .studio_bridge import (
@@ -99,9 +132,25 @@ from .studio_bridge import (
 )
 from .saved_merge import analyze_saved_session_merge, resolve_saved_session_merge
 
+from . import command_router as _command_router
+from .command_router import GraphicsCommandRouter
+from .product_card_runtime import (
+    ProductCardCreation,
+    install_product_card_commands,
+    install_product_card_runtime,
+)
+from .product_data_runtime import ProductUpdateResult, install_product_data_runtime
+
 ENGINE_NAME = "SR Graphics Engine"
 ENGINE_VERSION = "2.0.0-alpha.43"
 SCHEMA_VERSION = "srscene/2.0"
+
+# Safe duplication is a prerequisite for ProductCards/SmartSlots in multipage
+# documents: every duplicated page must receive fresh internal identities.
+install_safe_page_duplication(GraphicsSession)
+install_product_card_runtime(GraphicsSession, _semantic_blocks)
+install_product_card_commands(_command_router)
+install_product_data_runtime(GraphicsSession, _command_router)
 
 __all__ = [
     "AssetRef",
@@ -124,6 +173,7 @@ __all__ = [
     "FidelityTriageReport",
     "FillDestination",
     "FitMode",
+    "GraphicsCommandRouter",
     "GraphicsDocument",
     "GraphicsNode",
     "GraphicsPage",
@@ -155,6 +205,8 @@ __all__ = [
     "PptxSpacingRecoveryReport",
     "PptxStructureReport",
     "PreflightIssue",
+    "ProductCardCreation",
+    "ProductUpdateResult",
     "ProductionGateIssue",
     "ProductionGateReport",
     "Rect",
@@ -179,6 +231,7 @@ __all__ = [
     "audit_pptx_effects",
     "bridge_flags",
     "build_semantic_blocks",
+    "clone_page_with_fresh_ids",
     "compact_fidelity_triage",
     "compare_images",
     "crop_pixel_box",
@@ -204,7 +257,9 @@ __all__ = [
     "recover_pptx_spacing",
     "render_pdf",
     "render_pdf_baselines",
+    "render_jpeg",
     "render_png",
+    "render_raster_batch",
     "resolve_legacy_merge_conflicts",
     "resolve_saved_session_merge",
     "run_preflight",

@@ -11,6 +11,7 @@ from .compat import from_studio_project
 from .import_audit import ImportAuditReport, audit_import
 from .model import AssetRef, BindingRole, CoordinateUnit, GraphicsDocument, GraphicsNode, GraphicsPage, NodeKind, SmartSlot, Transform
 from .operations import GraphicsSession, _price_parts
+from .pptx_artwork import recover_pptx_artwork
 from .pptx_effect_mapping import map_pptx_effects_to_document
 from .pptx_effects import audit_pptx_effects
 from .pptx_fidelity import enhance_pptx_document
@@ -72,6 +73,11 @@ class GraphicsImportService:
             _store_pptx_effect_audit(source, document)
             media_root = str(project.settings.get("pptx_media_dir") or "").strip()
             cache_dir = Path(media_root) / "graphics2" if media_root else None
+            # Artwork raster fixo precisa existir antes do passe de fidelidade.
+            # Assim custGeom de p:sp/a:blipFill encontra o IMAGE canônico e
+            # materializa clip_path na mesma leitura OOXML, sem uma segunda
+            # passagem ampla de enriquecimento.
+            _recover_pptx_artwork(source, document)
             enhance_pptx_document(source, document, cache_dir=cache_dir)
             # Passagens exatas exclusivas do Graphics2. Elas validam o que a
             # importação ampla trouxe antes do gate, corrigindo somente contratos
@@ -96,6 +102,29 @@ class GraphicsImportService:
         document.metadata["import_fingerprint_sha256"] = fingerprint.sha256
         audit = audit_import(document)
         return GraphicsImportResult(document=document, summary=summary, legacy_project=project, audit=audit)
+
+
+def _recover_pptx_artwork(source: Path, document: GraphicsDocument) -> None:
+    """Recupera IMAGE/asset antes da fidelidade sem transformar falha em crash."""
+
+    try:
+        recover_pptx_artwork(source, document)
+    except Exception as exc:
+        document.metadata["pptx_artwork_recovery"] = {
+            "source_images": 0,
+            "source_large_artworks": 0,
+            "matched_images": 0,
+            "recovered_nodes": 0,
+            "repaired_assets": 0,
+            "ready_images": 0,
+            "ready_large_artworks": 0,
+            "missing_media": 0,
+            "ambiguous_images": 0,
+            "coverage": 0.0,
+            "large_artwork_coverage": 0.0,
+            "issues": [],
+            "error": str(exc),
+        }
 
 
 def _recover_pptx_spacing(source: Path, document: GraphicsDocument) -> None:
@@ -123,10 +152,10 @@ def _recover_pptx_spacing(source: Path, document: GraphicsDocument) -> None:
 
 
 def _recover_pptx_fill_rects(source: Path, document: GraphicsDocument) -> None:
-    """Restaura offsets exatos de imagem sem permitir que o import inteiro falhe."""
+    """Restaura offsets exatos de imagem sem repetir artwork já recuperado."""
 
     try:
-        recover_pptx_fill_rects(source, document)
+        recover_pptx_fill_rects(source, document, recover_artwork=False)
     except Exception as exc:
         document.metadata["pptx_fill_rect_recovery"] = {
             "source_contracts": 0,

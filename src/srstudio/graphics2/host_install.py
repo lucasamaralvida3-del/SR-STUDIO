@@ -114,12 +114,10 @@ def install_verified_host(
                 previous.replace(destination)
             raise
 
-        if previous.exists() and not keep_previous:
-            shutil.rmtree(previous, ignore_errors=True)
-            previous_result: Path | None = None
-        else:
-            previous_result = previous if previous.exists() else None
-
+        # Preserve o runtime anterior até o NOVO host passar pela validação final.
+        # `keep_previous=False` significa "descartar depois do sucesso", nunca
+        # "abrir mão do rollback antes de sabermos que a troca ficou íntegra".
+        previous_result: Path | None = previous if previous.exists() else None
         installed_receipt = destination / INSTALL_RECEIPT_NAME
         quick_validation = validate_runtime_host(
             destination,
@@ -127,8 +125,6 @@ def install_verified_host(
             expected_engine_version=expected_engine_version,
         )
         if not quick_validation.ok:
-            # Esse caminho é extremamente improvável depois da troca atômica,
-            # mas ainda fazemos rollback em vez de deixar um host inválido ativo.
             _rollback_after_failed_switch(destination, previous_result)
             detail = quick_validation.errors[0] if quick_validation.errors else "falha desconhecida"
             return HostInstallResult(
@@ -139,6 +135,10 @@ def install_verified_host(
                 quick_validation,
                 f"Host instalado falhou na verificação final: {detail}",
             )
+
+        if previous.exists() and not keep_previous:
+            shutil.rmtree(previous, ignore_errors=True)
+            previous_result = None
 
         return HostInstallResult(
             True,
