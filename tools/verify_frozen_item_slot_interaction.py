@@ -145,40 +145,49 @@ def main() -> int:
     def quick_items(name: str) -> list[QQuickItem]:
         return [item for item in iter_visual(content_item) if str(item.objectName() or "") == name]
 
-    def quick_item(name: str) -> QQuickItem:
+    def quick_item(name: str, *, require_visible: bool = True) -> QQuickItem:
         matches = quick_items(name)
         if not matches:
             raise AssertionError(f"QML item not found: {name}")
         active = []
+        usable = []
         for item in matches:
             visible = bool(item.isVisible()) if hasattr(item, "isVisible") else bool(item.property("visible"))
             enabled = bool(item.isEnabled()) if hasattr(item, "isEnabled") else bool(item.property("enabled"))
-            if visible and enabled and float(item.width()) > 0 and float(item.height()) > 0:
-                active.append(item)
-        if len(matches) > 1 or len(active) != 1:
+            if enabled and float(item.width()) > 0 and float(item.height()) > 0:
+                usable.append(item)
+                if visible:
+                    active.append(item)
+        selected = active if require_visible else usable
+        if len(matches) > 1 or (require_visible and len(active) != 1):
             print(
                 "ITEMSLOT_QML_CANDIDATES="
                 + json.dumps(
-                    {"name": name, "matches": len(matches), "active": len(active), "items": [item_diagnostic(item) for item in matches]},
+                    {
+                        "name": name,
+                        "matches": len(matches),
+                        "active": len(active),
+                        "usable": len(usable),
+                        "require_visible": require_visible,
+                        "items": [item_diagnostic(item) for item in matches],
+                    },
                     ensure_ascii=False,
                     sort_keys=True,
                 ),
                 flush=True,
             )
-        if active:
+        if selected:
             # Scene refresh can leave an old delegate pending deletion for one
             # event turn. Repeater inserts the current delegate later, so use
-            # the last active candidate instead of the first objectName match.
-            return active[-1]
-        raise AssertionError({"name": name, "candidates": [item_diagnostic(item) for item in matches]})
+            # the last usable candidate instead of the first objectName match.
+            return selected[-1]
+        raise AssertionError({"name": name, "require_visible": require_visible, "candidates": [item_diagnostic(item) for item in matches]})
 
     def center(item: QQuickItem) -> QPoint:
         p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0))
         return QPoint(round(p.x()), round(p.y()))
 
     def inner_handle_point(item: QQuickItem, inset: float = 2.0) -> QPoint:
-        # SE handle is centered on the parent's exclusive right/bottom edge.
-        # Press its inner half so Windows hit-testing reaches the same MouseArea.
         p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0 - inset, max(1.0, item.height()) / 2.0 - inset))
         return QPoint(round(p.x()), round(p.y()))
 
@@ -298,7 +307,7 @@ def main() -> int:
     interaction_overlay_before = visual_rect(quick_item(f"smartSlotOverlay-{slot_id}"))
     interaction_handle_before = center(quick_item(f"smartSlotHandle-se-{slot_id}"))
     visual_frame_before = visual_rect(quick_item(f"smartSlotVisualFrame-{slot_id}"))
-    visual_handle_before = center(quick_item(f"smartSlotVisualHandle-se-{slot_id}"))
+    visual_handle_before = center(quick_item(f"smartSlotVisualHandle-se-{slot_id}", require_visible=False))
     before_resize_dispatch = bridge.dispatch_count
     before_resize_events = int(root.property("itemSlotPreviewEvents") or 0)
     print(
@@ -375,7 +384,6 @@ def main() -> int:
         assert final_snapshot["bounds"][key] == pytest.approx(float(preview_resize[key]), abs=1.0)
     assert_roles_close(roles_resize_preview, capture_roles(ids))
 
-    # Shift preserves aspect ratio on the same official MouseArea path.
     root.setProperty("selectedSlotId", slot_id)
     app.processEvents(); QTest.qWait(60); app.processEvents()
     shift_start_snapshot = item_slot_snapshot(session.page, slot)
