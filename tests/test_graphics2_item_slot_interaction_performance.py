@@ -101,8 +101,12 @@ def test_qml_manual_item_slot_uses_local_subtree_preview_and_one_release_command
     assert "!window.manualItemSlotForNode(anchorNode.id)" in qml
     assert "if (slotMetadata.manual_item_slot)" in qml
     assert "root_node_id" in qml
-    assert "property bool resizePreviewKeepsInteractionGeometry:" in qml
-    assert "property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds" in qml
-    assert "x: interactionBounds.x * zoom" in qml
-    assert "slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x" in qml
-    assert "manualItemSlotResizeHandler" not in qml
+
+    # Manual resize must remain preview-only. The Pointer Handler owns no target,
+    # so it never mutates the slot/handle tree while the pointer is moving.
+    assert "id: manualItemSlotResizeHandler" in qml
+    assert "enabled: slotOverlay.isManualItemSlot" in qml
+    assert "target: null" in qml
+    assert "dragThreshold: 0" in qml
+    assert "slotOverlay.queuePreview(boundsForDelta(lastDx, lastDy, keepRatio), false)" in qml
+    assert "slotOverlay.commitPreview(boundsForDelta(lastDx, lastDy, keepRatio), \"resize\")" in qml
