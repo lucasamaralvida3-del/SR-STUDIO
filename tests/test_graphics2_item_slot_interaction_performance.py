@@ -222,14 +222,104 @@ def test_direct_resize_mousearea_runtime_press_preview_grab_and_single_release_c
         for child in item.childItems():
             yield from walk(child)
 
+    def cls(item: QQuickItem | None) -> str:
+        return str(item.metaObject().className()) if item is not None else ""
+
+    def prop(item: QQuickItem, key: str):
+        value = item.property(key)
+        if hasattr(value, "toVariant"):
+            value = value.toVariant()
+        if value is None or isinstance(value, (bool, int, float, str)):
+            return value
+        return str(value)
+
     name = f"smartSlotResizeArea-se-{slot.id}"
     candidates = [item for item in walk(content) if str(item.objectName() or "") == name]
     assert candidates
     resize_area = [item for item in candidates if item.isVisible() and item.isEnabled()][-1]
     assert resize_area.width() == pytest.approx(18.0)
     assert resize_area.height() == pytest.approx(18.0)
-    global_center = resize_area.mapToGlobal(QPointF(resize_area.width() / 2, resize_area.height() / 2))
+    local_center = QPointF(resize_area.width() / 2, resize_area.height() / 2)
+    scene_center = resize_area.mapToScene(local_center)
+    global_center = resize_area.mapToGlobal(local_center)
     center = root.mapFromGlobal(QPoint(round(global_center.x()), round(global_center.y())))
+
+    parent_chain: list[dict] = []
+    clipped_exclusions: list[dict] = []
+    current: QQuickItem | None = resize_area
+    while current is not None:
+        local = current.mapFromScene(scene_center)
+        child = current.childAt(local.x(), local.y())
+        entry = {
+            "class": cls(current),
+            "name": str(current.objectName() or ""),
+            "x": float(current.x()),
+            "y": float(current.y()),
+            "width": float(current.width()),
+            "height": float(current.height()),
+            "z": float(current.z()),
+            "clip": bool(prop(current, "clip") or False),
+            "visible": bool(current.isVisible()),
+            "enabled": bool(current.isEnabled()),
+            "opacity": float(current.opacity()),
+            "point_local": {"x": float(local.x()), "y": float(local.y())},
+            "contains_point": bool(current.contains(local)),
+            "child_at": {"class": cls(child), "name": str(child.objectName() or "")} if child is not None else None,
+        }
+        parent_chain.append(entry)
+        if entry["clip"] and not (0.0 <= local.x() <= current.width() and 0.0 <= local.y() <= current.height()):
+            clipped_exclusions.append(entry)
+        current = current.parentItem()
+
+    topmost_chain: list[dict] = []
+    current = content
+    while current is not None:
+        local = current.mapFromScene(scene_center)
+        child = current.childAt(local.x(), local.y())
+        topmost_chain.append({
+            "owner": {"class": cls(current), "name": str(current.objectName() or "")},
+            "local": {"x": float(local.x()), "y": float(local.y())},
+            "child": {"class": cls(child), "name": str(child.objectName() or "")} if child is not None else None,
+        })
+        if child is None or child is current:
+            break
+        current = child
+
+    to_parent = resize_area.mapToItem(resize_area.parentItem(), local_center)
+    from_parent = resize_area.mapFromItem(resize_area.parentItem(), to_parent)
+    focused_snapshot = {
+        "target": {
+            "class": cls(resize_area),
+            "name": str(resize_area.objectName() or ""),
+            "visible": bool(resize_area.isVisible()),
+            "enabled": bool(resize_area.isEnabled()),
+            "opacity": float(resize_area.opacity()),
+            "accepted_buttons": prop(resize_area, "acceptedButtons"),
+            "prevent_stealing": prop(resize_area, "preventStealing"),
+            "propagate_composed_events": prop(resize_area, "propagateComposedEvents"),
+            "contains_mouse": bool(prop(resize_area, "containsMouse") or False),
+            "hovered": prop(resize_area, "hovered"),
+            "clip": bool(prop(resize_area, "clip") or False),
+            "z": float(resize_area.z()),
+            "width": float(resize_area.width()),
+            "height": float(resize_area.height()),
+            "x": float(resize_area.x()),
+            "y": float(resize_area.y()),
+        },
+        "local": {"x": float(local_center.x()), "y": float(local_center.y())},
+        "scene": {"x": float(scene_center.x()), "y": float(scene_center.y())},
+        "window": {"x": int(center.x()), "y": int(center.y())},
+        "global": {"x": float(global_center.x()), "y": float(global_center.y())},
+        "contains_local": bool(resize_area.contains(local_center)),
+        "map_to_parent": {"x": float(to_parent.x()), "y": float(to_parent.y())},
+        "map_from_parent_roundtrip": {"x": float(from_parent.x()), "y": float(from_parent.y())},
+        "parent_chain": parent_chain,
+        "topmost_chain": topmost_chain,
+        "clipped_exclusions": clipped_exclusions,
+    }
+    print("ITEMSLOT_FOCUSED_HIT_TEST=" + json.dumps(focused_snapshot, sort_keys=True), flush=True)
+    assert focused_snapshot["contains_local"] is True
+    assert not clipped_exclusions
 
     QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, center, 0)
     app.processEvents()
