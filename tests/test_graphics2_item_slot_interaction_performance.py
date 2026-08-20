@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+# Exact-SHA certification contract for the ItemSlot local-preview performance path.
 from pathlib import Path
 
 import pytest
