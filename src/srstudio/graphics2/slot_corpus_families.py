@@ -182,7 +182,7 @@ QUINTA3_FAMILY_PRESETS: dict[str, dict[str, Any]] = {
         },
         decorations=[
             {"kind": "source-asset", "role": "plaque", "media_sha256": "1f9623054d0bce809dfd623b53723e2ed002c2929cbf414b890070c96fe386f5"},
-            {"kind": "source-asset", "role": "shadow", "media_sha256": "44de77f68a0257cf00aca5604de021e8e2994f3e5a1eafe918fd38187a57918"},
+            {"kind": "source-asset", "role": "shadow", "media_sha256": "44de77f68a0257cf00aca5604de0214e8e2994f3e5a1eafe918fd38187a57918"},
         ],
     ),
     "quinta3-compact-promo": _preset(
