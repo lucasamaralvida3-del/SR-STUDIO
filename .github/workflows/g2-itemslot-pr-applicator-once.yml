@@ -1,0 +1,73 @@
+name: G2 ItemSlot PR Applicator Once
+
+on:
+  pull_request:
+    branches:
+      - g2/tmp-itemslot-stable-resize-runner-v2
+
+permissions:
+  contents: write
+
+jobs:
+  apply-final-itemslot:
+    if: github.event.pull_request.head.ref == 'g2/fix-item-slot-interaction-performance' && github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.sha == github.sha
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/fix-item-slot-interaction-performance
+          fetch-depth: 0
+
+      - name: Execute staged final applicator
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          workflow = Path('.github/workflows/g2-item-slot-interaction-performance.yml')
+          lines = workflow.read_text(encoding='utf-8').splitlines()
+          positions = [i for i, line in enumerate(lines) if line == '        run: |']
+          if len(positions) != 1:
+              raise SystemExit(f'expected one applicator run block, got {len(positions)}')
+          body = []
+          for line in lines[positions[0] + 1:]:
+              if line.startswith('          '):
+                  body.append(line[10:])
+              elif not line.strip():
+                  body.append('')
+              else:
+                  break
+          script = '\n'.join(body) + '\n'
+          required = [
+              "git commit -m 'fix(g2): finalize stable ItemSlot preview certification path'",
+              'cat > tools/verify_frozen_item_slot_interaction.py',
+              'cat > tools/benchmark_frozen_item_slot_interaction.py',
+          ]
+          for token in required:
+              if token not in script:
+                  raise SystemExit(f'missing applicator token: {token}')
+          Path('/tmp/apply-final-itemslot.sh').write_text(script, encoding='utf-8')
+          PY
+          bash /tmp/apply-final-itemslot.sh
+
+      - name: Restore permanent workflow and remove all applicator scaffolding
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show a9fd406369596a32638b57f343889027e2194997:.github/workflows/g2-item-slot-interaction-performance.yml > .github/workflows/g2-item-slot-interaction-performance.yml
+          rm -f \
+            .github/workflows/g2-itemslot-pr-applicator-once.yml \
+            .github/workflows/g2-itemslot-shift-ratio-patch-once.yml \
+            .github/workflows/g2-itemslot-final-overlay-patch-once.yml \
+            .github/workflows/g2-itemslot-stable-overlay-fix-once.yml \
+            .github/workflows/g2-item-slot-stable-resize-capture-once.yml
+          git diff --check
+          git add -A
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          if git diff --cached --quiet; then
+            echo 'No cleanup commit needed'
+          else
+            git commit -m 'chore(g2): restore permanent ItemSlot certification gate'
+            git push origin HEAD:g2/fix-item-slot-interaction-performance
+          fi
