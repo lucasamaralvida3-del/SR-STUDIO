@@ -49,9 +49,7 @@ jobs:
           $checked = (git rev-parse HEAD).Trim()
           Write-Host "REQUESTED_SHA=$env:REQUESTED_SHA"
           Write-Host "CHECKED_OUT_SHA=$checked"
-          if ($checked -ne $env:REQUESTED_SHA) {
-            throw "EXACT SHA FAILURE: requested=$env:REQUESTED_SHA checked_out=$checked"
-          }
+          if ($checked -ne $env:REQUESTED_SHA) { throw "EXACT SHA FAILURE: requested=$env:REQUESTED_SHA checked_out=$checked" }
           Write-Host "REQUESTED_EQUALS_CHECKED_OUT=PASS"
 
       - name: Restore exact PPTX visual-gate fixture
@@ -68,19 +66,32 @@ jobs:
           $blob = Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
           if ($blob.encoding -ne "base64") { throw "Unexpected blob encoding: $($blob.encoding)" }
           $raw = [Convert]::FromBase64String(($blob.content -replace '\s',''))
-          # The staging blob was intentionally created as UTF-8 base64 text. Decode
-          # that second layer only when the first decoded bytes begin with UEsDB.
           if ($raw.Length -ge 5 -and [Text.Encoding]::ASCII.GetString($raw, 0, 5) -eq "UEsDB") {
             $nested = [Text.Encoding]::UTF8.GetString($raw)
             $raw = [Convert]::FromBase64String(($nested -replace '\s',''))
             Write-Host "FIXTURE_BLOB_NESTED_BASE64=DECODED"
           }
-          if ($raw.Length -lt 4 -or $raw[0] -ne 0x50 -or $raw[1] -ne 0x4B) {
-            throw "Fixture blob is not a ZIP after decoding"
-          }
+          if ($raw.Length -lt 4 -or $raw[0] -ne 0x50 -or $raw[1] -ne 0x4B) { throw "Fixture blob is not a ZIP after decoding" }
           New-Item -ItemType Directory -Force -Path "harness/diagnostic" | Out-Null
-          [IO.File]::WriteAllBytes("harness/diagnostic/meat_visual_gate_fixture.zip", $raw)
-          Expand-Archive -Path "harness/diagnostic/meat_visual_gate_fixture.zip" -DestinationPath "harness/diagnostic/meat_visual_gate_fixture" -Force
+          $zipPath = "harness/diagnostic/meat_visual_gate_fixture.zip"
+          [IO.File]::WriteAllBytes($zipPath, $raw)
+          $zipSha = (Get-FileHash $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "FIXTURE_ZIP_BYTES=$($raw.Length)"
+          Write-Host "FIXTURE_ZIP_SHA256=$zipSha"
+          @'
+          from pathlib import Path
+          import zipfile
+          p=Path('harness/diagnostic/meat_visual_gate_fixture.zip')
+          out=Path('harness/diagnostic/meat_visual_gate_fixture')
+          out.mkdir(parents=True, exist_ok=True)
+          with zipfile.ZipFile(p, 'r') as z:
+              bad=z.testzip()
+              print('FIXTURE_ZIP_ENTRIES=' + ','.join(z.namelist()))
+              if bad:
+                  raise SystemExit(f'Bad ZIP member: {bad}')
+              z.extractall(out)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
           $expected = [ordered]@{
             "harness/diagnostic/meat_visual_gate_fixture/assets/image3.png" = "9458fe6054535e4411834407c9af9af24f35d2946f8f027f26f416023a441e3d"
