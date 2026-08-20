@@ -1,0 +1,125 @@
+name: G2 ItemSlot QML Finalizer Push
+
+on:
+  push:
+    branches:
+      - g2/fix-item-slot-interaction-performance
+    paths:
+      - '.g2-itemslot-qml-finalize.trigger'
+
+permissions:
+  contents: write
+
+jobs:
+  finalize-qml:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/fix-item-slot-interaction-performance
+          fetch-depth: 0
+      - name: Apply QML final contract only
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = path.read_text(encoding='utf-8')
+          for token in [
+              'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"',
+              'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds',
+              'function itemSlotDisplayTransform(node)',
+          ]:
+              if token not in text: raise SystemExit(f'missing stable overlay token: {token}')
+          if 'manualItemSlotResizeHandler' in text: raise SystemExit('experimental DragHandler still present')
+
+          if 'objectName: "smartSlotVisualFrame-"' not in text:
+              old = '''                                    Rectangle {
+                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
+'''
+              new = '''                                    Rectangle {
+                                        objectName: "smartSlotVisualFrame-" + String(slotOverlay.modelData.id || "")
+                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
+'''
+              if text.count(old) != 1: raise SystemExit(f'visual frame anchor count={text.count(old)}')
+              text = text.replace(old, new, 1)
+
+          if 'objectName: "smartSlotVisualHandle-"' not in text:
+              old = '''                                            Rectangle {
+                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
+                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+'''
+              new = '''                                            Rectangle {
+                                                objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
+                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+'''
+              if text.count(old) != 1: raise SystemExit(f'visual handle anchor count={text.count(old)}')
+              text = text.replace(old, new, 1)
+
+          if 'function resizedBounds(px, py, modifiers)' not in text:
+              old = '                                                function resizedBounds(px, py) {\n'
+              if text.count(old) != 1: raise SystemExit(f'resizedBounds signature count={text.count(old)}')
+              text = text.replace(old, '                                                function resizedBounds(px, py, modifiers) {\n', 1)
+              old = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
+'''
+              new = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                                    if (slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)) {
+                                                        var aspect = Math.max(0.000001, startW) / Math.max(0.000001, startH)
+                                                        var hasH = modelData.dir.indexOf("e") >= 0 || modelData.dir.indexOf("w") >= 0
+                                                        var hasV = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
+                                                        var targetW = nw
+                                                        var targetH = nh
+                                                        if (hasH && hasV) {
+                                                            var relW = Math.abs(nw - startW) / Math.max(1, startW)
+                                                            var relH = Math.abs(nh - startH) / Math.max(1, startH)
+                                                            if (relW >= relH) targetH = Math.max(1, targetW / aspect)
+                                                            else targetW = Math.max(1, targetH * aspect)
+                                                        } else if (hasH) targetH = Math.max(1, targetW / aspect)
+                                                        else if (hasV) targetW = Math.max(1, targetH * aspect)
+                                                        if (modelData.dir.indexOf("w") >= 0) nx = startX + startW - targetW
+                                                        if (modelData.dir.indexOf("n") >= 0) ny = startY + startH - targetH
+                                                        nw = targetW
+                                                        nh = targetH
+                                                    }
+                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
+'''
+              if text.count(old) != 1: raise SystemExit(f'resizedBounds body count={text.count(old)}')
+              text = text.replace(old, new, 1)
+              old = 'slotOverlay.queuePreview(resizedBounds(point.x, point.y), false)'
+              if text.count(old) != 1: raise SystemExit(f'queue call count={text.count(old)}')
+              text = text.replace(old, 'slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)', 1)
+              old = 'slotOverlay.commitPreview(resizedBounds(point.x, point.y), "resize")'
+              if text.count(old) != 1: raise SystemExit(f'commit call count={text.count(old)}')
+              text = text.replace(old, 'slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")', 1)
+
+          for token in ['objectName: "smartSlotVisualFrame-"','objectName: "smartSlotVisualHandle-"','function resizedBounds(px, py, modifiers)','slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)']:
+              if token not in text: raise SystemExit(f'missing final token: {token}')
+          path.write_text(text, encoding='utf-8')
+
+          test = Path('tests/test_graphics2_item_slot_interaction_performance.py')
+          src = test.read_text(encoding='utf-8')
+          marker = '    assert "root_node_id" in qml\n'
+          extra = '''    assert 'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"' in qml
+    assert 'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds' in qml
+    assert 'objectName: "smartSlotVisualFrame-"' in qml
+    assert 'objectName: "smartSlotVisualHandle-"' in qml
+    assert 'function resizedBounds(px, py, modifiers)' in qml
+    assert 'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)' in qml
+    assert 'manualItemSlotResizeHandler' not in qml
+    assert 'enabled: !slotOverlay.isManualItemSlot' not in qml
+'''
+          if extra.strip() not in src:
+              if src.count(marker) != 1: raise SystemExit(f'test marker count={src.count(marker)}')
+              test.write_text(src.replace(marker, marker + extra, 1), encoding='utf-8')
+          PY
+          git diff --check
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/srstudio/graphics2/qml/GraphicsEditor.qml tests/test_graphics2_item_slot_interaction_performance.py
+          git commit -m 'fix(g2): complete stable ItemSlot visual resize contract'
+          git push origin HEAD:g2/fix-item-slot-interaction-performance
