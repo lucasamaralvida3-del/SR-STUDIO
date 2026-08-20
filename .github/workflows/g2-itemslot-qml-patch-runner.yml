@@ -1,7 +1,7 @@
 name: G2 ItemSlot QML Patch Runner
 
 on:
-  push:
+  pull_request:
     branches:
       - g2/tmp-itemslot-perf-patch-base
 
