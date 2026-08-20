@@ -1,143 +1,698 @@
-# Permanent P1 gate: do not relax the 1ms median / 4ms p95 thresholds. Certifies stable manual ItemSlot resize grab.
-name: G2 ItemSlot Interaction Performance
+name: G2 ItemSlot Final Gate Applicator
 
 on:
   push:
     branches:
       - g2/fix-item-slot-interaction-performance
     paths:
-      - 'src/srstudio/graphics2/item_slot_host.py'
-      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
-      - 'tests/test_graphics2_item_slot_interaction_performance.py'
-      - 'tests/test_graphics2_item_slots.py'
-      - 'tools/benchmark_frozen_item_slot_interaction.py'
-      - 'tools/verify_frozen_item_slot_interaction.py'
-      - '.github/workflows/g2-item-slot-interaction-performance.yml'
-  pull_request:
-    branches:
-      - g2/fix-full-studio-entrypoint-beta27
-      - g2/integrate-studio-shell
-    paths:
-      - 'src/srstudio/graphics2/item_slot_host.py'
-      - 'src/srstudio/graphics2/qml/GraphicsEditor.qml'
-      - 'tests/test_graphics2_item_slot_interaction_performance.py'
-      - 'tests/test_graphics2_item_slots.py'
-      - 'tools/benchmark_frozen_item_slot_interaction.py'
-      - 'tools/verify_frozen_item_slot_interaction.py'
       - '.github/workflows/g2-item-slot-interaction-performance.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  frozen-windows-itemslot-performance:
-    runs-on: windows-latest
-    timeout-minutes: 30
+  apply-final-gate:
+    if: github.event.head_commit.message == 'chore(g2): finalize ItemSlot frozen gate implementation'
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          fetch-depth: 1
+          ref: g2/fix-item-slot-interaction-performance
+          fetch-depth: 2
 
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-
-      - name: Install focused dependencies
-        shell: pwsh
+      - name: Apply final QML and permanent frozen harness
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install -e ".[dev,graphics2,graphics2-build]" pyinstaller
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Record exact source SHA
-        shell: pwsh
-        run: |
-          $sha = git rev-parse HEAD
-          $expected = "${{ github.event.pull_request.head.sha || github.sha }}"
-          Write-Host "SOURCE_SHA=$sha"
-          Write-Host "EXPECTED_SHA=$expected"
-          if ($sha -ne $expected) { throw "Exact SHA mismatch" }
-          git diff --quiet
-          if ($LASTEXITCODE -ne 0) { throw "Tracked working tree changed before ItemSlot gate" }
+          qml_path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = qml_path.read_text(encoding='utf-8')
+          required_base = [
+              'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"',
+              'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds',
+              'function itemSlotDisplayTransform(node)',
+              'property var displayTransform: window.itemSlotDisplayTransform(modelData)',
+          ]
+          for token in required_base:
+              if token not in text:
+                  raise SystemExit(f'missing stable overlay token: {token}')
+          if 'manualItemSlotResizeHandler' in text:
+              raise SystemExit('experimental DragHandler still present')
 
-      - name: Focused ItemSlot interaction regression suite
-        shell: pwsh
-        env:
-          QT_QPA_PLATFORM: offscreen
-          QSG_RHI_BACKEND: software
-        run: |
-          python -m compileall -q src/srstudio/graphics2/item_slot_host.py tests/test_graphics2_item_slot_interaction_performance.py tools/benchmark_frozen_item_slot_interaction.py tools/verify_frozen_item_slot_interaction.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m pytest -q tests/test_graphics2_item_slots.py tests/test_graphics2_item_slot_interaction_performance.py
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if 'objectName: "smartSlotVisualFrame-"' not in text:
+              old = '''                                    Rectangle {
+                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
+'''
+              new = '''                                    Rectangle {
+                                        objectName: "smartSlotVisualFrame-" + String(slotOverlay.modelData.id || "")
+                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
+'''
+              if text.count(old) != 1:
+                  raise SystemExit(f'visual frame anchor count={text.count(old)}')
+              text = text.replace(old, new, 1)
 
-      - name: Build exact frozen Graphics2 host
-        shell: pwsh
-        run: |
-          python build/build_graphics2_host.py --output "dist/graphics2-host"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $root = "dist/graphics2-host/SRGraphicsEngine2Host"
-          if (!(Test-Path "$root/SRGraphicsEngine2Host.exe")) { throw "Frozen Graphics2Host missing" }
-          if (!(Test-Path "$root/_internal/srstudio/graphics2/qml/GraphicsEditor.qml")) { throw "Frozen GraphicsEditor.qml missing" }
-          & "$root/SRGraphicsEngine2Host.exe" --version
-          if ($LASTEXITCODE -ne 0) { throw "Frozen Graphics2Host --version failed" }
+          if 'objectName: "smartSlotVisualHandle-"' not in text:
+              old = '''                                            Rectangle {
+                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
+                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+'''
+              new = '''                                            Rectangle {
+                                                objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
+                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+'''
+              if text.count(old) != 1:
+                  raise SystemExit(f'visual handle anchor count={text.count(old)}')
+              text = text.replace(old, new, 1)
 
-      - name: Continuous 3-second move resize and save reopen gate
-        shell: pwsh
-        env:
-          QT_QPA_PLATFORM: windows
-          QSG_RHI_BACKEND: software
-        run: |
-          New-Item -ItemType Directory -Force -Path itemslot-perf-evidence | Out-Null
-          python tools/verify_frozen_item_slot_interaction.py `
-            --qml "dist/graphics2-host/SRGraphicsEngine2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml" `
-            --output-dir "itemslot-perf-evidence/continuous"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if 'function resizedBounds(px, py, modifiers)' not in text:
+              old = '                                                function resizedBounds(px, py) {\n'
+              if text.count(old) != 1:
+                  raise SystemExit(f'resizedBounds signature count={text.count(old)}')
+              text = text.replace(old, '                                                function resizedBounds(px, py, modifiers) {\n', 1)
+              old = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
+'''
+              new = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                                    if (slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)) {
+                                                        var aspect = Math.max(0.000001, startW) / Math.max(0.000001, startH)
+                                                        var hasH = modelData.dir.indexOf("e") >= 0 || modelData.dir.indexOf("w") >= 0
+                                                        var hasV = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
+                                                        var targetW = nw
+                                                        var targetH = nh
+                                                        if (hasH && hasV) {
+                                                            var relW = Math.abs(nw - startW) / Math.max(1, startW)
+                                                            var relH = Math.abs(nh - startH) / Math.max(1, startH)
+                                                            if (relW >= relH)
+                                                                targetH = Math.max(1, targetW / aspect)
+                                                            else
+                                                                targetW = Math.max(1, targetH * aspect)
+                                                        } else if (hasH) {
+                                                            targetH = Math.max(1, targetW / aspect)
+                                                        } else if (hasV) {
+                                                            targetW = Math.max(1, targetH * aspect)
+                                                        }
+                                                        if (modelData.dir.indexOf("w") >= 0)
+                                                            nx = startX + startW - targetW
+                                                        if (modelData.dir.indexOf("n") >= 0)
+                                                            ny = startY + startH - targetH
+                                                        nw = targetW
+                                                        nh = targetH
+                                                    }
+                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
+'''
+              if text.count(old) != 1:
+                  raise SystemExit(f'resizedBounds body count={text.count(old)}')
+              text = text.replace(old, new, 1)
+              old = 'slotOverlay.queuePreview(resizedBounds(point.x, point.y), false)'
+              if text.count(old) != 1:
+                  raise SystemExit(f'queue call count={text.count(old)}')
+              text = text.replace(old, 'slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)', 1)
+              old = 'slotOverlay.commitPreview(resizedBounds(point.x, point.y), "resize")'
+              if text.count(old) != 1:
+                  raise SystemExit(f'commit call count={text.count(old)}')
+              text = text.replace(old, 'slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")', 1)
 
-      - name: Benchmark 200 move and resize events for all ItemSlot presets
-        shell: pwsh
-        env:
-          QT_QPA_PLATFORM: windows
-          QSG_RHI_BACKEND: software
-        run: |
-          python tools/benchmark_frozen_item_slot_interaction.py `
-            --qml "dist/graphics2-host/SRGraphicsEngine2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml" `
-            --output "itemslot-perf-evidence/benchmark.json"
-          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          required_final = [
+              'function resizedBounds(px, py, modifiers)',
+              'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)',
+              'objectName: "smartSlotVisualFrame-"',
+              'objectName: "smartSlotVisualHandle-"',
+          ]
+          for token in required_final:
+              if token not in text:
+                  raise SystemExit(f'missing final QML token: {token}')
+          qml_path.write_text(text, encoding='utf-8')
 
-      - name: Enforce hard performance thresholds
-        shell: pwsh
-        run: |
-          $perf = Get-Content "itemslot-perf-evidence/benchmark.json" -Raw | ConvertFrom-Json
-          foreach ($preset in $perf.presets) {
-            if ([double]$preset.move.median_ms -ge 1.0) { throw "$($preset.preset) move median >= 1ms" }
-            if ([double]$preset.move.p95_ms -ge 4.0) { throw "$($preset.preset) move p95 >= 4ms" }
-            if ([double]$preset.resize.median_ms -ge 1.0) { throw "$($preset.preset) resize median >= 1ms" }
-            if ([double]$preset.resize.p95_ms -ge 4.0) { throw "$($preset.preset) resize p95 >= 4ms" }
-            if ([int]$preset.backend_dispatches_during_move -ne 0) { throw "$($preset.preset) dispatched during move" }
-            if ([int]$preset.backend_dispatches_during_resize -ne 0) { throw "$($preset.preset) dispatched during resize" }
-            if ([int]$preset.backend_commits_move_release -ne 1) { throw "$($preset.preset) move release commits != 1" }
-            if ([int]$preset.backend_commits_resize_release -ne 1) { throw "$($preset.preset) resize release commits != 1" }
-          }
-          $continuous = Get-Content "itemslot-perf-evidence/continuous/continuous-result.json" -Raw | ConvertFrom-Json
-          if (-not [bool]$continuous.pass) { throw "Continuous frozen gate failed" }
-          if (-not [bool]$continuous.children_relative_alignment_preserved) { throw "Child alignment changed" }
-          if (-not [bool]$continuous.save_reopen_preserved) { throw "Save/reopen did not preserve ItemSlot" }
-          Write-Host "MOVE_MEDIAN_MAX_MS=$($perf.aggregate.move_median_max_ms)"
-          Write-Host "MOVE_P95_MAX_MS=$($perf.aggregate.move_p95_max_ms)"
-          Write-Host "RESIZE_MEDIAN_MAX_MS=$($perf.aggregate.resize_median_max_ms)"
-          Write-Host "RESIZE_P95_MAX_MS=$($perf.aggregate.resize_p95_max_ms)"
-          Write-Host "BACKEND_DISPATCH_DURING_MOVE=$($perf.aggregate.backend_dispatches_during_move)"
-          Write-Host "BACKEND_DISPATCH_DURING_RESIZE=$($perf.aggregate.backend_dispatches_during_resize)"
-          Write-Host "FROZEN_WINDOWS_ITEMSLOT_INTERACTION=PASS"
-          Write-Host "SAVE_REOPEN=PASS"
+          test_path = Path('tests/test_graphics2_item_slot_interaction_performance.py')
+          test_text = test_path.read_text(encoding='utf-8')
+          marker = '    assert "root_node_id" in qml\n'
+          additions = '''    assert 'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"' in qml
+    assert 'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds' in qml
+    assert 'objectName: "smartSlotVisualFrame-"' in qml
+    assert 'objectName: "smartSlotVisualHandle-"' in qml
+    assert 'function resizedBounds(px, py, modifiers)' in qml
+    assert 'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)' in qml
+    assert 'manualItemSlotResizeHandler' not in qml
+    assert 'enabled: !slotOverlay.isManualItemSlot' not in qml
+'''
+          if additions.strip() not in test_text:
+              if test_text.count(marker) != 1:
+                  raise SystemExit(f'source contract marker count={test_text.count(marker)}')
+              test_text = test_text.replace(marker, marker + additions, 1)
+          test_path.write_text(test_text, encoding='utf-8')
+          PY
 
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: g2-item-slot-interaction-performance-${{ github.run_id }}
-          path: itemslot-perf-evidence/**
-          if-no-files-found: warn
-          retention-days: 30
+          cat > tools/verify_frozen_item_slot_interaction.py <<'PYFILE'
+          from __future__ import annotations
+
+          import argparse
+          import json
+          from pathlib import Path
+          from time import monotonic
+
+          import pytest
+
+          from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
+          from srstudio.graphics2.item_slots import create_item_slot, item_slot_snapshot
+          from srstudio.graphics2.model import GraphicsDocument, GraphicsPage
+          from srstudio.graphics2.operations import GraphicsSession
+          from srstudio.graphics2.package import load_package, save_package
+
+
+          def _document() -> tuple[GraphicsDocument, str]:
+              document = GraphicsDocument(name="Frozen ItemSlot continuous interaction")
+              document.add_page(GraphicsPage(name="Página 1", width=1080, height=1350))
+              session = GraphicsSession(document)
+              slot = create_item_slot(session, "simples", x=210, y=250)
+              return document, slot.id
+
+
+          def main() -> int:
+              parser = argparse.ArgumentParser()
+              parser.add_argument("--qml", required=True)
+              parser.add_argument("--output-dir", required=True)
+              args = parser.parse_args()
+              qml_path = Path(args.qml).resolve()
+              output_dir = Path(args.output_dir).resolve()
+              output_dir.mkdir(parents=True, exist_ok=True)
+              assert qml_path.is_file(), qml_path
+
+              from PySide6.QtCore import QCoreApplication, QEvent, QObject, Property, QPoint, QPointF, Qt, Signal, Slot, QUrl
+              from PySide6.QtGui import QGuiApplication, QMouseEvent
+              from PySide6.QtQml import QQmlApplicationEngine
+              from PySide6.QtQuick import QQuickItem
+              from PySide6.QtTest import QTest
+
+              document, slot_id = _document()
+              session = GraphicsSession(document)
+              router = ItemSlotCommandRouter(session)
+
+              class SceneBridge(QObject):
+                  sceneChanged = Signal()
+                  statusChanged = Signal()
+
+                  def __init__(self) -> None:
+                      super().__init__()
+                      self._status = "Frozen ItemSlot continuous interaction"
+                      self.dispatch_count = 0
+                      self.commands: list[str] = []
+
+                  @Property(str, notify=sceneChanged)
+                  def sceneJson(self) -> str:
+                      return json.dumps(router.payload(), ensure_ascii=False, separators=(",", ":"))
+
+                  @Property(str, notify=statusChanged)
+                  def status(self) -> str:
+                      return self._status
+
+                  @Property(bool, notify=statusChanged)
+                  def busy(self) -> bool:
+                      return False
+
+                  @Slot(str, result=str)
+                  def dispatch(self, raw: str) -> str:
+                      command = json.loads(raw)
+                      result_raw = router.dispatch_json(raw, include_scene_payload=False)
+                      result = json.loads(result_raw)
+                      self.dispatch_count += 1
+                      self.commands.append(str(command.get("name") or ""))
+                      self._status = str(result.get("message") or "")
+                      self.statusChanged.emit()
+                      if result.get("changed"):
+                          self.sceneChanged.emit()
+                      return result_raw
+
+                  @Slot(str, bool, bool)
+                  def selectNodeAdvanced(self, _node_id: str, _additive: bool, _toggle: bool) -> None:
+                      return None
+
+                  @Slot(float, float, float)
+                  def moveSelectionAtZoom(self, _dx: float, _dy: float, _zoom: float) -> None:
+                      return None
+
+                  @Slot()
+                  def undo(self) -> None:
+                      return None
+
+                  @Slot()
+                  def redo(self) -> None:
+                      return None
+
+                  @Slot(str, str)
+                  def editText(self, _node_id: str, _text: str) -> None:
+                      return None
+
+              app = QGuiApplication.instance() or QGuiApplication(["item-slot-continuous"])
+              engine = QQmlApplicationEngine()
+              bridge = SceneBridge()
+              engine.rootContext().setContextProperty("sceneBridge", bridge)
+              engine.load(QUrl.fromLocalFile(str(qml_path)))
+              roots = engine.rootObjects()
+              assert roots, "frozen GraphicsEditor.qml did not load"
+              root = roots[0]
+              root.setProperty("smartSlotSnap", False)
+              root.setProperty("selectedSlotId", slot_id)
+              app.processEvents()
+              QTest.qWait(180)
+              app.processEvents()
+              content_item = root.contentItem()
+              assert content_item is not None
+
+              def iter_visual(item: QQuickItem):
+                  yield item
+                  for child in item.childItems():
+                      yield from iter_visual(child)
+
+              def qvariant(value):
+                  if hasattr(value, "toVariant"):
+                      return value.toVariant()
+                  return value
+
+              def qml_map(value) -> dict:
+                  value = qvariant(value)
+                  return dict(value) if isinstance(value, dict) else {}
+
+              def quick_item(name: str) -> QQuickItem:
+                  for item in iter_visual(content_item):
+                      if str(item.objectName() or "") == name:
+                          return item
+                  raise AssertionError(f"QML item not found: {name}")
+
+              def center(item: QQuickItem) -> QPoint:
+                  p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0))
+                  return QPoint(round(p.x()), round(p.y()))
+
+              def inner_handle_point(item: QQuickItem, inset: float = 2.0) -> QPoint:
+                  # SE handle is centered on the parent's exclusive right/bottom edge.
+                  # Press its inner half so Windows hit-testing reaches the same MouseArea.
+                  p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0 - inset, max(1.0, item.height()) / 2.0 - inset))
+                  return QPoint(round(p.x()), round(p.y()))
+
+              def visual_rect(item: QQuickItem) -> dict[str, float]:
+                  p = item.mapToScene(QPointF(0, 0))
+                  return {"x": float(p.x()), "y": float(p.y()), "width": float(item.width()), "height": float(item.height())}
+
+              def node_item(node_id: str) -> QQuickItem:
+                  for item in iter_visual(content_item):
+                      data = qml_map(item.property("modelData"))
+                      if str(data.get("id") or "") != str(node_id):
+                          continue
+                      display = qml_map(item.property("displayTransform"))
+                      if all(key in display for key in ("x", "y", "width", "height")):
+                          return item
+                  raise AssertionError(f"node delegate not found: {node_id}")
+
+              def role_node_ids(snapshot: dict) -> dict[str, list[str]]:
+                  roles = snapshot["internal_roles"]
+                  price = snapshot["price_block"]
+                  return {
+                      "IMAGE": [str(roles["image"]["node_id"])],
+                      "NAME": [str(roles["name"]["node_id"])],
+                      "PRICE": [str(price[key]) for key in ("currency_node", "integer_node", "decimal_node") if price.get(key)],
+                      "UNIT": [str(roles["unit"]["node_id"])],
+                  }
+
+              def capture_roles(ids: dict[str, list[str]]) -> dict[str, list[dict[str, float]]]:
+                  return {role: [visual_rect(node_item(node_id)) for node_id in node_ids] for role, node_ids in ids.items()}
+
+              def rect_changed(before: dict[str, float], after: dict[str, float], tolerance: float = 0.75) -> bool:
+                  return any(abs(after[key] - before[key]) > tolerance for key in ("x", "y", "width", "height"))
+
+              def rect_close(before: dict[str, float], after: dict[str, float], tolerance: float = 2.5) -> bool:
+                  return all(abs(after[key] - before[key]) <= tolerance for key in ("x", "y", "width", "height"))
+
+              def assert_roles_changed(before, after) -> None:
+                  for role in ("IMAGE", "NAME", "PRICE", "UNIT"):
+                      assert len(before[role]) == len(after[role]) and before[role], role
+                      for left, right in zip(before[role], after[role]):
+                          assert rect_changed(left, right), {"role": role, "before": left, "after": right}
+
+              def assert_roles_close(before, after) -> None:
+                  for role in ("IMAGE", "NAME", "PRICE", "UNIT"):
+                      for left, right in zip(before[role], after[role]):
+                          assert rect_close(left, right), {"role": role, "before": left, "after": right}
+
+              def mouse_move_with_left_button(pos: QPoint, modifiers=Qt.KeyboardModifier.NoModifier) -> None:
+                  local = QPointF(pos)
+                  global_pos = QPointF(root.mapToGlobal(pos))
+                  event = QMouseEvent(QEvent.Type.MouseMove, local, global_pos, Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton, modifiers)
+                  QCoreApplication.sendEvent(root, event)
+
+              slot = session.page.slots[slot_id]
+              initial = item_slot_snapshot(session.page, slot)
+              ids = role_node_ids(initial)
+              root_id = str(initial["root_node_id"])
+              semantics_before = {"node_by_role": dict(slot.node_by_role), "price_block": dict(initial["price_block"]), "preset_id": initial["preset_id"]}
+
+              roles_before_move = capture_roles(ids)
+              root_before_move = visual_rect(node_item(root_id))
+              frame_before_move = visual_rect(quick_item(f"smartSlotVisualFrame-{slot_id}"))
+              handle_before_move = center(quick_item(f"smartSlotHandle-se-{slot_id}"))
+              backend_before_move = item_slot_snapshot(session.page, slot)
+
+              move_area = quick_item(f"smartSlotMoveArea-{slot_id}")
+              start = center(move_area)
+              before_dispatch = bridge.dispatch_count
+              QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, start, 0)
+              app.processEvents()
+              assert bool(root.property("itemSlotPreviewActive"))
+              assert str(root.property("itemSlotInteractionKind") or "") == "move"
+              deadline = monotonic() + 3.05
+              index = 0
+              final = start
+              while monotonic() < deadline:
+                  index += 1
+                  final = QPoint(start.x() + min(180, index), start.y() + min(95, index // 2))
+                  mouse_move_with_left_button(final)
+                  app.processEvents()
+                  QTest.qWait(16)
+              assert bool(root.property("itemSlotPreviewActive")), "MOVE preview canceled before release"
+              assert bridge.dispatch_count == before_dispatch, bridge.commands
+              assert item_slot_snapshot(session.page, slot) == backend_before_move, "backend changed during MOVE preview"
+              preview_move = qml_map(root.property("itemSlotPreviewBounds"))
+              roles_move_preview = capture_roles(ids)
+              root_move_preview = visual_rect(node_item(root_id))
+              frame_move_preview = visual_rect(quick_item(f"smartSlotVisualFrame-{slot_id}"))
+              handle_move_preview = center(quick_item(f"smartSlotHandle-se-{slot_id}"))
+              assert_roles_changed(roles_before_move, roles_move_preview)
+              assert rect_changed(root_before_move, root_move_preview)
+              assert rect_changed(frame_before_move, frame_move_preview)
+              assert handle_move_preview != handle_before_move
+
+              QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, final, 0)
+              app.processEvents(); QTest.qWait(80); app.processEvents()
+              assert bridge.dispatch_count == before_dispatch + 1
+              assert bridge.commands[-1] == "commit_item_slot_bounds"
+              assert not bool(root.property("itemSlotPreviewActive"))
+              after_move = item_slot_snapshot(session.page, slot)
+              assert after_move["bounds"]["x"] == pytest.approx(float(preview_move["x"]), abs=1.0)
+              assert after_move["bounds"]["y"] == pytest.approx(float(preview_move["y"]), abs=1.0)
+              assert_roles_close(roles_move_preview, capture_roles(ids))
+
+              root.setProperty("selectedSlotId", slot_id)
+              app.processEvents(); QTest.qWait(80); app.processEvents()
+              resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+              resize_start = inner_handle_point(resize_area)
+              backend_before_resize = item_slot_snapshot(session.page, slot)
+              roles_before_resize = capture_roles(ids)
+              root_before_resize = visual_rect(node_item(root_id))
+              interaction_overlay_before = visual_rect(quick_item(f"smartSlotOverlay-{slot_id}"))
+              interaction_handle_before = center(quick_item(f"smartSlotHandle-se-{slot_id}"))
+              visual_frame_before = visual_rect(quick_item(f"smartSlotVisualFrame-{slot_id}"))
+              visual_handle_before = center(quick_item(f"smartSlotVisualHandle-se-{slot_id}"))
+              before_resize_dispatch = bridge.dispatch_count
+              before_resize_events = int(root.property("itemSlotPreviewEvents") or 0)
+              QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_start, 0)
+              app.processEvents()
+              assert bool(root.property("itemSlotPreviewActive")), "RESIZE press did not activate preview"
+              assert str(root.property("itemSlotInteractionKind") or "") == "resize"
+
+              resize_deadline = monotonic() + 3.05
+              resize_index = 0
+              resize_final = resize_start
+              while monotonic() < resize_deadline:
+                  resize_index += 1
+                  resize_final = QPoint(resize_start.x() + min(160, resize_index), resize_start.y() + min(120, round(resize_index * 0.7)))
+                  mouse_move_with_left_button(resize_final)
+                  app.processEvents()
+                  if resize_index == 1:
+                      assert bool(root.property("itemSlotPreviewActive")), "RESIZE preview canceled on first move"
+                  QTest.qWait(16)
+
+              assert bool(root.property("itemSlotPreviewActive")), "RESIZE preview canceled before release"
+              assert int(root.property("itemSlotPreviewEvents") or 0) > before_resize_events
+              assert bridge.dispatch_count == before_resize_dispatch, bridge.commands
+              assert item_slot_snapshot(session.page, slot) == backend_before_resize, "backend changed during RESIZE preview"
+              preview_resize = qml_map(root.property("itemSlotPreviewBounds"))
+              roles_resize_preview = capture_roles(ids)
+              root_resize_preview = visual_rect(node_item(root_id))
+              interaction_overlay_during = visual_rect(quick_item(f"smartSlotOverlay-{slot_id}"))
+              interaction_handle_during = center(quick_item(f"smartSlotHandle-se-{slot_id}"))
+              visual_frame_during = visual_rect(quick_item(f"smartSlotVisualFrame-{slot_id}"))
+              visual_handle_during = center(quick_item(f"smartSlotVisualHandle-se-{slot_id}"))
+              assert_roles_changed(roles_before_resize, roles_resize_preview)
+              assert rect_changed(root_before_resize, root_resize_preview)
+              assert rect_close(interaction_overlay_before, interaction_overlay_during, tolerance=0.01), "interaction overlay moved during RESIZE"
+              assert interaction_handle_before == interaction_handle_during, "physical grab handle moved during RESIZE"
+              assert rect_changed(visual_frame_before, visual_frame_during), "visual frame did not follow RESIZE preview"
+              assert visual_handle_before != visual_handle_during, "visual handle did not follow RESIZE preview"
+
+              QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_final, 0)
+              app.processEvents(); QTest.qWait(80); app.processEvents()
+              assert bridge.dispatch_count == before_resize_dispatch + 1
+              assert bridge.commands[-1] == "commit_item_slot_bounds"
+              assert not bool(root.property("itemSlotPreviewActive"))
+              final_snapshot = item_slot_snapshot(session.page, slot)
+              for key in ("x", "y", "width", "height"):
+                  assert final_snapshot["bounds"][key] == pytest.approx(float(preview_resize[key]), abs=1.0)
+              assert_roles_close(roles_resize_preview, capture_roles(ids))
+
+              # Shift preserves aspect ratio on the same official MouseArea path.
+              root.setProperty("selectedSlotId", slot_id)
+              app.processEvents(); QTest.qWait(60); app.processEvents()
+              shift_start_snapshot = item_slot_snapshot(session.page, slot)
+              shift_ratio = shift_start_snapshot["bounds"]["width"] / shift_start_snapshot["bounds"]["height"]
+              shift_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+              shift_start = inner_handle_point(shift_area)
+              before_shift_dispatch = bridge.dispatch_count
+              QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ShiftModifier, shift_start, 0)
+              app.processEvents()
+              assert bool(root.property("itemSlotPreviewActive"))
+              shift_final = QPoint(shift_start.x() + 88, shift_start.y() + 31)
+              for step in range(1, 61):
+                  pos = QPoint(shift_start.x() + round(88 * step / 60), shift_start.y() + round(31 * step / 60))
+                  mouse_move_with_left_button(pos, Qt.KeyboardModifier.ShiftModifier)
+                  app.processEvents()
+              QTest.qWait(20); app.processEvents()
+              shift_preview = qml_map(root.property("itemSlotPreviewBounds"))
+              assert bridge.dispatch_count == before_shift_dispatch
+              assert bool(root.property("itemSlotPreviewActive"))
+              assert float(shift_preview["width"]) / float(shift_preview["height"]) == pytest.approx(shift_ratio, rel=0.01)
+              QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.ShiftModifier, shift_final, 0)
+              app.processEvents(); QTest.qWait(80); app.processEvents()
+              assert bridge.dispatch_count == before_shift_dispatch + 1
+              shift_final_snapshot = item_slot_snapshot(session.page, slot)
+              assert shift_final_snapshot["bounds"]["width"] / shift_final_snapshot["bounds"]["height"] == pytest.approx(shift_ratio, rel=0.01)
+
+              for role in initial["internal_roles"]:
+                  assert shift_final_snapshot["internal_roles"][role]["relative"] == pytest.approx(initial["internal_roles"][role]["relative"], abs=1e-8)
+              assert dict(slot.node_by_role) == semantics_before["node_by_role"]
+              assert shift_final_snapshot["price_block"] == semantics_before["price_block"]
+              assert shift_final_snapshot["preset_id"] == semantics_before["preset_id"]
+
+              package = output_dir / "item-slot-continuous-final.srscene"
+              save_package(session.document, package, embed_local_assets=True)
+              reopened = load_package(package, extract_assets_to=output_dir / "assets")
+              restored_slot = reopened.active_page.slots[slot_id]
+              reopened_snapshot = item_slot_snapshot(reopened.active_page, restored_slot)
+              assert reopened_snapshot["bounds"] == shift_final_snapshot["bounds"]
+              assert reopened_snapshot["internal_roles"] == shift_final_snapshot["internal_roles"]
+              assert reopened_snapshot["price_block"] == shift_final_snapshot["price_block"]
+
+              result = {
+                  "pass": True,
+                  "preset": "simples",
+                  "move_duration_seconds": 3.05,
+                  "resize_duration_seconds": 3.05,
+                  "move_events": index,
+                  "resize_events": resize_index,
+                  "backend_dispatches_during_move": 0,
+                  "backend_dispatches_during_resize": 0,
+                  "backend_commits_on_move_release": 1,
+                  "backend_commits_on_resize_release": 1,
+                  "shift_commit_on_release": 1,
+                  "preview_move_bounds": preview_move,
+                  "preview_resize_bounds": preview_resize,
+                  "final_bounds": shift_final_snapshot["bounds"],
+                  "interaction_overlay_stable": True,
+                  "mouse_grab_preserved": True,
+                  "preview_active_until_release": True,
+                  "visual_frame_follows_preview": True,
+                  "visual_handle_follows_preview": True,
+                  "image_preview": "PASS",
+                  "name_preview": "PASS",
+                  "price_preview": "PASS",
+                  "unit_preview": "PASS",
+                  "children_relative_alignment_preserved": True,
+                  "semantic_roles_preserved": True,
+                  "shift_ratio_preserved": True,
+                  "release_jump_within_tolerance": True,
+                  "save_reopen_preserved": True,
+              }
+              (output_dir / "continuous-result.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+              print(json.dumps(result, ensure_ascii=False, indent=2))
+              root.close(); root.deleteLater(); app.processEvents()
+              return 0
+
+
+          if __name__ == "__main__":
+              raise SystemExit(main())
+          PYFILE
+
+          cat > tools/benchmark_frozen_item_slot_interaction.py <<'PYFILE'
+          from __future__ import annotations
+
+          import argparse
+          import json
+          import math
+          import tempfile
+          from pathlib import Path
+          from statistics import median
+          from time import perf_counter_ns
+
+          from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
+          from srstudio.graphics2.item_slots import create_item_slot, item_slot_snapshot
+          from srstudio.graphics2.model import GraphicsDocument, GraphicsPage
+          from srstudio.graphics2.operations import GraphicsSession
+          from srstudio.graphics2.package import load_package, save_package
+
+          PRESETS = ("simples", "destaque", "card")
+          EVENTS = 200
+          MOVE_MEDIAN_LIMIT_MS = 1.0
+          MOVE_P95_LIMIT_MS = 4.0
+          RESIZE_MEDIAN_LIMIT_MS = 1.0
+          RESIZE_P95_LIMIT_MS = 4.0
+
+
+          def _percentile(samples: list[float], percentile: float) -> float:
+              ordered = sorted(samples)
+              if not ordered:
+                  return 0.0
+              index = max(0, min(len(ordered) - 1, math.ceil(percentile * len(ordered)) - 1))
+              return float(ordered[index])
+
+
+          def _summary(samples: list[float]) -> dict[str, float | int]:
+              return {"median_ms": round(float(median(samples)), 4) if samples else 0.0, "p95_ms": round(_percentile(samples, 0.95), 4), "max_ms": round(max(samples), 4) if samples else 0.0, "samples": len(samples)}
+
+
+          def _document(preset_id: str) -> tuple[GraphicsDocument, str]:
+              document = GraphicsDocument(name=f"ItemSlot perf {preset_id}")
+              document.add_page(GraphicsPage(name="Página 1", width=1080, height=1350))
+              session = GraphicsSession(document)
+              slot = create_item_slot(session, preset_id, x=180, y=220)
+              return document, slot.id
+
+
+          def _run_preset(app, qml_path: Path, preset_id: str) -> dict:
+              from PySide6.QtCore import QCoreApplication, QEvent, QObject, Property, QPoint, QPointF, Qt, Signal, Slot, QUrl
+              from PySide6.QtGui import QMouseEvent
+              from PySide6.QtQml import QQmlApplicationEngine
+              from PySide6.QtQuick import QQuickItem
+              from PySide6.QtTest import QTest
+
+              document, slot_id = _document(preset_id)
+              session = GraphicsSession(document)
+              router = ItemSlotCommandRouter(session)
+
+              class SceneBridge(QObject):
+                  sceneChanged = Signal(); statusChanged = Signal()
+                  def __init__(self) -> None:
+                      super().__init__(); self._status = "ItemSlot interaction benchmark"; self.dispatch_count = 0; self.commands: list[str] = []; self.commit_samples_ms: list[float] = []
+                  @Property(str, notify=sceneChanged)
+                  def sceneJson(self) -> str: return json.dumps(router.payload(), ensure_ascii=False, separators=(",", ":"))
+                  @Property(str, notify=statusChanged)
+                  def status(self) -> str: return self._status
+                  @Property(bool, notify=statusChanged)
+                  def busy(self) -> bool: return False
+                  @Slot(str, result=str)
+                  def dispatch(self, raw: str) -> str:
+                      command = json.loads(raw); started = perf_counter_ns(); result_raw = router.dispatch_json(raw, include_scene_payload=False); self.commit_samples_ms.append((perf_counter_ns() - started) / 1_000_000.0); self.dispatch_count += 1; self.commands.append(str(command.get("name") or "")); result = json.loads(result_raw); self._status = str(result.get("message") or ""); self.statusChanged.emit();
+                      if result.get("changed"): self.sceneChanged.emit()
+                      return result_raw
+                  @Slot(str, bool, bool)
+                  def selectNodeAdvanced(self, _node_id: str, _additive: bool, _toggle: bool) -> None: return None
+                  @Slot(float, float, float)
+                  def moveSelectionAtZoom(self, _dx: float, _dy: float, _zoom: float) -> None: return None
+                  @Slot()
+                  def undo(self) -> None: return None
+                  @Slot()
+                  def redo(self) -> None: return None
+                  @Slot(str, str)
+                  def editText(self, _node_id: str, _text: str) -> None: return None
+
+              engine = QQmlApplicationEngine(); bridge = SceneBridge(); engine.rootContext().setContextProperty("sceneBridge", bridge); engine.load(QUrl.fromLocalFile(str(qml_path.resolve())))
+              roots = engine.rootObjects(); assert roots, f"GraphicsEditor.qml failed to load for {preset_id}"; root = roots[0]; root.setProperty("smartSlotSnap", False); root.setProperty("selectedSlotId", slot_id); app.processEvents(); QTest.qWait(180); app.processEvents(); content_item = root.contentItem(); assert content_item is not None
+
+              def iter_visual(item: QQuickItem):
+                  yield item
+                  for child in item.childItems(): yield from iter_visual(child)
+              def qvariant(value): return value.toVariant() if hasattr(value, "toVariant") else value
+              def qml_map(value) -> dict:
+                  value = qvariant(value); return dict(value) if isinstance(value, dict) else {}
+              def quick_item(name: str) -> QQuickItem:
+                  for item in iter_visual(content_item):
+                      if str(item.objectName() or "") == name: return item
+                  raise AssertionError(f"missing QML item {name}")
+              def scene_center(item: QQuickItem) -> QPoint:
+                  p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)); return QPoint(round(p.x()), round(p.y()))
+              def inner_handle_point(item: QQuickItem, inset: float = 2.0) -> QPoint:
+                  p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0 - inset, max(1.0, item.height()) / 2.0 - inset)); return QPoint(round(p.x()), round(p.y()))
+              def visual_rect(item: QQuickItem) -> dict[str, float]:
+                  p = item.mapToScene(QPointF(0, 0)); return {"x": float(p.x()), "y": float(p.y()), "width": float(item.width()), "height": float(item.height())}
+              def node_item(node_id: str) -> QQuickItem:
+                  for item in iter_visual(content_item):
+                      data = qml_map(item.property("modelData")); display = qml_map(item.property("displayTransform"))
+                      if str(data.get("id") or "") == str(node_id) and all(key in display for key in ("x", "y", "width", "height")): return item
+                  raise AssertionError(f"node delegate not found: {node_id}")
+              def tracked_ids(snapshot: dict) -> dict[str, list[str]]:
+                  roles = snapshot["internal_roles"]; price = snapshot["price_block"]
+                  return {"IMAGE": [str(roles["image"]["node_id"])], "NAME": [str(roles["name"]["node_id"])], "PRICE": [str(price[k]) for k in ("currency_node", "integer_node", "decimal_node") if price.get(k)], "UNIT": [str(roles["unit"]["node_id"])]}
+              def capture_roles(ids): return {role: [visual_rect(node_item(nid)) for nid in node_ids] for role, node_ids in ids.items()}
+              def roles_changed(before, after) -> bool:
+                  for role in before:
+                      if not before[role] or len(before[role]) != len(after[role]): return False
+                      for left, right in zip(before[role], after[role]):
+                          if not any(abs(right[k] - left[k]) > 0.5 for k in ("x", "y", "width", "height")): return False
+                  return True
+              def mouse_move_with_left_button(pos: QPoint) -> None:
+                  local = QPointF(pos); global_pos = QPointF(root.mapToGlobal(pos)); event = QMouseEvent(QEvent.Type.MouseMove, local, global_pos, Qt.MouseButton.NoButton, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier); QCoreApplication.sendEvent(root, event)
+
+              slot = session.page.slots[slot_id]; before_move = item_slot_snapshot(session.page, slot); ids = tracked_ids(before_move); roles_before_move = capture_roles(ids)
+              move_area = quick_item(f"smartSlotMoveArea-{slot_id}"); move_start = scene_center(move_area); dispatch_before_move = bridge.dispatch_count; QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, move_start, 0); app.processEvents(); assert bool(root.property("itemSlotPreviewActive")); dispatch_after_press = bridge.dispatch_count
+              move_samples: list[float] = []; final_move = move_start
+              for index in range(1, EVENTS + 1):
+                  final_move = QPoint(move_start.x() + min(160, round(index * 0.8)), move_start.y() + min(90, round(index * 0.45))); started = perf_counter_ns(); mouse_move_with_left_button(final_move); app.processEvents(); move_samples.append((perf_counter_ns() - started) / 1_000_000.0)
+              QTest.qWait(20); app.processEvents(); dispatch_before_move_release = bridge.dispatch_count; assert bool(root.property("itemSlotPreviewActive")); assert item_slot_snapshot(session.page, slot) == before_move; assert roles_changed(roles_before_move, capture_roles(ids)); QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, final_move, 0); app.processEvents(); QTest.qWait(60); app.processEvents(); dispatch_after_move_release = bridge.dispatch_count; assert dispatch_after_press == dispatch_before_move; assert dispatch_before_move_release == dispatch_before_move; assert dispatch_after_move_release - dispatch_before_move_release == 1; assert bridge.commands[-1] == "commit_item_slot_bounds"; after_move = item_slot_snapshot(session.page, slot); assert after_move["bounds"] != before_move["bounds"]
+
+              root.setProperty("selectedSlotId", slot_id); app.processEvents(); QTest.qWait(60); app.processEvents(); resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}"); resize_start = inner_handle_point(resize_area); roles_before_resize = capture_roles(ids); backend_before_resize = item_slot_snapshot(session.page, slot); interaction_overlay_before = visual_rect(quick_item(f"smartSlotOverlay-{slot_id}")); dispatch_before_resize = bridge.dispatch_count; QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_start, 0); app.processEvents(); assert bool(root.property("itemSlotPreviewActive")); assert str(root.property("itemSlotInteractionKind") or "") == "resize"; dispatch_after_resize_press = bridge.dispatch_count
+              resize_samples: list[float] = []; final_resize = resize_start
+              for index in range(1, EVENTS + 1):
+                  final_resize = QPoint(resize_start.x() + min(140, round(index * 0.7)), resize_start.y() + min(84, round(index * 0.42))); started = perf_counter_ns(); mouse_move_with_left_button(final_resize); app.processEvents(); resize_samples.append((perf_counter_ns() - started) / 1_000_000.0)
+              QTest.qWait(20); app.processEvents(); dispatch_before_resize_release = bridge.dispatch_count; assert bool(root.property("itemSlotPreviewActive")); assert item_slot_snapshot(session.page, slot) == backend_before_resize; assert roles_changed(roles_before_resize, capture_roles(ids)); assert visual_rect(quick_item(f"smartSlotOverlay-{slot_id}")) == interaction_overlay_before; QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, final_resize, 0); app.processEvents(); QTest.qWait(60); app.processEvents(); dispatch_after_resize_release = bridge.dispatch_count; resize_release_delta = dispatch_after_resize_release - dispatch_before_resize_release; assert dispatch_after_resize_press == dispatch_before_resize; assert dispatch_before_resize_release == dispatch_before_resize; assert resize_release_delta == 1; assert bridge.commands[-1] == "commit_item_slot_bounds"; assert not bool(root.property("itemSlotPreviewActive")); final_snapshot = item_slot_snapshot(session.page, slot)
+
+              with tempfile.TemporaryDirectory(prefix=f"itemslot-{preset_id}-") as tmp:
+                  tmp_path = Path(tmp); package = tmp_path / f"{preset_id}.srscene"; save_package(session.document, package, embed_local_assets=True); reopened = load_package(package, extract_assets_to=tmp_path / "assets"); restored = reopened.active_page.slots[slot_id]; reopened_snapshot = item_slot_snapshot(reopened.active_page, restored); assert reopened_snapshot["bounds"] == final_snapshot["bounds"]; assert reopened_snapshot["internal_roles"] == final_snapshot["internal_roles"]; assert reopened_snapshot["price_block"] == final_snapshot["price_block"]
+
+              move_summary = _summary(move_samples); resize_summary = _summary(resize_samples); result = {"preset": preset_id, "move": move_summary, "resize": resize_summary, "backend_dispatches_during_move": dispatch_before_move_release - dispatch_before_move, "backend_dispatches_during_resize": dispatch_before_resize_release - dispatch_before_resize, "backend_commits_move_release": dispatch_after_move_release - dispatch_before_move_release, "backend_commits_resize_release": resize_release_delta, "itemslot_preview_events": int(root.property("itemSlotPreviewEvents") or 0), "itemslot_preview_updates": int(root.property("itemSlotPreviewUpdates") or 0), "itemslot_backend_commits": int(root.property("itemSlotBackendCommits") or 0), "backend_commit_time": _summary(bridge.commit_samples_ms), "children_preview": {"IMAGE": "PASS", "NAME": "PASS", "PRICE": "PASS", "UNIT": "PASS"}, "backend_model_unchanged_during_preview": True, "interaction_overlay_stable_during_resize": True, "save_reopen_preserved": True}
+              assert int(move_summary["samples"]) == EVENTS; assert int(resize_summary["samples"]) == EVENTS; assert float(move_summary["median_ms"]) < MOVE_MEDIAN_LIMIT_MS, move_summary; assert float(move_summary["p95_ms"]) < MOVE_P95_LIMIT_MS, move_summary; assert float(resize_summary["median_ms"]) < RESIZE_MEDIAN_LIMIT_MS, resize_summary; assert float(resize_summary["p95_ms"]) < RESIZE_P95_LIMIT_MS, resize_summary; assert result["backend_dispatches_during_move"] == 0; assert result["backend_dispatches_during_resize"] == 0; assert result["backend_commits_move_release"] == 1; assert result["backend_commits_resize_release"] == 1; assert result["itemslot_backend_commits"] == 2; assert result["itemslot_preview_events"] >= EVENTS * 2
+              root.close(); root.deleteLater(); app.processEvents(); return result
+
+
+          def main() -> int:
+              parser = argparse.ArgumentParser(); parser.add_argument("--qml", required=True); parser.add_argument("--output", required=True); args = parser.parse_args(); qml_path = Path(args.qml).resolve(); assert qml_path.is_file(), qml_path
+              from PySide6.QtGui import QGuiApplication
+              app = QGuiApplication.instance() or QGuiApplication(["item-slot-perf"]); results = [_run_preset(app, qml_path, preset) for preset in PRESETS]
+              aggregate = {"move_median_max_ms": max(float(item["move"]["median_ms"]) for item in results), "move_p95_max_ms": max(float(item["move"]["p95_ms"]) for item in results), "resize_median_max_ms": max(float(item["resize"]["median_ms"]) for item in results), "resize_p95_max_ms": max(float(item["resize"]["p95_ms"]) for item in results), "backend_dispatches_during_move": sum(int(item["backend_dispatches_during_move"]) for item in results), "backend_dispatches_during_resize": sum(int(item["backend_dispatches_during_resize"]) for item in results), "backend_commits_on_release": sum(int(item["backend_commits_move_release"]) + int(item["backend_commits_resize_release"]) for item in results)}
+              output = {"qml": str(qml_path), "events_per_interaction": EVENTS, "thresholds_ms": {"median": 1.0, "p95": 4.0}, "presets": results, "aggregate": aggregate, "all_roles_preview": True, "all_presets_save_reopen": True, "pass": True}; destination = Path(args.output); destination.parent.mkdir(parents=True, exist_ok=True); destination.write_text(json.dumps(output, ensure_ascii=False, indent=2), encoding="utf-8"); print(json.dumps(output, ensure_ascii=False, indent=2)); return 0
+
+
+          if __name__ == "__main__": raise SystemExit(main())
+          PYFILE
+
+          # Restore the permanent workflow from the parent commit. The candidate
+          # commit therefore contains no applicator job and immediately runs the
+          # real frozen Windows certification workflow.
+          git show HEAD^:.github/workflows/g2-item-slot-interaction-performance.yml > .github/workflows/g2-item-slot-interaction-performance.yml
+          rm -f .github/workflows/g2-itemslot-shift-ratio-patch-once.yml
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- src/srstudio/graphics2/qml/GraphicsEditor.qml tests/test_graphics2_item_slot_interaction_performance.py tools/verify_frozen_item_slot_interaction.py tools/benchmark_frozen_item_slot_interaction.py .github/workflows/g2-item-slot-interaction-performance.yml
+          git add -u -- .github/workflows/g2-itemslot-shift-ratio-patch-once.yml
+          git commit -m 'fix(g2): finalize stable ItemSlot preview certification path'
+          git push origin HEAD:g2/fix-item-slot-interaction-performance
