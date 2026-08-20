@@ -1,0 +1,175 @@
+name: G2 Quinta3 Manual Slot Test Build
+
+on:
+  push:
+    branches:
+      - g2/quinta3-manual-slot-test
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-full-studio-test:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install test build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2-build]" pyinstaller
+
+      - name: Record exact source SHA
+        shell: pwsh
+        run: |
+          $sha = git rev-parse HEAD
+          "SOURCE_SHA=$sha" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "BUILD_SHA=$sha"
+
+      - name: Certified Quinta3 Studio surface and fidelity tests
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_quinta3_studio_manual_build.py tests/test_graphics2_quinta3_fidelity_contract.py tests/test_graphics2_quinta3_slot_families.py tests/test_graphics2_quinta3_slot_variant_runtime.py tests/test_graphics2_quinta3_slot_bindings.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Save reopen and host integration regression
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_item_slots.py tests/test_graphics2_item_slot_host.py tests/test_graphics2_editor_persistence.py tests/test_graphics2_package.py tests/test_graphics2_full_studio_entrypoint.py tests/test_graphics2_studio_bridge.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Compile Quinta3 host surface
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/graphics2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m ruff check src/srstudio/graphics2/item_slot_host.py src/srstudio/graphics2/slot_corpus_bindings.py src/srstudio/graphics2/slot_corpus_variant_runtime.py tests/test_graphics2_quinta3_studio_manual_build.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Studio preset visibility smoke
+        shell: pwsh
+        run: |
+          @'
+          from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
+          from srstudio.graphics2.model import GraphicsDocument
+          from srstudio.graphics2.operations import GraphicsSession
+
+          required = {
+              "quinta3-meat-strip",
+              "quinta3-wood-plaque",
+              "quinta3-compact-promo",
+              "quinta3-club-side",
+              "quinta3-stationery-round",
+          }
+          router = ItemSlotCommandRouter(GraphicsSession(GraphicsDocument(name="Quinta3 packaged Studio smoke")))
+          payload = router.payload()
+          visible = {str(item.get("id") or "") for item in payload["editor"]["item_slot_presets"]}
+          missing = sorted(required - visible)
+          assert not missing, f"Presets ausentes do payload real do Studio: {missing}"
+          for preset_id in sorted(required):
+              result = router.dispatch({"name": "add_item_slot", "preset_id": preset_id})
+              assert result.ok and result.changed, (preset_id, result)
+          saved = router.session.document.to_dict()
+          reopened = GraphicsDocument.from_dict(saved)
+          reopened_payload = ItemSlotCommandRouter(GraphicsSession(reopened)).payload()
+          reopened_visible = {str(item.get("id") or "") for item in reopened_payload["editor"]["item_slot_presets"]}
+          assert required <= reopened_visible
+          print("PRESETS_AVAILABLE=" + ",".join(sorted(required)))
+          print("CREATE=PASS")
+          print("SAVE_REOPEN=PASS")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build full SR Studio shell
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "SR Studio 5.exe não foi gerado" }
+
+      - name: Build certified Graphics2 child host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $source = "dist/graphics2-host/SRGraphicsEngine2Host"
+          if (!(Test-Path "$source/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host não foi gerado" }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
+          Copy-Item "$source/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host não foi incorporado ao SR Studio" }
+
+      - name: Verify packaged Graphics2 runtime
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from srstudio.graphics2.host_runtime import validate_runtime_host
+
+          root = Path(r"dist/SR Studio 5/Graphics2Host").resolve()
+          report = validate_runtime_host(root, full=True)
+          assert report.ok, report
+          assert report.executable.name == "SRGraphicsEngine2Host.exe"
+          print(f"RUNTIME_OK={report.ok}")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $hostExe = "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe"
+          $process = Start-Process -FilePath $hostExe -ArgumentList "--version" -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) { throw "Graphics2Host --version falhou com exit code $($process.ExitCode)" }
+
+      - name: Verify full test package layout
+        shell: pwsh
+        run: |
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Shell ausente" }
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "G2 ausente" }
+          $qtQuick = Get-ChildItem "dist/SR Studio 5/Graphics2Host" -Recurse -File | Where-Object { $_.Name -match 'Qt6Quick|QtQuick' } | Select-Object -First 1
+          if ($null -eq $qtQuick) { throw "Runtime Qt Quick ausente do host" }
+          $logo = Get-ChildItem "dist/SR Studio 5" -Recurse -File -Filter "SR_logo.png" | Select-Object -First 1
+          if ($null -eq $logo) { throw "Assets do SR Studio ausentes" }
+
+      - name: Create Quinta3 manual user package and provenance
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $package = "release/SR-Studio-Quinta3-Manual-Test-Windows-x64.zip"
+          Compress-Archive -Path "dist/SR Studio 5/*" -DestinationPath $package -Force
+          $hash = (Get-FileHash $package -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $package).Length
+          $provenance = [ordered]@{
+            schema = "srstudio/g2-quinta3-manual-slot-test-1"
+            source_sha = $env:SOURCE_SHA
+            certified_base_sha = "4137214f49a11cf797c5266a444e6b666434fa1c"
+            package = "SR-Studio-Quinta3-Manual-Test-Windows-x64.zip"
+            package_sha256 = $hash
+            package_bytes = $size
+            shell_executable = "SR Studio 5.exe"
+            graphics2_executable = "Graphics2Host/SRGraphicsEngine2Host.exe"
+            presets = @(
+              "quinta3-meat-strip",
+              "quinta3-wood-plaque",
+              "quinta3-compact-promo",
+              "quinta3-club-side",
+              "quinta3-stationery-round"
+            )
+            purpose = "BETA TEST BUILD - manual visual validation of five certified Quinta3 Smart ItemSlots"
+          }
+          $provenance | ConvertTo-Json -Depth 6 | Out-File "release/quinta3-manual-test-provenance.json" -Encoding utf8
+          Write-Host "PACKAGE=$package"
+          Write-Host "PACKAGE_SHA256=$hash"
+          Write-Host "PACKAGE_BYTES=$size"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR-Studio-Quinta3-Manual-Test-Windows-x64
+          path: |
+            release/SR-Studio-Quinta3-Manual-Test-Windows-x64.zip
+            release/quinta3-manual-test-provenance.json
+          if-no-files-found: error
+          retention-days: 30
