@@ -121,5 +121,5 @@ def test_qml_manual_item_slot_uses_stable_resize_hitbox_and_one_release_command(
     assert "slotOverlay.displayBounds.width - slotOverlay.interactionBounds.width" in qml
     assert "enabled: !slotOverlay.isManualItemSlot" not in qml
     assert "manualItemSlotResizeHandler" not in qml
-    assert "slotOverlay.queuePreview(resizedBounds(point.x, point.y), false)" in qml
-    assert "slotOverlay.commitPreview(resizedBounds(point.x, point.y), \"resize\")" in qml
+    assert "slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)" in qml
+    assert "slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), \"resize\")" in qml
