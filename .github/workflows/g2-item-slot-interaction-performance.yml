@@ -1,3 +1,4 @@
+# Permanent P1 gate: do not relax the 1ms median / 4ms p95 thresholds.
 name: G2 ItemSlot Interaction Performance
 
 on:
