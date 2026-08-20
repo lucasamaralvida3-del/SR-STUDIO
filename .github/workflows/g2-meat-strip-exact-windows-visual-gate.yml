@@ -1,0 +1,154 @@
+name: G2 Meat Strip Exact Windows Visual Gate
+
+on:
+  push:
+    branches:
+      - g2/quinta3-meat-strip-windows-visual-gate
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-visual-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      REQUESTED_SHA: b6be9f85e18ae9065affa4006f54b18e81acf7f8
+      FIXTURE_BLOB_SHA: ea262539ed4edda9c94569126f1667e4e97c92c0
+    steps:
+      - name: Checkout visual-gate harness branch
+        uses: actions/checkout@v4
+        with:
+          ref: g2/quinta3-meat-strip-windows-visual-gate
+          path: harness
+          fetch-depth: 1
+
+      - name: Checkout exact source SHA
+        uses: actions/checkout@v4
+        with:
+          ref: b6be9f85e18ae9065affa4006f54b18e81acf7f8
+          path: source
+          fetch-depth: 1
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: source/pyproject.toml
+
+      - name: Prove requested SHA equals checked out SHA
+        shell: pwsh
+        working-directory: source
+        run: |
+          $checked = (git rev-parse HEAD).Trim()
+          Write-Host "REQUESTED_SHA=$env:REQUESTED_SHA"
+          Write-Host "CHECKED_OUT_SHA=$checked"
+          if ($checked -ne $env:REQUESTED_SHA) {
+            throw "EXACT SHA FAILURE: requested=$env:REQUESTED_SHA checked_out=$checked"
+          }
+          Write-Host "REQUESTED_EQUALS_CHECKED_OUT=PASS"
+
+      - name: Restore exact PPTX visual-gate fixture
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          $headers = @{
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            Accept = "application/vnd.github+json"
+            "X-GitHub-Api-Version" = "2022-11-28"
+          }
+          $uri = "https://api.github.com/repos/${{ github.repository }}/git/blobs/$env:FIXTURE_BLOB_SHA"
+          $blob = Invoke-RestMethod -Headers $headers -Uri $uri -Method Get
+          if ($blob.encoding -ne "base64") { throw "Unexpected blob encoding: $($blob.encoding)" }
+          $raw = [Convert]::FromBase64String(($blob.content -replace '\s',''))
+          New-Item -ItemType Directory -Force -Path "harness/diagnostic" | Out-Null
+          [IO.File]::WriteAllBytes("harness/diagnostic/meat_visual_gate_fixture.zip", $raw)
+          Expand-Archive -Path "harness/diagnostic/meat_visual_gate_fixture.zip" -DestinationPath "harness/diagnostic/meat_visual_gate_fixture" -Force
+
+          $expected = [ordered]@{
+            "harness/diagnostic/meat_visual_gate_fixture/assets/image3.png" = "9458fe6054535e4411834407c9af9af24f35d2946f8f027f26f416023a441e3d"
+            "harness/diagnostic/meat_visual_gate_fixture/assets/image5.png" = "2dbde9ce6a7cae99bee9d25647af23b3134b1ad680fdbd558946cb05edfcae0e"
+            "harness/diagnostic/meat_visual_gate_fixture/assets/image4.png" = "3a747c31bfe3aa8ae2326ec91f523f59c400aab069f3d3e94512c500b3a1fad3"
+            "harness/diagnostic/meat_visual_gate_fixture/assets/image6.png" = "b2b40eb4f871b131d4c21d7ae40d7a9d0c4232c740ef8fa396b01f1948c35524"
+            "harness/diagnostic/meat_visual_gate_fixture/reference/meat_original_anton.png" = "1d86434942c731b24d448b2a3f1f5b303fff71860e313c37ca200e352d76a6e7"
+            "harness/diagnostic/meat_visual_gate_fixture/fonts/anton_embedded.ttf" = "9c306606325bb3396711d7d1699fe45c1061ede2315fa217ae034bb0236edda7"
+            "harness/diagnostic/meat_visual_gate_fixture/visual_gate.py" = "8288923ee8fb87d3de5e2a8d24385cebc1df1f0b1030d28048af80aad795866e"
+          }
+          foreach ($pair in $expected.GetEnumerator()) {
+            if (!(Test-Path $pair.Key)) { throw "Fixture file missing: $($pair.Key)" }
+            $actual = (Get-FileHash $pair.Key -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $pair.Value) { throw "Fixture SHA mismatch: $($pair.Key) actual=$actual expected=$($pair.Value)" }
+          }
+          Write-Host "EXACT_PPTX_VISUAL_FIXTURE=PASS"
+
+      - name: Install exact source Windows Qt runtime
+        shell: pwsh
+        working-directory: source
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+
+      - name: Recheck full-card structural and save-reopen gates
+        shell: pwsh
+        working-directory: source
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m pytest -q tests/test_graphics2_quinta3_meat_full_card.py tests/test_graphics2_quinta3_fidelity_contract.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          Write-Host "FULL_CARD_TEST=PASS"
+          Write-Host "SAVE_REOPEN=PASS"
+
+      - name: Real Anton gate plus G2 Qt render plus GraphicsEditor screenshot
+        shell: pwsh
+        working-directory: source
+        env:
+          QT_QPA_PLATFORM: offscreen
+          QT_QUICK_BACKEND: software
+          QSG_RHI_BACKEND: software
+          MEAT_VISUAL_OUT: ${{ github.workspace }}\visual-out
+        run: |
+          python "${{ github.workspace }}\harness\diagnostic\meat_visual_gate_fixture\visual_gate.py"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate real visual evidence surfaces
+        shell: pwsh
+        run: |
+          $files = @(
+            "visual-out/meat-strip-g2-windows.png",
+            "visual-out/meat-strip-original-vs-g2.png",
+            "visual-out/meat-strip-studio-qtquick.png",
+            "visual-out/meat-strip-four-products.srscene.json",
+            "visual-out/visual-regions.json",
+            "visual-out/visual-gate-summary.json"
+          )
+          foreach ($file in $files) {
+            if (!(Test-Path $file)) { throw "Visual evidence missing: $file" }
+            if ((Get-Item $file).Length -le 0) { throw "Visual evidence empty: $file" }
+          }
+          $summary = Get-Content "visual-out/visual-gate-summary.json" -Raw | ConvertFrom-Json
+          if ($summary.requested_sha -ne $env:REQUESTED_SHA) { throw "Summary requested SHA mismatch" }
+          if ($summary.checked_out_sha -ne $env:REQUESTED_SHA) { throw "Summary checked-out SHA mismatch" }
+          if ($summary.requested_font -ne "Anton") { throw "Unexpected requested font" }
+          if ($summary.resolved_font.ToLowerInvariant() -ne "anton") { throw "Anton fallback detected: $($summary.resolved_font)" }
+          if (-not $summary.exact_font_match) { throw "QFontInfo exactMatch is false" }
+          if ($summary.font_fallback) { throw "Font fallback reported: $($summary.font_fallback)" }
+          Write-Host "ANTON_RUNTIME_GATE=PASS"
+          Write-Host "G2_REAL_RENDER=PASS"
+          Write-Host "GRAPHICSEDITOR_QT_QUICK_SCREENSHOT=PASS"
+          Get-Content "visual-out/visual-gate-summary.json"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: MeatStrip-Windows-Visual-Evidence-b6be9f85
+          path: |
+            visual-out/meat-strip-g2-windows.png
+            visual-out/meat-strip-original-vs-g2.png
+            visual-out/meat-strip-studio-qtquick.png
+            visual-out/meat-strip-four-products.srscene.json
+            visual-out/visual-regions.json
+            visual-out/visual-gate-summary.json
+          if-no-files-found: error
+          retention-days: 30
