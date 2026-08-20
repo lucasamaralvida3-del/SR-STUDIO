@@ -1,0 +1,45 @@
+name: G2 ItemSlot QML Patch Runner
+
+on:
+  push:
+    branches:
+      - g2/tmp-itemslot-perf-patch-base
+
+permissions:
+  contents: write
+
+jobs:
+  patch-head:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/fix-item-slot-interaction-performance
+          fetch-depth: 0
+      - name: Execute guarded patch embedded in staging workflow
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/g2-itemslot-qml-patch-once.yml').read_text(encoding='utf-8')
+          marker = "          python - <<'PY'\n"
+          start = source.index(marker) + len(marker)
+          end = source.index("\n          PY\n", start)
+          lines = source[start:end].splitlines()
+          script = "\n".join(line[10:] if line.startswith("          ") else line for line in lines)
+          exec(compile(script, '<guarded-itemslot-qml-patch>', 'exec'), {'__name__': '__main__'})
+          PY
+          git diff --check
+          git diff -- src/srstudio/graphics2/qml/GraphicsEditor.qml
+      - name: Commit QML source change to performance branch
+        shell: bash
+        run: |
+          if git diff --quiet -- src/srstudio/graphics2/qml/GraphicsEditor.qml; then
+            echo "No QML patch generated"
+            exit 0
+          fi
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/srstudio/graphics2/qml/GraphicsEditor.qml
+          git commit -m 'fix(g2): add local ItemSlot preview interaction'
+          git push origin HEAD:g2/fix-item-slot-interaction-performance
