@@ -46,7 +46,8 @@ def _document(preset_id: str) -> tuple[GraphicsDocument, str]:
 
 
 def _run_preset(app, qml_path: Path, preset_id: str) -> dict:
-    from PySide6.QtCore import QObject, Property, QPoint, QPointF, Qt, Signal, Slot, QUrl
+    from PySide6.QtCore import QCoreApplication, QEvent, QObject, Property, QPoint, QPointF, Qt, Signal, Slot, QUrl
+    from PySide6.QtGui import QMouseEvent
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtQuick import QQuickItem
     from PySide6.QtTest import QTest
@@ -144,6 +145,19 @@ def _run_preset(app, qml_path: Path, preset_id: str) -> dict:
         p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0))
         return QPoint(round(p.x()), round(p.y()))
 
+    def mouse_move_with_left_button(pos: QPoint) -> None:
+        local = QPointF(pos)
+        global_pos = QPointF(root.mapToGlobal(pos))
+        event = QMouseEvent(
+            QEvent.Type.MouseMove,
+            local,
+            global_pos,
+            Qt.MouseButton.NoButton,
+            Qt.MouseButton.LeftButton,
+            Qt.KeyboardModifier.NoModifier,
+        )
+        QCoreApplication.sendEvent(root, event)
+
     slot = session.page.slots[slot_id]
     before_move = item_slot_snapshot(session.page, slot)
     move_area = quick_item(f"smartSlotMoveArea-{slot_id}")
@@ -185,16 +199,14 @@ def _run_preset(app, qml_path: Path, preset_id: str) -> dict:
     dispatch_after_resize_press = bridge.dispatch_count
     resize_samples: list[float] = []
     final_resize = resize_start
-    # High-frequency microbenchmark: keep the synthetic pointer within the
-    # 11px handle while dispatching 200 events as fast as possible. A separate
-    # frozen gate below covers a large 3-second resize at real frame cadence.
-    # This preserves the grab while measuring only per-event preview cost.
+    # High-frequency microbenchmark: 200 held-button move events. The
+    # continuous frozen gate below covers a large 3-second real-cadence resize.
     for index in range(1, EVENTS + 1):
         dx = (index % 7) - 3
         dy = ((index * 3) % 7) - 3
         final_resize = QPoint(resize_start.x() + dx, resize_start.y() + dy)
         started = perf_counter_ns()
-        QTest.mouseMove(root, final_resize, 0)
+        mouse_move_with_left_button(final_resize)
         app.processEvents()
         resize_samples.append((perf_counter_ns() - started) / 1_000_000.0)
     dispatch_before_resize_release = bridge.dispatch_count
