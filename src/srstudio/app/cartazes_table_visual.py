@@ -107,6 +107,7 @@ class _CartazesTableVisualMixin:
         self._cartazes_initial_selection_normalized = False
         self._poster_copies_editor = None
         self._poster_copies_product_id = ""
+        self._poster_selection_before_copy_click: tuple[str, ...] = ()
         super()._build()
         self._configure_cartazes_table_style()
         self.after_idle(self._finish_cartazes_first_paint)
@@ -114,6 +115,10 @@ class _CartazesTableVisualMixin:
     def _configure_editable_tree(self) -> None:
         super()._configure_editable_tree()
         if not self.is_wholesale:
+            # Remember the selection before Tk's Treeview class binding handles the
+            # click. Editing the copy count must not silently deselect the rest of the
+            # print batch.
+            self.tree.bind("<ButtonPress-1>", self._remember_poster_selection_before_copy_click, add="+")
             self.tree.bind("<ButtonRelease-1>", self._maybe_open_poster_copies_editor, add="+")
 
     def _ensure_extra_columns(self) -> None:
@@ -390,12 +395,30 @@ class _CartazesTableVisualMixin:
         except (ValueError, IndexError):
             return ""
 
+    def _remember_poster_selection_before_copy_click(self, event) -> None:
+        if self.is_wholesale or self._tree_column_key(event) != PROMOTION_COPY_COLUMN:
+            return
+        self._poster_selection_before_copy_click = tuple(self.tree.selection())
+
     def _maybe_open_poster_copies_editor(self, event) -> None:
         if self.is_wholesale or self._tree_column_key(event) != PROMOTION_COPY_COLUMN:
             return
         row = self.tree.identify_row(event.y)
         if not row:
+            self._poster_selection_before_copy_click = ()
             return
+
+        # Restore the exact batch selection that existed before the quantity cell was
+        # clicked. The quantity control is an editor, not a selection toggle.
+        previous = tuple(getattr(self, "_poster_selection_before_copy_click", ()))
+        current = tuple(self.tree.selection())
+        valid_previous = [iid for iid in previous if self.tree.exists(iid)]
+        if valid_previous:
+            self.tree.selection_set(valid_previous)
+        elif current:
+            self.tree.selection_remove(*current)
+        self._poster_selection_before_copy_click = ()
+
         column_id = self.tree.identify_column(event.x)
         bbox = self.tree.bbox(row, column_id)
         if bbox:
