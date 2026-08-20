@@ -1,0 +1,67 @@
+name: G2 Visual Final One Shot
+
+on:
+  push:
+    branches:
+      - g2/reconcile-studio-ui-with-itemslot-perf
+    paths:
+      - '.github/workflows/g2-visual-final-one-shot.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-visual-only-final-adjustments:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/reconcile-studio-ui-with-itemslot-perf
+          fetch-depth: 0
+
+      - name: Apply visual-only reconciliation adjustments
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = path.read_text(encoding='utf-8')
+          old = text
+          text = text.replace('readonly property bool tightUi: width < 1320', 'readonly property bool tightUi: width < 1400', 1)
+          header = '''            gradient: Gradient {\n                orientation: Gradient.Horizontal\n                GradientStop { position: 0.0; color: "#201B4C" }\n                GradientStop { position: 0.23; color: "#5B3FEA" }\n                GradientStop { position: 0.72; color: "#477AF1" }\n                GradientStop { position: 1.0; color: "#18BEBB" }\n            }\n\n            RowLayout {'''
+          header_new = '''            gradient: Gradient {\n                orientation: Gradient.Horizontal\n                GradientStop { position: 0.0; color: "#201B4C" }\n                GradientStop { position: 0.23; color: "#5B3FEA" }\n                GradientStop { position: 0.72; color: "#477AF1" }\n                GradientStop { position: 1.0; color: "#18BEBB" }\n            }\n\n            Rectangle {\n                anchors.left: parent.left\n                anchors.top: parent.top\n                anchors.bottom: parent.bottom\n                width: window.studioLeftDockWidth\n                color: theme.navPanel\n            }\n\n            RowLayout {'''
+          if header not in text:
+              raise SystemExit('top bar visual anchor not found')
+          text = text.replace(header, header_new, 1)
+          footer = '''    Rectangle {\n        id: pageFooter\n        anchors.left: parent.left'''
+          footer_new = '''    Rectangle {\n        id: pageFooter\n        visible: (scene.pages || []).length > 1\n        anchors.left: parent.left'''
+          if footer not in text:
+              raise SystemExit('page footer visual anchor not found')
+          text = text.replace(footer, footer_new, 1)
+          if text == old:
+              raise SystemExit('no visual changes applied')
+          # Guard performance architecture by requiring critical tokens untouched.
+          for token in (
+              'property bool itemSlotPreviewActive: false',
+              'property string itemSlotPreviewSlotId: ""',
+              'function manualItemSlotForNode(nodeId)',
+              'function itemSlotDisplayTransform(node)',
+              'function queuePreview',
+              'function commitPreview',
+              '"name": "commit_item_slot_bounds"',
+          ):
+              if token not in text:
+                  raise SystemExit(f'performance invariant token missing: {token}')
+          path.write_text(text, encoding='utf-8')
+          PY
+
+      - name: Commit adjustment and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/g2-visual-final-one-shot.yml
+          git add src/srstudio/graphics2/qml/GraphicsEditor.qml
+          git diff --cached --check
+          git commit -m "style(g2): finalize Studio chrome against approved target"
+          git push origin HEAD:g2/reconcile-studio-ui-with-itemslot-perf
