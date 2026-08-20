@@ -34,7 +34,7 @@ def bind_product_to_quinta3_slot(session: GraphicsSession, slot_id: str, product
 
         extras = slot.metadata.get("extra_bindings")
         extras = extras if isinstance(extras, dict) else {}
-        _bind_image_copies(page, slot, extras)
+        _bind_image_copies(page, slot, extras, product)
 
         secondary = _secondary_price_value(product)
         if secondary not in (None, "") and all(key in extras for key in ("app_price_integer", "app_price_cents")):
@@ -64,21 +64,33 @@ def bind_product_to_quinta3_slot(session: GraphicsSession, slot_id: str, product
     return True
 
 
-def _bind_image_copies(page, slot, extras: dict[str, Any]) -> None:
+def _bind_image_copies(page, slot, extras: dict[str, Any], product: dict[str, Any]) -> None:
     source = page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
-    if source is None:
+    if source is None or source.kind is not NodeKind.IMAGE:
         return
+
+    # Keep the generic binder as the primary path, but make the supervised
+    # multi-node contract explicit here.  This also covers callers that provide
+    # only ``image_asset_id`` and no filesystem image source.
+    asset_id = str(product.get("image_asset_id") or source.asset_id or "")
+    image_source = str(product.get("image_path") or product.get("image") or source.metadata.get("bound_image_source") or "")
+    if asset_id:
+        source.asset_id = asset_id
+    if image_source:
+        source.metadata["bound_image_source"] = image_source
+    source.metadata["placeholder"] = False
+
     raw_ids = extras.get(BindingRole.IMAGE.value)
     ids = raw_ids if isinstance(raw_ids, (list, tuple)) else []
     for raw_id in ids:
         node = page.node(str(raw_id or ""))
         if node is None or node.kind is not NodeKind.IMAGE:
             continue
-        node.asset_id = source.asset_id
+        node.asset_id = asset_id
         node.style = deepcopy(source.style)
-        node.metadata.pop("placeholder", None)
-        if source.metadata.get("bound_image_source"):
-            node.metadata["bound_image_source"] = source.metadata["bound_image_source"]
+        node.metadata["placeholder"] = False
+        if image_source:
+            node.metadata["bound_image_source"] = image_source
         if source.metadata.get("image_sha256"):
             node.metadata["image_sha256"] = source.metadata["image_sha256"]
 
