@@ -27,6 +27,14 @@ ApplicationWindow {
     property int smartSlotPreviewEvents: 0
     property int smartSlotPreviewUpdates: 0
     property string smartSlotInteractionKind: ""
+    property bool itemSlotPreviewActive: false
+    property string itemSlotPreviewSlotId: ""
+    property var itemSlotPreviewStartBounds: ({"x":0,"y":0,"width":1,"height":1})
+    property var itemSlotPreviewBounds: ({"x":0,"y":0,"width":1,"height":1})
+    property int itemSlotPreviewEvents: 0
+    property int itemSlotPreviewUpdates: 0
+    property int itemSlotBackendCommits: 0
+    property string itemSlotInteractionKind: ""
     property var anchorNode: selectedNode()
     property var draggedProduct: null
     property bool productDragActive: false
@@ -71,6 +79,48 @@ ApplicationWindow {
 
     function isSelected(node) {
         return selectedIds().indexOf(node.id) >= 0
+    }
+
+    function manualItemSlotForNode(nodeId) {
+        if (!page || !nodeId)
+            return null
+        var current = page.nodes[String(nodeId)]
+        var guard = 0
+        while (current && guard++ < 128) {
+            var metadata = current.metadata || {}
+            var slotId = String(metadata.item_slot_id || "")
+            if (slotId && page.slots && page.slots[slotId]) {
+                var slot = page.slots[slotId]
+                var slotMetadata = slot.metadata || {}
+                if (slotMetadata.manual_item_slot)
+                    return slot
+            }
+            var parentId = String(current.parent_id || "")
+            current = parentId && page.nodes[parentId] ? page.nodes[parentId] : null
+        }
+        return null
+    }
+
+    function itemSlotDisplayTransform(node) {
+        var t = node && node.transform ? node.transform : {"x":0,"y":0,"width":1,"height":1}
+        var base = {"x":Number(t.x || 0),"y":Number(t.y || 0),"width":Math.max(1,Number(t.width || 1)),"height":Math.max(1,Number(t.height || 1))}
+        if (!itemSlotPreviewActive || !node)
+            return base
+        var slot = manualItemSlotForNode(node.id)
+        if (!slot || String(slot.id || "") !== itemSlotPreviewSlotId)
+            return base
+        var start = itemSlotPreviewStartBounds
+        var preview = itemSlotPreviewBounds
+        var startW = Math.max(0.000001, Number(start.width || 1))
+        var startH = Math.max(0.000001, Number(start.height || 1))
+        var sx = Math.max(0.000001, Number(preview.width || 1)) / startW
+        var sy = Math.max(0.000001, Number(preview.height || 1)) / startH
+        return {
+            "x":Number(preview.x || 0) + (base.x - Number(start.x || 0)) * sx,
+            "y":Number(preview.y || 0) + (base.y - Number(start.y || 0)) * sy,
+            "width":Math.max(1, base.width * sx),
+            "height":Math.max(1, base.height * sy)
+        }
     }
 
     function effectiveVisible(node) {
@@ -680,10 +730,11 @@ ApplicationWindow {
                                 delegate: Item {
                                     id: nodeItem
                                     required property var modelData
-                                    x: modelData.transform.x * zoom
-                                    y: modelData.transform.y * zoom
-                                    width: Math.max(1, modelData.transform.width * zoom)
-                                    height: Math.max(1, modelData.transform.height * zoom)
+                                    property var displayTransform: window.itemSlotDisplayTransform(modelData)
+                                    x: displayTransform.x * zoom
+                                    y: displayTransform.y * zoom
+                                    width: Math.max(1, displayTransform.width * zoom)
+                                    height: Math.max(1, displayTransform.height * zoom)
                                     rotation: Number(modelData.transform.rotation || 0)
                                     opacity: effectiveOpacity(modelData)
                                     visible: modelData.kind !== "group" || isSelected(modelData)
@@ -802,11 +853,20 @@ ApplicationWindow {
                                     MouseArea {
                                         anchors.fill: parent
                                         acceptedButtons: Qt.LeftButton
-                                        drag.target: parent
+                                        drag.target: window.manualItemSlotForNode(modelData.id) ? null : parent
                                         enabled: !effectiveLocked(modelData)
                                         preventStealing: true
-                                        onPressed: sceneBridge.selectNodeAdvanced(modelData.id, (mouse.modifiers & Qt.ShiftModifier) !== 0, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                                        onPressed: {
+                                            var manualSlot = window.manualItemSlotForNode(modelData.id)
+                                            if (manualSlot) {
+                                                selectedSlotId = String(manualSlot.id || "")
+                                                return
+                                            }
+                                            sceneBridge.selectNodeAdvanced(modelData.id, (mouse.modifiers & Qt.ShiftModifier) !== 0, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                                        }
                                         onReleased: {
+                                            if (window.manualItemSlotForNode(modelData.id))
+                                                return
                                             var dx = (parent.x / zoom) - Number(modelData.transform.x)
                                             var dy = (parent.y / zoom) - Number(modelData.transform.y)
                                             if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001)
@@ -832,6 +892,8 @@ ApplicationWindow {
                                     property int previewUpdateCount: 0
                                     property real previewIntervalMs: 16
                                     property var displayBounds: previewActive ? preview_bounds : bounds
+                                    property bool isManualItemSlot: !!(modelData.metadata && modelData.metadata.manual_item_slot)
+                                    property bool slotEditActive: isManualItemSlot || smartSlotEditMode
                                     property bool isDropTarget: productDragActive && dragHoverSlotId === modelData.id
                                     property bool isSelectedSlot: selectedSlotId === modelData.id
                                     property bool isHoveredSlot: hoveredSlotId === modelData.id
@@ -881,6 +943,13 @@ ApplicationWindow {
                                         previewEventCount = 0
                                         previewUpdateCount = 0
                                         window.smartSlotInteractionKind = String(kind || "")
+                                        if (isManualItemSlot) {
+                                            window.itemSlotPreviewActive = true
+                                            window.itemSlotPreviewSlotId = String(modelData.id || "")
+                                            window.itemSlotPreviewStartBounds = value
+                                            window.itemSlotPreviewBounds = value
+                                            window.itemSlotInteractionKind = String(kind || "")
+                                        }
                                     }
 
                                     function queuePreview(raw, force) {
@@ -888,7 +957,10 @@ ApplicationWindow {
                                             return
                                         pendingPreviewBounds = snapPreview(raw)
                                         previewEventCount += 1
-                                        window.smartSlotPreviewEvents += 1
+                                        if (isManualItemSlot)
+                                            window.itemSlotPreviewEvents += 1
+                                        else
+                                            window.smartSlotPreviewEvents += 1
                                         var now = Date.now()
                                         if (force || lastPreviewAppliedMs <= 0 || now - lastPreviewAppliedMs >= previewIntervalMs) {
                                             applyPendingPreview()
@@ -903,7 +975,12 @@ ApplicationWindow {
                                         preview_bounds = pendingPreviewBounds
                                         lastPreviewAppliedMs = Date.now()
                                         previewUpdateCount += 1
-                                        window.smartSlotPreviewUpdates += 1
+                                        if (isManualItemSlot) {
+                                            window.itemSlotPreviewUpdates += 1
+                                            window.itemSlotPreviewBounds = preview_bounds
+                                        } else {
+                                            window.smartSlotPreviewUpdates += 1
+                                        }
                                     }
 
                                     function commitPreview(raw, kind) {
@@ -912,8 +989,9 @@ ApplicationWindow {
                                         queuePreview(raw, true)
                                         var finalBounds = preview_bounds
                                         var started = Date.now()
+                                        var commandName = isManualItemSlot ? "commit_item_slot_bounds" : "adjust_smart_slot"
                                         sceneBridge.dispatch(JSON.stringify({
-                                            "name":"adjust_smart_slot",
+                                            "name":commandName,
                                             "slot_id":slotOverlay.modelData.id,
                                             "x":finalBounds.x,
                                             "y":finalBounds.y,
@@ -921,8 +999,15 @@ ApplicationWindow {
                                             "height":finalBounds.height,
                                             "snap":smartSlotSnap
                                         }))
-                                        window.smartSlotLastCommitMs = Math.max(0, Date.now() - started)
-                                        window.smartSlotInteractionKind = String(kind || "")
+                                        if (isManualItemSlot) {
+                                            window.itemSlotBackendCommits += 1
+                                            window.itemSlotInteractionKind = String(kind || "")
+                                            window.itemSlotPreviewActive = false
+                                            window.itemSlotPreviewSlotId = ""
+                                        } else {
+                                            window.smartSlotLastCommitMs = Math.max(0, Date.now() - started)
+                                            window.smartSlotInteractionKind = String(kind || "")
+                                        }
                                         previewActive = false
                                         previewTimer.stop()
                                     }
@@ -956,7 +1041,7 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         acceptedButtons: Qt.LeftButton
                                         hoverEnabled: true
-                                        preventStealing: smartSlotEditMode
+                                        preventStealing: slotOverlay.slotEditActive
                                         property real startGlobalX: 0
                                         property real startGlobalY: 0
                                         property var startBounds: ({"x":0,"y":0,"width":1,"height":1})
@@ -964,7 +1049,7 @@ ApplicationWindow {
                                         onExited: if (hoveredSlotId === slotOverlay.modelData.id) hoveredSlotId = ""
                                         onPressed: {
                                             selectedSlotId = slotOverlay.modelData.id
-                                            if (!smartSlotEditMode)
+                                            if (!slotOverlay.slotEditActive)
                                                 return
                                             var point = mapToItem(sheet, mouse.x, mouse.y)
                                             startGlobalX = point.x / zoom
@@ -974,7 +1059,7 @@ ApplicationWindow {
                                         }
                                         onClicked: selectedSlotId = slotOverlay.modelData.id
                                         onPositionChanged: {
-                                            if (!pressed || !smartSlotEditMode || !slotOverlay.previewActive)
+                                            if (!pressed || !slotOverlay.slotEditActive || !slotOverlay.previewActive)
                                                 return
                                             var point = mapToItem(sheet, mouse.x, mouse.y)
                                             var dx = point.x / zoom - startGlobalX
@@ -987,7 +1072,7 @@ ApplicationWindow {
                                             }, false)
                                         }
                                         onReleased: {
-                                            if (!smartSlotEditMode || !slotOverlay.previewActive)
+                                            if (!slotOverlay.slotEditActive || !slotOverlay.previewActive)
                                                 return
                                             var point = mapToItem(sheet, mouse.x, mouse.y)
                                             var dx = point.x / zoom - startGlobalX
@@ -1000,6 +1085,10 @@ ApplicationWindow {
                                             }, "move")
                                         }
                                         onCanceled: {
+                                            if (slotOverlay.isManualItemSlot) {
+                                                window.itemSlotPreviewActive = false
+                                                window.itemSlotPreviewSlotId = ""
+                                            }
                                             slotOverlay.previewActive = false
                                             previewTimer.stop()
                                         }
@@ -1018,7 +1107,7 @@ ApplicationWindow {
                                         delegate: Rectangle {
                                             required property var modelData
                                             objectName: "smartSlotHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
-                                            visible: smartSlotEditMode && slotOverlay.isSelectedSlot
+                                            visible: slotOverlay.slotEditActive && slotOverlay.isSelectedSlot
                                             width: 11; height: 11; radius: 2
                                             x: modelData.fx * slotOverlay.width - width / 2
                                             y: modelData.fy * slotOverlay.height - height / 2
@@ -1076,6 +1165,10 @@ ApplicationWindow {
                                                     slotOverlay.commitPreview(resizedBounds(point.x, point.y), "resize")
                                                 }
                                                 onCanceled: {
+                                                    if (slotOverlay.isManualItemSlot) {
+                                                        window.itemSlotPreviewActive = false
+                                                        window.itemSlotPreviewSlotId = ""
+                                                    }
                                                     slotOverlay.previewActive = false
                                                     previewTimer.stop()
                                                 }
@@ -1087,7 +1180,7 @@ ApplicationWindow {
 
                             Item {
                                 id: selectionOverlay
-                                visible: anchorNode && page && effectiveVisible(anchorNode)
+                                visible: anchorNode && page && effectiveVisible(anchorNode) && !window.manualItemSlotForNode(anchorNode.id)
                                 x: visible ? anchorNode.transform.x * zoom : 0
                                 y: visible ? anchorNode.transform.y * zoom : 0
                                 width: visible ? Math.max(1, anchorNode.transform.width * zoom) : 1
