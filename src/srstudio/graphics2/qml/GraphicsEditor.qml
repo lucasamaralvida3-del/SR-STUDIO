@@ -555,6 +555,8 @@ ApplicationWindow {
                 }
                 ToolButton { text: "Snap"; visible: smartSlotEditMode; checkable: true; checked: smartSlotSnap; onClicked: smartSlotSnap = checked }
                 ToolButton { text: "Restaurar"; visible: smartSlotEditMode && selectedSlotId !== "" && !window.tightUi; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"restore_smart_slot_auto","slot_id":selectedSlotId})) }
+                ToolButton { text: "Não-produto"; visible: smartSlotEditMode && selectedSlotId !== "" && !window.tightUi; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"mark_smart_slot_non_product","slot_id":selectedSlotId})) }
+                ToolButton { text: "Excluir Slot"; visible: smartSlotEditMode && selectedSlotId !== "" && !window.tightUi; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"delete_smart_slot","slot_id":selectedSlotId})) }
                 ToolSeparator {}
                 ToolButton { text: "Agrupar"; visible: !window.tightUi; onClicked: sceneBridge.dispatch('{"name":"group"}') }
                 ToolButton { text: "Desagrupar"; visible: !window.tightUi; onClicked: sceneBridge.dispatch('{"name":"ungroup"}') }
@@ -563,6 +565,7 @@ ApplicationWindow {
                 ToolButton { text: "Duplicar"; onClicked: sceneBridge.dispatch('{"name":"duplicate"}') }
                 Item { Layout.fillWidth: true }
                 Button { text: "+ Página"; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
+                Button { visible: !window.tightUi; text: "⧉ Página"; onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}') }
                 Label { visible: !window.tightUi; text: sceneBridge.status; color: theme.textMuted; font.pixelSize: 9; Layout.maximumWidth: 220; elide: Text.ElideRight }
             }
         }
@@ -998,8 +1001,8 @@ ApplicationWindow {
                             }
                         }
 
-                        Repeater {
-                            model: slots()
+                            Repeater {
+                                model: slots()
                             delegate: Item {
                                 id: slotOverlay
                                 objectName: "smartSlotOverlay-" + String(modelData.id || "")
@@ -1347,8 +1350,8 @@ ApplicationWindow {
                             }
                         }
 
-                        Item {
-                            id: selectionOverlay
+                            Item {
+                                id: selectionOverlay
                             visible: anchorNode && page && effectiveVisible(anchorNode) && !window.manualItemSlotForNode(anchorNode.id)
                             x: visible ? anchorNode.transform.x * zoom : 0
                             y: visible ? anchorNode.transform.y * zoom : 0
