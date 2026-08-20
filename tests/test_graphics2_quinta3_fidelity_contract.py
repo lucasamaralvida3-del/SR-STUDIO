@@ -10,6 +10,8 @@ from srstudio.graphics2.semantic_vocabulary import semantic_label_role
 from srstudio.graphics2.slot_corpus_bindings import bind_product_to_quinta3_slot
 from srstudio.graphics2.slot_corpus_calibration import QUINTA3_SUPERVISED_PROFILES
 from srstudio.graphics2.slot_corpus_family_metrics import measure_supervised_family_metrics
+from srstudio.graphics2.slot_corpus_full_card import MEAT_FAMILY_ID, meat_full_card_profile
+from srstudio.graphics2.slot_corpus_full_card_gate import evaluate_meat_full_card
 from srstudio.graphics2.slot_corpus_variant_runtime import create_quinta3_item_slot
 
 
@@ -34,6 +36,30 @@ def _union_nodes(nodes):
 def _relative_rect(rect, root):
     rr = root.rect.normalized()
     return [(rect.x - rr.x) / rr.width, (rect.y - rr.y) / rr.height, rect.width / rr.width, rect.height / rr.height]
+
+
+def _union_relative(rects):
+    left = min(float(rect[0]) for rect in rects)
+    top = min(float(rect[1]) for rect in rects)
+    right = max(float(rect[0]) + float(rect[2]) for rect in rects)
+    bottom = max(float(rect[1]) + float(rect[3]) for rect in rects)
+    return [left, top, right - left, bottom - top]
+
+
+def _expected_geometry(profile_id, profile):
+    if profile["family_id"] != MEAT_FAMILY_ID:
+        return profile["roleBounds"]
+    roles = meat_full_card_profile(profile_id)["roles"]
+    return {
+        "image": roles["image"]["relative"],
+        "name": roles["name"]["relative"],
+        "price": _union_relative([
+            roles["currency"]["relative"],
+            roles["integer"]["relative"],
+            roles["decimal"]["relative"],
+        ]),
+        "unit": roles["unit"]["relative"],
+    }
 
 
 def test_cada_and_quilo_are_official_structural_units() -> None:
@@ -126,7 +152,7 @@ def test_supervised_profiles_materialize_exact_role_geometry() -> None:
         slot = create_quinta3_item_slot(session, profile["family_id"], variant=profile["variant"], parameters={"supervisedProfile": profile_id}, x=50, y=60)
         root = session.page.node(slot.metadata["root_node_id"])
         areas = slot.metadata["role_area_nodes"]
-        expected = profile["roleBounds"]
+        expected = _expected_geometry(profile_id, profile)
         extras = slot.metadata.get("extra_bindings") or {}
 
         image_nodes = [session.page.node(slot.node_by_role[BindingRole.IMAGE.value])]
@@ -134,6 +160,9 @@ def test_supervised_profiles_materialize_exact_role_geometry() -> None:
         assert _relative_rect(_union_nodes(image_nodes), root) == pytest.approx(expected["image"], abs=1e-6)
         for role in ("name", "price", "unit"):
             assert _relative(session.page.node(areas[role]), root) == pytest.approx(expected[role], abs=1e-6)
+        if profile["family_id"] == MEAT_FAMILY_ID:
+            full_card = evaluate_meat_full_card(session.page, slot, profile_id=profile_id)
+            assert full_card.ok, full_card.to_dict()
         if "secondaryPrice" in expected:
             group_id = next(node_id for node_id in slot.metadata["quinta3_variant_nodes"] if session.page.node(node_id).name == "SECONDARY PRICE AREA")
             assert _relative(session.page.node(group_id), root) == pytest.approx(expected["secondaryPrice"], abs=1e-6)
