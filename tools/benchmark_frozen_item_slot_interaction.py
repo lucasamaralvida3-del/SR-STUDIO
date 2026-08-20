@@ -92,10 +92,11 @@ def _run_preset(app, qml_path: Path, preset_id: str) -> dict:
         for item in iter_visual(content_item):
             if str(item.objectName() or "") == name: return item
         raise AssertionError(f"missing QML item {name}")
+    def window_point(item: QQuickItem, x: float, y: float) -> QPoint:
+        global_point = item.mapToGlobal(QPointF(x, y))
+        return root.mapFromGlobal(QPoint(round(global_point.x()), round(global_point.y())))
     def scene_center(item: QQuickItem) -> QPoint:
-        p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)); return QPoint(round(p.x()), round(p.y()))
-    def inner_handle_point(item: QQuickItem, inset: float = 2.0) -> QPoint:
-        p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0 - inset, max(1.0, item.height()) / 2.0 - inset)); return QPoint(round(p.x()), round(p.y()))
+        return window_point(item, max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0)
     def visual_rect(item: QQuickItem) -> dict[str, float]:
         p = item.mapToScene(QPointF(0, 0)); return {"x": float(p.x()), "y": float(p.y()), "width": float(item.width()), "height": float(item.height())}
     def node_item(node_id: str) -> QQuickItem:
@@ -123,7 +124,7 @@ def _run_preset(app, qml_path: Path, preset_id: str) -> dict:
         final_move = QPoint(move_start.x() + min(160, round(index * 0.8)), move_start.y() + min(90, round(index * 0.45))); started = perf_counter_ns(); mouse_move_with_left_button(final_move); app.processEvents(); move_samples.append((perf_counter_ns() - started) / 1_000_000.0)
     QTest.qWait(20); app.processEvents(); dispatch_before_move_release = bridge.dispatch_count; assert bool(root.property("itemSlotPreviewActive")); assert item_slot_snapshot(session.page, slot) == before_move; assert roles_changed(roles_before_move, capture_roles(ids)); QTest.mouseRelease(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, final_move, 0); app.processEvents(); QTest.qWait(60); app.processEvents(); dispatch_after_move_release = bridge.dispatch_count; assert dispatch_after_press == dispatch_before_move; assert dispatch_before_move_release == dispatch_before_move; assert dispatch_after_move_release - dispatch_before_move_release == 1; assert bridge.commands[-1] == "commit_item_slot_bounds"; after_move = item_slot_snapshot(session.page, slot); assert after_move["bounds"] != before_move["bounds"]
 
-    root.setProperty("selectedSlotId", slot_id); app.processEvents(); QTest.qWait(60); app.processEvents(); resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}"); resize_start = inner_handle_point(resize_area); roles_before_resize = capture_roles(ids); backend_before_resize = item_slot_snapshot(session.page, slot); interaction_overlay_before = visual_rect(quick_item(f"smartSlotOverlay-{slot_id}")); dispatch_before_resize = bridge.dispatch_count; QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_start, 0); app.processEvents(); assert bool(root.property("itemSlotPreviewActive")); assert str(root.property("itemSlotInteractionKind") or "") == "resize"; dispatch_after_resize_press = bridge.dispatch_count
+    root.setProperty("selectedSlotId", slot_id); app.processEvents(); QTest.qWait(60); app.processEvents(); resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}"); resize_start = scene_center(resize_area); roles_before_resize = capture_roles(ids); backend_before_resize = item_slot_snapshot(session.page, slot); interaction_overlay_before = visual_rect(quick_item(f"smartSlotOverlay-{slot_id}")); dispatch_before_resize = bridge.dispatch_count; QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_start, 0); app.processEvents(); assert bool(root.property("itemSlotPreviewActive")); assert str(root.property("itemSlotInteractionKind") or "") == "resize"; dispatch_after_resize_press = bridge.dispatch_count
     resize_samples: list[float] = []; final_resize = resize_start
     for index in range(1, EVENTS + 1):
         final_resize = QPoint(resize_start.x() + min(140, round(index * 0.7)), resize_start.y() + min(84, round(index * 0.42))); started = perf_counter_ns(); mouse_move_with_left_button(final_resize); app.processEvents(); resize_samples.append((perf_counter_ns() - started) / 1_000_000.0)
