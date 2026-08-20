@@ -127,11 +127,50 @@ def main() -> int:
         value = qvariant(value)
         return dict(value) if isinstance(value, dict) else {}
 
+    def item_diagnostic(item: QQuickItem) -> dict:
+        p = item.mapToScene(QPointF(0, 0))
+        visible = bool(item.isVisible()) if hasattr(item, "isVisible") else bool(item.property("visible"))
+        enabled = bool(item.isEnabled()) if hasattr(item, "isEnabled") else bool(item.property("enabled"))
+        return {
+            "object_name": str(item.objectName() or ""),
+            "visible": visible,
+            "enabled": enabled,
+            "x": float(p.x()),
+            "y": float(p.y()),
+            "width": float(item.width()),
+            "height": float(item.height()),
+            "z": float(item.z()),
+        }
+
+    def quick_items(name: str) -> list[QQuickItem]:
+        return [item for item in iter_visual(content_item) if str(item.objectName() or "") == name]
+
     def quick_item(name: str) -> QQuickItem:
-        for item in iter_visual(content_item):
-            if str(item.objectName() or "") == name:
-                return item
-        raise AssertionError(f"QML item not found: {name}")
+        matches = quick_items(name)
+        if not matches:
+            raise AssertionError(f"QML item not found: {name}")
+        active = []
+        for item in matches:
+            visible = bool(item.isVisible()) if hasattr(item, "isVisible") else bool(item.property("visible"))
+            enabled = bool(item.isEnabled()) if hasattr(item, "isEnabled") else bool(item.property("enabled"))
+            if visible and enabled and float(item.width()) > 0 and float(item.height()) > 0:
+                active.append(item)
+        if len(matches) > 1 or len(active) != 1:
+            print(
+                "ITEMSLOT_QML_CANDIDATES="
+                + json.dumps(
+                    {"name": name, "matches": len(matches), "active": len(active), "items": [item_diagnostic(item) for item in matches]},
+                    ensure_ascii=False,
+                    sort_keys=True,
+                ),
+                flush=True,
+            )
+        if active:
+            # Scene refresh can leave an old delegate pending deletion for one
+            # event turn. Repeater inserts the current delegate later, so use
+            # the last active candidate instead of the first objectName match.
+            return active[-1]
+        raise AssertionError({"name": name, "candidates": [item_diagnostic(item) for item in matches]})
 
     def center(item: QQuickItem) -> QPoint:
         p = item.mapToScene(QPointF(max(1.0, item.width()) / 2.0, max(1.0, item.height()) / 2.0))
@@ -148,14 +187,18 @@ def main() -> int:
         return {"x": float(p.x()), "y": float(p.y()), "width": float(item.width()), "height": float(item.height())}
 
     def node_item(node_id: str) -> QQuickItem:
+        candidates = []
         for item in iter_visual(content_item):
             data = qml_map(item.property("modelData"))
             if str(data.get("id") or "") != str(node_id):
                 continue
             display = qml_map(item.property("displayTransform"))
             if all(key in display for key in ("x", "y", "width", "height")):
-                return item
-        raise AssertionError(f"node delegate not found: {node_id}")
+                candidates.append(item)
+        if not candidates:
+            raise AssertionError(f"node delegate not found: {node_id}")
+        active = [item for item in candidates if bool(item.isVisible()) and float(item.width()) > 0 and float(item.height()) > 0]
+        return (active or candidates)[-1]
 
     def role_node_ids(snapshot: dict) -> dict[str, list[str]]:
         roles = snapshot["internal_roles"]
@@ -246,7 +289,8 @@ def main() -> int:
 
     root.setProperty("selectedSlotId", slot_id)
     app.processEvents(); QTest.qWait(80); app.processEvents()
-    resize_area = quick_item(f"smartSlotResizeArea-se-{slot_id}")
+    resize_name = f"smartSlotResizeArea-se-{slot_id}"
+    resize_area = quick_item(resize_name)
     resize_start = inner_handle_point(resize_area)
     backend_before_resize = item_slot_snapshot(session.page, slot)
     roles_before_resize = capture_roles(ids)
@@ -257,8 +301,37 @@ def main() -> int:
     visual_handle_before = center(quick_item(f"smartSlotVisualHandle-se-{slot_id}"))
     before_resize_dispatch = bridge.dispatch_count
     before_resize_events = int(root.property("itemSlotPreviewEvents") or 0)
+    print(
+        "ITEMSLOT_RESIZE_TARGET="
+        + json.dumps(
+            {
+                "target": item_diagnostic(resize_area),
+                "target_point": {"x": resize_start.x(), "y": resize_start.y()},
+                "handle": item_diagnostic(quick_item(f"smartSlotHandle-se-{slot_id}")),
+                "move_area": item_diagnostic(quick_item(f"smartSlotMoveArea-{slot_id}")),
+                "all_resize_candidates": [item_diagnostic(item) for item in quick_items(resize_name)],
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        flush=True,
+    )
     QTest.mousePress(root, Qt.MouseButton.LeftButton, Qt.KeyboardModifier.NoModifier, resize_start, 0)
     app.processEvents()
+    print(
+        "ITEMSLOT_RESIZE_PRESS="
+        + json.dumps(
+            {
+                "preview_active": bool(root.property("itemSlotPreviewActive")),
+                "interaction_kind": str(root.property("itemSlotInteractionKind") or ""),
+                "resize_pressed": bool(resize_area.property("pressed")),
+                "resize_contains_mouse": bool(resize_area.property("containsMouse")),
+            },
+            ensure_ascii=False,
+            sort_keys=True,
+        ),
+        flush=True,
+    )
     assert bool(root.property("itemSlotPreviewActive")), "RESIZE press did not activate preview"
     assert str(root.property("itemSlotInteractionKind") or "") == "resize"
 
