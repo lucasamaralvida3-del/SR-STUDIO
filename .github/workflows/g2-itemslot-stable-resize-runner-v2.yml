@@ -1,4 +1,4 @@
-name: G2 ItemSlot QML Finalizer Runner
+name: G2 ItemSlot Stable Internal Handle Runner
 
 on:
   pull_request_target:
@@ -10,7 +10,7 @@ permissions:
   contents: write
 
 jobs:
-  finalize-itemslot-qml:
+  patch-stable-internal-handle:
     if: github.event.pull_request.head.ref == 'g2/fix-item-slot-interaction-performance' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
@@ -19,121 +19,137 @@ jobs:
           ref: g2/fix-item-slot-interaction-performance
           fetch-depth: 0
 
-      - name: Apply final stable ItemSlot QML contract
+      - name: Keep physical resize hitbox fully inside stable interaction overlay
         shell: bash
         run: |
           set -euo pipefail
           python - <<'PY'
           from pathlib import Path
-          path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
-          text = path.read_text(encoding='utf-8')
-          for token in [
+
+          qml_path = Path('src/srstudio/graphics2/qml/GraphicsEditor.qml')
+          text = qml_path.read_text(encoding='utf-8')
+          required = [
               'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"',
               'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds',
               'function itemSlotDisplayTransform(node)',
-          ]:
+              'objectName: "smartSlotVisualFrame-"',
+              'objectName: "smartSlotVisualHandle-"',
+          ]
+          for token in required:
               if token not in text:
                   raise SystemExit(f'missing stable overlay token: {token}')
-          if 'manualItemSlotResizeHandler' in text:
-              raise SystemExit('experimental DragHandler still present')
+          if 'manualItemSlotResizeHandler' in text or 'DragHandler {' in text[text.index('model: slots()'):text.index('id: selectionOverlay')]:
+              raise SystemExit('experimental DragHandler path still present')
 
-          if 'objectName: "smartSlotVisualFrame-"' not in text:
-              old = '''                                    Rectangle {
-                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
-'''
-              new = '''                                    Rectangle {
-                                        objectName: "smartSlotVisualFrame-" + String(slotOverlay.modelData.id || "")
-                                        x: slotOverlay.resizePreviewKeepsInteractionGeometry ? (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom : 0
-'''
-              if text.count(old) != 1: raise SystemExit(f'visual frame anchor count={text.count(old)}')
-              text = text.replace(old, new, 1)
-
-          if 'objectName: "smartSlotVisualHandle-"' not in text:
-              old = '''                                            Rectangle {
-                                                visible: slotOverlay.resizePreviewKeepsInteractionGeometry
-                                                x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
-'''
-              new = '''                                            Rectangle {
+          old = '''                                            width: 11; height: 11; radius: 2
+                                            x: modelData.fx * slotOverlay.width - width / 2
+                                            y: modelData.fy * slotOverlay.height - height / 2
+                                            color: slotOverlay.resizePreviewKeepsInteractionGeometry ? "transparent" : "white"
+                                            border.width: slotOverlay.resizePreviewKeepsInteractionGeometry ? 0 : 2
+                                            border.color: "#0F5BD8"
+                                            z: 10
+                                            Rectangle {
                                                 objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
                                                 visible: slotOverlay.resizePreviewKeepsInteractionGeometry
                                                 x: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+                                                   + modelData.fx * (slotOverlay.displayBounds.width - slotOverlay.interactionBounds.width) * zoom
+                                                y: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
+                                                   + modelData.fy * (slotOverlay.displayBounds.height - slotOverlay.interactionBounds.height) * zoom
+                                                width: parent.width
+                                                height: parent.height
+                                                radius: parent.radius
+                                                color: "white"
+                                                border.width: 2
+                                                border.color: "#0F5BD8"
+                                            }
 '''
-              if text.count(old) != 1: raise SystemExit(f'visual handle anchor count={text.count(old)}')
+          new = '''                                            width: 11; height: 11; radius: 2
+                                            // The physical interaction handle is always fully inside the
+                                            // stable overlay. The visible handle is a separate child driven
+                                            // only by displayBounds, so native Windows hit-testing and the
+                                            // MouseArea grab never depend on preview geometry.
+                                            property real desiredVisualX: (slotOverlay.displayBounds.x - slotOverlay.interactionBounds.x) * zoom
+                                                                          + modelData.fx * slotOverlay.displayBounds.width * zoom - width / 2
+                                            property real desiredVisualY: (slotOverlay.displayBounds.y - slotOverlay.interactionBounds.y) * zoom
+                                                                          + modelData.fy * slotOverlay.displayBounds.height * zoom - height / 2
+                                            x: Math.max(0, Math.min(Math.max(0, slotOverlay.width - width), modelData.fx * slotOverlay.width - width / 2))
+                                            y: Math.max(0, Math.min(Math.max(0, slotOverlay.height - height), modelData.fy * slotOverlay.height - height / 2))
+                                            color: "transparent"
+                                            border.width: 0
+                                            border.color: "transparent"
+                                            z: 10
+                                            Rectangle {
+                                                objectName: "smartSlotVisualHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                                visible: parent.visible
+                                                x: parent.desiredVisualX - parent.x
+                                                y: parent.desiredVisualY - parent.y
+                                                width: parent.width
+                                                height: parent.height
+                                                radius: parent.radius
+                                                color: "white"
+                                                border.width: 2
+                                                border.color: "#0F5BD8"
+                                            }
+'''
+          if old in text:
               text = text.replace(old, new, 1)
-
-          if 'function resizedBounds(px, py, modifiers)' not in text:
-              old = '                                                function resizedBounds(px, py) {\n'
-              if text.count(old) != 1: raise SystemExit(f'resizedBounds signature count={text.count(old)}')
-              text = text.replace(old, '                                                function resizedBounds(px, py, modifiers) {\n', 1)
-              old = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
-                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
-                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
-'''
-              new = '''                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
-                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
-                                                    if (slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)) {
-                                                        var aspect = Math.max(0.000001, startW) / Math.max(0.000001, startH)
-                                                        var hasH = modelData.dir.indexOf("e") >= 0 || modelData.dir.indexOf("w") >= 0
-                                                        var hasV = modelData.dir.indexOf("n") >= 0 || modelData.dir.indexOf("s") >= 0
-                                                        var targetW = nw
-                                                        var targetH = nh
-                                                        if (hasH && hasV) {
-                                                            var relW = Math.abs(nw - startW) / Math.max(1, startW)
-                                                            var relH = Math.abs(nh - startH) / Math.max(1, startH)
-                                                            if (relW >= relH) targetH = Math.max(1, targetW / aspect)
-                                                            else targetW = Math.max(1, targetH * aspect)
-                                                        } else if (hasH) targetH = Math.max(1, targetW / aspect)
-                                                        else if (hasV) targetW = Math.max(1, targetH * aspect)
-                                                        if (modelData.dir.indexOf("w") >= 0) nx = startX + startW - targetW
-                                                        if (modelData.dir.indexOf("n") >= 0) ny = startY + startH - targetH
-                                                        nw = targetW
-                                                        nh = targetH
-                                                    }
-                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
-'''
-              if text.count(old) != 1: raise SystemExit(f'resizedBounds body count={text.count(old)}')
-              text = text.replace(old, new, 1)
-              old = 'slotOverlay.queuePreview(resizedBounds(point.x, point.y), false)'
-              if text.count(old) != 1: raise SystemExit(f'queue call count={text.count(old)}')
-              text = text.replace(old, 'slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)', 1)
-              old = 'slotOverlay.commitPreview(resizedBounds(point.x, point.y), "resize")'
-              if text.count(old) != 1: raise SystemExit(f'commit call count={text.count(old)}')
-              text = text.replace(old, 'slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")', 1)
+          elif 'property real desiredVisualX:' not in text:
+              raise SystemExit('physical handle block not found')
 
           for token in [
-              'objectName: "smartSlotVisualFrame-"',
-              'objectName: "smartSlotVisualHandle-"',
-              'function resizedBounds(px, py, modifiers)',
-              'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)',
-              'slotOverlay.queuePreview(resizedBounds(point.x, point.y, mouse.modifiers), false)',
-              'slotOverlay.commitPreview(resizedBounds(point.x, point.y, mouse.modifiers), "resize")',
+              'property real desiredVisualX:',
+              'property real desiredVisualY:',
+              'Math.min(Math.max(0, slotOverlay.width - width)',
+              'visible: parent.visible',
+              'x: parent.desiredVisualX - parent.x',
+              'y: parent.desiredVisualY - parent.y',
           ]:
-              if token not in text: raise SystemExit(f'missing final QML token: {token}')
-          path.write_text(text, encoding='utf-8')
+              if token not in text:
+                  raise SystemExit(f'missing internal-handle token: {token}')
+          qml_path.write_text(text, encoding='utf-8')
 
-          test = Path('tests/test_graphics2_item_slot_interaction_performance.py')
-          src = test.read_text(encoding='utf-8')
-          marker = '    assert "root_node_id" in qml\n'
-          extra = '''    assert 'property bool resizePreviewKeepsInteractionGeometry: previewActive && isManualItemSlot && window.itemSlotInteractionKind === "resize"' in qml
-    assert 'property var interactionBounds: resizePreviewKeepsInteractionGeometry ? bounds : displayBounds' in qml
-    assert 'objectName: "smartSlotVisualFrame-"' in qml
-    assert 'objectName: "smartSlotVisualHandle-"' in qml
-    assert 'function resizedBounds(px, py, modifiers)' in qml
-    assert 'slotOverlay.isManualItemSlot && (modifiers & Qt.ShiftModifier)' in qml
-    assert 'manualItemSlotResizeHandler' not in qml
-    assert 'enabled: !slotOverlay.isManualItemSlot' not in qml
+          for filename, center_name in [
+              ('tools/verify_frozen_item_slot_interaction.py', 'center'),
+              ('tools/benchmark_frozen_item_slot_interaction.py', 'scene_center'),
+          ]:
+              path = Path(filename)
+              src = path.read_text(encoding='utf-8')
+              src = src.replace('resize_start = inner_handle_point(resize_area)', f'resize_start = {center_name}(resize_area)')
+              src = src.replace('shift_start = inner_handle_point(shift_area)', f'shift_start = {center_name}(shift_area)')
+              # Remove the obsolete helper now that the physical hitbox is entirely internal.
+              marker = '    def inner_handle_point(item: QQuickItem, inset: float = 2.0) -> QPoint:\n'
+              if marker in src:
+                  start = src.index(marker)
+                  next_def = src.index('    def ', start + len(marker))
+                  src = src[:start] + src[next_def:]
+              if 'inner_handle_point(' in src:
+                  raise SystemExit(f'obsolete edge-hit helper remains in {filename}')
+              path.write_text(src, encoding='utf-8')
+
+          test_path = Path('tests/test_graphics2_item_slot_interaction_performance.py')
+          test = test_path.read_text(encoding='utf-8')
+          anchor = '    assert \'objectName: "smartSlotVisualHandle-"\' in qml\n'
+          additions = '''    assert 'property real desiredVisualX:' in qml
+    assert 'property real desiredVisualY:' in qml
+    assert 'Math.min(Math.max(0, slotOverlay.width - width)' in qml
+    assert 'visible: parent.visible' in qml
+    assert 'x: parent.desiredVisualX - parent.x' in qml
+    assert 'y: parent.desiredVisualY - parent.y' in qml
 '''
-          if extra.strip() not in src:
-              if src.count(marker) != 1: raise SystemExit(f'test marker count={src.count(marker)}')
-              test.write_text(src.replace(marker, marker + extra, 1), encoding='utf-8')
+          if additions.strip() not in test:
+              if test.count(anchor) != 1:
+                  raise SystemExit(f'test anchor count={test.count(anchor)}')
+              test = test.replace(anchor, anchor + additions, 1)
+          test_path.write_text(test, encoding='utf-8')
           PY
+
           git diff --check
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add src/srstudio/graphics2/qml/GraphicsEditor.qml tests/test_graphics2_item_slot_interaction_performance.py
+          git add src/srstudio/graphics2/qml/GraphicsEditor.qml tests/test_graphics2_item_slot_interaction_performance.py tools/verify_frozen_item_slot_interaction.py tools/benchmark_frozen_item_slot_interaction.py
           if git diff --cached --quiet; then
-            echo 'Final QML contract already present'
+            echo 'Stable internal-handle contract already present'
           else
-            git commit -m 'fix(g2): complete stable ItemSlot visual resize contract'
+            git commit -m 'fix(g2): keep ItemSlot resize grab hitbox fully stable'
             git push origin HEAD:g2/fix-item-slot-interaction-performance
           fi
