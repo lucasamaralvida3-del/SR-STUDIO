@@ -1,3 +1,4 @@
+# Activation push: this file is deleted immediately after the guarded QML patch lands.
 name: G2 ItemSlot Stable Overlay Fix Once
 
 on:
