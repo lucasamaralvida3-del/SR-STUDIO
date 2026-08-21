@@ -60,7 +60,7 @@ jobs:
         shell: pwsh
         run: |
           python -m pip install -U pip
-          python -m pip install -e './cert-source[dev,graphics2]'
+          python -m pip install './cert-source[dev,graphics2]'
 
       - name: Locate immutable PPTX ground truth
         id: pptx
