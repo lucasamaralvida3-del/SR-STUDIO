@@ -128,6 +128,12 @@ jobs:
           $env:PYTHONPATH = (Resolve-Path 'cert-source/src').Path
           python tools/diagnostics/certify_quinta3_meat_strip_visual.py --pptx '${{ steps.pptx.outputs.path }}' --source-root cert-source --out visual-cert
 
+      - name: Diagnose production font image and strip geometry paths
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = (Resolve-Path 'cert-source/src').Path
+          python tools/diagnostics/diagnose_quinta3_meat_strip_runtime.py --pptx '${{ steps.pptx.outputs.path }}' --source-root cert-source --out visual-cert
+
       - name: Exact SHA gate and source cleanliness AFTER
         shell: pwsh
         run: |
@@ -146,7 +152,23 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           Copy-Item qt-render-backend.txt visual-cert/qt-render-backend.txt
-          $required = @('meat-strip-original.png','meat-strip-g2.png','meat-strip-original-vs-g2.png','meat-strip-diff.png','musculo-original.png','musculo-g2.png','musculo-diff.png','meat-strip-visual-metrics.json','meat-strip-font-resolution.json')
+          $required = @(
+            'g2-page.png',
+            'meat-strip-original.png',
+            'meat-strip-g2.png',
+            'meat-strip-original-vs-g2.png',
+            'meat-strip-diff.png',
+            'musculo-original.png',
+            'musculo-g2.png',
+            'musculo-diff.png',
+            'meat-strip-visual-metrics.json',
+            'meat-strip-font-resolution.json',
+            'meat-strip-render-warnings.json',
+            'meat-strip-image-diagnostics.json',
+            'meat-strip-runtime-geometry.json',
+            'meat-strip-g2-unclipped.png',
+            'meat-strip-unclipped-vs-original.png'
+          )
           foreach ($name in $required) {
             $path = Join-Path visual-cert $name
             if (-not (Test-Path $path) -or (Get-Item $path).Length -le 0) { throw "Missing required evidence: $name" }
