@@ -59,8 +59,15 @@ jobs:
       - name: Install exact source runtime and test dependencies
         shell: pwsh
         run: |
+          $ErrorActionPreference = 'Stop'
           python -m pip install -U pip
-          python -m pip install './cert-source[dev,graphics2]'
+          Remove-Item -Recurse -Force runtime-install-source -ErrorAction SilentlyContinue
+          Remove-Item -Force runtime-install-source.zip -ErrorAction SilentlyContinue
+          git -C cert-source archive --format=zip --output=../runtime-install-source.zip HEAD
+          Expand-Archive -LiteralPath runtime-install-source.zip -DestinationPath runtime-install-source
+          python -m pip install './runtime-install-source[dev,graphics2]'
+          git -C cert-source status --short
+          if (git -C cert-source status --porcelain) { throw 'Frozen source became dirty while installing runtime dependencies.' }
 
       - name: Locate immutable PPTX ground truth
         id: pptx
