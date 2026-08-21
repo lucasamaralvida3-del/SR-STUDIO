@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - g2/diagnostic-meat-strip-visual-cert
+      - g2/diagnostic-meat-strip-source-scale-recert
   pull_request:
     branches:
       - g2/quinta3-meat-strip-ownership-persistence
@@ -13,7 +14,7 @@ permissions:
   contents: read
 
 env:
-  REQUESTED_SHA: 9b3c967c5dad4e5dddee1daa6dd92fab2189437c
+  REQUESTED_SHA: c69dd1b933e93e0928c4f299cc53ca771b22b4c2
   EXPECTED_PPTX_SHA256: 12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19
   PPTX_NAME: OFERTAS QUINTA FILÉ NOVO (3).pptx
   MEAT_STRIP_PPTX_URL: "https://www.dropbox.com/scl/fi/mda6mqcgumm5k96wcbfw4/OFERTAS-QUINTA-FIL-NOVO-3.pptx?rlkey=75fv4ummvjgj3yptb0kjjczt5&st=p5ylee4h&dl=1"
@@ -121,6 +122,18 @@ jobs:
         run: |
           $env:PYTHONPATH = (Resolve-Path 'cert-source/src').Path
           python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api | Tee-Object -FilePath qt-render-backend.txt
+
+      - name: Retarget diagnostic harness to exact candidate SHA
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $old = '9b3c967c5dad4e5dddee1daa6dd92fab2189437c'
+          foreach ($path in @('tools/diagnostics/certify_quinta3_meat_strip_visual.py', 'tools/diagnostics/diagnose_quinta3_meat_strip_runtime.py')) {
+            $text = Get-Content -LiteralPath $path -Raw
+            if (-not $text.Contains($old)) { throw "Expected frozen-source token not found in $path" }
+            $text.Replace($old, $env:REQUESTED_SHA) | Set-Content -LiteralPath $path -Encoding utf8 -NoNewline
+          }
+          "DIAGNOSTIC_REQUESTED_SHA=$env:REQUESTED_SHA"
 
       - name: Generate Meat Strip visual certification evidence
         shell: pwsh
