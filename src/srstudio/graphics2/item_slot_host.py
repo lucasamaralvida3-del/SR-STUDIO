@@ -8,9 +8,12 @@ used by that host, adding manual ItemSlot commands and payload data.
 """
 
 from dataclasses import asdict
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 import json
+import os
 
+from . import package as _package
 from . import qt_host as _base
 from .command_router import CommandResult, GraphicsCommandRouter
 from .item_slots import (
@@ -28,6 +31,8 @@ from .item_slots import (
 from .slot_corpus_bindings import bind_product_to_quinta3_slot
 from .slot_corpus_calibration import QUINTA3_SUPERVISED_PROFILES
 from .slot_corpus_families import QUINTA3_FAMILY_PRESETS, install_quinta3_family_presets
+from .slot_corpus_full_card import MEAT_FAMILY_ID
+from .slot_corpus_meat_strip_ownership import next_meat_profile, normalize_meat_strip_ownership
 from .slot_corpus_variant_runtime import apply_quinta3_variant, create_quinta3_item_slot
 
 
@@ -76,7 +81,11 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         if name == "add_item_slot":
             preset_id = str(command.get("preset_id") or "simples")
             if preset_id in QUINTA3_FAMILY_PRESETS:
-                profile_id = _QUINTA3_DEFAULT_PROFILE_BY_FAMILY[preset_id]
+                profile_id = (
+                    next_meat_profile(self.session.page)
+                    if preset_id == MEAT_FAMILY_ID
+                    else _QUINTA3_DEFAULT_PROFILE_BY_FAMILY[preset_id]
+                )
                 profile = QUINTA3_SUPERVISED_PROFILES[profile_id]
                 slot = create_quinta3_item_slot(
                     self.session,
@@ -86,6 +95,9 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                     x=_optional_number(command.get("x")),
                     y=_optional_number(command.get("y")),
                 )
+                if preset_id == MEAT_FAMILY_ID:
+                    with self.session.transaction("Normalizar ownership Meat Strip"):
+                        normalize_meat_strip_ownership(self.session.page, slot, profile_id=profile_id)
             else:
                 slot = create_item_slot(
                     self.session,
@@ -186,6 +198,10 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                             variant=str(profile["variant"]),
                             parameters={"supervisedProfile": profile_id},
                         )
+                    if str(slot.metadata.get("preset_id") or "") == MEAT_FAMILY_ID:
+                        effective_profile = profile_id or str(slot.metadata.get("full_card_profile") or slot.metadata.get("supervised_profile") or "costela")
+                        with self.session.transaction("Normalizar ownership Meat Strip"):
+                            normalize_meat_strip_ownership(self.session.page, slot, profile_id=effective_profile)
                     changed = bind_product_to_quinta3_slot(self.session, slot_id, product)
                 else:
                     changed = bind_product_to_item_slot(self.session, slot_id, product)
@@ -203,13 +219,62 @@ def _optional_number(value: Any) -> float | None:
     return float(value)
 
 
+def _bridge_save_wrapper(
+    save_fn: Callable[..., Path],
+    canonical_source: Path | None,
+) -> Callable[..., Path]:
+    """Mirror explicit Save-As into the Full Studio canonical bridge session.
+
+    The Full Studio launcher always reopens its project-scoped bridge package.
+    Historically the G2 Save button wrote only the path selected in the dialog,
+    then switched ``context.source`` to that copy.  Relaunching from Full Studio
+    therefore reopened the untouched bridge package and could show 0 ItemSlots.
+    Keep the user-selected copy, but make the authoritative bridge package carry
+    the exact same serialized scene before the app can be reopened.
+    """
+
+    canonical = canonical_source.resolve() if canonical_source is not None else None
+
+    def save(document, path, *, embed_local_assets: bool = True):
+        written = save_fn(document, path, embed_local_assets=embed_local_assets)
+        if canonical is not None:
+            try:
+                target = Path(written).resolve()
+            except OSError:
+                target = Path(written).absolute()
+            if target != canonical:
+                save_fn(document, canonical, embed_local_assets=embed_local_assets)
+        return written
+
+    return save
+
+
+def _canonical_bridge_source(kwargs: dict[str, Any]) -> Path | None:
+    if str(os.environ.get("SR_GRAPHICS_ENGINE_2_BRIDGE") or "").strip() != "1":
+        return None
+    context = kwargs.get("launch_context")
+    source = getattr(context, "source", None)
+    if source is None:
+        return None
+    path = Path(source)
+    return path if path.suffix.lower() == ".srscene" else None
+
+
 def launch_qt_quick_editor(*args, **kwargs):
-    previous = _base.GraphicsCommandRouter
+    previous_router = _base.GraphicsCommandRouter
+    previous_save = _package.save_package
     _base.GraphicsCommandRouter = ItemSlotCommandRouter
+    canonical = _canonical_bridge_source(kwargs)
+    if canonical is not None:
+        # qt_host imports save_package dynamically inside saveSceneAs, so this
+        # scoped replacement affects explicit project saves only while the Qt
+        # host event loop is alive. Autosave keeps its own imported reference.
+        _package.save_package = _bridge_save_wrapper(previous_save, canonical)
     try:
         return _base.launch_qt_quick_editor(*args, **kwargs)
     finally:
-        _base.GraphicsCommandRouter = previous
+        _package.save_package = previous_save
+        _base.GraphicsCommandRouter = previous_router
 
 
 # Keep the certified host API surface.  entrypoint.py imports this module under
