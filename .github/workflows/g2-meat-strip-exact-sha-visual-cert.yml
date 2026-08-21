@@ -5,6 +5,9 @@ on:
   push:
     branches:
       - g2/diagnostic-meat-strip-visual-cert
+  pull_request:
+    branches:
+      - g2/quinta3-meat-strip-ownership-persistence
 
 permissions:
   contents: read
@@ -20,7 +23,6 @@ jobs:
   exact-sha-windows-visual-cert:
     runs-on: windows-2025
     timeout-minutes: 30
-
     steps:
       - name: Checkout certification tooling only
         uses: actions/checkout@v4
@@ -42,18 +44,13 @@ jobs:
           $checked = (git -C cert-source rev-parse HEAD).Trim()
           "REQUESTED_SHA=$env:REQUESTED_SHA"
           "CHECKED_OUT_SHA=$checked"
-          if ($checked -ne $env:REQUESTED_SHA) {
-            throw "Exact SHA gate failed: $checked != $env:REQUESTED_SHA"
-          }
+          if ($checked -ne $env:REQUESTED_SHA) { throw "Exact SHA gate failed: $checked != $env:REQUESTED_SHA" }
           git -C cert-source status --short
-          if (git -C cert-source status --porcelain) {
-            throw 'Frozen source checkout is dirty before certification.'
-          }
+          if (git -C cert-source status --porcelain) { throw 'Frozen source checkout is dirty before certification.' }
           git -C cert-source diff --quiet
           if ($LASTEXITCODE -ne 0) { throw 'Frozen source has a diff before certification.' }
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: pip
@@ -75,16 +72,12 @@ jobs:
           New-Item -ItemType Directory -Force -Path ground-truth | Out-Null
           $target = Join-Path (Resolve-Path ground-truth) $env:PPTX_NAME
           $found = $null
-
-          # 1) Exact filename already available in either checkout.
           $local = Get-ChildItem -Path . -Recurse -File -Filter $env:PPTX_NAME -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($local) {
             Copy-Item -LiteralPath $local.FullName -Destination $target
             $found = $target
             "PPTX_SOURCE=checkout:$($local.FullName)"
           }
-
-          # 2) Public/repository Release asset with the exact filename.
           if (-not $found) {
             try {
               $releases = gh api "repos/$env:GITHUB_REPOSITORY/releases?per_page=100" | ConvertFrom-Json
@@ -94,39 +87,27 @@ jobs:
                 $found = $target
                 "PPTX_SOURCE=release:$($asset.id)"
               }
-            } catch {
-              "Release lookup did not supply the PPTX: $($_.Exception.Message)"
-            }
+            } catch { "Release lookup did not supply the PPTX: $($_.Exception.Message)" }
           }
-
-          # 3) Optional repository variable pointing to an authorized immutable source.
           if (-not $found -and $env:MEAT_STRIP_PPTX_URL) {
             Invoke-WebRequest -Uri $env:MEAT_STRIP_PPTX_URL -OutFile $target
             $found = $target
             'PPTX_SOURCE=MEAT_STRIP_PPTX_URL'
           }
-
           if (-not $found -or -not (Test-Path -LiteralPath $target)) {
-            throw "Ground truth unavailable. Supply an authorized exact '$env:PPTX_NAME' via checkout, Release asset, or repository variable MEAT_STRIP_PPTX_URL."
+            throw "Ground truth unavailable. Supply authorized exact '$env:PPTX_NAME' via checkout, Release asset, or MEAT_STRIP_PPTX_URL."
           }
-
           $actual = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
           "PPTX_SHA256=$actual"
-          if ($actual -ne $env:EXPECTED_PPTX_SHA256) {
-            throw "PPTX SHA gate failed: $actual != $env:EXPECTED_PPTX_SHA256"
-          }
+          if ($actual -ne $env:EXPECTED_PPTX_SHA256) { throw "PPTX SHA gate failed: $actual != $env:EXPECTED_PPTX_SHA256" }
           "path=$target" >> $env:GITHUB_OUTPUT
 
       - name: Install LibreOffice reference rasterizer if needed
         shell: pwsh
         run: |
           $candidate = 'C:\Program Files\LibreOffice\program\soffice.exe'
-          if (-not (Get-Command soffice.exe -ErrorAction SilentlyContinue) -and -not (Test-Path $candidate)) {
-            choco install libreoffice-fresh -y --no-progress
-          }
-          if (-not (Get-Command soffice.exe -ErrorAction SilentlyContinue) -and -not (Test-Path $candidate)) {
-            throw 'LibreOffice/soffice unavailable after installation.'
-          }
+          if (-not (Get-Command soffice.exe -ErrorAction SilentlyContinue) -and -not (Test-Path $candidate)) { choco install libreoffice-fresh -y --no-progress }
+          if (-not (Get-Command soffice.exe -ErrorAction SilentlyContinue) -and -not (Test-Path $candidate)) { throw 'LibreOffice/soffice unavailable after installation.' }
 
       - name: Probe Qt runtime from exact source
         shell: pwsh
@@ -138,10 +119,7 @@ jobs:
         shell: pwsh
         run: |
           $env:PYTHONPATH = (Resolve-Path 'cert-source/src').Path
-          python tools/diagnostics/certify_quinta3_meat_strip_visual.py `
-            --pptx '${{ steps.pptx.outputs.path }}' `
-            --source-root cert-source `
-            --out visual-cert
+          python tools/diagnostics/certify_quinta3_meat_strip_visual.py --pptx '${{ steps.pptx.outputs.path }}' --source-root cert-source --out visual-cert
 
       - name: Exact SHA gate and source cleanliness AFTER
         shell: pwsh
@@ -156,23 +134,12 @@ jobs:
           git -C cert-source diff --quiet
           if ($LASTEXITCODE -ne 0) { throw 'Frozen source checkout acquired a diff.' }
 
-      - name: Build deterministic evidence ZIP and SHA256
-        id: evidence
+      - name: Build evidence ZIP and SHA256
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
           Copy-Item qt-render-backend.txt visual-cert/qt-render-backend.txt
-          $required = @(
-            'meat-strip-original.png',
-            'meat-strip-g2.png',
-            'meat-strip-original-vs-g2.png',
-            'meat-strip-diff.png',
-            'musculo-original.png',
-            'musculo-g2.png',
-            'musculo-diff.png',
-            'meat-strip-visual-metrics.json',
-            'meat-strip-font-resolution.json'
-          )
+          $required = @('meat-strip-original.png','meat-strip-g2.png','meat-strip-original-vs-g2.png','meat-strip-diff.png','musculo-original.png','musculo-g2.png','musculo-diff.png','meat-strip-visual-metrics.json','meat-strip-font-resolution.json')
           foreach ($name in $required) {
             $path = Join-Path visual-cert $name
             if (-not (Test-Path $path) -or (Get-Item $path).Length -le 0) { throw "Missing required evidence: $name" }
@@ -180,7 +147,6 @@ jobs:
           Compress-Archive -Path visual-cert/* -DestinationPath meat-strip-visual-cert.zip -CompressionLevel Optimal
           $sha = (Get-FileHash meat-strip-visual-cert.zip -Algorithm SHA256).Hash.ToLowerInvariant()
           "ARTIFACT_SHA256=$sha"
-          "sha256=$sha" >> $env:GITHUB_OUTPUT
           $sha | Set-Content -Encoding ascii meat-strip-visual-cert.zip.sha256
 
       - name: Upload visual certification artifact
