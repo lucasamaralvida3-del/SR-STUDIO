@@ -38,6 +38,13 @@ from .slot_corpus_full_card import (
 PROFILE_ORDER = ("costela", "pernil", "musculo", "moela")
 _PAGE_ROOTS_KEY = "quinta3_meat_strip_roots"
 
+# Exact p:presentation/p:sldSz contract of SOURCE_FILE / SOURCE_SHA256.  The
+# supervised full-card geometry is authored in this source page-space, so its
+# initial runtime scale must follow the same source/page ratio used by the PPTX
+# import pipeline, never the generic manual ItemSlot preset dimensions.
+MEAT_STRIP_SOURCE_PAGE_WIDTH_EMU = 12192000.0
+MEAT_STRIP_SOURCE_PAGE_HEIGHT_EMU = 15240000.0
+
 
 def _source_strip_bounds() -> Rect:
     roots = [meat_full_card_profile(profile_id)["root_emu"] for profile_id in PROFILE_ORDER]
@@ -199,8 +206,8 @@ def _resolve_strip_root(page, slot: SmartSlot, profile: dict[str, Any], cell_rec
         return existing
 
     source = profile["root_emu"]
-    scale_x = cell_rect.width / max(float(source[2]), 1e-9)
-    scale_y = cell_rect.height / max(float(source[3]), 1e-9)
+    scale_x = float(page.width) / MEAT_STRIP_SOURCE_PAGE_WIDTH_EMU
+    scale_y = float(page.height) / MEAT_STRIP_SOURCE_PAGE_HEIGHT_EMU
     strip_rect = Rect(
         cell_rect.x - (float(source[0]) - _SOURCE_STRIP.x) * scale_x,
         cell_rect.y - (float(source[1]) - _SOURCE_STRIP.y) * scale_y,
@@ -217,7 +224,9 @@ def _resolve_strip_root(page, slot: SmartSlot, profile: dict[str, Any], cell_rec
             "quinta3_family": MEAT_FAMILY_ID,
             "source_file": SOURCE_FILE,
             "source_sha256": SOURCE_SHA256,
+            "source_page_emu": [MEAT_STRIP_SOURCE_PAGE_WIDTH_EMU, MEAT_STRIP_SOURCE_PAGE_HEIGHT_EMU],
             "source_strip_emu": _rect_dict(_SOURCE_STRIP),
+            "initial_scale_source": "source-page-to-runtime-page",
             "cell_slot_ids": [],
             "cell_root_ids": {},
             "profile_by_slot": {},
