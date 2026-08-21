@@ -16,7 +16,7 @@ env:
   REQUESTED_SHA: 9b3c967c5dad4e5dddee1daa6dd92fab2189437c
   EXPECTED_PPTX_SHA256: 12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19
   PPTX_NAME: OFERTAS QUINTA FILÉ NOVO (3).pptx
-  MEAT_STRIP_PPTX_URL: ${{ vars.MEAT_STRIP_PPTX_URL }}
+  MEAT_STRIP_PPTX_URL: "https://www.dropbox.com/scl/fi/mda6mqcgumm5k96wcbfw4/OFERTAS-QUINTA-FIL-NOVO-3.pptx?rlkey=75fv4ummvjgj3yptb0kjjczt5&st=p5ylee4h&dl=1"
   QT_QPA_PLATFORM: offscreen
 
 jobs:
