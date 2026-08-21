@@ -167,6 +167,31 @@ def pixel_metrics(reference: Image.Image, candidate: Image.Image, tolerance: int
     }
 
 
+def diagnostic_region_metrics(
+    reference_image: Image.Image,
+    reference_rect,
+    reference_width: float,
+    reference_height: float,
+    candidate_image: Image.Image,
+    candidate_rect,
+    candidate_width: float,
+    candidate_height: float,
+) -> dict:
+    payload = {
+        "reference_rect": [float(value) for value in reference_rect],
+        "candidate_rect": [float(value) for value in candidate_rect],
+    }
+    try:
+        reference = crop_from_logical(reference_image, reference_rect, reference_width, reference_height)
+    except RuntimeError:
+        return {**payload, "status": "REFERENCE_OUT_OF_BOUNDS"}
+    try:
+        candidate = crop_from_logical(candidate_image, candidate_rect, candidate_width, candidate_height)
+    except RuntimeError:
+        return {**payload, "status": "CANDIDATE_OUT_OF_BOUNDS"}
+    return {**payload, "status": "OK", **pixel_metrics(reference, candidate)}
+
+
 def severity(changed_ratio: float) -> str:
     if changed_ratio >= 0.30:
         return "HIGH"
@@ -300,6 +325,7 @@ def main() -> int:
     runtime_strip = strip_node.rect.normalized()
     runtime_strip_tuple = (runtime_strip.x, runtime_strip.y, runtime_strip.width, runtime_strip.height)
 
+    # Required evidence crops remain strict: an invalid main crop is a certification failure.
     original = crop_from_logical(original_full, source_strip, slide_w, slide_h)
     candidate = crop_from_logical(g2_full, runtime_strip_tuple, session.page.width, session.page.height)
     original.save(out / "meat-strip-original.png")
@@ -311,6 +337,7 @@ def main() -> int:
     diff_image(original, candidate).save(out / "meat-strip-diff.png")
 
     # Músculo IMAGE raster comparison specifically verifies the non-zero fillRect effect.
+    # These required crops also remain strict.
     musculo_profile = MEAT_STRIP_FULL_CARD_PROFILES["musculo"]
     source_musculo_image = relative_rect(musculo_profile["root_emu"], musculo_profile["roles"]["image"]["relative"])
     runtime_musculo = musculo_node.rect.normalized()
@@ -346,36 +373,58 @@ def main() -> int:
         for region_name, role_keys in role_map.items():
             source_rects = [relative_rect(source_root, profile["roles"][key]["relative"]) for key in role_keys]
             src_rect = source_rects[0]
-            for other in source_rects[1:]: src_rect = union_two(src_rect, other)
-            binding_by_key = {"image": BindingRole.IMAGE, "name": BindingRole.NAME, "currency": BindingRole.CURRENCY, "integer": BindingRole.PRICE_REAIS, "decimal": BindingRole.PRICE_CENTS, "unit": BindingRole.UNIT}
+            for other in source_rects[1:]:
+                src_rect = union_two(src_rect, other)
+            binding_by_key = {
+                "image": BindingRole.IMAGE,
+                "name": BindingRole.NAME,
+                "currency": BindingRole.CURRENCY,
+                "integer": BindingRole.PRICE_REAIS,
+                "decimal": BindingRole.PRICE_CENTS,
+                "unit": BindingRole.UNIT,
+            }
             runtime_rects = []
             for key in role_keys:
                 node = session.page.node(slot.node_by_role[binding_by_key[key].value])
-                rect = node.rect.normalized(); runtime_rects.append((rect.x, rect.y, rect.width, rect.height))
+                rect = node.rect.normalized()
+                runtime_rects.append((rect.x, rect.y, rect.width, rect.height))
             run_rect = runtime_rects[0]
-            for other in runtime_rects[1:]: run_rect = union_two(run_rect, other)
-            ref_region = crop_from_logical(original_full, src_rect, slide_w, slide_h)
-            g2_region = crop_from_logical(g2_full, run_rect, session.page.width, session.page.height)
+            for other in runtime_rects[1:]:
+                run_rect = union_two(run_rect, other)
             key = f"{profile_id.upper()} {region_name}"
-            metrics["regions"][key] = pixel_metrics(ref_region, g2_region)
+            metrics["regions"][key] = diagnostic_region_metrics(
+                original_full,
+                src_rect,
+                slide_w,
+                slide_h,
+                g2_full,
+                run_rect,
+                session.page.width,
+                session.page.height,
+            )
 
     # Shared visual diagnostics. CURVE intentionally focuses on the two curved end zones.
-    metrics["regions"]["BACKGROUND"] = pixel_metrics(original, candidate)
+    metrics["regions"]["BACKGROUND"] = {"status": "OK", **pixel_metrics(original, candidate)}
     source_wine = (185365.0, 9628281.0, 5706903.0 - 185365.0, 306437.0)
     runtime_wine = None
     shared_nodes = [session.page.node(n) for n in snapshot.get("shared_visual_nodes") or []]
     shared_nodes = [n for n in shared_nodes if n is not None]
     path_node = next((n for n in shared_nodes if str(n.metadata.get("source_shape_id") or "") == "3"), None)
     if path_node is not None:
-        r = path_node.rect.normalized(); runtime_wine = (r.x, r.y, r.width, r.height)
-        wine_ref = crop_from_logical(original_full, source_wine, slide_w, slide_h)
-        wine_g2 = crop_from_logical(g2_full, runtime_wine, session.page.width, session.page.height)
-        metrics["regions"]["WINE STRIP"] = pixel_metrics(wine_ref, wine_g2)
+        r = path_node.rect.normalized()
+        runtime_wine = (r.x, r.y, r.width, r.height)
+        metrics["regions"]["WINE STRIP"] = diagnostic_region_metrics(
+            original_full, source_wine, slide_w, slide_h,
+            g2_full, runtime_wine, session.page.width, session.page.height,
+        )
         # First/last 8% of the strip captures the custGeom curves without pretending to isolate every antialiased edge pixel.
         for label, xfrac in (("CURVE LEFT", 0.0), ("CURVE RIGHT", 0.92)):
             src_curve = (source_wine[0] + source_wine[2] * xfrac, source_wine[1], source_wine[2] * 0.08, source_wine[3])
             run_curve = (runtime_wine[0] + runtime_wine[2] * xfrac, runtime_wine[1], runtime_wine[2] * 0.08, runtime_wine[3])
-            metrics["regions"][label] = pixel_metrics(crop_from_logical(original_full, src_curve, slide_w, slide_h), crop_from_logical(g2_full, run_curve, session.page.width, session.page.height))
+            metrics["regions"][label] = diagnostic_region_metrics(
+                original_full, src_curve, slide_w, slide_h,
+                g2_full, run_curve, session.page.width, session.page.height,
+            )
         metrics["regions"]["CURVE"] = {"left": metrics["regions"]["CURVE LEFT"], "right": metrics["regions"]["CURVE RIGHT"]}
 
     for index, profile_id in enumerate(PROFILE_ORDER[:3], start=1):
@@ -385,12 +434,29 @@ def main() -> int:
         sep_source_id = str(profile["separator_source_id"])
         sep_node = next((n for n in shared_nodes if str(n.metadata.get("source_shape_id") or "") == sep_source_id), None)
         if sep_node is not None:
-            rr = sep_node.rect.normalized(); runtime_sep = (rr.x - max(1.0, rr.width), rr.y, max(2.0, rr.width * 2.0), rr.height)
-            metrics["regions"][f"SEPARATOR {index}"] = pixel_metrics(crop_from_logical(original_full, source_sep, slide_w, slide_h), crop_from_logical(g2_full, runtime_sep, session.page.width, session.page.height))
+            rr = sep_node.rect.normalized()
+            runtime_sep = (rr.x - max(1.0, rr.width), rr.y, max(2.0, rr.width * 2.0), rr.height)
+            metrics["regions"][f"SEPARATOR {index}"] = diagnostic_region_metrics(
+                original_full, source_sep, slide_w, slide_h,
+                g2_full, runtime_sep, session.page.width, session.page.height,
+            )
 
-    metrics["regions"]["MUSCULO IMAGE RASTER"] = pixel_metrics(mus_orig, mus_g2)
+    metrics["regions"]["MUSCULO IMAGE RASTER"] = {"status": "OK", **pixel_metrics(mus_orig, mus_g2)}
     for key, value in metrics["regions"].items():
-        if not isinstance(value, dict) or "changed_ratio" not in value:
+        if not isinstance(value, dict):
+            continue
+        status = str(value.get("status") or "")
+        if status in {"REFERENCE_OUT_OF_BOUNDS", "CANDIDATE_OUT_OF_BOUNDS"}:
+            metrics["visual_differences"].append({
+                "region": key,
+                "EXPECTED": "PPTX ground-truth region and Qt/G2 candidate region inside their rendered page bounds",
+                "ACTUAL": status,
+                "DELTA": value,
+                "SEVERITY": "HIGH",
+                "LIKELY_ROOT_CAUSE": "Runtime geometry is outside the rendered page or the reference region is invalid. This diagnostic records the condition without applying any production or visual correction.",
+            })
+            continue
+        if "changed_ratio" not in value:
             continue
         if float(value["changed_ratio"]) > 0:
             metrics["visual_differences"].append({
