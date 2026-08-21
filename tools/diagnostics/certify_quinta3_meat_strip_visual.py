@@ -363,7 +363,7 @@ def main() -> int:
 
     for profile_id, slot in zip(PROFILE_ORDER, slots):
         profile = MEAT_STRIP_FULL_CARD_PROFILES[profile_id]
-        source_root = profile["root_emu"]
+        source_profile_root = profile["root_emu"]
         role_map = {
             "IMAGE": ["image"],
             "NAME": ["name"],
@@ -371,7 +371,7 @@ def main() -> int:
             "UNIT": ["unit"],
         }
         for region_name, role_keys in role_map.items():
-            source_rects = [relative_rect(source_root, profile["roles"][key]["relative"]) for key in role_keys]
+            source_rects = [relative_rect(source_profile_root, profile["roles"][key]["relative"]) for key in role_keys]
             src_rect = source_rects[0]
             for other in source_rects[1:]:
                 src_rect = union_two(src_rect, other)
