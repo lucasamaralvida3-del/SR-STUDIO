@@ -107,7 +107,12 @@ jobs:
         run: |
           git fetch origin g2/diagnostic-meat-strip-source-scale-recert --depth=1
           python -c "import subprocess,pathlib; raw=subprocess.check_output(['git','show','FETCH_HEAD:tools/diagnostics/diagnose_quinta3_meat_strip_runtime.py']); pathlib.Path('diagnose_after.py').write_bytes(raw)"
-          python -c "from pathlib import Path; p=Path('diagnose_after.py'); s=p.read_text(encoding='utf-8'); old='REQUESTED_SHA = \"9b3c967c5dad4e5dddee1daa6dd92fab2189437c\"'; new='REQUESTED_SHA = \"200f0ba6c119e604f5ad7d7898e6838f55dc8619\"'; assert old in s; p.write_text(s.replace(old,new,1),encoding='utf-8')"
+          $old = 'REQUESTED_SHA = "9b3c967c5dad4e5dddee1daa6dd92fab2189437c"'
+          $new = 'REQUESTED_SHA = "200f0ba6c119e604f5ad7d7898e6838f55dc8619"'
+          $text = Get-Content -Raw -LiteralPath diagnose_after.py
+          if (-not $text.Contains($old)) { throw 'Expected REQUESTED_SHA anchor missing from diagnostic' }
+          $text = $text.Replace($old, $new)
+          Set-Content -LiteralPath diagnose_after.py -Value $text -Encoding utf8
           python -m py_compile diagnose_after.py tools/diagnostics/compare_quinta3_meat_strip_before_after.py
 
       - name: Fresh clean AFTER render
