@@ -182,7 +182,7 @@ jobs:
 
       - name: Install focused test dependencies
         shell: pwsh
-        run: python -m pip install -q pytest ruff PySide6
+        run: python -m pip install -q pytest ruff PySide6 Pillow openpyxl pypdf pypdfium2
 
       - name: Compile and lint changed runtime/test
         shell: pwsh
