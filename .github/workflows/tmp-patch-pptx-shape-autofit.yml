@@ -1,0 +1,219 @@
+name: Temporary PPTX Shape AutoFit Text Patch
+
+on:
+  push:
+    branches:
+      - g2/fix-pptx-shape-autofit-text-baseline
+
+permissions:
+  contents: write
+
+jobs:
+  patch-test-commit:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: g2/fix-pptx-shape-autofit-text-baseline
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply exact renderer patch and generic regression
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+
+          renderer = Path("src/srstudio/graphics2/qt_renderer.py")
+          text = renderer.read_text(encoding="utf-8")
+
+          old_draw = '''    layout = _explicit_multiline_layout(text, rect, style, font, QtCore, QtGui)
+              if layout is not None:
+                  painter.save()
+                  try:
+                      painter.setClipRect(rect)
+                      for line, x, baseline in layout:
+                          painter.drawText(QtCore.QPointF(x, baseline), line)
+                  finally:
+                      painter.restore()
+                  return
+              painter.drawText(rect, flags, text)
+          '''
+          new_draw = '''    layout = _explicit_multiline_layout(text, rect, style, font, QtCore, QtGui)
+              if layout is not None:
+                  painter.save()
+                  try:
+                      painter.setClipRect(rect)
+                      for line, x, baseline in layout:
+                          painter.drawText(QtCore.QPointF(x, baseline), line)
+                  finally:
+                      painter.restore()
+                  return
+              shape_layout = _pptx_shape_autofit_single_line_layout(text, rect, style, font, QtGui)
+              if shape_layout is not None:
+                  x, baseline = shape_layout
+                  painter.drawText(QtCore.QPointF(x, baseline), text)
+                  return
+              painter.drawText(rect, flags, text)
+          '''
+          if old_draw not in text:
+              raise SystemExit("renderer draw anchor not found exactly")
+          text = text.replace(old_draw, new_draw, 1)
+
+          helper_anchor = "\n\ndef _set_font_weight(font, value: object, QtGui) -> None:\n"
+          helper = r'''
+
+          def _pptx_shape_autofit_single_line_layout(text: str, rect, style: dict, font, QtGui):
+              """Return point-text coordinates for DrawingML ``spAutoFit``.
+
+              ``spAutoFit`` grows the shape to its text; it does not shrink the
+              font to the persisted xfrm rectangle.  QPainter's QRect overload
+              performs its own line-box layout and can clip a source-faithful
+              single line whenever Qt's font metrics are larger than Office's.
+              For the measured top-anchored contract, preserve font metrics and
+              paragraph alignment and place the baseline explicitly instead.
+              """
+
+              normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+              if not normalized or "\n" in normalized:
+                  return None
+              if str(style.get("pptx_auto_fit") or "").lower() != "shape":
+                  return None
+              if _should_fit_text(style):
+                  return None
+              vertical = str(style.get("v_align") or style.get("vertical_align") or "center").lower()
+              if vertical not in {"top", "t"}:
+                  return None
+
+              metrics = QtGui.QFontMetricsF(font)
+              advance = float(metrics.horizontalAdvance(normalized))
+              tight = metrics.tightBoundingRect(normalized)
+              horizontal = str(style.get("align") or "center").lower()
+              if horizontal in {"left", "l"}:
+                  x = float(rect.left())
+              elif horizontal in {"right", "r"}:
+                  x = float(rect.right()) - advance
+              else:
+                  x = float(rect.left()) + (float(rect.width()) - advance) * 0.5
+
+              # QPointF drawText() receives a baseline.  Align the measured ink
+              # top with the zero-inset top anchor and deliberately do not clip
+              # to the stale source rectangle: spAutoFit is shape-growth semantics.
+              baseline = float(rect.top()) - float(tight.top())
+              return x, baseline
+          '''
+          if helper_anchor not in text:
+              raise SystemExit("helper insertion anchor not found exactly")
+          text = text.replace(helper_anchor, helper + helper_anchor, 1)
+          renderer.write_text(text, encoding="utf-8")
+
+          test = Path("tests/test_graphics2_pptx_shape_autofit_text_layout.py")
+          test.write_text(r'''from __future__ import annotations
+
+          import os
+
+          import pytest
+
+          pytest.importorskip("PySide6")
+          os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+
+          from PySide6 import QtCore, QtGui
+          from PySide6.QtGui import QFont, QFontMetricsF, QGuiApplication
+
+          from srstudio.graphics2.qt_renderer import _pptx_shape_autofit_single_line_layout
+
+
+          @pytest.fixture(scope="module", autouse=True)
+          def _qt_application():
+              app = QGuiApplication.instance() or QGuiApplication([])
+              yield app
+
+
+          def test_pptx_shape_autofit_top_anchor_uses_explicit_baseline_without_meat_contract():
+              font = QFont("Arial")
+              font.setPixelSize(29)
+              rect = QtCore.QRectF(100.0, 50.0, 24.0, 26.0)
+              style = {
+                  "pptx_auto_fit": "shape",
+                  "fit_inside_box": False,
+                  "align": "center",
+                  "v_align": "top",
+                  "nowrap": True,
+              }
+
+              layout = _pptx_shape_autofit_single_line_layout("24", rect, style, font, QtGui)
+
+              assert layout is not None
+              x, baseline = layout
+              metrics = QFontMetricsF(font)
+              tight = metrics.tightBoundingRect("24")
+              advance = metrics.horizontalAdvance("24")
+              assert x == pytest.approx(rect.left() + (rect.width() - advance) * 0.5)
+              assert baseline + tight.top() == pytest.approx(rect.top())
+              # The generic contract is allowed to extend beyond a stale xfrm box;
+              # spAutoFit grows the shape instead of silently shrinking the font.
+              assert metrics.height() > rect.height()
+
+
+          @pytest.mark.parametrize(
+              ("text", "style"),
+              [
+                  ("24", {"align": "center", "v_align": "top"}),
+                  ("24", {"pptx_auto_fit": "shape", "fit_inside_box": True, "v_align": "top"}),
+                  ("24", {"pptx_auto_fit": "shape", "fit_inside_box": False, "v_align": "center"}),
+                  ("24\n86", {"pptx_auto_fit": "shape", "fit_inside_box": False, "v_align": "top"}),
+              ],
+          )
+          def test_pptx_shape_autofit_explicit_baseline_is_narrowly_scoped(text, style):
+              font = QFont("Arial")
+              font.setPixelSize(20)
+              rect = QtCore.QRectF(0.0, 0.0, 80.0, 20.0)
+
+              assert _pptx_shape_autofit_single_line_layout(text, rect, style, font, QtGui) is None
+          ''', encoding="utf-8")
+
+          workflow = Path(".github/workflows/tmp-patch-pptx-shape-autofit.yml")
+          workflow.unlink()
+          '@ | Set-Content -LiteralPath apply_patch.py -Encoding utf8
+          python apply_patch.py
+          Remove-Item apply_patch.py
+
+      - name: Install focused test dependencies
+        shell: pwsh
+        run: python -m pip install -q pytest ruff PySide6
+
+      - name: Compile and lint changed runtime/test
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/graphics2
+          python -m ruff check src/srstudio/graphics2/qt_renderer.py tests/test_graphics2_pptx_shape_autofit_text_layout.py
+
+      - name: Generic renderer regressions
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = (Resolve-Path 'src').Path
+          python -m pytest -q tests/test_graphics2_pptx_shape_autofit_text_layout.py tests/test_graphics2_qt_renderer.py
+
+      - name: Commit only renderer and generic test; remove temporary workflow
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          git status --short
+          $allowed = @(
+            'src/srstudio/graphics2/qt_renderer.py',
+            'tests/test_graphics2_pptx_shape_autofit_text_layout.py',
+            '.github/workflows/tmp-patch-pptx-shape-autofit.yml'
+          )
+          $changed = @(git status --porcelain | ForEach-Object { $_.Substring(3) })
+          foreach ($path in $changed) {
+            if ($allowed -notcontains $path) { throw "Unexpected changed path: $path" }
+          }
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all -- $allowed
+          git commit -m 'G2: preserve PPTX shape-autofit single-line baseline'
+          git push origin HEAD:g2/fix-pptx-shape-autofit-text-baseline
