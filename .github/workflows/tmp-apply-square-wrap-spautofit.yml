@@ -68,7 +68,7 @@ jobs:
       - name: Final production diff gate
         shell: pwsh
         run: |
-          git clean -fd -- build/lib
+          git clean -fd -- build/lib src/srstudio.egg-info
           $changed = @(git status --short | ForEach-Object { $_.Substring(3) })
           $allowed = @(
             'src/srstudio/graphics2/qt_renderer.py',
