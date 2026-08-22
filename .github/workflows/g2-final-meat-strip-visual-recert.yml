@@ -75,9 +75,17 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install exact AFTER runtime
+      - name: Install exact AFTER runtime from immutable archive
         shell: pwsh
-        run: python -m pip install -q './after-source[dev,graphics2]'
+        run: |
+          $archive = Join-Path (Get-Location) 'after-source-install.zip'
+          git -C after-source archive --format=zip --output=$archive HEAD
+          Expand-Archive -LiteralPath $archive -DestinationPath after-install -Force
+          python -m pip install -q './after-install[dev,graphics2]'
+          if (git -C after-source status --porcelain) {
+            git -C after-source status --porcelain
+            throw 'Candidate checkout dirtied by isolated runtime install'
+          }
 
       - name: Download and validate exact PPTX before any render
         id: pptx
@@ -137,7 +145,10 @@ jobs:
         run: |
           $checked = (git -C after-source rev-parse HEAD).Trim()
           if ($checked -ne $env:AFTER_SHA) { throw "AFTER exact SHA mismatch: $checked" }
-          if (git -C after-source status --porcelain) { throw "Candidate checkout dirty after render" }
+          if (git -C after-source status --porcelain) {
+            git -C after-source status --porcelain
+            throw "Candidate checkout dirty after render"
+          }
           "REQUESTED_SHA=$env:AFTER_SHA"
           "CHECKED_OUT_SHA=$checked"
 
