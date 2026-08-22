@@ -265,6 +265,11 @@ def _draw_text(painter, node: GraphicsNode, QtCore, QtGui, *, color_override: st
         finally:
             painter.restore()
         return
+    wrapped_layout = _pptx_shape_autofit_wrapped_layout(text, rect, style, font, QtCore, QtGui)
+    if wrapped_layout is not None:
+        for line, x, baseline in wrapped_layout:
+            painter.drawText(QtCore.QPointF(x, baseline), line)
+        return
     shape_layout = _pptx_shape_autofit_single_line_layout(text, rect, style, font, QtGui)
     if shape_layout is not None:
         x, baseline = shape_layout
@@ -297,6 +302,12 @@ def _pptx_shape_autofit_single_line_layout(text: str, rect, style: dict, font, Q
 
     metrics = QtGui.QFontMetricsF(font)
     advance = float(metrics.horizontalAdvance(normalized))
+    if (
+        _pptx_effective_wrap(style) == "square"
+        and not bool(style.get("nowrap", False))
+        and _pptx_source_layout_width(normalized, style, font, QtGui) > float(rect.width()) + 0.01
+    ):
+        return None
     tight = metrics.tightBoundingRect(normalized)
     horizontal = str(style.get("align") or "center").lower()
     if horizontal in {"left", "l"}:
@@ -311,6 +322,145 @@ def _pptx_shape_autofit_single_line_layout(text: str, rect, style: dict, font, Q
     # to the stale source rectangle: spAutoFit is shape-growth semantics.
     baseline = float(rect.top()) - float(tight.top())
     return x, baseline
+
+
+def _pptx_effective_wrap(style: dict) -> str:
+    """Return the explicit DrawingML wrapping contract carried by the scene.
+
+    ``bodyPr@wrap`` defaults to ``square`` in DrawingML, but legacy scene
+    objects did not preserve whether that semantic was known or merely implied
+    by ``nowrap=False``.  Only an explicit ``pptx_wrap`` value opts the
+    shape-autofit path into DrawingML wrapping; ``nowrap=True`` always wins.
+    """
+
+    if bool(style.get("nowrap", False)):
+        return "none"
+    value = str(style.get("pptx_wrap") or "").strip().lower()
+    if value in {"square", "wrap", "wordwrap", "word_wrap"}:
+        return "square"
+    if value in {"none", "nowrap", "no_wrap"}:
+        return "none"
+    return ""
+
+
+def _pptx_source_layout_font(style: dict, font, QtGui):
+    """Use the unrounded source point size for line-break decisions only.
+
+    Rendering keeps the established #106 pixel-sized QFont so text that fits
+    remains byte-for-byte on the explicit-baseline path.  DrawingML line
+    breaking, however, is based on the source point size and must not silently
+    inherit the integer pixel rounding used by QPainter output.
+    """
+
+    unit = str(style.get("font_size_unit") or "pt").strip().lower()
+    if unit not in {"pt", "point", "points"}:
+        return font
+    try:
+        source_pt = float(style.get("font_size") or 0.0)
+    except (TypeError, ValueError):
+        return font
+    if source_pt <= 0.0:
+        return font
+    result = QtGui.QFont(font)
+    result.setPointSizeF(source_pt)
+    return result
+
+
+def _pptx_source_layout_width(text: str, style: dict, font, QtGui) -> float:
+    layout_font = _pptx_source_layout_font(style, font, QtGui)
+    metrics = QtGui.QFontMetricsF(layout_font)
+    return max(float(metrics.horizontalAdvance(text)), float(metrics.tightBoundingRect(text).width()))
+
+
+def _pptx_wrapped_line_advance(style: dict, metrics) -> float:
+    if style.get("line_spacing_px") not in (None, ""):
+        try:
+            value = float(style.get("line_spacing_px") or 0.0)
+        except (TypeError, ValueError):
+            value = 0.0
+        if value > 0.0:
+            return value
+    if style.get("line_spacing_percent") not in (None, ""):
+        try:
+            percent = float(style.get("line_spacing_percent") or 0.0)
+        except (TypeError, ValueError):
+            percent = 0.0
+        if percent > 0.0:
+            return float(metrics.height()) * percent / 100.0
+    return float(metrics.lineSpacing())
+
+
+def _pptx_shape_autofit_wrapped_layout(text: str, rect, style: dict, font, QtCore, QtGui):
+    """Lay out DrawingML ``wrap=square`` + ``spAutoFit`` text when it overflows.
+
+    QTextLayout provides normal word wrapping and the DrawingML-required
+    emergency character fallback for tokens with no usable boundary.  The
+    helper is deliberately inactive while the source text fits horizontally,
+    preserving the #106 explicit-baseline route for ordinary one-line text.
+    ``spAutoFit`` is shape-growth semantics, so wrapped baselines are not
+    clipped to the stale source xfrm height.
+    """
+
+    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not normalized or "\n" in normalized:
+        return None
+    if str(style.get("pptx_auto_fit") or "").lower() != "shape":
+        return None
+    if _should_fit_text(style):
+        return None
+    vertical = str(style.get("v_align") or style.get("vertical_align") or "center").lower()
+    if vertical not in {"top", "t"}:
+        return None
+    if _pptx_effective_wrap(style) != "square":
+        return None
+
+    layout_font = _pptx_source_layout_font(style, font, QtGui)
+    layout_metrics = QtGui.QFontMetricsF(layout_font)
+    source_width = max(
+        float(layout_metrics.horizontalAdvance(normalized)),
+        float(layout_metrics.tightBoundingRect(normalized).width()),
+    )
+    if source_width <= float(rect.width()) + 0.01:
+        return None
+
+    layout = QtGui.QTextLayout(normalized, layout_font)
+    option = QtGui.QTextOption()
+    option.setWrapMode(QtGui.QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+    layout.setTextOption(option)
+    layout.beginLayout()
+    fragments: list[str] = []
+    try:
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(max(0.1, float(rect.width())))
+            start = int(line.textStart())
+            length = int(line.textLength())
+            fragment = normalized[start : start + length]
+            if fragment:
+                fragments.append(fragment)
+    finally:
+        layout.endLayout()
+    if len(fragments) <= 1:
+        return None
+
+    draw_metrics = QtGui.QFontMetricsF(font)
+    line_advance = _pptx_wrapped_line_advance(style, draw_metrics)
+    horizontal = str(style.get("align") or "center").lower()
+    first_tight = draw_metrics.tightBoundingRect(fragments[0])
+    first_baseline = float(rect.top()) - float(first_tight.top())
+    result: list[tuple[str, float, float]] = []
+    for index, fragment in enumerate(fragments):
+        advance = float(draw_metrics.horizontalAdvance(fragment))
+        if horizontal in {"left", "l"}:
+            x = float(rect.left())
+        elif horizontal in {"right", "r"}:
+            x = float(rect.right()) - advance
+        else:
+            x = float(rect.left()) + (float(rect.width()) - advance) * 0.5
+        result.append((fragment, x, first_baseline + line_advance * index))
+    return result
 
 
 def _set_font_weight(font, value: object, QtGui) -> None:

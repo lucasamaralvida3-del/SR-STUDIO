@@ -50,8 +50,8 @@ _CURVE_Y_MID = 153218.2273716426
 _CURVE_Y_2 = 237838.7979679896
 
 
-def _text_style(size: float, spacing_pt: float) -> dict[str, Any]:
-    return {
+def _text_style(size: float, spacing_pt: float, *, line_spacing_pt: float | None = None) -> dict[str, Any]:
+    style: dict[str, Any] = {
         "font_family": "Anton",
         "source_font_family": "Anton",
         "font_size": float(size),
@@ -62,12 +62,20 @@ def _text_style(size: float, spacing_pt: float) -> dict[str, Any]:
         "align": "center",
         "v_align": "top",
         "fit_inside_box": False,
-        "nowrap": True,
+        # DrawingML bodyPr@wrap is omitted in the exact source, whose effective
+        # value is square. Preserve that semantic explicitly instead of using
+        # the legacy ambiguous nowrap contract.
+        "nowrap": False,
+        "pptx_wrap": "square",
         "letter_spacing_pt": float(spacing_pt),
         "letter_spacing": float(spacing_pt) * (96.0 / 72.0),
         "pptx_auto_fit": "shape",
         "text_insets": {"left": 0.0, "top": 0.0, "right": 0.0, "bottom": 0.0},
     }
+    if line_spacing_pt is not None:
+        style["line_spacing_pt"] = float(line_spacing_pt)
+        style["line_spacing_px"] = float(line_spacing_pt) * (96.0 / 72.0)
+    return style
 
 
 MEAT_STRIP_FULL_CARD_PROFILES: dict[str, dict[str, Any]] = {
@@ -80,9 +88,9 @@ MEAT_STRIP_FULL_CARD_PROFILES: dict[str, dict[str, Any]] = {
         "roles": {
             "image": {"source_id": 25, "z": 11, "relative": [0.295438053, 0.117539593, 0.650744118, 0.782689740]},
             "name": {"source_id": 49, "z": 35, "relative": [0.331380906, 0.0, 0.616225069, 0.175183640], "style": _text_style(7.73, -0.22)},
-            "currency": {"source_id": 45, "z": 31, "relative": [0.440067686, 0.850291519, 0.067714683, 0.094915701], "style": _text_style(9.22, -0.26)},
+            "currency": {"source_id": 45, "z": 31, "relative": [0.440067686, 0.850291519, 0.067714683, 0.094915701], "style": _text_style(9.22, -0.26, line_spacing_pt=9.96)},
             "integer": {"source_id": 47, "z": 33, "relative": [0.507783025, 0.788655856, 0.184698239, 0.233183602], "style": _text_style(22.08, -0.64)},
-            "decimal": {"source_id": 48, "z": 34, "relative": [0.698543914, 0.785306624, 0.074621117, 0.093048528], "style": _text_style(7.80, -0.22)},
+            "decimal": {"source_id": 48, "z": 34, "relative": [0.698543914, 0.785306624, 0.074621117, 0.093048528], "style": _text_style(7.80, -0.22, line_spacing_pt=8.42)},
             "unit": {"source_id": 46, "z": 32, "relative": [0.712602832, 0.907746165, 0.060562855, 0.082439731], "style": _text_style(7.54, -0.21)},
         },
     },
@@ -95,9 +103,9 @@ MEAT_STRIP_FULL_CARD_PROFILES: dict[str, dict[str, Any]] = {
         "roles": {
             "image": {"source_id": 29, "z": 15, "relative": [0.079233610, 0.089638307, 0.813200608, 0.855642755]},
             "name": {"source_id": 38, "z": 24, "relative": [0.160270094, 0.0, 0.651128388, 0.174912087], "style": _text_style(7.81, -0.22)},
-            "currency": {"source_id": 33, "z": 19, "relative": [0.315510565, 0.850493275, 0.077300407, 0.094787787], "style": _text_style(9.22, -0.26)},
+            "currency": {"source_id": 33, "z": 19, "relative": [0.315510565, 0.850493275, 0.077300407, 0.094787787], "style": _text_style(9.22, -0.26, line_spacing_pt=9.96)},
             "integer": {"source_id": 36, "z": 22, "relative": [0.401379682, 0.788940676, 0.200628422, 0.232869349], "style": _text_style(22.08, -0.64)},
-            "decimal": {"source_id": 37, "z": 23, "relative": [0.624756383, 0.785595957, 0.085184519, 0.092909732], "style": _text_style(7.80, -0.22)},
+            "decimal": {"source_id": 37, "z": 23, "relative": [0.624756383, 0.785595957, 0.085184519, 0.092909732], "style": _text_style(7.80, -0.22, line_spacing_pt=8.42)},
             "unit": {"source_id": 35, "z": 21, "relative": [0.626625920, 0.907870492, 0.069136163, 0.082316021], "style": _text_style(7.54, -0.21)},
         },
     },
@@ -110,9 +118,9 @@ MEAT_STRIP_FULL_CARD_PROFILES: dict[str, dict[str, Any]] = {
         "roles": {
             "image": {"source_id": 28, "z": 14, "relative": [0.060553522, 0.250482186, 0.909394023, 0.563687175]},
             "name": {"source_id": 41, "z": 27, "relative": [0.187478281, 0.0, 0.658066913, 0.101789608], "style": _text_style(8.45, -0.24)},
-            "currency": {"source_id": 39, "z": 25, "relative": [0.305935598, 0.848743208, 0.077292186, 0.095897336], "style": _text_style(9.22, -0.26)},
+            "currency": {"source_id": 39, "z": 25, "relative": [0.305935598, 0.848743208, 0.077292186, 0.095897336], "style": _text_style(9.22, -0.26, line_spacing_pt=9.96)},
             "integer": {"source_id": 26, "z": 12, "relative": [0.383227784, 0.786470098, 0.213811532, 0.235632702], "style": _text_style(22.08, -0.64)},
-            "decimal": {"source_id": 27, "z": 13, "relative": [0.601351675, 0.783086227, 0.084414544, 0.094010852], "style": _text_style(7.80, -0.22)},
+            "decimal": {"source_id": 27, "z": 13, "relative": [0.601351675, 0.783086227, 0.084414544, 0.094010852], "style": _text_style(7.80, -0.22, line_spacing_pt=8.42)},
             "unit": {"source_id": 40, "z": 26, "relative": [0.617017867, 0.906792060, 0.069128811, 0.083292337], "style": _text_style(7.54, -0.21)},
         },
     },
@@ -125,9 +133,9 @@ MEAT_STRIP_FULL_CARD_PROFILES: dict[str, dict[str, Any]] = {
         "roles": {
             "image": {"source_id": 30, "z": 16, "relative": [0.012184940, 0.316167070, 0.797549600, 0.555473044]},
             "name": {"source_id": 44, "z": 30, "relative": [0.114410796, 0.0, 0.684153022, 0.191302413], "style": _text_style(8.45, -0.24)},
-            "currency": {"source_id": 42, "z": 28, "relative": [0.265995795, 0.850291519, 0.077764047, 0.094915701], "style": _text_style(9.22, -0.26)},
+            "currency": {"source_id": 42, "z": 28, "relative": [0.265995795, 0.850291519, 0.077764047, 0.094915701], "style": _text_style(9.22, -0.26, line_spacing_pt=9.96)},
             "integer": {"source_id": 31, "z": 17, "relative": [0.350722235, 0.788655856, 0.212108836, 0.233183602], "style": _text_style(22.08, -0.64)},
-            "decimal": {"source_id": 43, "z": 29, "relative": [0.562831825, 0.785306624, 0.085695448, 0.093035112], "style": _text_style(7.80, -0.22)},
+            "decimal": {"source_id": 43, "z": 29, "relative": [0.562831825, 0.785306624, 0.085695448, 0.093035112], "style": _text_style(7.80, -0.22, line_spacing_pt=8.42)},
             "unit": {"source_id": 34, "z": 20, "relative": [0.578977191, 0.907746165, 0.069550835, 0.082439731], "style": _text_style(7.54, -0.21)},
         },
     },
