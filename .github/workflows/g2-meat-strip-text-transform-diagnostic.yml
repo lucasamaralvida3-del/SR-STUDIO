@@ -1,0 +1,69 @@
+name: G2 Meat Strip Text Transform Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - g2/fix-meat-strip-source-scale
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REQUESTED_SHA: c69dd1b933e93e0928c4f299cc53ca771b22b4c2
+  EXPECTED_PPTX_SHA256: 12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19
+  PPTX_NAME: OFERTAS QUINTA FILÉ NOVO (3).pptx
+  MEAT_STRIP_PPTX_URL: "https://www.dropbox.com/scl/fi/mda6mqcgumm5k96wcbfw4/OFERTAS-QUINTA-FIL-NOVO-3.pptx?rlkey=75fv4ummvjgj3yptb0kjjczt5&st=p5ylee4h&dl=1"
+
+jobs:
+  transforms:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REQUESTED_SHA }}
+          path: cert-source
+          fetch-depth: 1
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Exact SHA gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C cert-source rev-parse HEAD)" = "$REQUESTED_SHA"
+          test -z "$(git -C cert-source status --porcelain)"
+      - name: Install candidate
+        shell: bash
+        run: python -m pip install -q './cert-source[dev]'
+      - name: Download and validate PPTX
+        id: pptx
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ground-truth
+          target="ground-truth/$PPTX_NAME"
+          curl -L --fail --silent --show-error "$MEAT_STRIP_PPTX_URL" -o "$target"
+          actual="$(sha256sum "$target" | awk '{print $1}')"
+          echo "PPTX_SHA256=$actual"
+          test "$actual" = "$EXPECTED_PPTX_SHA256"
+          echo "path=$target" >> "$GITHUB_OUTPUT"
+      - name: Capture semantic transforms
+        shell: bash
+        run: |
+          PYTHONPATH="$(pwd)/cert-source/src" python tools/diagnostics/measure_quinta3_meat_strip_text_transforms.py --pptx '${{ steps.pptx.outputs.path }}' --source-root cert-source --out transform-metrics
+      - name: Verify candidate clean
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C cert-source rev-parse HEAD)" = "$REQUESTED_SHA"
+          test -z "$(git -C cert-source status --porcelain)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: quinta3-meat-strip-text-transforms-${{ env.REQUESTED_SHA }}
+          path: transform-metrics/
+          if-no-files-found: error
+          retention-days: 30
