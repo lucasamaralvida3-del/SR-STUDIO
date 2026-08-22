@@ -106,7 +106,7 @@ jobs:
           if (-not (Test-Path 'before-d59/after-text-semantics/text-variant-metrics.json')) { throw 'd59 BEFORE metrics missing' }
           if (-not (Test-Path 'reference-artifact/final-cert/meat-strip-original.png')) { throw 'Exact reference crop missing' }
 
-      - name: Prepare exact AFTER delegate
+      - name: Prepare exact AFTER delegates and planner harness
         shell: pwsh
         run: |
           $source = Get-Content -Raw 'tools/diagnostics/diagnose_quinta3_meat_strip_text_semantics.py'
@@ -115,10 +115,51 @@ jobs:
             ('REQUESTED_SHA = "' + $env:AFTER_SHA + '"')
           )
           $source | Set-Content -Encoding utf8 'run-after-text-semantics.py'
+
           $latin = Get-Content -Raw 'tools/diagnostics/diagnose_quinta3_latin_line_break.py'
           $latin = $latin.Replace('int(finder.boundaryReasons())', 'str(finder.boundaryReasons())')
           $latin | Set-Content -Encoding utf8 'run-latin-line-break.py'
-          python -m py_compile run-after-text-semantics.py tools/diagnostics/trace_quinta3_square_wrap_runtime.py tools/diagnostics/compare_quinta3_ink_wrap_recert.py run-latin-line-break.py tools/diagnostics/diagnose_quinta3_office_line_break_planner.py
+
+          $planner = Get-Content -Raw 'tools/diagnostics/diagnose_quinta3_office_line_break_planner.py'
+          $oldImport = @'
+    from PySide6 import QtCore, QtGui
+    from srstudio.graphics2 import qt_renderer
+
+    delegate = load_module(args.delegate, "planner_delegate")
+'@
+          $newImport = @'
+    from PySide6 import QtCore, QtGui
+    from srstudio.graphics2 import qt_renderer
+    from srstudio.graphics2.fonts import ensure_qgui_application
+
+    app = ensure_qgui_application()
+    app.processEvents()
+    delegate = load_module(args.delegate, "planner_delegate")
+'@
+          if (-not $planner.Contains($oldImport)) { throw 'Planner QGui bootstrap patch anchor missing' }
+          $planner = $planner.Replace($oldImport, $newImport)
+
+          $oldCrop = @'
+def crop_sha(root: Path, profile: str, role: str) -> str:
+    return sha256(root / "crops" / f"current-{profile}-{role}.png")
+'@
+          $newCrop = @'
+def crop_sha(root: Path, profile: str, role: str) -> str:
+    from PIL import Image
+
+    row = current_rows(root)[(profile, role)]
+    box = [int(value) for value in row["CROP_BOX"]]
+    output_dir = root / "diagnostic-regions"
+    output_dir.mkdir(parents=True, exist_ok=True)
+    output = output_dir / f"current-{profile}-{role}.png"
+    Image.open(root / "text-variant-current.png").convert("RGB").crop(tuple(box)).save(output)
+    return sha256(output)
+'@
+          if (-not $planner.Contains($oldCrop)) { throw 'Planner INTEGER crop patch anchor missing' }
+          $planner = $planner.Replace($oldCrop, $newCrop)
+          $planner | Set-Content -Encoding utf8 'run-office-line-break-planner.py'
+
+          python -m py_compile run-after-text-semantics.py run-latin-line-break.py run-office-line-break-planner.py tools/diagnostics/trace_quinta3_square_wrap_runtime.py tools/diagnostics/compare_quinta3_ink_wrap_recert.py
 
       - name: Run exact AFTER raster and route trace
         id: render
@@ -150,7 +191,7 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: |
-          python tools/diagnostics/diagnose_quinta3_office_line_break_planner.py `
+          python run-office-line-break-planner.py `
             --delegate run-after-text-semantics.py `
             --latin-module run-latin-line-break.py `
             --pptx '${{ steps.pptx.outputs.path }}' `
