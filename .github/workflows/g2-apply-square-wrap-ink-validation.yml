@@ -70,10 +70,11 @@ jobs:
             tests/test_graphics2_pptx_square_wrap_spautofit.py `
             tests/test_graphics2_quinta3_meat_square_wrap_runtime.py
 
-      - name: Remove temporary patch machinery and build residue
+      - name: Remove temporary patch machinery and install residue
         shell: pwsh
         run: |
           git clean -fdx -- build
+          git restore --source=HEAD --worktree --staged -- src/srstudio.egg-info
           git rm --quiet tools/diagnostics/apply_square_wrap_ink_validation_patch.py
           git rm --quiet .github/workflows/g2-apply-square-wrap-ink-validation.yml
 
