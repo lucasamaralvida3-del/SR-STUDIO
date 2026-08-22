@@ -121,6 +121,7 @@ jobs:
           $latin | Set-Content -Encoding utf8 'run-latin-line-break.py'
 
           $planner = Get-Content -Raw 'tools/diagnostics/diagnose_quinta3_office_line_break_planner.py'
+          $planner = $planner.Replace("`r`n", "`n")
           $oldImport = @(
             '    from PySide6 import QtCore, QtGui',
             '    from srstudio.graphics2 import qt_renderer',
