@@ -1,0 +1,100 @@
+name: G2 Meat Strip Text Metrics Diagnostic
+
+on:
+  pull_request:
+    branches:
+      - g2/fix-meat-strip-source-scale
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  REQUESTED_SHA: c69dd1b933e93e0928c4f299cc53ca771b22b4c2
+  EXPECTED_PPTX_SHA256: 12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19
+  PPTX_NAME: OFERTAS QUINTA FILÉ NOVO (3).pptx
+  MEAT_STRIP_PPTX_URL: "https://www.dropbox.com/scl/fi/mda6mqcgumm5k96wcbfw4/OFERTAS-QUINTA-FIL-NOVO-3.pptx?rlkey=75fv4ummvjgj3yptb0kjjczt5&st=p5ylee4h&dl=1"
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  exact-text-metrics-windows:
+    runs-on: windows-2025
+    timeout-minutes: 20
+    steps:
+      - name: Checkout diagnostic tooling
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Checkout candidate exactly
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.REQUESTED_SHA }}
+          path: cert-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Candidate exact-SHA and cleanliness BEFORE
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $checked = (git -C cert-source rev-parse HEAD).Trim()
+          "REQUESTED_SHA=$env:REQUESTED_SHA"
+          "CHECKED_OUT_SHA=$checked"
+          if ($checked -ne $env:REQUESTED_SHA) { throw "Exact SHA mismatch: $checked != $env:REQUESTED_SHA" }
+          if (git -C cert-source status --porcelain) { throw 'Candidate checkout dirty before diagnostic.' }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: cert-source/pyproject.toml
+
+      - name: Install exact candidate runtime
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m pip install -U pip
+          Remove-Item -Recurse -Force runtime-install-source -ErrorAction SilentlyContinue
+          Remove-Item -Force runtime-install-source.zip -ErrorAction SilentlyContinue
+          git -C cert-source archive --format=zip --output=../runtime-install-source.zip HEAD
+          Expand-Archive -LiteralPath runtime-install-source.zip -DestinationPath runtime-install-source
+          python -m pip install './runtime-install-source[dev,graphics2]'
+          if (git -C cert-source status --porcelain) { throw 'Candidate checkout became dirty during install.' }
+
+      - name: Download and validate exact PPTX before Qt measurement
+        id: pptx
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path ground-truth | Out-Null
+          $target = Join-Path (Resolve-Path ground-truth) $env:PPTX_NAME
+          Invoke-WebRequest -Uri $env:MEAT_STRIP_PPTX_URL -OutFile $target
+          $actual = (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash.ToLowerInvariant()
+          "PPTX_SHA256=$actual"
+          if ($actual -ne $env:EXPECTED_PPTX_SHA256) { throw "PPTX SHA mismatch: $actual != $env:EXPECTED_PPTX_SHA256" }
+          "path=$target" >> $env:GITHUB_OUTPUT
+
+      - name: Measure real Anton QFont and source/runtime text contracts
+        shell: pwsh
+        run: |
+          $env:PYTHONPATH = (Resolve-Path 'cert-source/src').Path
+          python tools/diagnostics/measure_quinta3_meat_strip_text_runtime.py --pptx '${{ steps.pptx.outputs.path }}' --source-root cert-source --out text-metrics
+
+      - name: Candidate exact-SHA and cleanliness AFTER
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $checked = (git -C cert-source rev-parse HEAD).Trim()
+          "REQUESTED_SHA=$env:REQUESTED_SHA"
+          "CHECKED_OUT_SHA=$checked"
+          if ($checked -ne $env:REQUESTED_SHA) { throw 'Candidate HEAD changed during diagnostic.' }
+          if (git -C cert-source status --porcelain) { throw 'Candidate checkout dirty after diagnostic.' }
+
+      - name: Upload text metric evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: quinta3-meat-strip-text-metrics-${{ env.REQUESTED_SHA }}
+          path: text-metrics/
+          if-no-files-found: error
+          retention-days: 30
