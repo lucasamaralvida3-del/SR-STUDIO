@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - g2/diagnostic-meat-strip-exact-page-contract-cert
+  pull_request:
+    branches:
+      - g2/fix-meat-strip-exact-source-page-contract
 
 permissions:
   contents: read
