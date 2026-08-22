@@ -68,6 +68,7 @@ jobs:
       - name: Final production diff gate
         shell: pwsh
         run: |
+          Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
           $changed = @(git status --short | ForEach-Object { $_.Substring(3) })
           $allowed = @(
             'src/srstudio/graphics2/qt_renderer.py',
