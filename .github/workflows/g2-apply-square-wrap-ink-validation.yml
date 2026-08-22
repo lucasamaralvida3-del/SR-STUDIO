@@ -73,8 +73,7 @@ jobs:
       - name: Remove temporary patch machinery and install residue
         shell: pwsh
         run: |
-          git clean -fdx -- build
-          git restore --source=HEAD --worktree --staged -- src/srstudio.egg-info
+          git clean -fdx -- build src/srstudio.egg-info
           git rm --quiet tools/diagnostics/apply_square_wrap_ink_validation_patch.py
           git rm --quiet .github/workflows/g2-apply-square-wrap-ink-validation.yml
 
