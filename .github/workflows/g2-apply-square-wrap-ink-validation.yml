@@ -80,7 +80,8 @@ jobs:
       - name: Final PR #111 delta scope gate
         shell: pwsh
         run: |
-          $changed = @(git diff --name-only $env:FROZEN_BASE)
+          git add -A
+          $changed = @(git diff --cached --name-only $env:FROZEN_BASE)
           $expected = @(
             'src/srstudio/graphics2/qt_renderer.py',
             'tests/test_graphics2_pptx_square_wrap_spautofit.py',
@@ -95,15 +96,13 @@ jobs:
           if ($changed | Where-Object { $_ -like '.github/*' -or $_ -like 'tools/diagnostics/*' }) {
             throw 'Temporary patch machinery remains in final tree'
           }
-          git diff --check
+          git diff --cached --check
 
       - name: Commit focused production candidate
         shell: pwsh
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/srstudio/graphics2/qt_renderer.py tests/test_graphics2_pptx_square_wrap_spautofit.py tests/test_graphics2_quinta3_meat_square_wrap_runtime.py
-          git add -u
           git commit -m 'G2: align emergency wrap with ink-aware overflow'
           git push origin "HEAD:$env:TARGET_BRANCH"
           "PATCHED_HEAD=$((git rev-parse HEAD).Trim())"
