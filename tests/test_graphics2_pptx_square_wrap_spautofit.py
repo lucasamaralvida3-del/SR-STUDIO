@@ -14,7 +14,9 @@ from srstudio.graphics2.qt_renderer import (
 
 @pytest.fixture(scope="module")
 def qt():
-    from PySide6 import QtCore, QtGui
+    pyside = pytest.importorskip("PySide6")
+    QtCore = pyside.QtCore
+    QtGui = pyside.QtGui
     from PySide6.QtGui import QGuiApplication
 
     app = QGuiApplication.instance() or QGuiApplication([])
