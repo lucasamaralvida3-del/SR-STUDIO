@@ -38,13 +38,14 @@ jobs:
           $changed = @(git diff --name-only "$env:SOURCE_SHA..HEAD")
           $allowed = @(
             '.github/workflows/g2-meat-strip-text-semantics-diagnostic.yml',
-            'tools/diagnostics/diagnose_quinta3_meat_strip_text_semantics.py'
+            'tools/diagnostics/diagnose_quinta3_meat_strip_text_semantics.py',
+            'tools/diagnostics/inspect_quinta3_meat_strip_run_properties.py'
           )
           foreach ($path in $changed) {
             if ($allowed -notcontains $path) { throw "Unexpected diagnostic change: $path" }
             if ($path -like 'src/*') { throw "PRODUCTION FILE CHANGED: $path" }
           }
-          if ($changed.Count -ne 2) { throw "Expected exactly 2 diagnostic files, got $($changed.Count): $changed" }
+          if ($changed.Count -ne 3) { throw "Expected exactly 3 diagnostic files, got $($changed.Count): $changed" }
           'PRODUCTION_FILES_CHANGED=0'
 
       - name: Download exact PPTX and SHA256 gate FIRST
@@ -99,10 +100,11 @@ jobs:
           $reference = 'reference-artifact/final-cert/meat-strip-original.png'
           if (-not (Test-Path $reference)) { throw "Exact PPTX reference missing: $reference" }
 
-      - name: Compile diagnostic harness
+      - name: Compile diagnostic harnesses
         shell: pwsh
         run: |
           python -m py_compile tools/diagnostics/diagnose_quinta3_meat_strip_text_semantics.py
+          python -m py_compile tools/diagnostics/inspect_quinta3_meat_strip_run_properties.py
 
       - name: Run controlled text semantics matrix
         shell: pwsh
@@ -112,6 +114,14 @@ jobs:
             --source-root cert-source `
             --reference 'reference-artifact/final-cert/meat-strip-original.png' `
             --out text-semantics-out
+
+      - name: Inspect exact OOXML run properties
+        shell: pwsh
+        run: |
+          python tools/diagnostics/inspect_quinta3_meat_strip_run_properties.py `
+            --pptx '${{ steps.pptx.outputs.path }}' `
+            --source-root cert-source `
+            --out text-semantics-out/text-run-properties.json
 
       - name: Required artifact gate
         shell: pwsh
@@ -124,7 +134,8 @@ jobs:
             'text-variant-source-paragraphs.png',
             'text-variant-full-source.png',
             'text-variant-metrics.json',
-            'text-semantics-summary.json'
+            'text-semantics-summary.json',
+            'text-run-properties.json'
           )
           foreach ($name in $required) {
             $path = Join-Path 'text-semantics-out' $name
