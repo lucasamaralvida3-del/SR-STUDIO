@@ -38,7 +38,7 @@ jobs:
             '.github/workflows/g2-final-meat-strip-visual-recert.yml',
             'tools/diagnostics/compare_quinta3_meat_strip_before_after.py'
           )
-          $changed = @(git diff --name-only "$env:AFTER_SHA...HEAD")
+          $changed = @(git diff --name-only "$env:AFTER_SHA..HEAD")
           foreach ($path in $changed) {
             if ($allowed -notcontains $path) { throw "Unexpected diagnostic change: $path" }
           }
