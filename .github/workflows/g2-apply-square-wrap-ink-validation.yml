@@ -1,0 +1,115 @@
+name: G2 Apply Ink-Aware Square Wrap Patch
+
+on:
+  pull_request:
+    branches:
+      - g2/fix-meat-strip-exact-source-page-contract
+
+permissions:
+  contents: write
+
+env:
+  FROZEN_BASE: d59d83ef0cca2fc86ae0c0425faad18950140d40
+  TARGET_BRANCH: g2/fix-pptx-square-wrap-spautofit
+  QT_QPA_PLATFORM: offscreen
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  apply-focused-fix:
+    if: github.head_ref == 'g2/fix-pptx-square-wrap-spautofit'
+    runs-on: windows-2025
+    timeout-minutes: 30
+    steps:
+      - name: Checkout PR #111 branch directly
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TARGET_BRANCH }}
+          fetch-depth: 0
+          persist-credentials: true
+
+      - name: Frozen ancestry and temporary-scope gate
+        shell: pwsh
+        run: |
+          git fetch origin $env:FROZEN_BASE --depth=1
+          $base = (git merge-base HEAD $env:FROZEN_BASE).Trim()
+          if ($base -ne $env:FROZEN_BASE) { throw "PR #111 no longer descends from frozen base: $base" }
+          $changed = @(git diff --name-only "$env:FROZEN_BASE..HEAD")
+          foreach ($path in $changed) {
+            if ($path -notin @(
+              'src/srstudio/graphics2/qt_renderer.py',
+              'src/srstudio/graphics2/slot_corpus_full_card.py',
+              'tests/test_graphics2_pptx_square_wrap_spautofit.py',
+              'tests/test_graphics2_quinta3_meat_text_wrap_contract.py',
+              'tools/diagnostics/apply_square_wrap_ink_validation_patch.py',
+              '.github/workflows/g2-apply-square-wrap-ink-validation.yml'
+            )) { throw "Unexpected pre-patch path: $path" }
+          }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Apply generic ink-aware residual-line validation
+        shell: pwsh
+        run: |
+          python tools/diagnostics/apply_square_wrap_ink_validation_patch.py
+          python -m py_compile src/srstudio/graphics2/qt_renderer.py tests/test_graphics2_pptx_square_wrap_spautofit.py tests/test_graphics2_quinta3_meat_square_wrap_runtime.py
+
+      - name: Install focused Qt dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -q -U pip
+          python -m pip install -q '.[dev,graphics2]'
+
+      - name: Focused generic and Meat Qt regressions
+        shell: pwsh
+        run: |
+          python -m pytest -q `
+            tests/test_graphics2_pptx_square_wrap_spautofit.py `
+            tests/test_graphics2_pptx_shape_autofit_text_layout.py `
+            tests/test_graphics2_quinta3_meat_text_wrap_contract.py `
+            tests/test_graphics2_quinta3_meat_square_wrap_runtime.py
+          python -m ruff check `
+            src/srstudio/graphics2/qt_renderer.py `
+            tests/test_graphics2_pptx_square_wrap_spautofit.py `
+            tests/test_graphics2_quinta3_meat_square_wrap_runtime.py
+
+      - name: Remove temporary patch machinery and build residue
+        shell: pwsh
+        run: |
+          Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+          git rm --quiet tools/diagnostics/apply_square_wrap_ink_validation_patch.py
+          git rm --quiet .github/workflows/g2-apply-square-wrap-ink-validation.yml
+
+      - name: Final PR #111 tree scope gate
+        shell: pwsh
+        run: |
+          $changed = @(git diff --name-only $env:FROZEN_BASE)
+          $expected = @(
+            'src/srstudio/graphics2/qt_renderer.py',
+            'src/srstudio/graphics2/slot_corpus_full_card.py',
+            'tests/test_graphics2_pptx_square_wrap_spautofit.py',
+            'tests/test_graphics2_quinta3_meat_square_wrap_runtime.py',
+            'tests/test_graphics2_quinta3_meat_text_wrap_contract.py'
+          )
+          foreach ($path in $changed) {
+            if ($expected -notcontains $path) { throw "Unexpected final PR #111 path: $path" }
+          }
+          foreach ($path in $expected) {
+            if ($changed -notcontains $path) { throw "Expected final PR #111 path missing: $path" }
+          }
+          if ($changed | Where-Object { $_ -like '.github/*' -or $_ -like 'tools/diagnostics/*' }) {
+            throw 'Temporary patch machinery remains in final tree'
+          }
+          git diff --check
+
+      - name: Commit focused production candidate
+        shell: pwsh
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add src/srstudio/graphics2/qt_renderer.py tests/test_graphics2_pptx_square_wrap_spautofit.py tests/test_graphics2_quinta3_meat_square_wrap_runtime.py
+          git add -u
+          git commit -m 'G2: align emergency wrap with ink-aware overflow'
+          git push origin "HEAD:$env:TARGET_BRANCH"
+          "PATCHED_HEAD=$((git rev-parse HEAD).Trim())"
