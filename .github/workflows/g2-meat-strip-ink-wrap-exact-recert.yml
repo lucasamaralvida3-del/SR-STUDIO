@@ -25,7 +25,7 @@ env:
 jobs:
   exact-ink-wrap-recert:
     runs-on: windows-2025
-    timeout-minutes: 40
+    timeout-minutes: 45
     steps:
       - name: Checkout diagnostic PR
         uses: actions/checkout@v4
@@ -42,13 +42,14 @@ jobs:
             '.github/workflows/g2-meat-strip-ink-wrap-exact-recert.yml',
             'tools/diagnostics/diagnose_quinta3_meat_strip_text_semantics.py',
             'tools/diagnostics/trace_quinta3_square_wrap_runtime.py',
-            'tools/diagnostics/compare_quinta3_ink_wrap_recert.py'
+            'tools/diagnostics/compare_quinta3_ink_wrap_recert.py',
+            'tools/diagnostics/diagnose_quinta3_latin_line_break.py'
           )
           foreach ($path in $changed) {
             if ($allowed -notcontains $path) { throw "Unexpected diagnostic change: $path" }
             if ($path -like 'src/*') { throw "PRODUCTION FILE CHANGED IN RECERT: $path" }
           }
-          if ($changed.Count -ne 4) { throw "Expected exactly 4 diagnostic files, got $($changed.Count): $changed" }
+          if ($changed.Count -ne 5) { throw "Expected exactly 5 diagnostic files, got $($changed.Count): $changed" }
           'RECERT_PRODUCTION_FILES_CHANGED=0'
 
       - name: Download exact PPTX and SHA256 gate FIRST
@@ -113,7 +114,7 @@ jobs:
             ('REQUESTED_SHA = "' + $env:AFTER_SHA + '"')
           )
           $source | Set-Content -Encoding utf8 'run-after-text-semantics.py'
-          python -m py_compile run-after-text-semantics.py tools/diagnostics/trace_quinta3_square_wrap_runtime.py tools/diagnostics/compare_quinta3_ink_wrap_recert.py
+          python -m py_compile run-after-text-semantics.py tools/diagnostics/trace_quinta3_square_wrap_runtime.py tools/diagnostics/compare_quinta3_ink_wrap_recert.py tools/diagnostics/diagnose_quinta3_latin_line_break.py
 
       - name: Run exact AFTER raster and route trace
         id: render
@@ -126,6 +127,19 @@ jobs:
             --source-root after-source `
             --reference 'reference-artifact/final-cert/meat-strip-original.png' `
             --out after-text-semantics
+
+      - name: Diagnose Office latin line break semantics
+        id: latin
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          python tools/diagnostics/diagnose_quinta3_latin_line_break.py `
+            --delegate run-after-text-semantics.py `
+            --pptx '${{ steps.pptx.outputs.path }}' `
+            --source-root after-source `
+            --reference 'reference-artifact/final-cert/meat-strip-original.png' `
+            --current after-text-semantics `
+            --out latin-line-break
 
       - name: BEFORE d59 versus AFTER visual gate
         id: compare
@@ -171,6 +185,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force evidence | Out-Null
           if (Test-Path after-text-semantics) { Copy-Item -Recurse after-text-semantics evidence/after-text-semantics }
+          if (Test-Path latin-line-break) { Copy-Item -Recurse latin-line-break evidence/latin-line-break }
           if (Test-Path recert) { Copy-Item -Recurse recert evidence/recert }
           if (Test-Path before-d59/after-text-semantics/text-semantics-summary.json) { Copy-Item before-d59/after-text-semantics/text-semantics-summary.json evidence/before-d59-summary.json }
           if (Test-Path before-d59/after-text-semantics/text-variant-metrics.json) { Copy-Item before-d59/after-text-semantics/text-variant-metrics.json evidence/before-d59-metrics.json }
@@ -187,6 +202,7 @@ jobs:
           path: |
             evidence/
             after-text-semantics/
+            latin-line-break/
             recert/
             meat-strip-ink-wrap-exact-recert.zip
             meat-strip-ink-wrap-exact-recert.zip.sha256
@@ -198,11 +214,14 @@ jobs:
         shell: pwsh
         run: |
           "RENDER_OUTCOME=${{ steps.render.outcome }}"
+          "LATIN_DIAGNOSTIC_OUTCOME=${{ steps.latin.outcome }}"
           "COMPARE_OUTCOME=${{ steps.compare.outcome }}"
           "FOCUSED_OUTCOME=${{ steps.focused.outcome }}"
           "CLEAN_OUTCOME=${{ steps.clean.outcome }}"
           if ('${{ steps.render.outcome }}' -ne 'success') { throw 'Exact AFTER render/trace failed' }
+          if ('${{ steps.latin.outcome }}' -ne 'success') { throw 'Latin line break diagnostic failed' }
           if ('${{ steps.compare.outcome }}' -ne 'success') { throw 'Raster comparison gate failed' }
           if ('${{ steps.focused.outcome }}' -ne 'success') { throw 'Focused exact-SHA regression failed' }
           if ('${{ steps.clean.outcome }}' -ne 'success') { throw 'Frozen source cleanliness failed' }
           if (-not (Test-Path 'recert/ink-wrap-recert-summary.json')) { throw 'Recert summary missing' }
+          if (-not (Test-Path 'latin-line-break/latin-line-break-summary.json')) { throw 'Latin diagnostic summary missing' }
