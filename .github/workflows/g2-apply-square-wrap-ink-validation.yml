@@ -36,13 +36,9 @@ jobs:
           $changed = @(git diff --name-only "$env:FROZEN_BASE..HEAD")
           foreach ($path in $changed) {
             if ($path -notin @(
-              'src/srstudio/graphics2/qt_renderer.py',
-              'src/srstudio/graphics2/slot_corpus_full_card.py',
-              'tests/test_graphics2_pptx_square_wrap_spautofit.py',
-              'tests/test_graphics2_quinta3_meat_text_wrap_contract.py',
               'tools/diagnostics/apply_square_wrap_ink_validation_patch.py',
               '.github/workflows/g2-apply-square-wrap-ink-validation.yml'
-            )) { throw "Unexpected pre-patch path: $path" }
+            )) { throw "Unexpected pre-patch delta from d59: $path" }
           }
 
       - uses: actions/setup-python@v5
@@ -81,22 +77,20 @@ jobs:
           git rm --quiet tools/diagnostics/apply_square_wrap_ink_validation_patch.py
           git rm --quiet .github/workflows/g2-apply-square-wrap-ink-validation.yml
 
-      - name: Final PR #111 tree scope gate
+      - name: Final PR #111 delta scope gate
         shell: pwsh
         run: |
           $changed = @(git diff --name-only $env:FROZEN_BASE)
           $expected = @(
             'src/srstudio/graphics2/qt_renderer.py',
-            'src/srstudio/graphics2/slot_corpus_full_card.py',
             'tests/test_graphics2_pptx_square_wrap_spautofit.py',
-            'tests/test_graphics2_quinta3_meat_square_wrap_runtime.py',
-            'tests/test_graphics2_quinta3_meat_text_wrap_contract.py'
+            'tests/test_graphics2_quinta3_meat_square_wrap_runtime.py'
           )
           foreach ($path in $changed) {
-            if ($expected -notcontains $path) { throw "Unexpected final PR #111 path: $path" }
+            if ($expected -notcontains $path) { throw "Unexpected final delta from d59: $path" }
           }
           foreach ($path in $expected) {
-            if ($changed -notcontains $path) { throw "Expected final PR #111 path missing: $path" }
+            if ($changed -notcontains $path) { throw "Expected final delta missing: $path" }
           }
           if ($changed | Where-Object { $_ -like '.github/*' -or $_ -like 'tools/diagnostics/*' }) {
             throw 'Temporary patch machinery remains in final tree'
