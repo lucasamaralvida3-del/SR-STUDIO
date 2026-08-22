@@ -265,7 +265,52 @@ def _draw_text(painter, node: GraphicsNode, QtCore, QtGui, *, color_override: st
         finally:
             painter.restore()
         return
+    shape_layout = _pptx_shape_autofit_single_line_layout(text, rect, style, font, QtGui)
+    if shape_layout is not None:
+        x, baseline = shape_layout
+        painter.drawText(QtCore.QPointF(x, baseline), text)
+        return
     painter.drawText(rect, flags, text)
+
+
+def _pptx_shape_autofit_single_line_layout(text: str, rect, style: dict, font, QtGui):
+    """Return point-text coordinates for DrawingML ``spAutoFit``.
+
+    ``spAutoFit`` grows the shape to its text; it does not shrink the
+    font to the persisted xfrm rectangle.  QPainter's QRect overload
+    performs its own line-box layout and can clip a source-faithful
+    single line whenever Qt's font metrics are larger than Office's.
+    For the measured top-anchored contract, preserve font metrics and
+    paragraph alignment and place the baseline explicitly instead.
+    """
+
+    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
+    if not normalized or "\n" in normalized:
+        return None
+    if str(style.get("pptx_auto_fit") or "").lower() != "shape":
+        return None
+    if _should_fit_text(style):
+        return None
+    vertical = str(style.get("v_align") or style.get("vertical_align") or "center").lower()
+    if vertical not in {"top", "t"}:
+        return None
+
+    metrics = QtGui.QFontMetricsF(font)
+    advance = float(metrics.horizontalAdvance(normalized))
+    tight = metrics.tightBoundingRect(normalized)
+    horizontal = str(style.get("align") or "center").lower()
+    if horizontal in {"left", "l"}:
+        x = float(rect.left())
+    elif horizontal in {"right", "r"}:
+        x = float(rect.right()) - advance
+    else:
+        x = float(rect.left()) + (float(rect.width()) - advance) * 0.5
+
+    # QPointF drawText() receives a baseline. Align the measured ink
+    # top with the zero-inset top anchor and deliberately do not clip
+    # to the stale source rectangle: spAutoFit is shape-growth semantics.
+    baseline = float(rect.top()) - float(tight.top())
+    return x, baseline
 
 
 def _set_font_weight(font, value: object, QtGui) -> None:
