@@ -1,0 +1,214 @@
+name: G2 Meat Strip Exact Page Contract Certification
+
+on:
+  push:
+    branches:
+      - g2/diagnostic-meat-strip-exact-page-contract-cert
+  pull_request:
+    branches:
+      - g2/fix-meat-strip-exact-source-page-contract
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_SHA: 21dda44fe758a2899b4c15ffa041b2e0f6ff6d33
+  EXPECTED_PPTX_SHA256: 12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19
+  PPTX_NAME: OFERTAS QUINTA FILÉ NOVO (3).pptx
+  MEAT_STRIP_PPTX_URL: https://www.dropbox.com/scl/fi/mda6mqcgumm5k96wcbfw4/OFERTAS-QUINTA-FIL-NOVO-3.pptx?rlkey=75fv4ummvjgj3yptb0kjjczt5&st=p5ylee4h&dl=1
+  REFERENCE_RUN_ID: '32543346011'
+  REFERENCE_ARTIFACT: final-meat-strip-visual-recert-200f0ba6c119e604f5ad7d7898e6838f55dc8619
+  QT_QPA_PLATFORM: offscreen
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  exact-sha-page-contract-cert:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - name: Checkout diagnostic branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Diagnostic scope gate
+        shell: pwsh
+        run: |
+          git fetch origin $env:SOURCE_SHA --depth=1
+          $changed = @(git diff --name-only "$env:SOURCE_SHA..HEAD")
+          $allowed = @('.github/workflows/g2-meat-strip-exact-page-contract-cert.yml')
+          foreach ($path in $changed) {
+            if ($allowed -notcontains $path) { throw "Unexpected diagnostic-branch change: $path" }
+          }
+
+      - name: Checkout exact production source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          path: cert-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Exact source SHA and cleanliness BEFORE
+        shell: pwsh
+        run: |
+          $checked = (git -C cert-source rev-parse HEAD).Trim()
+          "REQUESTED_SHA=$env:SOURCE_SHA"
+          "CHECKED_OUT_SHA=$checked"
+          if ($checked -ne $env:SOURCE_SHA) { throw "Exact SHA mismatch" }
+          if (git -C cert-source status --porcelain) { throw "Frozen source dirty before certification" }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install exact runtime from immutable archive
+        shell: pwsh
+        run: |
+          git -C cert-source archive --format=zip --output ../cert-source.zip HEAD
+          Expand-Archive -LiteralPath cert-source.zip -DestinationPath runtime-install-source -Force
+          python -m pip install -q './runtime-install-source[dev,graphics2]'
+          if (git -C cert-source status --porcelain) { throw "Frozen source dirtied by install" }
+
+      - name: Focused geometry ownership persistence regression
+        shell: pwsh
+        run: |
+          python -m pytest cert-source/tests/test_graphics2_quinta3_meat_initial_source_scale.py -q
+
+      - name: Download and validate exact PPTX before render
+        id: pptx
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force ground-truth | Out-Null
+          $target = Join-Path (Resolve-Path ground-truth) $env:PPTX_NAME
+          Invoke-WebRequest -Uri $env:MEAT_STRIP_PPTX_URL -OutFile $target
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+          "PPTX_SHA256=$actual"
+          if ($actual -ne $env:EXPECTED_PPTX_SHA256) { throw "PPTX SHA mismatch: $actual" }
+          "path=$target" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Restore exact-PPTX reference crop
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download $env:REFERENCE_RUN_ID --repo $env:GITHUB_REPOSITORY --name $env:REFERENCE_ARTIFACT --dir reference-artifact
+          $reference = 'reference-artifact/final-cert/meat-strip-original.png'
+          if (-not (Test-Path $reference)) { throw "Reference crop missing: $reference" }
+
+      - name: Materialize proven clean runtime diagnostic
+        shell: pwsh
+        run: |
+          git fetch origin g2/diagnostic-meat-strip-source-scale-recert --depth=1
+          python -c "import subprocess,pathlib; raw=subprocess.check_output(['git','show','FETCH_HEAD:tools/diagnostics/diagnose_quinta3_meat_strip_runtime.py']); pathlib.Path('diagnose_exact.py').write_bytes(raw)"
+          $text = Get-Content -Raw -LiteralPath diagnose_exact.py
+          $oldSha = 'REQUESTED_SHA = "9b3c967c5dad4e5dddee1daa6dd92fab2189437c"'
+          $newSha = 'REQUESTED_SHA = "21dda44fe758a2899b4c15ffa041b2e0f6ff6d33"'
+          if (-not $text.Contains($oldSha)) { throw 'REQUESTED_SHA anchor missing' }
+          $text = $text.Replace($oldSha, $newSha)
+          $oldPage = 'slide_emu = (12192000.0, 15240000.0)'
+          $newPage = 'slide_emu = (10287000.0, 12852400.0)'
+          if (-not $text.Contains($oldPage)) { throw 'slide_emu anchor missing' }
+          $text = $text.Replace($oldPage, $newPage)
+          Set-Content -LiteralPath diagnose_exact.py -Value $text -Encoding utf8
+          python -m py_compile diagnose_exact.py
+
+      - name: Fresh exact-SHA production raster
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force cert-out | Out-Null
+          Copy-Item 'reference-artifact/final-cert/meat-strip-original.png' 'cert-out/meat-strip-original.png'
+          python diagnose_exact.py --pptx '${{ steps.pptx.outputs.path }}' --source-root cert-source --out cert-out
+
+      - name: Exact geometry font image warning gates
+        shell: pwsh
+        run: |
+          @'
+          import json
+          from pathlib import Path
+
+          out = Path('cert-out')
+          font = json.loads((out / 'meat-strip-font-resolution.json').read_text(encoding='utf-8'))
+          warnings = json.loads((out / 'meat-strip-render-warnings.json').read_text(encoding='utf-8'))
+          images = json.loads((out / 'meat-strip-image-diagnostics.json').read_text(encoding='utf-8'))
+          geometry = json.loads((out / 'meat-strip-runtime-geometry.json').read_text(encoding='utf-8'))
+
+          assert any(str(name).casefold() == 'anton' for name in font['ANTON_REGISTERED_FAMILIES']), font
+          assert str(font['ANTON_RESOLVED']).casefold() == 'anton', font
+          assert font['ANTON_EXACT_MATCH'] is True, font
+          assert warnings == [], warnings
+
+          rows = images['IMAGES']
+          assert len(rows) == 4, rows
+          assert all(row['QIMAGE DECODE OK'] for row in rows), rows
+          assert all(row['ASSET ID'] and row['BOUND_IMAGE_SOURCE'] for row in rows), rows
+          assert images['SUMMARY']['ALL QIMAGE DECODE OK'] is True
+          assert images['SUMMARY']['ALL OFFICIAL BINDINGS PRESENT'] is True
+          assert images['SUMMARY']['IMAGE WARNING NODE IDS'] == []
+
+          source = geometry['SOURCE STRIP RECT NORMALIZED TO 1080x1350']
+          runtime = geometry['RUNTIME MEAT STRIP ROOT RECT']
+          assert abs(source[2] - 579.6890288713911) < 1e-6, source
+          assert abs(source[3] - 133.2800955463571) < 1e-6, source
+          assert abs(runtime[2] - source[2]) < 1e-6, (runtime, source)
+          assert abs(runtime[3] - source[3]) < 1e-6, (runtime, source)
+          assert abs(geometry['RUNTIME / SOURCE SCALE X'] - 1.0) < 1e-9, geometry
+          assert abs(geometry['RUNTIME / SOURCE SCALE Y'] - 1.0) < 1e-9, geometry
+          assert geometry['OUT OF BOUNDS'] is False, geometry
+
+          expected = {
+              'COSTELA CELL RECT': (160.00902887139108, 133.1004792879151),
+              'PERNIL CELL RECT': (140.16692913385828, 133.2800955463571),
+              'MUSCULO CELL RECT': (140.1818372703412, 131.73802169244655),
+              'MOELA CELL RECT': (139.3312335958005, 133.1004792879151),
+          }
+          page = geometry['PAGE RECT']
+          for key, (width, height) in expected.items():
+              rect = geometry[key]
+              assert abs(rect[2] - width) < 1e-6, (key, rect)
+              assert abs(rect[3] - height) < 1e-6, (key, rect)
+              assert rect[0] >= -1e-6 and rect[1] >= -1e-6, (key, rect)
+              assert rect[0] + rect[2] <= page[2] + 1e-6, (key, rect)
+              assert rect[1] + rect[3] <= page[3] + 1e-6, (key, rect)
+
+          print('ANTON_EXACT_MATCH=TRUE')
+          print('IMAGES=4/4 PASS')
+          print('RENDER_WARNINGS=[]')
+          print(f"SOURCE_STRIP={source[2]} x {source[3]}")
+          print(f"RUNTIME_STRIP={runtime[2]} x {runtime[3]}")
+          print(f"EXACT_SCALE_X={geometry['RUNTIME / SOURCE SCALE X']}")
+          print(f"EXACT_SCALE_Y={geometry['RUNTIME / SOURCE SCALE Y']}")
+          print('OUT_OF_BOUNDS=FALSE')
+          '@ | Set-Content -Encoding utf8 gate_exact.py
+          python gate_exact.py
+
+      - name: Exact source SHA and cleanliness AFTER
+        shell: pwsh
+        run: |
+          $checked = (git -C cert-source rev-parse HEAD).Trim()
+          "REQUESTED_SHA=$env:SOURCE_SHA"
+          "CHECKED_OUT_SHA=$checked"
+          if ($checked -ne $env:SOURCE_SHA) { throw "Exact SHA changed" }
+          if (git -C cert-source status --porcelain) { throw "Frozen source dirty after certification" }
+
+      - name: Build evidence ZIP and SHA256
+        shell: pwsh
+        run: |
+          Compress-Archive -Path cert-out/* -DestinationPath meat-strip-exact-page-contract-cert.zip -Force
+          $sha = (Get-FileHash -Algorithm SHA256 meat-strip-exact-page-contract-cert.zip).Hash.ToLowerInvariant()
+          $sha | Set-Content -Encoding ascii meat-strip-exact-page-contract-cert.zip.sha256
+          "ARTIFACT_SHA256=$sha"
+
+      - name: Upload exact-SHA certification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: meat-strip-exact-page-contract-cert-${{ env.SOURCE_SHA }}
+          path: |
+            cert-out/
+            meat-strip-exact-page-contract-cert.zip
+            meat-strip-exact-page-contract-cert.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
