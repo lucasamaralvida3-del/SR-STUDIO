@@ -1,0 +1,174 @@
+name: G2 Meat Strip Text Semantics Diagnostic
+
+on:
+  push:
+    branches:
+      - g2/diagnostic-meat-strip-text-semantics
+  pull_request:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  SOURCE_SHA: 21dda44fe758a2899b4c15ffa041b2e0f6ff6d33
+  EXPECTED_PPTX_SHA256: 12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19
+  PPTX_NAME: OFERTAS QUINTA FILÉ NOVO (3).pptx
+  MEAT_STRIP_PPTX_URL: https://www.dropbox.com/scl/fi/mda6mqcgumm5k96wcbfw4/OFERTAS-QUINTA-FIL-NOVO-3.pptx?rlkey=75fv4ummvjgj3yptb0kjjczt5&st=p5ylee4h&dl=1
+  REFERENCE_RUN_ID: '32543346011'
+  REFERENCE_ARTIFACT: final-meat-strip-visual-recert-200f0ba6c119e604f5ad7d7898e6838f55dc8619
+  QT_QPA_PLATFORM: offscreen
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  text-semantics-diagnostic:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - name: Checkout diagnostic branch
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Diagnostic-only scope gate
+        shell: pwsh
+        run: |
+          git fetch origin $env:SOURCE_SHA --depth=1
+          $changed = @(git diff --name-only "$env:SOURCE_SHA..HEAD")
+          $allowed = @(
+            '.github/workflows/g2-meat-strip-text-semantics-diagnostic.yml',
+            'tools/diagnostics/diagnose_quinta3_meat_strip_text_semantics.py',
+            'tools/diagnostics/inspect_quinta3_meat_strip_run_properties.py'
+          )
+          foreach ($path in $changed) {
+            if ($allowed -notcontains $path) { throw "Unexpected diagnostic change: $path" }
+            if ($path -like 'src/*') { throw "PRODUCTION FILE CHANGED: $path" }
+          }
+          if ($changed.Count -ne 3) { throw "Expected exactly 3 diagnostic files, got $($changed.Count): $changed" }
+          'PRODUCTION_FILES_CHANGED=0'
+
+      - name: Download exact PPTX and SHA256 gate FIRST
+        id: pptx
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force ground-truth | Out-Null
+          $target = Join-Path (Resolve-Path ground-truth) $env:PPTX_NAME
+          Invoke-WebRequest -Uri $env:MEAT_STRIP_PPTX_URL -OutFile $target
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+          "PPTX_SHA256=$actual"
+          if ($actual -ne $env:EXPECTED_PPTX_SHA256) { throw "PPTX SHA mismatch: $actual" }
+          "path=$target" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Checkout frozen production source exactly
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+          path: cert-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: REQUESTED SHA equals CHECKED OUT SHA
+        shell: pwsh
+        run: |
+          $checked = (git -C cert-source rev-parse HEAD).Trim()
+          "REQUESTED_SHA=$env:SOURCE_SHA"
+          "CHECKED_OUT_SHA=$checked"
+          if ($checked -ne $env:SOURCE_SHA) { throw "Exact source SHA mismatch" }
+          if (git -C cert-source status --porcelain) { throw "Frozen source dirty before diagnostic" }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install exact runtime outside frozen checkout
+        shell: pwsh
+        run: |
+          git -C cert-source archive --format=zip --output ../cert-source.zip HEAD
+          Expand-Archive -LiteralPath cert-source.zip -DestinationPath runtime-install-source -Force
+          python -m pip install -q './runtime-install-source[dev,graphics2]'
+          python -m pip install -q numpy
+          if (git -C cert-source status --porcelain) { throw "Frozen source dirtied by install" }
+
+      - name: Restore exact PPTX reference crop
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download $env:REFERENCE_RUN_ID --repo $env:GITHUB_REPOSITORY --name $env:REFERENCE_ARTIFACT --dir reference-artifact
+          $reference = 'reference-artifact/final-cert/meat-strip-original.png'
+          if (-not (Test-Path $reference)) { throw "Exact PPTX reference missing: $reference" }
+
+      - name: Compile diagnostic harnesses
+        shell: pwsh
+        run: |
+          python -m py_compile tools/diagnostics/diagnose_quinta3_meat_strip_text_semantics.py
+          python -m py_compile tools/diagnostics/inspect_quinta3_meat_strip_run_properties.py
+
+      - name: Run controlled text semantics matrix
+        shell: pwsh
+        run: |
+          python tools/diagnostics/diagnose_quinta3_meat_strip_text_semantics.py `
+            --pptx '${{ steps.pptx.outputs.path }}' `
+            --source-root cert-source `
+            --reference 'reference-artifact/final-cert/meat-strip-original.png' `
+            --out text-semantics-out
+
+      - name: Inspect exact OOXML run properties
+        shell: pwsh
+        run: |
+          python tools/diagnostics/inspect_quinta3_meat_strip_run_properties.py `
+            --pptx '${{ steps.pptx.outputs.path }}' `
+            --source-root cert-source `
+            --out text-semantics-out/text-run-properties.json
+
+      - name: Required artifact gate
+        shell: pwsh
+        run: |
+          $required = @(
+            'text-semantics-source.json',
+            'text-runtime-before-after-bind.json',
+            'text-variant-current.png',
+            'text-variant-source-wrap.png',
+            'text-variant-source-paragraphs.png',
+            'text-variant-full-source.png',
+            'text-variant-metrics.json',
+            'text-semantics-summary.json',
+            'text-run-properties.json'
+          )
+          foreach ($name in $required) {
+            $path = Join-Path 'text-semantics-out' $name
+            if (-not (Test-Path $path)) { throw "Required artifact missing: $name" }
+          }
+          $crops = @(Get-ChildItem 'text-semantics-out/crops' -Filter '*.png')
+          if ($crops.Count -lt 60) { throw "Expected reference + 4 variants for 12 required crops; got $($crops.Count)" }
+
+      - name: Frozen source SHA and cleanliness AFTER
+        shell: pwsh
+        run: |
+          $checked = (git -C cert-source rev-parse HEAD).Trim()
+          "REQUESTED_SHA=$env:SOURCE_SHA"
+          "CHECKED_OUT_SHA=$checked"
+          if ($checked -ne $env:SOURCE_SHA) { throw "Exact source SHA changed" }
+          if (git -C cert-source status --porcelain) { throw "Frozen source dirty after diagnostic" }
+          'PRODUCTION_FILES_CHANGED=0'
+
+      - name: Build evidence ZIP and SHA256
+        shell: pwsh
+        run: |
+          Compress-Archive -Path text-semantics-out/* -DestinationPath meat-strip-text-semantics-diagnostic.zip -Force
+          $sha = (Get-FileHash -Algorithm SHA256 meat-strip-text-semantics-diagnostic.zip).Hash.ToLowerInvariant()
+          $sha | Set-Content -Encoding ascii meat-strip-text-semantics-diagnostic.zip.sha256
+          "EVIDENCE_ZIP_SHA256=$sha"
+
+      - name: Upload text semantics evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: meat-strip-text-semantics-${{ env.SOURCE_SHA }}
+          path: |
+            text-semantics-out/
+            meat-strip-text-semantics-diagnostic.zip
+            meat-strip-text-semantics-diagnostic.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
