@@ -6,6 +6,7 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 import pytest
 
+from srstudio.graphics2 import qt_renderer
 from srstudio.graphics2.qt_renderer import (
     _pptx_shape_autofit_single_line_layout,
     _pptx_shape_autofit_wrapped_layout,
@@ -112,3 +113,55 @@ def test_wrapped_layout_uses_explicit_drawingml_line_spacing(qt):
     )
     assert layout is not None and len(layout) >= 2
     assert layout[1][2] - layout[0][2] == pytest.approx(13.28)
+
+
+def test_marginal_ink_overflow_revalidates_qtextlayout_with_grapheme_fallback(qt, monkeypatch):
+    QtCore, QtGui, _ = qt
+    text = ",86"
+    font = _font(QtGui)
+    metrics = QtGui.QFontMetricsF(font)
+    # Make the rect wider than Qt's natural advance so QTextLayout initially
+    # keeps one line, while the mocked ink metric still reports source overflow.
+    rect_width = float(metrics.horizontalAdvance(text)) + 1.0
+    rect = QtCore.QRectF(0.0, 0.0, rect_width, 8.0)
+    style = _style(font_size=18.0, font_size_unit="px")
+
+    qtext = QtGui.QTextLayout(text, font)
+    option = QtGui.QTextOption()
+    option.setWrapMode(QtGui.QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+    qtext.setTextOption(option)
+    qtext.beginLayout()
+    lines = []
+    try:
+        while True:
+            line = qtext.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(rect_width)
+            lines.append(text[int(line.textStart()) : int(line.textStart() + line.textLength())])
+    finally:
+        qtext.endLayout()
+    assert lines == [text]
+
+    def ink_width(value, *_args):
+        widths = {
+            ",86": rect_width + 1.0,
+            ",8": rect_width - 0.1,
+            ",": max(1.0, rect_width * 0.35),
+            "8": max(1.0, rect_width * 0.35),
+            "6": max(1.0, rect_width * 0.35),
+        }
+        return widths[value]
+
+    monkeypatch.setattr(qt_renderer, "_pptx_source_layout_width", ink_width)
+    assert ink_width(text) > rect.width() + 0.01
+    layout = qt_renderer._pptx_shape_autofit_wrapped_layout(text, rect, style, font, QtCore, QtGui)
+    assert layout is not None
+    assert [line for line, _, _ in layout] == [",8", "6"]
+    assert "\n" not in text
+    assert qt_renderer._pptx_shape_autofit_single_line_layout(text, rect, style, font, QtGui) is None
+
+
+def test_emergency_wrap_preserves_unicode_grapheme_clusters(qt):
+    QtCore, _, _ = qt
+    assert qt_renderer._pptx_grapheme_clusters("A\u0301B", QtCore) == ["A\u0301", "B"]

@@ -9,7 +9,7 @@ A geometria persistida em SR Scene continua sendo a única fonte de verdade.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 import math
 
 from .fonts import register_qt_document_fonts
@@ -390,15 +390,96 @@ def _pptx_wrapped_line_advance(style: dict, metrics) -> float:
     return float(metrics.lineSpacing())
 
 
+def _pptx_grapheme_clusters(text: str, QtCore) -> list[str]:
+    """Split text on Unicode grapheme boundaries using Qt's text engine."""
+
+    value = str(text or "")
+    if not value:
+        return []
+    boundary_type = getattr(QtCore.QTextBoundaryFinder, "Grapheme", None)
+    if boundary_type is None:
+        boundary_type = QtCore.QTextBoundaryFinder.BoundaryType.Grapheme
+    finder = QtCore.QTextBoundaryFinder(boundary_type, value)
+    finder.setPosition(0)
+    boundaries = [0]
+    while True:
+        position = int(finder.toNextBoundary())
+        if position < 0:
+            break
+        if position > boundaries[-1]:
+            boundaries.append(position)
+    if boundaries[-1] != len(value):
+        boundaries.append(len(value))
+    return [value[left:right] for left, right in zip(boundaries, boundaries[1:]) if right > left]
+
+
+def _pptx_longest_fitting_grapheme_segments(
+    text: str,
+    available_width: float,
+    measure_width: Callable[[str], float],
+    grapheme_clusters: Callable[[str], list[str]],
+) -> list[str]:
+    """Emergency-wrap one residual line into the longest ink-fitting segments.
+
+    Normal QTextLayout word wrapping runs first. This helper is used only when
+    one of its residual lines still exceeds the same ink-aware width predicate
+    used to select the wrapped route. At least one grapheme is emitted per
+    iteration so malformed metrics cannot cause a loop.
+    """
+
+    clusters = grapheme_clusters(str(text or ""))
+    if not clusters:
+        return []
+    width = max(0.1, float(available_width))
+    tolerance = 0.01
+    result: list[str] = []
+    index = 0
+    while index < len(clusters):
+        best = index + 1
+        if float(measure_width(clusters[index])) <= width + tolerance:
+            end = index + 1
+            while end < len(clusters):
+                candidate = "".join(clusters[index : end + 1])
+                if float(measure_width(candidate)) > width + tolerance:
+                    break
+                best = end + 1
+                end += 1
+        result.append("".join(clusters[index:best]))
+        index = best
+    return result
+
+
+def _pptx_qtextlayout_fragments(text: str, available_width: float, layout_font, QtGui) -> list[str]:
+    layout = QtGui.QTextLayout(text, layout_font)
+    option = QtGui.QTextOption()
+    option.setWrapMode(QtGui.QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+    layout.setTextOption(option)
+    layout.beginLayout()
+    fragments: list[str] = []
+    try:
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(max(0.1, float(available_width)))
+            start = int(line.textStart())
+            length = int(line.textLength())
+            fragment = text[start : start + length]
+            if fragment:
+                fragments.append(fragment)
+    finally:
+        layout.endLayout()
+    return fragments
+
+
 def _pptx_shape_autofit_wrapped_layout(text: str, rect, style: dict, font, QtCore, QtGui):
     """Lay out DrawingML ``wrap=square`` + ``spAutoFit`` text when it overflows.
 
-    QTextLayout provides normal word wrapping and the DrawingML-required
-    emergency character fallback for tokens with no usable boundary.  The
-    helper is deliberately inactive while the source text fits horizontally,
-    preserving the #106 explicit-baseline route for ordinary one-line text.
-    ``spAutoFit`` is shape-growth semantics, so wrapped baselines are not
-    clipped to the stale source xfrm height.
+    QTextLayout performs normal word wrapping first. Each returned line is then
+    validated with the same ink-aware source-width metric used by route
+    selection. A residual line whose glyph ink still exceeds the available
+    width is split by Unicode grapheme clusters into the longest valid
+    segments. Text that fits remains on the #106 explicit-baseline route.
     """
 
     normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
@@ -414,34 +495,26 @@ def _pptx_shape_autofit_wrapped_layout(text: str, rect, style: dict, font, QtCor
     if _pptx_effective_wrap(style) != "square":
         return None
 
-    layout_font = _pptx_source_layout_font(style, font, QtGui)
-    layout_metrics = QtGui.QFontMetricsF(layout_font)
-    source_width = max(
-        float(layout_metrics.horizontalAdvance(normalized)),
-        float(layout_metrics.tightBoundingRect(normalized).width()),
-    )
-    if source_width <= float(rect.width()) + 0.01:
+    available_width = max(0.1, float(rect.width()))
+    measure_width = lambda value: _pptx_source_layout_width(value, style, font, QtGui)
+    if float(measure_width(normalized)) <= available_width + 0.01:
         return None
 
-    layout = QtGui.QTextLayout(normalized, layout_font)
-    option = QtGui.QTextOption()
-    option.setWrapMode(QtGui.QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-    layout.setTextOption(option)
-    layout.beginLayout()
+    layout_font = _pptx_source_layout_font(style, font, QtGui)
+    qtext_fragments = _pptx_qtextlayout_fragments(normalized, available_width, layout_font, QtGui)
     fragments: list[str] = []
-    try:
-        while True:
-            line = layout.createLine()
-            if not line.isValid():
-                break
-            line.setLineWidth(max(0.1, float(rect.width())))
-            start = int(line.textStart())
-            length = int(line.textLength())
-            fragment = normalized[start : start + length]
-            if fragment:
-                fragments.append(fragment)
-    finally:
-        layout.endLayout()
+    for fragment in qtext_fragments:
+        if float(measure_width(fragment)) <= available_width + 0.01:
+            fragments.append(fragment)
+            continue
+        fragments.extend(
+            _pptx_longest_fitting_grapheme_segments(
+                fragment,
+                available_width,
+                measure_width,
+                lambda value: _pptx_grapheme_clusters(value, QtCore),
+            )
+        )
     if len(fragments) <= 1:
         return None
 
