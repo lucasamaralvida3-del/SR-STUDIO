@@ -77,7 +77,7 @@ jobs:
       - name: Remove temporary patch machinery and build residue
         shell: pwsh
         run: |
-          Remove-Item -Recurse -Force build -ErrorAction SilentlyContinue
+          git clean -fdx -- build
           git rm --quiet tools/diagnostics/apply_square_wrap_ink_validation_patch.py
           git rm --quiet .github/workflows/g2-apply-square-wrap-ink-validation.yml
 
