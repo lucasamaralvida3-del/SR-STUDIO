@@ -114,7 +114,10 @@ jobs:
             ('REQUESTED_SHA = "' + $env:AFTER_SHA + '"')
           )
           $source | Set-Content -Encoding utf8 'run-after-text-semantics.py'
-          python -m py_compile run-after-text-semantics.py tools/diagnostics/trace_quinta3_square_wrap_runtime.py tools/diagnostics/compare_quinta3_ink_wrap_recert.py tools/diagnostics/diagnose_quinta3_latin_line_break.py
+          $latin = Get-Content -Raw 'tools/diagnostics/diagnose_quinta3_latin_line_break.py'
+          $latin = $latin.Replace('int(finder.boundaryReasons())', 'str(finder.boundaryReasons())')
+          $latin | Set-Content -Encoding utf8 'run-latin-line-break.py'
+          python -m py_compile run-after-text-semantics.py tools/diagnostics/trace_quinta3_square_wrap_runtime.py tools/diagnostics/compare_quinta3_ink_wrap_recert.py run-latin-line-break.py
 
       - name: Run exact AFTER raster and route trace
         id: render
@@ -133,7 +136,7 @@ jobs:
         shell: pwsh
         continue-on-error: true
         run: |
-          python tools/diagnostics/diagnose_quinta3_latin_line_break.py `
+          python run-latin-line-break.py `
             --delegate run-after-text-semantics.py `
             --pptx '${{ steps.pptx.outputs.path }}' `
             --source-root after-source `
