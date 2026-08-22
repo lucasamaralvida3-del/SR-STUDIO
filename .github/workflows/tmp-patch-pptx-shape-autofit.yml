@@ -1,9 +1,9 @@
 name: Temporary PPTX Shape AutoFit Text Patch
 
 on:
-  push:
+  pull_request:
     branches:
-      - g2/fix-pptx-shape-autofit-text-baseline
+      - g2/fix-meat-strip-source-scale
 
 permissions:
   contents: write
@@ -100,7 +100,7 @@ jobs:
               else:
                   x = float(rect.left()) + (float(rect.width()) - advance) * 0.5
 
-              # QPointF drawText() receives a baseline.  Align the measured ink
+              # QPointF drawText() receives a baseline. Align the measured ink
               # top with the zero-inset top anchor and deliberately do not clip
               # to the stale source rectangle: spAutoFit is shape-growth semantics.
               baseline = float(rect.top()) - float(tight.top())
@@ -154,8 +154,6 @@ jobs:
               advance = metrics.horizontalAdvance("24")
               assert x == pytest.approx(rect.left() + (rect.width() - advance) * 0.5)
               assert baseline + tight.top() == pytest.approx(rect.top())
-              # The generic contract is allowed to extend beyond a stale xfrm box;
-              # spAutoFit grows the shape instead of silently shrinking the font.
               assert metrics.height() > rect.height()
 
 
