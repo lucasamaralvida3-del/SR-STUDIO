@@ -65,7 +65,9 @@ jobs:
             'src/srstudio/graphics2/qt_renderer.py',
             'tests/test_graphics2_pptx_shape_autofit_text_layout.py'
           )
-          if (($paths | Sort-Object) -join "`n" -ne ($expected | Sort-Object) -join "`n") {
+          $actualDiff = (($paths | Sort-Object) -join "`n")
+          $expectedDiff = (($expected | Sort-Object) -join "`n")
+          if ($actualDiff -ne $expectedDiff) {
             throw "Unexpected BEFORE->AFTER production diff: $($paths -join ', ')"
           }
 
