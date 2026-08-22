@@ -29,21 +29,23 @@ from .slot_corpus_full_card import (
     MEAT_STRIP_SOURCE_STRIP_GROUP_ID,
     MEAT_STRIP_SOURCE_STRIP_OVERLAY_ID,
     MEAT_STRIP_SOURCE_STRIP_PATH_ID,
-    SOURCE_FILE,
-    SOURCE_SHA256,
     _strip_segment_path,
     meat_full_card_profile,
+)
+from .slot_corpus_meat_strip_source_contract import (
+    SOURCE_FILE,
+    SOURCE_PAGE_HEIGHT_EMU,
+    SOURCE_PAGE_WIDTH_EMU,
+    SOURCE_SHA256,
 )
 
 PROFILE_ORDER = ("costela", "pernil", "musculo", "moela")
 _PAGE_ROOTS_KEY = "quinta3_meat_strip_roots"
 
-# Exact p:presentation/p:sldSz contract of SOURCE_FILE / SOURCE_SHA256.  The
-# supervised full-card geometry is authored in this source page-space, so its
-# initial runtime scale must follow the same source/page ratio used by the PPTX
-# import pipeline, never the generic manual ItemSlot preset dimensions.
-MEAT_STRIP_SOURCE_PAGE_WIDTH_EMU = 12192000.0
-MEAT_STRIP_SOURCE_PAGE_HEIGHT_EMU = 15240000.0
+# Backward-compatible names for existing diagnostics/tests.  The numeric
+# contract itself is canonical in slot_corpus_meat_strip_source_contract.
+MEAT_STRIP_SOURCE_PAGE_WIDTH_EMU = SOURCE_PAGE_WIDTH_EMU
+MEAT_STRIP_SOURCE_PAGE_HEIGHT_EMU = SOURCE_PAGE_HEIGHT_EMU
 
 
 def _source_strip_bounds() -> Rect:
@@ -206,8 +208,8 @@ def _resolve_strip_root(page, slot: SmartSlot, profile: dict[str, Any], cell_rec
         return existing
 
     source = profile["root_emu"]
-    scale_x = float(page.width) / MEAT_STRIP_SOURCE_PAGE_WIDTH_EMU
-    scale_y = float(page.height) / MEAT_STRIP_SOURCE_PAGE_HEIGHT_EMU
+    scale_x = float(page.width) / SOURCE_PAGE_WIDTH_EMU
+    scale_y = float(page.height) / SOURCE_PAGE_HEIGHT_EMU
     strip_rect = Rect(
         cell_rect.x - (float(source[0]) - _SOURCE_STRIP.x) * scale_x,
         cell_rect.y - (float(source[1]) - _SOURCE_STRIP.y) * scale_y,
@@ -224,7 +226,7 @@ def _resolve_strip_root(page, slot: SmartSlot, profile: dict[str, Any], cell_rec
             "quinta3_family": MEAT_FAMILY_ID,
             "source_file": SOURCE_FILE,
             "source_sha256": SOURCE_SHA256,
-            "source_page_emu": [MEAT_STRIP_SOURCE_PAGE_WIDTH_EMU, MEAT_STRIP_SOURCE_PAGE_HEIGHT_EMU],
+            "source_page_emu": [SOURCE_PAGE_WIDTH_EMU, SOURCE_PAGE_HEIGHT_EMU],
             "source_strip_emu": _rect_dict(_SOURCE_STRIP),
             "initial_scale_source": "source-page-to-runtime-page",
             "cell_slot_ids": [],
