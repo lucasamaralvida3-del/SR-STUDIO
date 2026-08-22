@@ -1,0 +1,208 @@
+name: G2 Meat Strip Ink Wrap Exact Recert
+
+on:
+  pull_request:
+    branches:
+      - g2/fix-pptx-square-wrap-spautofit
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BEFORE_SHA: d59d83ef0cca2fc86ae0c0425faad18950140d40
+  AFTER_SHA: 2e706558132e8893377c0dd6772d55c6c9d3a739
+  EXPECTED_PPTX_SHA256: 12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19
+  PPTX_NAME: OFERTAS QUINTA FILÉ NOVO (3).pptx
+  MEAT_STRIP_PPTX_URL: https://www.dropbox.com/scl/fi/mda6mqcgumm5k96wcbfw4/OFERTAS-QUINTA-FIL-NOVO-3.pptx?rlkey=75fv4ummvjgj3yptb0kjjczt5&st=p5ylee4h&dl=1
+  BEFORE_RUN_ID: '32573678279'
+  BEFORE_ARTIFACT: meat-strip-square-wrap-exact-recert-d59d83ef0cca2fc86ae0c0425faad18950140d40
+  REFERENCE_RUN_ID: '32543346011'
+  REFERENCE_ARTIFACT: final-meat-strip-visual-recert-200f0ba6c119e604f5ad7d7898e6838f55dc8619
+  QT_QPA_PLATFORM: offscreen
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  exact-ink-wrap-recert:
+    runs-on: windows-2025
+    timeout-minutes: 40
+    steps:
+      - name: Checkout diagnostic PR
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Diagnostic-only scope gate
+        shell: pwsh
+        run: |
+          git fetch origin $env:AFTER_SHA --depth=1
+          $changed = @(git diff --name-only "$env:AFTER_SHA..HEAD")
+          $allowed = @(
+            '.github/workflows/g2-meat-strip-ink-wrap-exact-recert.yml',
+            'tools/diagnostics/diagnose_quinta3_meat_strip_text_semantics.py',
+            'tools/diagnostics/trace_quinta3_square_wrap_runtime.py',
+            'tools/diagnostics/compare_quinta3_ink_wrap_recert.py'
+          )
+          foreach ($path in $changed) {
+            if ($allowed -notcontains $path) { throw "Unexpected diagnostic change: $path" }
+            if ($path -like 'src/*') { throw "PRODUCTION FILE CHANGED IN RECERT: $path" }
+          }
+          if ($changed.Count -ne 4) { throw "Expected exactly 4 diagnostic files, got $($changed.Count): $changed" }
+          'RECERT_PRODUCTION_FILES_CHANGED=0'
+
+      - name: Download exact PPTX and SHA256 gate FIRST
+        id: pptx
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force ground-truth | Out-Null
+          $target = Join-Path (Resolve-Path ground-truth) $env:PPTX_NAME
+          Invoke-WebRequest -Uri $env:MEAT_STRIP_PPTX_URL -OutFile $target
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+          "PPTX_SHA256=$actual"
+          if ($actual -ne $env:EXPECTED_PPTX_SHA256) { throw "PPTX SHA mismatch: $actual" }
+          "path=$target" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Checkout exact AFTER source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.AFTER_SHA }}
+          path: after-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Exact AFTER SHA and clean gate
+        shell: pwsh
+        run: |
+          $checked = (git -C after-source rev-parse HEAD).Trim()
+          "REQUESTED_SHA=$env:AFTER_SHA"
+          "CHECKED_OUT_SHA=$checked"
+          if ($checked -ne $env:AFTER_SHA) { throw 'AFTER exact SHA mismatch' }
+          if (git -C after-source status --porcelain) { throw 'AFTER source dirty before recert' }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install exact AFTER runtime outside frozen checkout
+        shell: pwsh
+        run: |
+          git -C after-source archive --format=zip --output ../after-source.zip HEAD
+          Expand-Archive -LiteralPath after-source.zip -DestinationPath runtime-install-source -Force
+          python -m pip install -q './runtime-install-source[dev,graphics2]'
+          python -m pip install -q numpy
+          if (git -C after-source status --porcelain) { throw 'AFTER source dirtied by install' }
+
+      - name: Restore frozen d59 BEFORE evidence and exact reference
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download $env:BEFORE_RUN_ID --repo $env:GITHUB_REPOSITORY --name $env:BEFORE_ARTIFACT --dir before-d59
+          gh run download $env:REFERENCE_RUN_ID --repo $env:GITHUB_REPOSITORY --name $env:REFERENCE_ARTIFACT --dir reference-artifact
+          if (-not (Test-Path 'before-d59/after-text-semantics/text-variant-metrics.json')) { throw 'd59 BEFORE metrics missing' }
+          if (-not (Test-Path 'reference-artifact/final-cert/meat-strip-original.png')) { throw 'Exact reference crop missing' }
+
+      - name: Prepare exact AFTER delegate
+        shell: pwsh
+        run: |
+          $source = Get-Content -Raw 'tools/diagnostics/diagnose_quinta3_meat_strip_text_semantics.py'
+          $source = $source.Replace(
+            'REQUESTED_SHA = "21dda44fe758a2899b4c15ffa041b2e0f6ff6d33"',
+            ('REQUESTED_SHA = "' + $env:AFTER_SHA + '"')
+          )
+          $source | Set-Content -Encoding utf8 'run-after-text-semantics.py'
+          python -m py_compile run-after-text-semantics.py tools/diagnostics/trace_quinta3_square_wrap_runtime.py tools/diagnostics/compare_quinta3_ink_wrap_recert.py
+
+      - name: Run exact AFTER raster and route trace
+        id: render
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          python tools/diagnostics/trace_quinta3_square_wrap_runtime.py `
+            --delegate run-after-text-semantics.py `
+            --pptx '${{ steps.pptx.outputs.path }}' `
+            --source-root after-source `
+            --reference 'reference-artifact/final-cert/meat-strip-original.png' `
+            --out after-text-semantics
+
+      - name: BEFORE d59 versus AFTER visual gate
+        id: compare
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          New-Item -ItemType Directory -Force recert | Out-Null
+          $output = & python tools/diagnostics/compare_quinta3_ink_wrap_recert.py `
+            --before before-d59/after-text-semantics `
+            --after after-text-semantics `
+            --out recert `
+            --before-sha $env:BEFORE_SHA `
+            --after-sha $env:AFTER_SHA 2>&1
+          $code = $LASTEXITCODE
+          $output | Tee-Object -FilePath 'recert/comparator-output.txt'
+          if ($code -ne 0) { throw "Visual comparator failed with exit code $code" }
+
+      - name: Exact focused regression suite on AFTER source
+        id: focused
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          python -m pytest -q `
+            after-source/tests/test_graphics2_pptx_square_wrap_spautofit.py `
+            after-source/tests/test_graphics2_pptx_shape_autofit_text_layout.py `
+            after-source/tests/test_graphics2_quinta3_meat_text_wrap_contract.py `
+            after-source/tests/test_graphics2_quinta3_meat_square_wrap_runtime.py `
+            after-source/tests/test_graphics2_quinta3_meat_initial_source_scale.py
+
+      - name: Frozen AFTER SHA and cleanliness AFTER
+        id: clean
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $checked = (git -C after-source rev-parse HEAD).Trim()
+          if ($checked -ne $env:AFTER_SHA) { throw 'AFTER SHA changed during recert' }
+          if (git -C after-source status --porcelain) { throw 'AFTER source dirty after recert' }
+          'RECERT_PRODUCTION_FILES_CHANGED=0'
+
+      - name: Build evidence ZIP and SHA256
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force evidence | Out-Null
+          if (Test-Path after-text-semantics) { Copy-Item -Recurse after-text-semantics evidence/after-text-semantics }
+          if (Test-Path recert) { Copy-Item -Recurse recert evidence/recert }
+          if (Test-Path before-d59/after-text-semantics/text-semantics-summary.json) { Copy-Item before-d59/after-text-semantics/text-semantics-summary.json evidence/before-d59-summary.json }
+          if (Test-Path before-d59/after-text-semantics/text-variant-metrics.json) { Copy-Item before-d59/after-text-semantics/text-variant-metrics.json evidence/before-d59-metrics.json }
+          Compress-Archive -Path evidence/* -DestinationPath meat-strip-ink-wrap-exact-recert.zip -Force
+          $sha = (Get-FileHash -Algorithm SHA256 meat-strip-ink-wrap-exact-recert.zip).Hash.ToLowerInvariant()
+          $sha | Set-Content -Encoding ascii meat-strip-ink-wrap-exact-recert.zip.sha256
+          "EVIDENCE_ZIP_SHA256=$sha"
+
+      - name: Upload exact recert evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: meat-strip-ink-wrap-exact-recert-${{ env.AFTER_SHA }}
+          path: |
+            evidence/
+            after-text-semantics/
+            recert/
+            meat-strip-ink-wrap-exact-recert.zip
+            meat-strip-ink-wrap-exact-recert.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Final exact-SHA verdict
+        if: always()
+        shell: pwsh
+        run: |
+          "RENDER_OUTCOME=${{ steps.render.outcome }}"
+          "COMPARE_OUTCOME=${{ steps.compare.outcome }}"
+          "FOCUSED_OUTCOME=${{ steps.focused.outcome }}"
+          "CLEAN_OUTCOME=${{ steps.clean.outcome }}"
+          if ('${{ steps.render.outcome }}' -ne 'success') { throw 'Exact AFTER render/trace failed' }
+          if ('${{ steps.compare.outcome }}' -ne 'success') { throw 'Raster comparison gate failed' }
+          if ('${{ steps.focused.outcome }}' -ne 'success') { throw 'Focused exact-SHA regression failed' }
+          if ('${{ steps.clean.outcome }}' -ne 'success') { throw 'Frozen source cleanliness failed' }
+          if (-not (Test-Path 'recert/ink-wrap-recert-summary.json')) { throw 'Recert summary missing' }
