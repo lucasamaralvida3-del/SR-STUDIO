@@ -33,6 +33,7 @@ jobs:
       - name: Diagnostic scope gate
         shell: pwsh
         run: |
+          git fetch origin $env:AFTER_SHA --depth=1
           $allowed = @(
             '.github/workflows/g2-final-meat-strip-visual-recert.yml',
             'tools/diagnostics/compare_quinta3_meat_strip_before_after.py'
