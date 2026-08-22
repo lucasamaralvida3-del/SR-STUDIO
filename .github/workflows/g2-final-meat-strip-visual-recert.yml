@@ -1,0 +1,172 @@
+name: Final Meat Strip Exact-SHA Visual Recertification
+
+on:
+  pull_request:
+    branches:
+      - g2/fix-pptx-shape-autofit-text-baseline
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  AFTER_SHA: 200f0ba6c119e604f5ad7d7898e6838f55dc8619
+  BEFORE_SHA: c69dd1b933e93e0928c4f299cc53ca771b22b4c2
+  EXPECTED_PPTX_SHA256: 12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19
+  PPTX_NAME: OFERTAS QUINTA FILÉ NOVO (3).pptx
+  MEAT_STRIP_PPTX_URL: https://www.dropbox.com/scl/fi/mda6mqcgumm5k96wcbfw4/OFERTAS-QUINTA-FIL-NOVO-3.pptx?rlkey=75fv4ummvjgj3yptb0kjjczt5&st=p5ylee4h&dl=1
+  BEFORE_RUN_ID: '32538659519'
+  BEFORE_ARTIFACT: quinta3-meat-strip-visual-cert-c69dd1b933e93e0928c4f299cc53ca771b22b4c2
+  QT_QPA_PLATFORM: offscreen
+
+jobs:
+  exact-sha-final-visual-recert:
+    runs-on: windows-2025
+    timeout-minutes: 35
+    steps:
+      - name: Checkout diagnostic tooling only
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Diagnostic scope gate
+        shell: pwsh
+        run: |
+          $allowed = @(
+            '.github/workflows/g2-final-meat-strip-visual-recert.yml',
+            'tools/diagnostics/compare_quinta3_meat_strip_before_after.py'
+          )
+          $changed = @(git diff --name-only "$env:AFTER_SHA...HEAD")
+          foreach ($path in $changed) {
+            if ($allowed -notcontains $path) { throw "Unexpected diagnostic change: $path" }
+          }
+
+      - name: Checkout AFTER candidate exactly
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.AFTER_SHA }}
+          path: after-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Exact source SHA and cleanliness BEFORE
+        shell: pwsh
+        run: |
+          $checked = (git -C after-source rev-parse HEAD).Trim()
+          "REQUESTED_SHA=$env:AFTER_SHA"
+          "CHECKED_OUT_SHA=$checked"
+          if ($checked -ne $env:AFTER_SHA) { throw "Exact SHA mismatch" }
+          if (git -C after-source status --porcelain) { throw "Candidate checkout dirty before render" }
+          git -C after-source fetch origin $env:BEFORE_SHA --depth=1
+          $paths = @(git -C after-source diff --name-only "$env:BEFORE_SHA..$env:AFTER_SHA")
+          $expected = @(
+            'src/srstudio/graphics2/qt_renderer.py',
+            'tests/test_graphics2_pptx_shape_autofit_text_layout.py'
+          )
+          if (($paths | Sort-Object) -join "`n" -ne ($expected | Sort-Object) -join "`n") {
+            throw "Unexpected BEFORE->AFTER production diff: $($paths -join ', ')"
+          }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install exact AFTER runtime
+        shell: pwsh
+        run: python -m pip install -q './after-source[dev,graphics2]'
+
+      - name: Download and validate exact PPTX before any render
+        id: pptx
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force ground-truth | Out-Null
+          $target = Join-Path (Resolve-Path ground-truth) $env:PPTX_NAME
+          Invoke-WebRequest -Uri $env:MEAT_STRIP_PPTX_URL -OutFile $target
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+          "PPTX_SHA256=$actual"
+          if ($actual -ne $env:EXPECTED_PPTX_SHA256) { throw "PPTX SHA mismatch: $actual" }
+          "path=$target" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Restore certified BEFORE artifact
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download $env:BEFORE_RUN_ID --repo $env:GITHUB_REPOSITORY --name $env:BEFORE_ARTIFACT --dir before-artifact
+          if (-not (Test-Path 'before-artifact/visual-cert/g2-page.png')) { throw 'BEFORE g2-page missing' }
+          if (-not (Test-Path 'before-artifact/visual-cert/reference/pptx-page.png')) { throw 'BEFORE PPTX reference missing' }
+          python -c "import json,pathlib; p=pathlib.Path('before-artifact/visual-cert/meat-strip-visual-metrics.json'); d=json.loads(p.read_text(encoding='utf-8')); assert d['source_sha']=='c69dd1b933e93e0928c4f299cc53ca771b22b4c2'; assert d['pptx']['sha256']=='12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19'; print('BEFORE_ARTIFACT_GATE=PASS')"
+
+      - name: Materialize proven clean runtime diagnostic
+        shell: pwsh
+        run: |
+          git fetch origin g2/diagnostic-meat-strip-source-scale-recert --depth=1
+          python -c "import subprocess,pathlib; raw=subprocess.check_output(['git','show','FETCH_HEAD:tools/diagnostics/diagnose_quinta3_meat_strip_runtime.py']); pathlib.Path('diagnose_after.py').write_bytes(raw)"
+          python -c "from pathlib import Path; p=Path('diagnose_after.py'); s=p.read_text(encoding='utf-8'); old='REQUESTED_SHA = \"9b3c967c5dad4e5dddee1daa6dd92fab2189437c\"'; new='REQUESTED_SHA = \"200f0ba6c119e604f5ad7d7898e6838f55dc8619\"'; assert old in s; p.write_text(s.replace(old,new,1),encoding='utf-8')"
+          python -m py_compile diagnose_after.py tools/diagnostics/compare_quinta3_meat_strip_before_after.py
+
+      - name: Fresh clean AFTER render
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force after-cert | Out-Null
+          Copy-Item 'before-artifact/visual-cert/meat-strip-original.png' 'after-cert/meat-strip-original.png'
+          python diagnose_after.py --pptx '${{ steps.pptx.outputs.path }}' --source-root after-source --out after-cert
+
+      - name: Build BEFORE versus AFTER metrics and required crops
+        shell: pwsh
+        run: |
+          python tools/diagnostics/compare_quinta3_meat_strip_before_after.py `
+            --before-dir before-artifact/visual-cert `
+            --after-dir after-cert `
+            --after-source after-source `
+            --pptx '${{ steps.pptx.outputs.path }}' `
+            --out final-cert
+
+      - name: Exact source SHA and cleanliness AFTER
+        shell: pwsh
+        run: |
+          $checked = (git -C after-source rev-parse HEAD).Trim()
+          if ($checked -ne $env:AFTER_SHA) { throw "AFTER exact SHA mismatch: $checked" }
+          if (git -C after-source status --porcelain) { throw "Candidate checkout dirty after render" }
+          "REQUESTED_SHA=$env:AFTER_SHA"
+          "CHECKED_OUT_SHA=$checked"
+
+      - name: Build evidence ZIP and SHA256
+        shell: pwsh
+        run: |
+          $required = @(
+            'meat-strip-original.png',
+            'meat-strip-g2.png',
+            'meat-strip-original-vs-g2.png',
+            'meat-strip-diff.png',
+            'costela-name-price-vs.png',
+            'pernil-name-price-vs.png',
+            'musculo-name-price-vs.png',
+            'moela-name-price-vs.png',
+            'meat-strip-visual-metrics.json',
+            'meat-strip-font-resolution.json',
+            'meat-strip-render-warnings.json',
+            'meat-strip-image-diagnostics.json',
+            'meat-strip-runtime-geometry.json'
+          )
+          foreach ($name in $required) {
+            $path = Join-Path 'final-cert' $name
+            if (-not (Test-Path $path) -or (Get-Item $path).Length -le 0) { throw "Missing required artifact: $name" }
+          }
+          Compress-Archive -Path final-cert/* -DestinationPath final-meat-strip-visual-recert.zip -Force
+          $sha = (Get-FileHash -Algorithm SHA256 final-meat-strip-visual-recert.zip).Hash.ToLowerInvariant()
+          $sha | Set-Content -Encoding ascii final-meat-strip-visual-recert.zip.sha256
+          "ARTIFACT_SHA256=$sha"
+
+      - name: Upload final visual recertification evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-meat-strip-visual-recert-${{ env.AFTER_SHA }}
+          path: |
+            final-cert/
+            final-meat-strip-visual-recert.zip
+            final-meat-strip-visual-recert.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
