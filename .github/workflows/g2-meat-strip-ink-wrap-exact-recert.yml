@@ -44,13 +44,14 @@ jobs:
             'tools/diagnostics/trace_quinta3_square_wrap_runtime.py',
             'tools/diagnostics/compare_quinta3_ink_wrap_recert.py',
             'tools/diagnostics/diagnose_quinta3_latin_line_break.py',
-            'tools/diagnostics/diagnose_quinta3_office_line_break_planner.py'
+            'tools/diagnostics/diagnose_quinta3_office_line_break_planner.py',
+            'tools/diagnostics/diagnose_quinta3_decimal_planner_final.py'
           )
           foreach ($path in $changed) {
             if ($allowed -notcontains $path) { throw "Unexpected diagnostic change: $path" }
             if ($path -like 'src/*') { throw "PRODUCTION FILE CHANGED IN RECERT: $path" }
           }
-          if ($changed.Count -ne 6) { throw "Expected exactly 6 diagnostic files, got $($changed.Count): $changed" }
+          if ($changed.Count -ne 7) { throw "Expected exactly 7 diagnostic files, got $($changed.Count): $changed" }
           'RECERT_PRODUCTION_FILES_CHANGED=0'
 
       - name: Download exact PPTX and SHA256 gate FIRST
@@ -93,7 +94,7 @@ jobs:
           git -C after-source archive --format=zip --output ../after-source.zip HEAD
           Expand-Archive -LiteralPath after-source.zip -DestinationPath runtime-install-source -Force
           python -m pip install -q './runtime-install-source[dev,graphics2]'
-          python -m pip install -q numpy
+          python -m pip install -q numpy regex
           if (git -C after-source status --porcelain) { throw 'AFTER source dirtied by install' }
 
       - name: Restore frozen d59 BEFORE evidence and exact reference
@@ -160,7 +161,7 @@ jobs:
           $planner = $planner.Replace($oldCrop, $newCrop)
           $planner | Set-Content -Encoding utf8 'run-office-line-break-planner.py'
 
-          python -m py_compile run-after-text-semantics.py run-latin-line-break.py run-office-line-break-planner.py tools/diagnostics/trace_quinta3_square_wrap_runtime.py tools/diagnostics/compare_quinta3_ink_wrap_recert.py
+          python -m py_compile run-after-text-semantics.py run-latin-line-break.py run-office-line-break-planner.py tools/diagnostics/trace_quinta3_square_wrap_runtime.py tools/diagnostics/compare_quinta3_ink_wrap_recert.py tools/diagnostics/diagnose_quinta3_decimal_planner_final.py
 
       - name: Run exact AFTER raster and route trace
         id: render
@@ -198,6 +199,21 @@ jobs:
             --pptx '${{ steps.pptx.outputs.path }}' `
             --source-root after-source `
             --reference 'reference-artifact/final-cert/meat-strip-original.png' `
+            --out line-break-planner
+
+      - name: Final DECIMAL planner diagnostic
+        id: decimal_final
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          python tools/diagnostics/diagnose_quinta3_decimal_planner_final.py `
+            --planner-module run-office-line-break-planner.py `
+            --delegate run-after-text-semantics.py `
+            --latin-module run-latin-line-break.py `
+            --pptx '${{ steps.pptx.outputs.path }}' `
+            --source-root after-source `
+            --reference 'reference-artifact/final-cert/meat-strip-original.png' `
+            --baseline-planner line-break-planner/planner-run1 `
             --out line-break-planner
 
       - name: BEFORE d59 versus AFTER visual gate
@@ -258,7 +274,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: meat-strip-line-break-planner-${{ env.AFTER_SHA }}
+          name: meat-strip-decimal-planner-final-${{ env.AFTER_SHA }}
           path: |
             evidence/
             after-text-semantics/
@@ -277,15 +293,18 @@ jobs:
           "RENDER_OUTCOME=${{ steps.render.outcome }}"
           "LATIN_DIAGNOSTIC_OUTCOME=${{ steps.latin.outcome }}"
           "PLANNER_OUTCOME=${{ steps.planner.outcome }}"
+          "DECIMAL_FINAL_OUTCOME=${{ steps.decimal_final.outcome }}"
           "COMPARE_OUTCOME=${{ steps.compare.outcome }}"
           "FOCUSED_OUTCOME=${{ steps.focused.outcome }}"
           "CLEAN_OUTCOME=${{ steps.clean.outcome }}"
           if ('${{ steps.render.outcome }}' -ne 'success') { throw 'Exact AFTER render/trace failed' }
           if ('${{ steps.latin.outcome }}' -ne 'success') { throw 'Latin line break diagnostic failed' }
           if ('${{ steps.planner.outcome }}' -ne 'success') { throw 'Office line break planner diagnostic failed' }
+          if ('${{ steps.decimal_final.outcome }}' -ne 'success') { throw 'Final DECIMAL planner diagnostic failed' }
           if ('${{ steps.compare.outcome }}' -ne 'success') { throw 'Raster comparison gate failed' }
           if ('${{ steps.focused.outcome }}' -ne 'success') { throw 'Focused exact-SHA regression failed' }
           if ('${{ steps.clean.outcome }}' -ne 'success') { throw 'Frozen source cleanliness failed' }
           if (-not (Test-Path 'recert/ink-wrap-recert-summary.json')) { throw 'Recert summary missing' }
           if (-not (Test-Path 'latin-line-break/latin-line-break-summary.json')) { throw 'Latin diagnostic summary missing' }
           if (-not (Test-Path 'line-break-planner/office-line-break-planner-summary.json')) { throw 'Planner summary missing' }
+          if (-not (Test-Path 'line-break-planner/decimal-planner-final-summary.json')) { throw 'Final DECIMAL summary missing' }
