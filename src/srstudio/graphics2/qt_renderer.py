@@ -9,8 +9,9 @@ A geometria persistida em SR Scene continua sendo a única fonte de verdade.
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Iterable
 import math
+import unicodedata
 
 from .fonts import register_qt_document_fonts
 from .image_crop import crop_pixel_box
@@ -306,6 +307,7 @@ def _pptx_shape_autofit_single_line_layout(text: str, rect, style: dict, font, Q
         _pptx_effective_wrap(style) == "square"
         and not bool(style.get("nowrap", False))
         and _pptx_source_layout_width(normalized, style, font, QtGui) > float(rect.width()) + 0.01
+        and not _pptx_should_preserve_overflowing_latin_word(normalized, style)
     ):
         return None
     tight = metrics.tightBoundingRect(normalized)
@@ -329,8 +331,7 @@ def _pptx_effective_wrap(style: dict) -> str:
 
     ``bodyPr@wrap`` defaults to ``square`` in DrawingML, but legacy scene
     objects did not preserve whether that semantic was known or merely implied
-    by ``nowrap=False``.  Only an explicit ``pptx_wrap`` value opts the
-    shape-autofit path into DrawingML wrapping; ``nowrap=True`` always wins.
+    by ``nowrap=False``. Only an explicit PPTX value opts text into this route.
     """
 
     if bool(style.get("nowrap", False)):
@@ -343,11 +344,61 @@ def _pptx_effective_wrap(style: dict) -> str:
     return ""
 
 
+def _pptx_has_drawingml_text_semantics(style: dict) -> bool:
+    """Whether this style is on a known PPTX/DrawingML text route."""
+
+    return any(
+        key in style
+        for key in (
+            "pptx_wrap",
+            "pptx_auto_fit",
+            "pptx_latin_ln_brk",
+            "latin_ln_brk",
+            "pptx_horz_overflow",
+            "horz_overflow",
+        )
+    )
+
+
+def _pptx_effective_latin_line_break(style: dict) -> bool | None:
+    """Resolve DrawingML paragraph ``latinLnBrk`` with the Office-effective default.
+
+    Outside a known PPTX/DrawingML route the result is ``None`` so generic scene
+    text keeps its pre-existing Qt behavior. For a known PPTX shape, omission is
+    Office-effective ``false`` as certified by the exact Meat Strip source.
+    """
+
+    for key in ("pptx_latin_ln_brk", "latin_ln_brk"):
+        if key not in style or style.get(key) in (None, ""):
+            continue
+        value = style.get(key)
+        if isinstance(value, bool):
+            return value
+        text = str(value).strip().lower()
+        if text in {"1", "true", "on", "yes"}:
+            return True
+        if text in {"0", "false", "off", "no"}:
+            return False
+    return False if _pptx_has_drawingml_text_semantics(style) else None
+
+
+def _pptx_effective_horizontal_overflow(style: dict) -> str:
+    """Resolve DrawingML ``bodyPr@horzOverflow`` for known PPTX text."""
+
+    for key in ("pptx_horz_overflow", "horz_overflow"):
+        if key not in style or style.get(key) in (None, ""):
+            continue
+        value = str(style.get(key)).strip().lower()
+        if value:
+            return value
+    return "overflow" if _pptx_has_drawingml_text_semantics(style) else ""
+
+
 def _pptx_source_layout_font(style: dict, font, QtGui):
     """Use the unrounded source point size for line-break decisions only.
 
     Rendering keeps the established #106 pixel-sized QFont so text that fits
-    remains byte-for-byte on the explicit-baseline path.  DrawingML line
+    remains byte-for-byte on the explicit-baseline path. DrawingML line
     breaking, however, is based on the source point size and must not silently
     inherit the integer pixel rounding used by QPainter output.
     """
@@ -367,6 +418,8 @@ def _pptx_source_layout_font(style: dict, font, QtGui):
 
 
 def _pptx_source_layout_width(text: str, style: dict, font, QtGui) -> float:
+    """Ink-aware source width used for both route and prefix selection."""
+
     layout_font = _pptx_source_layout_font(style, font, QtGui)
     metrics = QtGui.QFontMetricsF(layout_font)
     return max(float(metrics.horizontalAdvance(text)), float(metrics.tightBoundingRect(text).width()))
@@ -390,97 +443,141 @@ def _pptx_wrapped_line_advance(style: dict, metrics) -> float:
     return float(metrics.lineSpacing())
 
 
+def _pptx_boundary_positions(text: str, boundary_name: str, QtCore) -> set[int]:
+    """Return internal Qt/Unicode boundaries for one boundary class."""
+
+    value = str(text or "")
+    if not value:
+        return set()
+    boundary_type = getattr(QtCore.QTextBoundaryFinder, boundary_name, None)
+    if boundary_type is None:
+        boundary_type = getattr(QtCore.QTextBoundaryFinder.BoundaryType, boundary_name)
+    finder = QtCore.QTextBoundaryFinder(boundary_type, value)
+    finder.setPosition(0)
+    positions: set[int] = set()
+    while True:
+        position = int(finder.toNextBoundary())
+        if position < 0:
+            break
+        if 0 < position < len(value):
+            positions.add(position)
+    return positions
+
+
 def _pptx_grapheme_clusters(text: str, QtCore) -> list[str]:
     """Split text on Unicode grapheme boundaries using Qt's text engine."""
 
     value = str(text or "")
     if not value:
         return []
-    boundary_type = getattr(QtCore.QTextBoundaryFinder, "Grapheme", None)
-    if boundary_type is None:
-        boundary_type = QtCore.QTextBoundaryFinder.BoundaryType.Grapheme
-    finder = QtCore.QTextBoundaryFinder(boundary_type, value)
-    finder.setPosition(0)
-    boundaries = [0]
-    while True:
-        position = int(finder.toNextBoundary())
-        if position < 0:
-            break
-        if position > boundaries[-1]:
-            boundaries.append(position)
-    if boundaries[-1] != len(value):
-        boundaries.append(len(value))
+    positions = sorted(_pptx_boundary_positions(value, "Grapheme", QtCore))
+    boundaries = [0, *positions, len(value)]
     return [value[left:right] for left, right in zip(boundaries, boundaries[1:]) if right > left]
 
 
-def _pptx_longest_fitting_grapheme_segments(
+def _pptx_is_latin_letter(character: str) -> bool:
+    if not character or not unicodedata.category(character).startswith("L"):
+        return False
+    return "LATIN" in unicodedata.name(character, "")
+
+
+def _pptx_latin_word_spans(text: str) -> list[tuple[int, int]]:
+    """Find continuous LATIN_WORD spans without knowing role or value."""
+
+    value = str(text or "")
+    spans: list[tuple[int, int]] = []
+    start: int | None = None
+    for index, character in enumerate(value):
+        if _pptx_is_latin_letter(character):
+            if start is None:
+                start = index
+            continue
+        if start is not None:
+            spans.append((start, index))
+            start = None
+    if start is not None:
+        spans.append((start, len(value)))
+    return spans
+
+
+def _pptx_is_continuous_latin_word(text: str) -> bool:
+    value = str(text or "")
+    return bool(value) and all(_pptx_is_latin_letter(character) for character in value)
+
+
+def _pptx_should_preserve_overflowing_latin_word(text: str, style: dict) -> bool:
+    return (
+        _pptx_effective_latin_line_break(style) is False
+        and _pptx_effective_horizontal_overflow(style) == "overflow"
+        and _pptx_is_continuous_latin_word(text)
+    )
+
+
+def _pptx_office_break_candidates(text: str, style: dict, QtCore) -> list[int]:
+    """Generate generic Office-effective candidates and protect LATIN_WORD spans."""
+
+    value = str(text or "")
+    if len(value) <= 1:
+        return []
+    candidates = (
+        _pptx_boundary_positions(value, "Line", QtCore)
+        | _pptx_boundary_positions(value, "Word", QtCore)
+        | _pptx_boundary_positions(value, "Grapheme", QtCore)
+    )
+    latin_break = _pptx_effective_latin_line_break(style)
+    if latin_break is False:
+        spans = _pptx_latin_word_spans(value)
+        candidates = {
+            position
+            for position in candidates
+            if not any(left < position < right for left, right in spans)
+        }
+    return sorted(position for position in candidates if 0 < position < len(value))
+
+
+def _pptx_office_line_break_segments(
     text: str,
     available_width: float,
-    measure_width: Callable[[str], float],
-    grapheme_clusters: Callable[[str], list[str]],
+    style: dict,
+    measure_width,
+    QtCore,
 ) -> list[str]:
-    """Emergency-wrap one residual line into the longest ink-fitting segments.
+    """Build Office-effective segments by longest allowed ink-fitting prefix.
 
-    Normal QTextLayout word wrapping runs first. This helper is used only when
-    one of its residual lines still exceeds the same ink-aware width predicate
-    used to select the wrapped route. At least one grapheme is emitted per
-    iteration so malformed metrics cannot cause a loop.
+    Candidate generation is Unicode/Qt based. ``latinLnBrk=false`` removes only
+    boundaries internal to continuous LATIN_WORD spans. Every iteration chooses
+    the longest permitted prefix whose ink-aware source width fits. If no legal
+    unit fits, the next indivisible unit is emitted intact; with
+    ``horzOverflow=overflow`` that is the certified Office behavior for narrow
+    LATIN_WORD tokens.
     """
 
-    clusters = grapheme_clusters(str(text or ""))
-    if not clusters:
+    value = str(text or "")
+    if not value:
         return []
     width = max(0.1, float(available_width))
-    tolerance = 0.01
+    allowed = _pptx_office_break_candidates(value, style, QtCore)
+    endpoints = [*allowed, len(value)]
     result: list[str] = []
-    index = 0
-    while index < len(clusters):
-        best = index + 1
-        if float(measure_width(clusters[index])) <= width + tolerance:
-            end = index + 1
-            while end < len(clusters):
-                candidate = "".join(clusters[index : end + 1])
-                if float(measure_width(candidate)) > width + tolerance:
-                    break
-                best = end + 1
-                end += 1
-        result.append("".join(clusters[index:best]))
-        index = best
+    start = 0
+    tolerance = 0.01
+    while start < len(value):
+        fitting = [
+            end
+            for end in endpoints
+            if end > start and float(measure_width(value[start:end])) <= width + tolerance
+        ]
+        if fitting:
+            end = max(fitting)
+        else:
+            end = next((position for position in endpoints if position > start), len(value))
+        result.append(value[start:end])
+        start = end
     return result
 
 
-def _pptx_qtextlayout_fragments(text: str, available_width: float, layout_font, QtGui) -> list[str]:
-    layout = QtGui.QTextLayout(text, layout_font)
-    option = QtGui.QTextOption()
-    option.setWrapMode(QtGui.QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-    layout.setTextOption(option)
-    layout.beginLayout()
-    fragments: list[str] = []
-    try:
-        while True:
-            line = layout.createLine()
-            if not line.isValid():
-                break
-            line.setLineWidth(max(0.1, float(available_width)))
-            start = int(line.textStart())
-            length = int(line.textLength())
-            fragment = text[start : start + length]
-            if fragment:
-                fragments.append(fragment)
-    finally:
-        layout.endLayout()
-    return fragments
-
-
 def _pptx_shape_autofit_wrapped_layout(text: str, rect, style: dict, font, QtCore, QtGui):
-    """Lay out DrawingML ``wrap=square`` + ``spAutoFit`` text when it overflows.
-
-    QTextLayout performs normal word wrapping first. Each returned line is then
-    validated with the same ink-aware source-width metric used by route
-    selection. A residual line whose glyph ink still exceeds the available
-    width is split by Unicode grapheme clusters into the longest valid
-    segments. Text that fits remains on the #106 explicit-baseline route.
-    """
+    """Lay out DrawingML ``wrap=square`` + ``spAutoFit`` using Office semantics."""
 
     normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
     if not normalized or "\n" in normalized:
@@ -500,21 +597,13 @@ def _pptx_shape_autofit_wrapped_layout(text: str, rect, style: dict, font, QtCor
     if float(measure_width(normalized)) <= available_width + 0.01:
         return None
 
-    layout_font = _pptx_source_layout_font(style, font, QtGui)
-    qtext_fragments = _pptx_qtextlayout_fragments(normalized, available_width, layout_font, QtGui)
-    fragments: list[str] = []
-    for fragment in qtext_fragments:
-        if float(measure_width(fragment)) <= available_width + 0.01:
-            fragments.append(fragment)
-            continue
-        fragments.extend(
-            _pptx_longest_fitting_grapheme_segments(
-                fragment,
-                available_width,
-                measure_width,
-                lambda value: _pptx_grapheme_clusters(value, QtCore),
-            )
-        )
+    fragments = _pptx_office_line_break_segments(
+        normalized,
+        available_width,
+        style,
+        measure_width,
+        QtCore,
+    )
     if len(fragments) <= 1:
         return None
 
