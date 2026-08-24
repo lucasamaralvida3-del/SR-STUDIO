@@ -1,397 +1,152 @@
 from __future__ import annotations
-
-import argparse
-import hashlib
-import importlib.util
-import json
-import shutil
-import sys
+import argparse, hashlib, importlib.util, json, shutil, sys
 from pathlib import Path
 
-AFTER_SHA = "2e706558132e8893377c0dd6772d55c6c9d3a739"
-PPTX_SHA = "12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19"
-VARIANT_ORDER = ("A", "B", "C", "D")
+AFTER_SHA='2e706558132e8893377c0dd6772d55c6c9d3a739'
+PPTX_SHA='12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19'
+PROFILES=('costela','pernil','musculo','moela')
 
 
-def sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+def sha(path):
+    h=hashlib.sha256()
+    with Path(path).open('rb') as f:
+        for b in iter(lambda:f.read(1<<20),b''): h.update(b)
+    return h.hexdigest()
 
 
-def load_module(path: Path, name: str):
-    spec = importlib.util.spec_from_file_location(name, path.resolve())
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"cannot import {path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
+def load(path,name):
+    s=importlib.util.spec_from_file_location(name,Path(path).resolve()); m=importlib.util.module_from_spec(s); s.loader.exec_module(m); return m
 
 
-def forced_segments(label: str, text: str) -> list[str]:
-    value = str(text or "")
-    if len(value) != 3:
-        raise RuntimeError(f"decimal diagnostic expects 3 chars, got {value!r}")
-    if label == "A":
-        return [value]
-    if label == "B":
-        return [value[:1], value[1:]]
-    if label == "C":
-        return [value[:2], value[2:]]
-    if label == "D":
-        return [value[:1], value[1:2], value[2:]]
-    raise RuntimeError(label)
+def seg(label,text):
+    if len(text)!=3: raise RuntimeError(f'expected 3-char DECIMAL, got {text!r}')
+    return [text[:2],text[2:]] if label=='C' else [text[:1],text[1:2],text[2:]]
 
 
-def line_break_class(ch: str, regex_module) -> str:
-    classes = (
-        "AI", "AL", "B2", "BA", "BB", "BK", "CB", "CJ", "CL", "CM", "CP", "CR",
-        "EB", "EM", "EX", "GL", "H2", "H3", "HL", "HY", "ID", "IN", "IS", "JL",
-        "JT", "JV", "LF", "NL", "NS", "NU", "OP", "PO", "PR", "QU", "RI", "SA",
-        "SG", "SP", "SY", "WJ", "XX", "ZW", "ZWJ",
-    )
-    for value in classes:
-        if regex_module.fullmatch(rf"\p{{Line_Break={value}}}", ch):
-            return value
-    return "UNKNOWN"
+def row(root,profile,role='decimal'):
+    for r in json.loads((Path(root)/'text-variant-metrics.json').read_text(encoding='utf-8')):
+        if r.get('VARIANT')=='current' and r.get('PROFILE')==profile and r.get('ROLE')==role: return r
+    raise RuntimeError(f'missing {profile}/{role}')
 
 
-def render_font(style: dict, QtGui, qt_renderer):
-    family = str(style.get("font_family") or style.get("source_font_family") or "Segoe UI")
-    size = max(1.0, float(style.get("font_size") or 20.0))
-    unit = str(style.get("font_size_unit") or "pt").lower()
-    px = size * 96.0 / 72.0 if unit in {"pt", "point", "points"} else size
-    font = QtGui.QFont(family)
-    font.setPixelSize(max(1, round(px)))
-    qt_renderer._set_font_weight(font, style.get("font_weight"), QtGui)
-    font.setItalic(bool(style.get("italic")))
-    if style.get("letter_spacing") not in (None, ""):
-        font.setLetterSpacing(QtGui.QFont.AbsoluteSpacing, float(style.get("letter_spacing") or 0.0))
-    return font
+def topology(image):
+    import numpy as np
+    a=np.asarray(image.convert('RGB'),dtype=np.uint8); h,w=a.shape[:2]
+    colors,counts=np.unique(a.reshape(-1,3),axis=0,return_counts=True); bg=colors[int(counts.argmax())].astype(int)
+    mask=(a.astype(int)-bg.reshape(1,1,3)).min(axis=2)>=45; seen=np.zeros_like(mask,bool); comps=[]
+    for y in range(h):
+        for x in range(w):
+            if not mask[y,x] or seen[y,x]: continue
+            st=[(x,y)]; seen[y,x]=1; pts=[]
+            while st:
+                cx,cy=st.pop(); pts.append((cx,cy))
+                for dy in (-1,0,1):
+                    for dx in (-1,0,1):
+                        if dx==dy==0: continue
+                        nx,ny=cx+dx,cy+dy
+                        if 0<=nx<w and 0<=ny<h and mask[ny,nx] and not seen[ny,nx]: seen[ny,nx]=1; st.append((nx,ny))
+            xs=[p[0] for p in pts]; ys=[p[1] for p in pts]; box=[min(xs),min(ys),max(xs)+1,max(ys)+1]
+            if len(pts)<5 or (box[1]==0 and box[2]-box[0]>=.35*w): continue
+            comps.append({'area':len(pts),'bbox':box,'cx':sum(xs)/len(xs),'cy':sum(ys)/len(ys),'base':float(max(ys))})
+    clusters=[]
+    for c in sorted(comps,key=lambda z:z['base']):
+        best=None
+        for i,g in enumerate(clusters):
+            if abs(c['base']-max(v['base'] for v in g))<=4: best=i; break
+        (clusters.append([c]) if best is None else clusters[best].append(c))
+    out=[]
+    for g in clusters:
+        ar=sum(c['area'] for c in g); out.append({'centroid_y':sum(c['cy']*c['area'] for c in g)/ar,'baseline_y':max(c['base'] for c in g),'bbox':[min(c['bbox'][0] for c in g),min(c['bbox'][1] for c in g),max(c['bbox'][2] for c in g),max(c['bbox'][3] for c in g)],'component_count':len(g)})
+    out.sort(key=lambda z:z['baseline_y'])
+    ink=None if not comps else [min(c['bbox'][0] for c in comps),min(c['bbox'][1] for c in comps),max(c['bbox'][2] for c in comps),max(c['bbox'][3] for c in comps)]
+    proj=[0]*h
+    # project component bboxes only for diagnostic row runs; topology itself is component/baseline based.
+    for c in comps:
+        for yy in range(c['bbox'][1],c['bbox'][3]): proj[yy]+=1
+    active=[i for i,v in enumerate(proj) if v]; runs=[]
+    for y in active:
+        if not runs or y>runs[-1][1]+1: runs.append([y,y])
+        else: runs[-1][1]=y
+    valleys=[]
+    for l,r in zip(out,out[1:]):
+        lo=int(l['baseline_y'])+1; hi=int(r['baseline_y'])-1; vals=proj[lo:hi+1] if hi>=lo else []
+        valleys.append({'min_projection':min(vals) if vals else 0,'depth':1.0 if not vals or min(vals)==0 else 0.0})
+    return {'REFERENCE_LINE_CLUSTER_COUNT':len(out),'REFERENCE_LINE_CLUSTER_Y':[c['centroid_y'] for c in out],'REFERENCE_LINE_CLUSTER_BASELINE_Y':[c['baseline_y'] for c in out],'INK_BBOX':ink,'CONNECTED_COMPONENT_COUNT':len(comps),'COMPONENTS':comps,'ACTIVE_ROW_RUNS':runs,'VALLEY_DEPTHS':valleys,'BACKGROUND_RGB':[int(v) for v in bg]}
 
 
-def decision_trace(text: str, rect, style: dict, font, planner, latin, qt_renderer, QtCore, QtGui, production_helper) -> dict:
-    normalized = str(text or "").replace("\r\n", "\n").replace("\r", "\n")
-    width = max(0.1, float(rect.width()))
-    source_font = qt_renderer._pptx_source_layout_font(style, font, QtGui)
-    source_metrics = QtGui.QFontMetricsF(source_font)
-
-    def advance(value: str) -> float:
-        return float(source_metrics.horizontalAdvance(value))
-
-    def ink(value: str) -> float:
-        return float(source_metrics.tightBoundingRect(value).width())
-
-    def source_width(value: str) -> float:
-        return float(qt_renderer._pptx_source_layout_width(value, style, font, QtGui))
-
-    whole_advance = advance(normalized)
-    whole_ink = ink(normalized)
-    whole_source = source_width(normalized)
-    latin_break = bool(style.get("diagnostic_latin_ln_brk_office_effective", False))
-    horz = str(style.get("diagnostic_horz_overflow_office_effective") or "overflow")
-    plan = planner.break_plan(normalized, latin_break, horz, latin, QtCore)
-    allowed = sorted({int(pos) for pos in plan["OFFICE_FILTERED_BREAK_POSITIONS"] if 0 < int(pos) < len(normalized)})
-    endpoints = allowed + [len(normalized)]
-    prefix_rows = []
-    segments = []
-    start = 0
-    chosen_positions = []
-    while start < len(normalized):
-        evaluated = []
-        for end in endpoints:
-            if end <= start:
-                continue
-            value = normalized[start:end]
-            row = {
-                "START": start,
-                "END": end,
-                "PREFIX": value,
-                "PREFIX_ADVANCE": advance(value),
-                "PREFIX_INK_WIDTH": ink(value),
-                "PREFIX_SOURCE_WIDTH": source_width(value),
-            }
-            row["PREFIX_ACCEPTED"] = bool(row["PREFIX_SOURCE_WIDTH"] <= width + 0.01)
-            evaluated.append(row)
-        fitting = [row for row in evaluated if row["PREFIX_ACCEPTED"]]
-        if fitting:
-            selected = max(fitting, key=lambda row: int(row["END"]))
-            end = int(selected["END"])
-        else:
-            end = next((pos for pos in endpoints if pos > start), len(normalized))
-        prefix_rows.append({"START": start, "PREFIXES_EVALUATED": evaluated, "BREAK_POSITION_CHOSEN": end})
-        segments.append(normalized[start:end])
-        chosen_positions.append(end)
-        start = end
-
-    emergency_layout = production_helper(normalized, rect, style, font, QtCore, QtGui)
-    emergency_segments = [] if emergency_layout is None else [str(row[0]) for row in emergency_layout]
-    qtext_line_positions = [
-        int(row["POSITION"])
-        for row in plan["BOUNDARY_TRACE"].get("LINE", {}).get("BOUNDARIES", [])
-        if 0 < int(row["POSITION"]) < len(normalized)
-    ]
-    return {
-        "TEXT": normalized,
-        "WHOLE_TOKEN_ADVANCE": whole_advance,
-        "WHOLE_TOKEN_INK_WIDTH": whole_ink,
-        "WHOLE_TOKEN_SOURCE_WIDTH": whole_source,
-        "AVAILABLE_WIDTH": width,
-        "WHOLE_TOKEN_FITS_BY_ADVANCE": bool(whole_advance <= width + 0.01),
-        "WHOLE_TOKEN_FITS_BY_INK": bool(whole_ink <= width + 0.01),
-        "EARLY_RETURN_SINGLE_LINE": bool(whole_source <= width + 0.01),
-        "CANDIDATE_BREAK_POSITIONS": plan["CANDIDATE_BREAK_POSITIONS"],
-        "OFFICE_FILTERED_BREAK_POSITIONS": plan["OFFICE_FILTERED_BREAK_POSITIONS"],
-        "QTEXTBOUNDARYFINDER_LINE_INTERNAL": qtext_line_positions,
-        "PREFIXES_EVALUATED": prefix_rows,
-        "BREAK_POSITION_CHOSEN": chosen_positions,
-        "REMAINDER": "" if not chosen_positions else normalized[chosen_positions[-1]:],
-        "FINAL_SEGMENTS": segments,
-        "CURRENT_EMERGENCY_SEGMENTS": emergency_segments,
-        "latinLnBrk_OFFICE_EFFECTIVE": latin_break,
-        "horzOverflow_OFFICE_EFFECTIVE": horz,
-        "wrap_EFFECTIVE": str(style.get("pptx_wrap") or ""),
-        "spAutoFit": str(style.get("pptx_auto_fit") or "").lower() == "shape",
-        "PLAN": plan,
-    }
+def overlay(image,t,output):
+    from PIL import ImageDraw
+    im=image.convert('RGB').copy(); d=ImageDraw.Draw(im); colors=('lime','cyan','magenta')
+    for c in t['COMPONENTS']: d.rectangle(tuple(c['bbox']),outline='orange')
+    for i,(y,box) in enumerate(zip(t['REFERENCE_LINE_CLUSTER_BASELINE_Y'],[None]*len(t['REFERENCE_LINE_CLUSTER_BASELINE_Y']))):
+        col=colors[i%len(colors)]; yy=int(round(y)); d.line((0,yy,im.width-1,yy),fill=col); d.text((1,max(0,yy-8)),f'L{i+1}',fill=col)
+    output.parent.mkdir(parents=True,exist_ok=True); im.resize((im.width*8,im.height*8)).save(output)
 
 
-def current_row(root: Path, profile: str, role: str = "decimal") -> dict:
-    rows = json.loads((root / "text-variant-metrics.json").read_text(encoding="utf-8"))
-    for row in rows:
-        if row.get("VARIANT") == "current" and row.get("PROFILE") == profile and row.get("ROLE") == role:
-            return row
-    raise RuntimeError(f"row missing: {profile}/{role}")
+def planner_trace(text,rect,style,font,planner,latin,renderer,Core,Gui,production):
+    width=max(.1,float(rect.width())); sf=renderer._pptx_source_layout_font(style,font,Gui); fm=Gui.QFontMetricsF(sf)
+    measure=lambda v:float(renderer._pptx_source_layout_width(v,style,font,Gui))
+    plan=planner.break_plan(text,bool(style.get('diagnostic_latin_ln_brk_office_effective',False)),str(style.get('diagnostic_horz_overflow_office_effective') or 'overflow'),latin,Core)
+    allowed=sorted(int(p) for p in plan['OFFICE_FILTERED_BREAK_POSITIONS'] if 0<int(p)<len(text)); ends=allowed+[len(text)]; start=0; pieces=[]; steps=[]
+    while start<len(text):
+        ev=[{'END':e,'PREFIX':text[start:e],'INK_WIDTH':float(fm.tightBoundingRect(text[start:e]).width()),'SOURCE_WIDTH':measure(text[start:e]),'FITS':measure(text[start:e])<=width+.01} for e in ends if e>start]
+        fit=[x for x in ev if x['FITS']]; end=max(fit,key=lambda x:x['END'])['END'] if fit else next(e for e in ends if e>start)
+        steps.append({'START':start,'CANDIDATES':ev,'CHOSEN':end}); pieces.append(text[start:end]); start=end
+    em=production(text,rect,style,font,Core,Gui)
+    return {'TEXT':text,'AVAILABLE_WIDTH':width,'OFFICE_FILTERED_BREAK_POSITIONS':allowed,'PREFIX_STEPS':steps,'FINAL_SEGMENTS':pieces,'CURRENT_EMERGENCY_SEGMENTS':[] if em is None else [str(x[0]) for x in em],'wrap':str(style.get('pptx_wrap') or ''),'spAutoFit':str(style.get('pptx_auto_fit') or '').lower()=='shape','horzOverflow':str(style.get('diagnostic_horz_overflow_office_effective') or 'overflow'),'latinLnBrk':bool(style.get('diagnostic_latin_ln_brk_office_effective',False))}
 
 
-def run_forced(delegate, planner, latin, args, source_info, label: str, out: Path, QtCore, QtGui, qt_renderer, traces: dict, layout_capture: dict, production_helper) -> None:
+def run_forced(delegate,planner,latin,args,source,label,out,Core,Gui,renderer,traces,layouts,production):
     from srstudio.graphics2.model import BindingRole
-
-    original_apply = delegate.apply_variant
-    original_planner_helper = planner.planner_helper
-
-    def apply_variant(document, slots, source_semantics, variant):
-        original_apply(document, slots, source_semantics, variant)
-        for profile, slot in zip(delegate.PROFILE_ORDER, slots):
-            node = document.active_page.node(slot.node_by_role[BindingRole.PRICE_CENTS.value])
-            node.style["diagnostic_decimal_profile"] = profile
-            node.style["diagnostic_forced_segments"] = forced_segments(label, str(node.text or ""))
-
-    def helper(renderer, latin_module, text, rect, style, font, core, gui):
-        profile = style.get("diagnostic_decimal_profile")
-        forced = style.get("diagnostic_forced_segments")
-        if profile and forced:
-            key = str(profile)
-            if key not in traces:
-                traces[key] = decision_trace(str(text or ""), rect, style, font, planner, latin_module, renderer, core, gui, production_helper)
-            layout = [latin_module._layout_tuple(fragment, rect, style, font, gui, renderer, index) for index, fragment in enumerate(list(forced))]
-            layout_capture.setdefault(label, {})[key] = {
-                "SEGMENTS": [str(row[0]) for row in layout],
-                "BASELINES": [float(row[2]) for row in layout],
-                "X": [float(row[1]) for row in layout],
-            }
-            return layout
-        return original_planner_helper(renderer, latin_module, text, rect, style, font, core, gui)
-
-    delegate.apply_variant = apply_variant
-    planner.planner_helper = helper
-    try:
-        planner.run_delegate(delegate, args, out, source_info, latin, QtCore, QtGui, qt_renderer, True)
-    finally:
-        delegate.apply_variant = original_apply
-        planner.planner_helper = original_planner_helper
+    oa=delegate.apply_variant; oh=planner.planner_helper
+    def apply(document,slots,semantics,variant):
+        oa(document,slots,semantics,variant)
+        for p,s in zip(delegate.PROFILE_ORDER,slots):
+            n=document.active_page.node(s.node_by_role[BindingRole.PRICE_CENTS.value]); n.style['diagnostic_decimal_profile']=p; n.style['diagnostic_forced_segments']=seg(label,str(n.text or ''))
+    def helper(r,l,text,rect,style,font,core,gui):
+        p=style.get('diagnostic_decimal_profile'); forced=style.get('diagnostic_forced_segments')
+        if p and forced:
+            if p not in traces: traces[p]=planner_trace(str(text or ''),rect,style,font,planner,l,r,core,gui,production)
+            lay=[l._layout_tuple(x,rect,style,font,gui,r,i) for i,x in enumerate(forced)]; layouts.setdefault(label,{})[p]=[float(x[2]) for x in lay]; return lay
+        return oh(r,l,text,rect,style,font,core,gui)
+    delegate.apply_variant=apply; planner.planner_helper=helper
+    try: planner.run_delegate(delegate,args,out,source,latin,Core,Gui,renderer,True)
+    finally: delegate.apply_variant=oa; planner.planner_helper=oh
 
 
-def copy_crop_and_metrics(args, label: str, run1: Path, run2: Path, profile: str, layout_capture: dict) -> dict:
-    crop1 = run1 / "crops" / f"current-{profile}-decimal.png"
-    crop2 = run2 / "crops" / f"current-{profile}-decimal.png"
-    flat = args.out / "decimal-crops"
-    flat.mkdir(parents=True, exist_ok=True)
-    copied = flat / f"{profile}-{label}.png"
-    shutil.copy2(crop1, copied)
-    row = current_row(run1, profile)
-    row2 = current_row(run2, profile)
-    return {
-        "VARIANT": label,
-        "SEGMENTS": forced_segments(label, str(row.get("TEXT") or row.get("DIAG_TEXT") or "")),
-        "MAE": float(row.get("MAE") or 0.0),
-        "CHANGED_RATIO": float(row.get("CHANGED_RATIO") or 0.0),
-        "BBOX": row.get("RENDERED_BBOX"),
-        "BAND_COUNT": int(row.get("LINE_COUNT") or 0),
-        "BAND_Y_RANGES": row.get("LINE_BANDS") or [],
-        "BASELINES": layout_capture.get(label, {}).get(profile, {}).get("BASELINES", []),
-        "CROP_SHA": sha256(crop1),
-        "REPEAT_CROP_SHA": sha256(crop2),
-        "CROP_DETERMINISTIC": sha256(crop1) == sha256(crop2),
-        "FULL_PAGE_SHA": sha256(run1 / "_page-current.png"),
-        "REPEAT_FULL_PAGE_SHA": sha256(run2 / "_page-current.png"),
-        "FULL_PAGE_DETERMINISTIC": sha256(run1 / "_page-current.png") == sha256(run2 / "_page-current.png"),
-        "CROP_FILE": str(copied.relative_to(args.out)).replace("\\", "/"),
-        "CROP_BOX": row.get("CROP_BOX"),
-        "REPEAT_MAE": float(row2.get("MAE") or 0.0),
-        "REPEAT_CHANGED_RATIO": float(row2.get("CHANGED_RATIO") or 0.0),
-    }
-
-
-def make_side_by_side(args, profile: str, best: dict, baseline_root: Path) -> str:
-    from PIL import Image, ImageDraw
-
-    box = tuple(int(v) for v in best["CROP_BOX"])
-    reference = Image.open(args.reference).convert("RGB").crop(box)
-    best_img = Image.open(args.out / best["CROP_FILE"]).convert("RGB")
-    emergency = Image.open(baseline_root / "crops" / f"current-{profile}-decimal.png").convert("RGB")
-    width = reference.width + best_img.width + emergency.width
-    header = 24
-    canvas = Image.new("RGB", (width, max(reference.height, best_img.height, emergency.height) + header), "white")
-    draw = ImageDraw.Draw(canvas)
-    x = 0
-    for label, image in (("REFERENCE", reference), (f"BEST {best['VARIANT']}", best_img), ("CURRENT EMERGENCY", emergency)):
-        draw.text((x + 3, 4), label, fill="black")
-        canvas.paste(image, (x, header))
-        x += image.width
-    out_dir = args.out / "side-by-side"
-    out_dir.mkdir(parents=True, exist_ok=True)
-    output = out_dir / f"{profile}-best.png"
-    canvas.save(output)
-    return str(output.relative_to(args.out)).replace("\\", "/")
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--planner-module", required=True, type=Path)
-    parser.add_argument("--delegate", required=True, type=Path)
-    parser.add_argument("--latin-module", required=True, type=Path)
-    parser.add_argument("--pptx", required=True, type=Path)
-    parser.add_argument("--source-root", required=True, type=Path)
-    parser.add_argument("--reference", required=True, type=Path)
-    parser.add_argument("--baseline-planner", required=True, type=Path)
-    parser.add_argument("--out", required=True, type=Path)
-    args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
-    if sha256(args.pptx) != PPTX_SHA:
-        raise RuntimeError("exact PPTX SHA mismatch")
-    sys.path.insert(0, str(args.source_root.resolve() / "src"))
-
-    import regex
-    from PySide6 import QtCore, QtGui
-    from srstudio.graphics2 import qt_renderer
+def main():
+    ap=argparse.ArgumentParser();
+    for name in ('planner-module','delegate','latin-module','pptx','source-root','reference','baseline-planner','out'): ap.add_argument('--'+name,required=True,type=Path)
+    a=ap.parse_args(); a.out.mkdir(parents=True,exist_ok=True)
+    if sha(a.pptx)!=PPTX_SHA: raise RuntimeError('exact PPTX SHA mismatch')
+    sys.path.insert(0,str(a.source_root.resolve()/'src'))
+    from PIL import Image
+    from PySide6 import QtCore,QtGui
+    from srstudio.graphics2 import qt_renderer as renderer
     from srstudio.graphics2.fonts import ensure_qgui_application
+    app=ensure_qgui_application(); app.processEvents()
+    delegate=load(a.delegate,'top_delegate'); planner=load(a.planner_module,'top_planner'); latin=load(a.latin_module,'top_latin'); source=latin.extract_source(a.pptx.resolve(),delegate.ROLE_IDS,QtCore); production=renderer._pptx_shape_autofit_wrapped_layout
+    traces={}; layouts={}; roots={}
+    for label in ('C','D'):
+        r1=a.out/'variants'/f'{label}-run1'; r2=a.out/'variants'/f'{label}-run2'; run_forced(delegate,planner,latin,a,source,label,r1,QtCore,QtGui,renderer,traces,layouts,production); run_forced(delegate,planner,latin,a,source,label,r2,QtCore,QtGui,renderer,traces,layouts,production); roots[label]=(r1,r2)
+    ref=Image.open(a.reference).convert('RGB'); topo={}; matrix={}; deterministic=True
+    for p in delegate.PROFILE_ORDER:
+        matrix[p]={}
+        for label in ('C','D'):
+            r1,r2=roots[label]; rr=row(r1,p); crop=r1/'crops'/f'current-{p}-decimal.png'; crop2=r2/'crops'/f'current-{p}-decimal.png'; out=a.out/'decimal-crops'/f'{p}-{label}.png'; out.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(crop,out)
+            bas=layouts[label][p]; rt=topology(Image.open(crop)); matrix[p][label]={'SEGMENTS':seg(label,str(rr.get('TEXT') or rr.get('DIAG_TEXT') or '')),'SEMANTIC_LINE_COUNT':len(bas),'BASELINES':bas,'MAE':float(rr.get('MAE') or 0),'CHANGED_RATIO':float(rr.get('CHANGED_RATIO') or 0),'CROP_BOX':rr['CROP_BOX'],'RASTER_CLUSTER_COUNT':rt['REFERENCE_LINE_CLUSTER_COUNT'],'RASTER_INK_BBOX':rt['INK_BBOX']}; deterministic &= sha(crop)==sha(crop2) and sha(r1/'_page-current.png')==sha(r2/'_page-current.png')
+        box=tuple(int(v) for v in matrix[p]['C']['CROP_BOX']); ri=ref.crop(box); t=topology(ri); ov=a.out/'reference-topology'/f'{p}-reference-overlay.png'; overlay(ri,t,ov); topo[p]=t
+        for label in ('C','D'): matrix[p][label]['TOPOLOGY_MATCH']=matrix[p][label]['SEMANTIC_LINE_COUNT']==t['REFERENCE_LINE_CLUSTER_COUNT']
+    cseg={p:matrix[p]['C']['SEGMENTS'] for p in delegate.PROFILE_ORDER}; generic={p:traces[p]['FINAL_SEGMENTS'] for p in delegate.PROFILE_ORDER}; emergency={p:traces[p]['CURRENT_EMERGENCY_SEGMENTS'] for p in delegate.PROFILE_ORDER}
+    greedy=True
+    for p in delegate.PROFILE_ORDER:
+        s=traces[p]['PREFIX_STEPS'][0]; by={x['END']:x for x in s['CANDIDATES']}; greedy &= traces[p]['OFFICE_FILTERED_BREAK_POSITIONS']==[1,2] and by[1]['FITS'] and by[2]['FITS'] and not by[3]['FITS'] and s['CHOSEN']==2 and generic[p]==cseg[p]
+    src_ok=all(traces[p]['wrap']=='square' and traces[p]['spAutoFit'] and traces[p]['horzOverflow']=='overflow' and not traces[p]['latinLnBrk'] for p in delegate.PROFILE_ORDER)
+    controls=planner.current_rows(roots['C'][0]); currency=all(int(controls[(p,'currency')].get('LINE_COUNT') or 0)==2 for p in delegate.PROFILE_ORDER); unit=all(int(controls[(p,'unit')].get('LINE_COUNT') or 0)==1 for p in delegate.PROFILE_ORDER); integer=all(planner.probe_sha(a.baseline_planner,p,'integer')==planner.probe_sha(roots['C'][0],p,'integer') for p in delegate.PROFILE_ORDER); name=all(planner.probe_sha(a.baseline_planner,p,'name')==planner.probe_sha(roots['C'][0],p,'name') for p in delegate.PROFILE_ORDER)
+    ref2=all(topo[p]['REFERENCE_LINE_CLUSTER_COUNT']==2 for p in delegate.PROFILE_ORDER); cmatch=all(matrix[p]['C']['TOPOLOGY_MATCH'] for p in delegate.PROFILE_ORDER); eqc=all(generic[p]==cseg[p] and emergency[p]==cseg[p] for p in delegate.PROFILE_ORDER); latin_keep=not bool(planner.break_plan('KG',False,'overflow',latin,QtCore)['OFFICE_FILTERED_BREAK_POSITIONS'])
+    confirmed=bool(deterministic and ref2 and cmatch and greedy and eqc and src_ok and latin_keep and currency and unit and integer and name)
+    pd=matrix['pernil']['D']; pc=matrix['pernil']['C']; classification='PIXEL METRIC OVERFIT' if pc['TOPOLOGY_MATCH'] and not pd['TOPOLOGY_MATCH'] and pd['MAE']<pc['MAE'] else None
+    summary={'AFTER_SHA':AFTER_SHA,'PPTX_SHA256':PPTX_SHA,'REFERENCE_LINE_CLUSTER_COUNT':{p:topo[p]['REFERENCE_LINE_CLUSTER_COUNT'] for p in delegate.PROFILE_ORDER},'REFERENCE_LINE_CLUSTER_Y':{p:topo[p]['REFERENCE_LINE_CLUSTER_Y'] for p in delegate.PROFILE_ORDER},'C_TOPOLOGY_MATCH':{p:matrix[p]['C']['TOPOLOGY_MATCH'] for p in delegate.PROFILE_ORDER},'PERNIL_REFERENCE_CLUSTERS':topo['pernil']['REFERENCE_LINE_CLUSTER_COUNT'],'PERNIL_C_CLUSTERS':pc['SEMANTIC_LINE_COUNT'],'PERNIL_D_CLUSTERS':pd['SEMANTIC_LINE_COUNT'],'PERNIL_C_MAE':pc['MAE'],'PERNIL_D_MAE':pd['MAE'],'PERNIL_D_TOPOLOGY_MATCH':pd['TOPOLOGY_MATCH'],'PERNIL_D_LOWER_MAE_CLASSIFICATION':classification,'LONGEST_FITTING_PREFIX_RULE':greedy,'CURRENT_EMERGENCY_SEGMENTS':emergency,'GENERIC_PLANNER_SEGMENTS':generic,'SOURCE_SEMANTICS_PRESERVED':src_ok,'LATIN_WORD_INDIVISIBLE':latin_keep,'CURRENCY_PRESERVED':currency,'UNIT_PRESERVED':unit,'INTEGER_PRESERVED':integer,'NAME_PRESERVED':name,'ALL_VARIANTS_DETERMINISTIC':deterministic,'GENERIC_RULE_CONFIRMED':confirmed,'PRODUCTION_FILES_CHANGED':0,'READY_TO_MODIFY_PR_111':confirmed}
+    (a.out/'decimal-reference-topology.json').write_text(json.dumps(topo,indent=2),encoding='utf-8'); (a.out/'decimal-segmentation-matrix.json').write_text(json.dumps(matrix,indent=2),encoding='utf-8'); (a.out/'planner-decision-trace.json').write_text(json.dumps(traces,indent=2),encoding='utf-8'); (a.out/'decimal-planner-final-summary.json').write_text(json.dumps(summary,indent=2),encoding='utf-8'); print(json.dumps(summary,indent=2)); return 0
 
-    app = ensure_qgui_application()
-    app.processEvents()
-    delegate = load_module(args.delegate, "decimal_final_delegate")
-    planner = load_module(args.planner_module, "decimal_final_planner")
-    latin = load_module(args.latin_module, "decimal_final_latin")
-    source_info = latin.extract_source(args.pptx.resolve(), delegate.ROLE_IDS, QtCore)
-    production_helper = qt_renderer._pptx_shape_autofit_wrapped_layout
-
-    traces: dict[str, dict] = {}
-    layout_capture: dict[str, dict] = {}
-    roots: dict[str, tuple[Path, Path]] = {}
-    for label in VARIANT_ORDER:
-        run1 = args.out / "variants" / f"{label}-run1"
-        run2 = args.out / "variants" / f"{label}-run2"
-        run_forced(delegate, planner, latin, args, source_info, label, run1, QtCore, QtGui, qt_renderer, traces, layout_capture, production_helper)
-        run_forced(delegate, planner, latin, args, source_info, label, run2, QtCore, QtGui, qt_renderer, traces, layout_capture, production_helper)
-        roots[label] = (run1, run2)
-
-    matrix = {}
-    deterministic = True
-    for profile in delegate.PROFILE_ORDER:
-        rows = []
-        for label in VARIANT_ORDER:
-            row = copy_crop_and_metrics(args, label, roots[label][0], roots[label][1], profile, layout_capture)
-            deterministic &= bool(row["CROP_DETERMINISTIC"] and row["FULL_PAGE_DETERMINISTIC"])
-            rows.append(row)
-        best = min(rows, key=lambda row: (float(row["MAE"]), float(row["CHANGED_RATIO"]), VARIANT_ORDER.index(row["VARIANT"])))
-        matrix[profile] = {"VARIANTS": rows, "BEST": best}
-
-    for profile in delegate.PROFILE_ORDER:
-        matrix[profile]["SIDE_BY_SIDE"] = make_side_by_side(args, profile, matrix[profile]["BEST"], args.baseline_planner)
-
-    unicode_payload = {}
-    for profile in delegate.PROFILE_ORDER:
-        text = traces[profile]["TEXT"]
-        boundary = latin.boundary_trace(text, QtCore)
-        qt_line_internal = [int(row["POSITION"]) for row in boundary["LINE"]["BOUNDARIES"] if 0 < int(row["POSITION"]) < len(text)]
-        unicode_payload[profile] = {
-            "TEXT": text,
-            "CHARS": [
-                {
-                    "INDEX": index,
-                    "CHAR": ch,
-                    "CODEPOINT": f"U+{ord(ch):04X}",
-                    "LINE_BREAK_CLASS": line_break_class(ch, regex),
-                }
-                for index, ch in enumerate(text)
-            ],
-            "QTEXTBOUNDARYFINDER_LINE": boundary["LINE"],
-            "DEFAULT_UNICODE_INTERNAL_BREAKS": qt_line_internal,
-            "DEFAULT_UNICODE_BREAK": "KEEP_TOGETHER" if not qt_line_internal else "BREAK_AVAILABLE",
-            "DRAWINGML_OFFICE_TAILORED_BREAKS": traces[profile]["OFFICE_FILTERED_BREAK_POSITIONS"],
-            "REFERENCE_RASTER_BEST_SEGMENTS": matrix[profile]["BEST"]["SEGMENTS"],
-        }
-
-    current_emergency = {profile: traces[profile]["CURRENT_EMERGENCY_SEGMENTS"] for profile in delegate.PROFILE_ORDER}
-    best_segments = {profile: matrix[profile]["BEST"]["SEGMENTS"] for profile in delegate.PROFILE_ORDER}
-    generic_segments = {profile: traces[profile]["FINAL_SEGMENTS"] for profile in delegate.PROFILE_ORDER}
-    best_eq_emergency = all(best_segments[p] == current_emergency[p] for p in delegate.PROFILE_ORDER)
-    best_eq_generic = all(best_segments[p] == generic_segments[p] for p in delegate.PROFILE_ORDER)
-
-    baseline_rows = planner.current_rows(args.baseline_planner)
-    control_root = roots[matrix[delegate.PROFILE_ORDER[0]]["BEST"]["VARIANT"]][0]
-    control_rows = planner.current_rows(control_root)
-    currency_preserved = all(int(control_rows[(p, "currency")].get("LINE_COUNT") or 0) == 2 for p in delegate.PROFILE_ORDER)
-    unit_preserved = all(int(control_rows[(p, "unit")].get("LINE_COUNT") or 0) == 1 for p in delegate.PROFILE_ORDER)
-    integer_preserved = all(planner.probe_sha(args.baseline_planner, p, "integer") == planner.probe_sha(control_root, p, "integer") for p in delegate.PROFILE_ORDER)
-    name_preserved = all(planner.probe_sha(args.baseline_planner, p, "name") == planner.probe_sha(control_root, p, "name") for p in delegate.PROFILE_ORDER)
-
-    early_return = {p: bool(traces[p]["EARLY_RETURN_SINGLE_LINE"]) for p in delegate.PROFILE_ORDER}
-    default_unicode_keep = all(not unicode_payload[p]["DEFAULT_UNICODE_INTERNAL_BREAKS"] for p in delegate.PROFILE_ORDER)
-    tailoring_needed = default_unicode_keep and any(len(best_segments[p]) > 1 for p in delegate.PROFILE_ORDER)
-    generic_rule_possible = deterministic and best_eq_generic and unit_preserved and currency_preserved and integer_preserved and name_preserved
-    ready = generic_rule_possible
-
-    if all(not value for value in early_return.values()) and best_eq_generic:
-        root_cause = "PREVIOUS PLANNER LINE_COUNT WAS A RASTER BAND/METRIC HARNESS ARTIFACT: generic planner already selected the best multi-segment DECIMAL split; no horizontalAdvance early return occurred"
-    elif any(early_return.values()):
-        root_cause = "EARLY SINGLE-LINE SHORT-CIRCUIT CONFIRMED"
-    else:
-        root_cause = "GENERIC PLANNER SEGMENTATION DIFFERS FROM REFERENCE-BEST SPLIT"
-
-    (args.out / "planner-decision-trace.json").write_text(json.dumps(traces, ensure_ascii=False, indent=2), encoding="utf-8")
-    (args.out / "decimal-segmentation-matrix.json").write_text(json.dumps(matrix, ensure_ascii=False, indent=2), encoding="utf-8")
-    (args.out / "decimal-current-emergency.json").write_text(json.dumps({"SEGMENTS": current_emergency, "GENERIC_PLANNER_SEGMENTS": generic_segments}, ensure_ascii=False, indent=2), encoding="utf-8")
-    (args.out / "decimal-unicode-breaks.json").write_text(json.dumps(unicode_payload, ensure_ascii=False, indent=2), encoding="utf-8")
-
-    summary = {
-        "AFTER_SHA": AFTER_SHA,
-        "PPTX_SHA256": PPTX_SHA,
-        "DECIMAL_EARLY_RETURN": early_return,
-        "DECIMAL_BREAK_CANDIDATES": {p: traces[p]["OFFICE_FILTERED_BREAK_POSITIONS"] for p in delegate.PROFILE_ORDER},
-        "BEST_SEGMENTS": best_segments,
-        "CURRENT_EMERGENCY_SEGMENTS": current_emergency,
-        "GENERIC_PLANNER_SEGMENTS": generic_segments,
-        "BEST_SEGMENTS_EQ_CURRENT_EMERGENCY": best_eq_emergency,
-        "BEST_SEGMENTS_EQ_GENERIC_PLANNER": best_eq_generic,
-        "DEFAULT_UNICODE_BEHAVIOR": "KEEP_NUMERIC_SEQUENCE_TOGETHER" if default_unicode_keep else "INTERNAL_LINE_BREAK_AVAILABLE",
-        "OFFICE_REFERENCE_TAILORING_NEEDED": tailoring_needed,
-        "CURRENCY_PRESERVED": currency_preserved,
-        "UNIT_PRESERVED": unit_preserved,
-        "INTEGER_PRESERVED": integer_preserved,
-        "NAME_PRESERVED": name_preserved,
-        "ALL_VARIANTS_DETERMINISTIC": deterministic,
-        "ROOT_CAUSE": root_cause,
-        "GENERIC_RULE_POSSIBLE": generic_rule_possible,
-        "PRODUCTION_FILES_CHANGED": 0,
-        "READY_TO_MODIFY_PR_111": ready,
-    }
-    (args.out / "decimal-planner-final-summary.json").write_text(json.dumps(summary, ensure_ascii=False, indent=2), encoding="utf-8")
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())
+if __name__=='__main__': raise SystemExit(main())
