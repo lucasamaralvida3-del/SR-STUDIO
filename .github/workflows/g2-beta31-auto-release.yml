@@ -60,11 +60,18 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ruff check src tests --select E9,F63,F7,F82
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          python -m pytest -q `
-            tests/test_graphics2_pptx_square_wrap_spautofit.py `
-            tests/test_graphics2_quinta3_meat_square_wrap_runtime.py `
-            tests/test_graphics2_full_studio_entrypoint.py `
-            tests/test_graphics2_studio_bridge.py
+          @'
+          from PySide6 import QtCore, QtGui
+          import pytest
+          print(f"QT={QtCore.qVersion()} | QFONT={QtGui.QFont.__name__}")
+          raise SystemExit(pytest.main([
+              "-q",
+              "tests/test_graphics2_pptx_square_wrap_spautofit.py",
+              "tests/test_graphics2_quinta3_meat_square_wrap_runtime.py",
+              "tests/test_graphics2_full_studio_entrypoint.py",
+              "tests/test_graphics2_studio_bridge.py",
+          ]))
+          '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Build full SR Studio shell
