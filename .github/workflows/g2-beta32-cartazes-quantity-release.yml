@@ -1,0 +1,205 @@
+name: Publish G2 Beta 32 Cartazes Quantity
+
+on:
+  push:
+    branches:
+      - release/g2beta32-cartazes-quantity
+    paths:
+      - '.github/workflows/g2-beta32-cartazes-quantity-release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PRODUCTION_SOURCE_SHA: 59f1484518c274f069c2b5e51a04191144eca83c
+      BETA_VERSION: 5.0.0-hybrid.g2beta.32
+      BETA_TAG: g2-beta-32
+      BETA_LABEL: G2 Beta 32 — Cartazes + Studio de Encartes
+      BETA_BUNDLE_NAME: SR_STUDIO_G2_BETA_32_PROFESSIONAL.zip
+
+    steps:
+      - name: Checkout exact production candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCTION_SOURCE_SHA }}
+          fetch-depth: 0
+
+      - name: Verify exact source
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:PRODUCTION_SOURCE_SHA) { throw "Wrong source SHA: $actual" }
+          if (git status --porcelain) { throw 'Source checkout is not clean.' }
+          Write-Host "SOURCE_SHA=$actual"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2-build]" pyinstaller
+
+      - name: Focused regression gates
+        shell: pwsh
+        run: |
+          python -m compileall -q src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ruff check src tests --select E9,F63,F7,F82
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          @'
+          from PySide6 import QtCore, QtGui
+          import pytest
+          print(f"QT={QtCore.qVersion()} | QFONT={QtGui.QFont.__name__}")
+          raise SystemExit(pytest.main([
+              "-q",
+              "tests/test_cartazes_table_visual.py",
+              "tests/test_graphics2_pptx_square_wrap_spautofit.py",
+              "tests/test_graphics2_quinta3_meat_square_wrap_runtime.py",
+              "tests/test_graphics2_full_studio_entrypoint.py",
+              "tests/test_graphics2_studio_bridge.py",
+          ]))
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build full SR Studio shell
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" `
+            --paths src `
+            --collect-all pypdfium2 `
+            --collect-all pypdfium2_raw `
+            --icon "src/srstudio/assets/brand/SR_Studio.ico" `
+            --add-data "src/srstudio/assets/brand;srstudio/assets/brand" `
+            --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" `
+            src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw 'SR Studio 5.exe missing.' }
+
+      - name: Build and embed Graphics2 host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $source = "dist/graphics2-host/SRGraphicsEngine2Host"
+          if (!(Test-Path "$source/SRGraphicsEngine2Host.exe")) { throw 'Graphics2 host missing.' }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
+          Copy-Item "$source/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          @'
+          from pathlib import Path
+          from srstudio.graphics2.host_runtime import validate_runtime_host
+          report = validate_runtime_host(Path(r"dist/SR Studio 5/Graphics2Host").resolve(), full=True)
+          assert report.ok, report
+          print(f"GRAPHICS2_RUNTIME_OK={report.ok}")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Assemble launcher-compatible bundle
+        shell: pwsh
+        run: |
+          $betaRoot = "release/channel-beta"
+          $filesRoot = Join-Path $betaRoot "files"
+          $studioRoot = Join-Path $filesRoot "SRStudio5"
+          Remove-Item $betaRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $studioRoot | Out-Null
+          Copy-Item "dist/SR Studio 5/*" $studioRoot -Recurse -Force
+
+          $wrapper = @'
+          from pathlib import Path
+          import subprocess
+          import sys
+          root = Path(__file__).resolve().parent
+          exe = root / "SRStudio5" / "SR Studio 5.exe"
+          if not exe.is_file():
+              raise FileNotFoundError(f"SR Studio G2 executable not found: {exe}")
+          subprocess.Popen([str(exe)], cwd=str(exe.parent))
+          sys.exit(0)
+          '@
+          [IO.File]::WriteAllText((Join-Path $filesRoot "SR_Studio_Gerador.py"), $wrapper, (New-Object Text.UTF8Encoding($false)))
+
+          @{
+            version = $env:BETA_VERSION
+            product_version = "5.0.0"
+            channel = "beta"
+            release_label = $env:BETA_LABEL
+            entrypoint = "SR_Studio_Gerador.py"
+            professional_executable = "SRStudio5/SR Studio 5.exe"
+            graphics2_primary = $true
+            source_commit = $env:PRODUCTION_SOURCE_SHA
+            poster_quantity = $true
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $filesRoot "version.json") -Encoding UTF8
+
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $bundle = Join-Path "release" $env:BETA_BUNDLE_NAME
+          Remove-Item $bundle -Force -ErrorAction SilentlyContinue
+          Push-Location $betaRoot
+          try {
+            $destination = Join-Path (Resolve-Path "../").Path $env:BETA_BUNDLE_NAME
+            Compress-Archive -Path "files" -DestinationPath $destination -CompressionLevel Optimal -Force
+          } finally { Pop-Location }
+          if (!(Test-Path $bundle)) { throw 'Beta bundle was not created.' }
+          $hash = (Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $bundle).Length
+          "BETA_BUNDLE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_BUNDLE_SIZE=$size" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "BETA_SHA256=$hash"
+          Write-Host "BETA_SIZE=$size"
+
+      - name: Validate bundle layout
+        shell: pwsh
+        run: |
+          $validation = "release/beta32-validate"
+          Remove-Item $validation -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath (Join-Path "release" $env:BETA_BUNDLE_NAME) -DestinationPath $validation -Force
+          if (!(Test-Path "$validation/files/SR_Studio_Gerador.py")) { throw 'Launcher shim missing.' }
+          if (!(Test-Path "$validation/files/SRStudio5/SR Studio 5.exe")) { throw 'Professional executable missing.' }
+          if (!(Test-Path "$validation/files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw 'Graphics2 host missing from bundle.' }
+          $got = (Get-FileHash (Join-Path "release" $env:BETA_BUNDLE_NAME) -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($got -ne $env:BETA_BUNDLE_SHA256) { throw 'Bundle SHA mismatch.' }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR-Studio-G2-Beta-32
+          path: release/${{ env.BETA_BUNDLE_NAME }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish Beta 32 prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $bundle = Join-Path "release" $env:BETA_BUNDLE_NAME
+          $notes = @"
+          SR Studio — $env:BETA_LABEL
+
+          Source SHA: $env:PRODUCTION_SOURCE_SHA
+          Restores per-product Qtd. Cartazes in the promotion generator.
+          Preserves the G2 Studio de Encartes candidate from Beta 31.
+
+          BETA / TEST BUILD — not Stable.
+          "@
+          gh release view $env:BETA_TAG *> $null
+          if ($LASTEXITCODE -eq 0) {
+            gh release upload $env:BETA_TAG $bundle --clobber
+            if ($LASTEXITCODE -ne 0) { throw 'Could not upload Beta asset.' }
+            gh release edit $env:BETA_TAG --title "SR Studio — $env:BETA_LABEL" --notes $notes --prerelease --latest=false
+          } else {
+            gh release create $env:BETA_TAG $bundle --title "SR Studio — $env:BETA_LABEL" --notes $notes --prerelease --latest=false --target $env:PRODUCTION_SOURCE_SHA
+          }
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish Beta 32.' }
+
+      - name: Print release evidence
+        shell: pwsh
+        run: |
+          Write-Host "BETA_VERSION=$env:BETA_VERSION"
+          Write-Host "SOURCE_SHA=$env:PRODUCTION_SOURCE_SHA"
+          Write-Host "BETA_SHA256=$env:BETA_BUNDLE_SHA256"
+          Write-Host "BETA_SIZE=$env:BETA_BUNDLE_SIZE"
