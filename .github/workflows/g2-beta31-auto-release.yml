@@ -1,9 +1,10 @@
 name: Publish G2 Beta 31 Auto Download
 
 on:
-  push:
+  pull_request:
     branches:
-      - g2/release-beta31-auto-download
+      - g2/integration-beta
+    types: [opened, synchronize, reopened]
     paths:
       - '.github/workflows/g2-beta31-auto-release.yml'
 
