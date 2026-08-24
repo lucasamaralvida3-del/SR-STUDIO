@@ -1,0 +1,223 @@
+name: G2 Final Office Line Break Exact Recert
+
+on:
+  pull_request:
+    branches:
+      - g2/fix-pptx-square-wrap-spautofit
+
+permissions:
+  contents: read
+  actions: read
+
+env:
+  BEFORE_SHA: 2e706558132e8893377c0dd6772d55c6c9d3a739
+  AFTER_SHA: 86713080e5378bcc792a8fdb8a765a4202b1c8f4
+  EXPECTED_PPTX_SHA256: 12e13842b6d61eba126ae35bb8d81f8f8a6c514024a2750ce8f807751b4bfd19
+  PPTX_NAME: OFERTAS QUINTA FILÉ NOVO (3).pptx
+  MEAT_STRIP_PPTX_URL: https://www.dropbox.com/scl/fi/mda6mqcgumm5k96wcbfw4/OFERTAS-QUINTA-FIL-NOVO-3.pptx?rlkey=75fv4ummvjgj3yptb0kjjczt5&st=p5ylee4h&dl=1
+  REFERENCE_RUN_ID: '32543346011'
+  REFERENCE_ARTIFACT: final-meat-strip-visual-recert-200f0ba6c119e604f5ad7d7898e6838f55dc8619
+  QT_QPA_PLATFORM: offscreen
+  PYTHONDONTWRITEBYTECODE: '1'
+
+jobs:
+  final-office-line-break-recert:
+    runs-on: windows-2025
+    timeout-minutes: 60
+    steps:
+      - name: Checkout diagnostic PR
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - name: Diagnostic-only scope gate
+        shell: pwsh
+        run: |
+          git fetch origin $env:AFTER_SHA --depth=1
+          $changed = @(git diff --name-only "$env:AFTER_SHA..HEAD")
+          $allowed = @(
+            '.github/workflows/g2-final-office-line-break-exact-recert.yml',
+            'tools/diagnostics/recert_quinta3_office_line_break_final.py'
+          )
+          foreach ($path in $changed) {
+            if ($allowed -notcontains $path) { throw "Unexpected diagnostic change: $path" }
+            if ($path -like 'src/*') { throw "PRODUCTION FILE CHANGED IN DIAGNOSTIC PR: $path" }
+          }
+          if ($changed.Count -ne 2) { throw "Expected exactly 2 diagnostic files, got $($changed.Count): $changed" }
+          'PRODUCTION_FILES_CHANGED_IN_DIAGNOSTIC_PR=0'
+
+      - name: Download exact PPTX and SHA256 gate FIRST
+        id: pptx
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force ground-truth | Out-Null
+          $target = Join-Path (Resolve-Path ground-truth) $env:PPTX_NAME
+          Invoke-WebRequest -Uri $env:MEAT_STRIP_PPTX_URL -OutFile $target
+          $actual = (Get-FileHash -Algorithm SHA256 -LiteralPath $target).Hash.ToLowerInvariant()
+          "PPTX_SHA256=$actual"
+          if ($actual -ne $env:EXPECTED_PPTX_SHA256) { throw "PPTX SHA mismatch: $actual" }
+          "path=$target" | Out-File -FilePath $env:GITHUB_OUTPUT -Append -Encoding utf8
+
+      - name: Checkout exact BEFORE
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.BEFORE_SHA }}
+          path: before-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact AFTER
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.AFTER_SHA }}
+          path: after-source
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Exact SHA and clean gates
+        shell: pwsh
+        run: |
+          $before = (git -C before-source rev-parse HEAD).Trim()
+          $after = (git -C after-source rev-parse HEAD).Trim()
+          "BEFORE_CHECKED_OUT=$before"
+          "AFTER_CHECKED_OUT=$after"
+          if ($before -ne $env:BEFORE_SHA) { throw 'BEFORE exact SHA mismatch' }
+          if ($after -ne $env:AFTER_SHA) { throw 'AFTER exact SHA mismatch' }
+          if (git -C before-source status --porcelain) { throw 'BEFORE source dirty before recert' }
+          if (git -C after-source status --porcelain) { throw 'AFTER source dirty before recert' }
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install exact AFTER dependency set
+        shell: pwsh
+        run: |
+          git -C after-source archive --format=zip --output ../after-source.zip HEAD
+          Expand-Archive -LiteralPath after-source.zip -DestinationPath runtime-install-source -Force
+          python -m pip install -q './runtime-install-source[dev,graphics2]'
+          if (git -C after-source status --porcelain) { throw 'AFTER source dirtied by install' }
+
+      - name: Restore independent exact reference raster
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download $env:REFERENCE_RUN_ID --repo $env:GITHUB_REPOSITORY --name $env:REFERENCE_ARTIFACT --dir reference-artifact
+          $reference = 'reference-artifact/final-cert/meat-strip-original.png'
+          if (-not (Test-Path $reference)) { throw 'Exact reference raster missing' }
+          "REFERENCE_SHA256=$((Get-FileHash -Algorithm SHA256 $reference).Hash.ToLowerInvariant())"
+
+      - name: Compile fresh diagnostic harness
+        shell: pwsh
+        run: python -m py_compile tools/diagnostics/recert_quinta3_office_line_break_final.py
+
+      - name: Probe exact BEFORE
+        id: before_probe
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          python tools/diagnostics/recert_quinta3_office_line_break_final.py probe `
+            --label before `
+            --source-root before-source `
+            --pptx '${{ steps.pptx.outputs.path }}' `
+            --out recert-before
+
+      - name: Probe exact AFTER
+        id: after_probe
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          python tools/diagnostics/recert_quinta3_office_line_break_final.py probe `
+            --label after `
+            --source-root after-source `
+            --pptx '${{ steps.pptx.outputs.path }}' `
+            --out recert-after
+
+      - name: Primary topology and control gate
+        id: compare
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          python tools/diagnostics/recert_quinta3_office_line_break_final.py compare `
+            --before recert-before `
+            --after recert-after `
+            --reference 'reference-artifact/final-cert/meat-strip-original.png' `
+            --out final-recert
+
+      - name: Exact focused Qt and source-scale controls
+        id: focused
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          python -m pytest -q `
+            after-source/tests/test_graphics2_pptx_square_wrap_spautofit.py `
+            after-source/tests/test_graphics2_pptx_shape_autofit_text_layout.py `
+            after-source/tests/test_graphics2_quinta3_meat_text_wrap_contract.py `
+            after-source/tests/test_graphics2_quinta3_meat_square_wrap_runtime.py `
+            after-source/tests/test_graphics2_quinta3_meat_initial_source_scale.py
+
+      - name: Exact AFTER Ruff
+        id: ruff
+        shell: pwsh
+        continue-on-error: true
+        run: python -m ruff check after-source/src after-source/tests
+
+      - name: Frozen source cleanliness AFTER recert
+        id: clean
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          if ((git -C before-source rev-parse HEAD).Trim() -ne $env:BEFORE_SHA) { throw 'BEFORE SHA changed' }
+          if ((git -C after-source rev-parse HEAD).Trim() -ne $env:AFTER_SHA) { throw 'AFTER SHA changed' }
+          if (git -C before-source status --porcelain) { throw 'BEFORE source dirty after recert' }
+          if (git -C after-source status --porcelain) { throw 'AFTER source dirty after recert' }
+          'PRODUCTION_FILES_CHANGED_IN_DIAGNOSTIC_PR=0'
+
+      - name: Build final evidence bundle
+        if: always()
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force evidence | Out-Null
+          if (Test-Path recert-before) { Copy-Item -Recurse recert-before evidence/recert-before }
+          if (Test-Path recert-after) { Copy-Item -Recurse recert-after evidence/recert-after }
+          if (Test-Path final-recert) { Copy-Item -Recurse final-recert evidence/final-recert }
+          if (Test-Path 'reference-artifact/final-cert/meat-strip-original.png') { Copy-Item 'reference-artifact/final-cert/meat-strip-original.png' evidence/meat-strip-original.png }
+          Compress-Archive -Path evidence/* -DestinationPath final-office-line-break-exact-recert.zip -Force
+          $digest = (Get-FileHash -Algorithm SHA256 final-office-line-break-exact-recert.zip).Hash.ToLowerInvariant()
+          $digest | Set-Content -Encoding ascii final-office-line-break-exact-recert.zip.sha256
+          "EVIDENCE_ZIP_SHA256=$digest"
+
+      - name: Upload final exact recert artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-office-line-break-exact-recert-${{ env.AFTER_SHA }}
+          path: |
+            evidence/
+            recert-before/
+            recert-after/
+            final-recert/
+            final-office-line-break-exact-recert.zip
+            final-office-line-break-exact-recert.zip.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Final exact-SHA verdict
+        if: always()
+        shell: pwsh
+        run: |
+          "BEFORE_PROBE=${{ steps.before_probe.outcome }}"
+          "AFTER_PROBE=${{ steps.after_probe.outcome }}"
+          "PRIMARY_COMPARE=${{ steps.compare.outcome }}"
+          "FOCUSED_CONTROLS=${{ steps.focused.outcome }}"
+          "RUFF=${{ steps.ruff.outcome }}"
+          "CLEAN=${{ steps.clean.outcome }}"
+          if ('${{ steps.before_probe.outcome }}' -ne 'success') { throw 'BEFORE probe failed' }
+          if ('${{ steps.after_probe.outcome }}' -ne 'success') { throw 'AFTER probe failed' }
+          if ('${{ steps.compare.outcome }}' -ne 'success') { throw 'Primary topology/control gate failed' }
+          if ('${{ steps.focused.outcome }}' -ne 'success') { throw 'Focused Qt/source-scale controls failed' }
+          if ('${{ steps.ruff.outcome }}' -ne 'success') { throw 'Ruff failed' }
+          if ('${{ steps.clean.outcome }}' -ne 'success') { throw 'Frozen source cleanliness failed' }
