@@ -1,0 +1,39 @@
+name: DIAG Beta32 Release Asset SHA
+
+on:
+  push:
+    branches:
+      - diag/beta32-release-asset-sha
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - name: Download with Invoke-WebRequest and hash
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-32/SR_STUDIO_G2_BETA_32_PROFESSIONAL.zip'
+          $out = Join-Path $env:RUNNER_TEMP 'beta32-iwr.zip'
+          Invoke-WebRequest -UseBasicParsing -Uri ($url + '?diag=' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()) -OutFile $out -TimeoutSec 300 -Headers @{'Cache-Control'='no-cache'}
+          $size = (Get-Item -LiteralPath $out).Length
+          $sha = (Get-FileHash -LiteralPath $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "IWR_SIZE=$size"
+          Write-Host "IWR_SHA256=$sha"
+          Expand-Archive -LiteralPath $out -DestinationPath (Join-Path $env:RUNNER_TEMP 'iwr-extract') -Force
+          if (!(Test-Path (Join-Path $env:RUNNER_TEMP 'iwr-extract/files/SRStudio5/SR Studio 5.exe'))) { throw 'IWR ZIP layout invalid' }
+      - name: Download with curl and hash
+        shell: pwsh
+        run: |
+          $url = 'https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-32/SR_STUDIO_G2_BETA_32_PROFESSIONAL.zip'
+          $out = Join-Path $env:RUNNER_TEMP 'beta32-curl.zip'
+          & curl.exe -L --fail --no-progress-meter -H 'Cache-Control: no-cache' -o $out ($url + '?diag=' + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+          if ($LASTEXITCODE -ne 0) { throw "curl failed: $LASTEXITCODE" }
+          $size = (Get-Item -LiteralPath $out).Length
+          $sha = (Get-FileHash -LiteralPath $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          Write-Host "CURL_SIZE=$size"
+          Write-Host "CURL_SHA256=$sha"
+          Expand-Archive -LiteralPath $out -DestinationPath (Join-Path $env:RUNNER_TEMP 'curl-extract') -Force
+          if (!(Test-Path (Join-Path $env:RUNNER_TEMP 'curl-extract/files/SRStudio5/SR Studio 5.exe'))) { throw 'curl ZIP layout invalid' }
