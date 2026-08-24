@@ -6,6 +6,12 @@ on:
       - release/g2beta32-cartazes-quantity
     paths:
       - '.github/workflows/g2-beta32-cartazes-quantity-release.yml'
+  pull_request:
+    branches:
+      - beta/g2beta32-cartazes-quantity
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/g2-beta32-cartazes-quantity-release.yml'
 
 permissions:
   contents: write
@@ -110,7 +116,6 @@ jobs:
           Remove-Item $betaRoot -Recurse -Force -ErrorAction SilentlyContinue
           New-Item -ItemType Directory -Force -Path $studioRoot | Out-Null
           Copy-Item "dist/SR Studio 5/*" $studioRoot -Recurse -Force
-
           $wrapper = @'
           from pathlib import Path
           import subprocess
@@ -123,7 +128,6 @@ jobs:
           sys.exit(0)
           '@
           [IO.File]::WriteAllText((Join-Path $filesRoot "SR_Studio_Gerador.py"), $wrapper, (New-Object Text.UTF8Encoding($false)))
-
           @{
             version = $env:BETA_VERSION
             product_version = "5.0.0"
@@ -135,7 +139,6 @@ jobs:
             source_commit = $env:PRODUCTION_SOURCE_SHA
             poster_quantity = $true
           } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $filesRoot "version.json") -Encoding UTF8
-
           New-Item -ItemType Directory -Force -Path release | Out-Null
           $bundle = Join-Path "release" $env:BETA_BUNDLE_NAME
           Remove-Item $bundle -Force -ErrorAction SilentlyContinue
