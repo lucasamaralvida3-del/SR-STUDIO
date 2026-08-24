@@ -47,7 +47,7 @@ def topology(image):
                         if 0<=nx<w and 0<=ny<h and mask[ny,nx] and not seen[ny,nx]: seen[ny,nx]=1; st.append((nx,ny))
             xs=[p[0] for p in pts]; ys=[p[1] for p in pts]; box=[min(xs),min(ys),max(xs)+1,max(ys)+1]
             if len(pts)<5 or (box[1]==0 and box[2]-box[0]>=.35*w): continue
-            comps.append({'area':len(pts),'bbox':box,'cx':sum(xs)/len(xs),'cy':sum(ys)/len(ys),'base':float(max(ys))})
+            comps.append({'area':len(pts),'bbox':box,'cx':sum(xs)/len(xs),'cy':sum(ys)/len(ys),'base':float(max(ys)),'pts':pts})
     clusters=[]
     for c in sorted(comps,key=lambda z:z['base']):
         best=None
@@ -59,10 +59,10 @@ def topology(image):
         ar=sum(c['area'] for c in g); out.append({'centroid_y':sum(c['cy']*c['area'] for c in g)/ar,'baseline_y':max(c['base'] for c in g),'bbox':[min(c['bbox'][0] for c in g),min(c['bbox'][1] for c in g),max(c['bbox'][2] for c in g),max(c['bbox'][3] for c in g)],'component_count':len(g)})
     out.sort(key=lambda z:z['baseline_y'])
     ink=None if not comps else [min(c['bbox'][0] for c in comps),min(c['bbox'][1] for c in comps),max(c['bbox'][2] for c in comps),max(c['bbox'][3] for c in comps)]
-    proj=[0]*h
-    # project component bboxes only for diagnostic row runs; topology itself is component/baseline based.
+    kept=np.zeros_like(mask,bool)
     for c in comps:
-        for yy in range(c['bbox'][1],c['bbox'][3]): proj[yy]+=1
+        for xx,yy in c['pts']: kept[yy,xx]=1
+    proj=kept.sum(axis=1).astype(int).tolist()
     active=[i for i,v in enumerate(proj) if v]; runs=[]
     for y in active:
         if not runs or y>runs[-1][1]+1: runs.append([y,y])
@@ -70,8 +70,14 @@ def topology(image):
     valleys=[]
     for l,r in zip(out,out[1:]):
         lo=int(l['baseline_y'])+1; hi=int(r['baseline_y'])-1; vals=proj[lo:hi+1] if hi>=lo else []
-        valleys.append({'min_projection':min(vals) if vals else 0,'depth':1.0 if not vals or min(vals)==0 else 0.0})
-    return {'REFERENCE_LINE_CLUSTER_COUNT':len(out),'REFERENCE_LINE_CLUSTER_Y':[c['centroid_y'] for c in out],'REFERENCE_LINE_CLUSTER_BASELINE_Y':[c['baseline_y'] for c in out],'INK_BBOX':ink,'CONNECTED_COMPONENT_COUNT':len(comps),'COMPONENTS':comps,'ACTIVE_ROW_RUNS':runs,'VALLEY_DEPTHS':valleys,'BACKGROUND_RGB':[int(v) for v in bg]}
+        lp=max(proj[l['bbox'][1]:l['bbox'][3]] or [1]); rp=max(proj[r['bbox'][1]:r['bbox'][3]] or [1]); vm=min(vals) if vals else 0
+        valleys.append({'min_projection':int(vm),'depth':1.0-float(vm)/max(1,min(lp,rp))})
+    overlap=[]
+    for i,l in enumerate(out):
+        for j in range(i+1,len(out)):
+            r=out[j]; ov=max(0,min(l['bbox'][2],r['bbox'][2])-max(l['bbox'][0],r['bbox'][0])); den=max(1,min(l['bbox'][2]-l['bbox'][0],r['bbox'][2]-r['bbox'][0])); overlap.append({'clusters':[i+1,j+1],'x_overlap_ratio':float(ov)/den})
+    clean=[{k:v for k,v in c.items() if k!='pts'} for c in comps]
+    return {'REFERENCE_LINE_CLUSTER_COUNT':len(out),'REFERENCE_LINE_CLUSTER_Y':[c['centroid_y'] for c in out],'REFERENCE_LINE_CLUSTER_BASELINE_Y':[c['baseline_y'] for c in out],'INK_BBOX':ink,'CONNECTED_COMPONENT_COUNT':len(comps),'COMPONENTS':clean,'Y_PROJECTION':proj,'ACTIVE_ROW_RUNS':runs,'VALLEY_DEPTHS':valleys,'COMPONENT_OVERLAP_X':overlap,'BACKGROUND_RGB':[int(v) for v in bg]}
 
 
 def overlay(image,t,output):
@@ -134,15 +140,18 @@ def main():
         matrix[p]={}
         for label in ('C','D'):
             r1,r2=roots[label]; rr=row(r1,p); crop=r1/'crops'/f'current-{p}-decimal.png'; crop2=r2/'crops'/f'current-{p}-decimal.png'; out=a.out/'decimal-crops'/f'{p}-{label}.png'; out.parent.mkdir(parents=True,exist_ok=True); shutil.copy2(crop,out)
-            bas=layouts[label][p]; rt=topology(Image.open(crop)); matrix[p][label]={'SEGMENTS':seg(label,str(rr.get('TEXT') or rr.get('DIAG_TEXT') or '')),'SEMANTIC_LINE_COUNT':len(bas),'BASELINES':bas,'MAE':float(rr.get('MAE') or 0),'CHANGED_RATIO':float(rr.get('CHANGED_RATIO') or 0),'CROP_BOX':rr['CROP_BOX'],'RASTER_CLUSTER_COUNT':rt['REFERENCE_LINE_CLUSTER_COUNT'],'RASTER_INK_BBOX':rt['INK_BBOX']}; deterministic &= sha(crop)==sha(crop2) and sha(r1/'_page-current.png')==sha(r2/'_page-current.png')
+            bas=layouts[label][p]; rt=topology(Image.open(crop)); matrix[p][label]={'SEGMENTS':seg(label,str(rr.get('TEXT') or rr.get('DIAG_TEXT') or '')),'SEMANTIC_LINE_COUNT':len(bas),'BASELINE_COUNT':len(bas),'BASELINES':bas,'LINE_CLUSTER_Y':[v-bas[0] for v in bas] if bas else [],'MAE':float(rr.get('MAE') or 0),'CHANGED_RATIO':float(rr.get('CHANGED_RATIO') or 0),'CROP_BOX':rr['CROP_BOX'],'RASTER_CLUSTER_COUNT':rt['REFERENCE_LINE_CLUSTER_COUNT'],'RASTER_INK_BBOX':rt['INK_BBOX']}; deterministic &= sha(crop)==sha(crop2) and sha(r1/'_page-current.png')==sha(r2/'_page-current.png')
         box=tuple(int(v) for v in matrix[p]['C']['CROP_BOX']); ri=ref.crop(box); t=topology(ri); ov=a.out/'reference-topology'/f'{p}-reference-overlay.png'; overlay(ri,t,ov); topo[p]=t
-        for label in ('C','D'): matrix[p][label]['TOPOLOGY_MATCH']=matrix[p][label]['SEMANTIC_LINE_COUNT']==t['REFERENCE_LINE_CLUSTER_COUNT']
+        for label in ('C','D'):
+            x=matrix[p][label]; x['TOPOLOGY_MATCH']=x['SEMANTIC_LINE_COUNT']==t['REFERENCE_LINE_CLUSTER_COUNT']
+            rb=t['REFERENCE_LINE_CLUSTER_BASELINE_Y']; cb=x['BASELINES']; x['REFERENCE_CLUSTER_DISTANCE']=None if len(rb)!=len(cb) else sum(abs((u-rb[0])-(v-cb[0])) for u,v in zip(rb,cb))/len(rb)
+            x['BBOX_DISTANCE']=None if t['INK_BBOX'] is None or x['RASTER_INK_BBOX'] is None else float(sum(abs(int(u)-int(v)) for u,v in zip(t['INK_BBOX'],x['RASTER_INK_BBOX'])))
     cseg={p:matrix[p]['C']['SEGMENTS'] for p in delegate.PROFILE_ORDER}; generic={p:traces[p]['FINAL_SEGMENTS'] for p in delegate.PROFILE_ORDER}; emergency={p:traces[p]['CURRENT_EMERGENCY_SEGMENTS'] for p in delegate.PROFILE_ORDER}
     greedy=True
     for p in delegate.PROFILE_ORDER:
         s=traces[p]['PREFIX_STEPS'][0]; by={x['END']:x for x in s['CANDIDATES']}; greedy &= traces[p]['OFFICE_FILTERED_BREAK_POSITIONS']==[1,2] and by[1]['FITS'] and by[2]['FITS'] and not by[3]['FITS'] and s['CHOSEN']==2 and generic[p]==cseg[p]
     src_ok=all(traces[p]['wrap']=='square' and traces[p]['spAutoFit'] and traces[p]['horzOverflow']=='overflow' and not traces[p]['latinLnBrk'] for p in delegate.PROFILE_ORDER)
-    controls=planner.current_rows(roots['C'][0]); currency=all(int(controls[(p,'currency')].get('LINE_COUNT') or 0)==2 for p in delegate.PROFILE_ORDER); unit=all(int(controls[(p,'unit')].get('LINE_COUNT') or 0)==1 for p in delegate.PROFILE_ORDER); integer=all(planner.probe_sha(a.baseline_planner,p,'integer')==planner.probe_sha(roots['C'][0],p,'integer') for p in delegate.PROFILE_ORDER); name=all(planner.probe_sha(a.baseline_planner,p,'name')==planner.probe_sha(roots['C'][0],p,'name') for p in delegate.PROFILE_ORDER)
+    controls=planner.current_rows(roots['C'][0]); currency=all(int(controls[(p,'currency')].get('LINE_COUNT') or 0)==2 and planner.probe_sha(a.baseline_planner,p,'currency')==planner.probe_sha(roots['C'][0],p,'currency') for p in delegate.PROFILE_ORDER); unit=all(int(controls[(p,'unit')].get('LINE_COUNT') or 0)==1 and planner.probe_sha(a.baseline_planner,p,'unit')==planner.probe_sha(roots['C'][0],p,'unit') for p in delegate.PROFILE_ORDER); integer=all(planner.probe_sha(a.baseline_planner,p,'integer')==planner.probe_sha(roots['C'][0],p,'integer') for p in delegate.PROFILE_ORDER); name=all(planner.probe_sha(a.baseline_planner,p,'name')==planner.probe_sha(roots['C'][0],p,'name') for p in delegate.PROFILE_ORDER)
     ref2=all(topo[p]['REFERENCE_LINE_CLUSTER_COUNT']==2 for p in delegate.PROFILE_ORDER); cmatch=all(matrix[p]['C']['TOPOLOGY_MATCH'] for p in delegate.PROFILE_ORDER); eqc=all(generic[p]==cseg[p] and emergency[p]==cseg[p] for p in delegate.PROFILE_ORDER); latin_keep=not bool(planner.break_plan('KG',False,'overflow',latin,QtCore)['OFFICE_FILTERED_BREAK_POSITIONS'])
     confirmed=bool(deterministic and ref2 and cmatch and greedy and eqc and src_ok and latin_keep and currency and unit and integer and name)
     pd=matrix['pernil']['D']; pc=matrix['pernil']['C']; classification='PIXEL METRIC OVERFIT' if pc['TOPOLOGY_MATCH'] and not pd['TOPOLOGY_MATCH'] and pd['MAE']<pc['MAE'] else None
