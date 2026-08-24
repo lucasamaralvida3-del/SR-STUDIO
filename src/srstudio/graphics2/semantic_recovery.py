@@ -11,7 +11,8 @@ idempotentes e evita mutação recursiva do dicionário de slots.
 A etapa também completa somente semântica opcional de alta confiança em cards
 recuperados. LIMIT é aceito apenas com assinatura explícita LIMITE+CPF. Um
 segundo PriceBlock só vira preço Clube/app quando existe rótulo local CLUBE,
-APP ou APLICATIVO próximo. Nenhuma geometria é alterada.
+APP ou APLICATIVO próximo. Nenhuma geometria de conteúdo é alterada; ao final,
+a geometria de interação dos Smart Slots é recalculada separadamente.
 """
 
 from math import hypot
@@ -27,6 +28,7 @@ from .semantic_placeholders import (
     _price_rect,
     recover_canva_image_placeholders,
 )
+from .smart_slot_geometry import refresh_smart_slot_geometry
 
 _LIMIT_RE = re.compile(r"(?:\bLIMITE\b.*\bCPF\b|\bCPF\b.*\bLIMITE\b)", re.IGNORECASE)
 _APP_LABEL_RE = re.compile(r"\b(?:CLUBE|APP|APLICATIVO)\b", re.IGNORECASE)
@@ -88,6 +90,10 @@ def recover_canva_semantic_cards(document: GraphicsDocument) -> PlaceholderRecov
         "recovered_app_price_bindings": recovered_app_prices,
         "warnings": list(report.warnings),
     }
+    # O overlay/editor usa uma geometria comercial própria. Ela é derivada
+    # somente depois que todos os bindings semânticos opcionais já existem e é
+    # persistida em metadata; nenhum x/y/w/h do documento é tocado.
+    refresh_smart_slot_geometry(document)
     return report
 
 

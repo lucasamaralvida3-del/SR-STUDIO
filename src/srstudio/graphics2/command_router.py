@@ -13,6 +13,13 @@ from .import_bridge import CanvaBindingService
 from .model import GraphicsNode, NodeKind, Transform, _id
 from .operations import GraphicsSession
 from .semantic_blocks import semantic_block, semantic_member_ids, semantic_owner
+from .smart_slot_manual import (
+    mark_slot_non_product,
+    merge_slot_manually,
+    restore_auto_slot_bounds,
+    set_manual_slot_bounds,
+    snap_bounds_to_grid,
+)
 
 
 @dataclass(slots=True)
@@ -57,7 +64,7 @@ class GraphicsCommandRouter:
         }
         return scene
 
-    def dispatch_json(self, raw: str) -> str:
+    def dispatch_json(self, raw: str, *, include_scene_payload: bool = True) -> str:
         try:
             command = json.loads(raw)
             if not isinstance(command, dict):
@@ -65,7 +72,11 @@ class GraphicsCommandRouter:
             result = self.dispatch(command)
         except Exception as exc:
             result = CommandResult(False, False, f"Erro: {exc}")
-        result.payload = self.payload()
+        # QML already receives sceneJson through sceneChanged. Serializing the full
+        # document again into every command response doubles release-path work and
+        # used to discard command-specific payloads such as Smart Slot bounds.
+        if include_scene_payload:
+            result.payload = self.payload()
         return json.dumps(result.to_dict(), ensure_ascii=False, separators=(",", ":"))
 
     def dispatch(self, command: dict[str, Any]) -> CommandResult:
@@ -367,6 +378,43 @@ class GraphicsCommandRouter:
                 else:
                     self.session.bind_product(slot_id, product); changed = True
                 return CommandResult(True, changed, "Produto aplicado ao Smart Slot.")
+            if name in {"adjust_smart_slot", "set_smart_slot_bounds"}:
+                slot_id = str(command.get("slot_id") or "")
+                if slot_id not in self.session.page.slots:
+                    return CommandResult(False, False, "Smart Slot não encontrado.")
+                required = ("x", "y", "width", "height")
+                if any(key not in command for key in required):
+                    return CommandResult(False, False, "Bounds x/y/width/height são obrigatórios.")
+                raw_bounds = {key: float(command[key]) for key in required}
+                use_snap = bool(command.get("snap", False)) and bool(self.snap.enabled)
+                bounds = snap_bounds_to_grid(
+                    raw_bounds,
+                    spacing=float(self.snap.grid_spacing),
+                    enabled=use_snap,
+                    page=self.session.page,
+                )
+                applied = set_manual_slot_bounds(self.session, slot_id, **bounds)
+                return CommandResult(True, True, "Área do Smart Slot ajustada.", {"slot_id": slot_id, "bounds": applied})
+            if name == "restore_smart_slot_auto":
+                slot_id = str(command.get("slot_id") or "")
+                if slot_id not in self.session.page.slots:
+                    return CommandResult(False, False, "Smart Slot não encontrado.")
+                bounds = restore_auto_slot_bounds(self.session, slot_id)
+                return CommandResult(True, True, "Detecção automática do Smart Slot restaurada.", {"slot_id": slot_id, "bounds": bounds})
+            if name in {"mark_smart_slot_non_product", "delete_smart_slot"}:
+                slot_id = str(command.get("slot_id") or "")
+                if slot_id not in self.session.page.slots:
+                    return CommandResult(False, False, "Smart Slot não encontrado.")
+                reason = "manual-non-product" if name == "mark_smart_slot_non_product" else "manual-slot-delete"
+                mark_slot_non_product(self.session, slot_id, reason=reason)
+                return CommandResult(True, True, "Smart Slot removido semanticamente; conteúdo visual preservado.", {"slot_id": slot_id})
+            if name == "merge_smart_slots":
+                source_slot_id = str(command.get("source_slot_id") or command.get("slot_id") or "")
+                target_slot_id = str(command.get("target_slot_id") or "")
+                if source_slot_id not in self.session.page.slots or target_slot_id not in self.session.page.slots:
+                    return CommandResult(False, False, "Smart Slot de origem/destino não encontrado.")
+                merged = merge_slot_manually(self.session, source_slot_id, target_slot_id)
+                return CommandResult(True, True, "Smart Slot decorativo associado ao produto.", {"source_slot_id": source_slot_id, "target_slot_id": target_slot_id, "merged_members": merged})
             if name == "undo":
                 changed = self.session.undo()
                 return CommandResult(True, changed, "Desfeito." if changed else "Nada para desfazer.")

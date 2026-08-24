@@ -1,0 +1,143 @@
+name: Promote Existing G2 Beta 31
+
+on:
+  pull_request:
+    branches:
+      - g2/integration-beta
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/g2-beta31-promote-existing.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  promote:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      BETA_VERSION: 5.0.0-hybrid.g2beta.31
+      BETA_TAG: g2-beta-31
+      BETA_LABEL: G2 Beta 31 — Studio de Encartes
+      BETA_BUNDLE_NAME: SR_STUDIO_G2_BETA_31_PROFESSIONAL.zip
+      BETA_BUNDLE_SHA256: 2ec40ad9d7e0f1a30f9a7fd72434ec1a2e65f06328c9326c29230e5b82072e00
+      BETA_BUNDLE_SIZE: 296612873
+      PRODUCTION_SOURCE_SHA: 86713080e5378bcc792a8fdb8a765a4202b1c8f4
+      PACKAGE_WORKFLOW_RUN: 32773507069
+      PREVIOUS_VERSION: 5.0.0-hybrid.g2beta.30
+
+    steps:
+      - name: Verify published Beta 31 asset bytes
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $download = Join-Path $env:RUNNER_TEMP "beta31-release"
+          New-Item -ItemType Directory -Force -Path $download | Out-Null
+          gh release view $env:BETA_TAG --repo $env:GITHUB_REPOSITORY --json tagName,isPrerelease,targetCommitish,assets | Set-Content -LiteralPath (Join-Path $download "release.json") -Encoding UTF8
+          if ($LASTEXITCODE -ne 0) { throw 'Beta 31 prerelease does not exist.' }
+          $release = Get-Content -Raw (Join-Path $download "release.json") | ConvertFrom-Json
+          if ([string]$release.tagName -ne $env:BETA_TAG) { throw 'Wrong release tag.' }
+          if (-not [bool]$release.isPrerelease) { throw 'Beta 31 must be a prerelease.' }
+          if ([string]$release.targetCommitish -ne $env:PRODUCTION_SOURCE_SHA) {
+            throw "Wrong release target: $($release.targetCommitish)"
+          }
+          $asset = @($release.assets | Where-Object { $_.name -eq $env:BETA_BUNDLE_NAME })
+          if ($asset.Count -ne 1) { throw 'Expected exactly one Beta 31 bundle asset.' }
+          gh release download $env:BETA_TAG --repo $env:GITHUB_REPOSITORY --pattern $env:BETA_BUNDLE_NAME --dir $download --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download published Beta 31 bundle.' }
+          $bundle = Join-Path $download $env:BETA_BUNDLE_NAME
+          $hash = (Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $bundle).Length
+          if ($hash -ne $env:BETA_BUNDLE_SHA256) { throw "Published Beta SHA mismatch: $hash" }
+          if ([int64]$size -ne [int64]$env:BETA_BUNDLE_SIZE) { throw "Published Beta size mismatch: $size" }
+          Write-Host "PUBLISHED_BETA_SHA256=$hash"
+          Write-Host "PUBLISHED_BETA_SIZE=$size"
+
+      - name: Promote official Beta manifest atomically
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $repo = $env:GITHUB_REPOSITORY
+          $encoded = gh api "repos/$repo/contents/beta/manifest.json?ref=main" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read main/beta/manifest.json.' }
+          $currentText = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(([string]$encoded.content -replace '\s','')))
+          $current = $currentText | ConvertFrom-Json
+
+          if ([string]$current.version -eq $env:BETA_VERSION) {
+            if ([string]$current.source_commit -ne $env:PRODUCTION_SOURCE_SHA) { throw 'Beta 31 manifest points to wrong source.' }
+            if ([string]$current.sha256 -ne $env:BETA_BUNDLE_SHA256) { throw 'Beta 31 manifest points to wrong bundle SHA.' }
+            if ([int64]$current.size -ne [int64]$env:BETA_BUNDLE_SIZE) { throw 'Beta 31 manifest points to wrong bundle size.' }
+            Write-Host 'Official Beta manifest is already idempotently active.'
+            exit 0
+          }
+
+          if ([string]$current.version -ne $env:PREVIOUS_VERSION) {
+            throw "Official Beta channel advanced unexpectedly: $($current.version)"
+          }
+
+          $url = "https://github.com/$repo/releases/download/$env:BETA_TAG/$env:BETA_BUNDLE_NAME"
+          $manifest = [ordered]@{
+            format = "SRSTUDIO_HYBRID_BUNDLE_1"
+            product = "SR Studio"
+            channel = "beta"
+            version = $env:BETA_VERSION
+            product_version = "5.0.0"
+            release_label = $env:BETA_LABEL
+            published_at = (Get-Date).ToUniversalTime().ToString("o")
+            min_launcher = "4.0.1-hybrid.base2.5"
+            min_launcher_version = "4.0.1-hybrid.base2.5"
+            bundle = [ordered]@{
+              url = $url
+              sha256 = $env:BETA_BUNDLE_SHA256
+              size = [int64]$env:BETA_BUNDLE_SIZE
+              member_prefix = "files/"
+            }
+            url = $url
+            bundle_url = $url
+            sha256 = $env:BETA_BUNDLE_SHA256
+            size = [int64]$env:BETA_BUNDLE_SIZE
+            member_prefix = "files/"
+            previous_version = $env:PREVIOUS_VERSION
+            entrypoint = "SR_Studio_Gerador.py"
+            graphics2_test = $true
+            graphics2_primary = $true
+            launcher_path_safe = $true
+            source_commit = $env:PRODUCTION_SOURCE_SHA
+            workflow_run = $env:PACKAGE_WORKFLOW_RUN
+            notes = "Canal Beta automático — Studio de Encartes G2 com planner Office-effective de texto/preço."
+          }
+          $json = ($manifest | ConvertTo-Json -Depth 8) + [Environment]::NewLine
+          $content = [Convert]::ToBase64String([Text.UTF8Encoding]::new($false).GetBytes($json))
+          $payload = [ordered]@{
+            message = "chore(beta): activate G2 Beta 31 from 86713080"
+            content = $content
+            sha = [string]$encoded.sha
+            branch = "main"
+          }
+          $payloadPath = Join-Path $env:RUNNER_TEMP "beta31-manifest-put.json"
+          [IO.File]::WriteAllText($payloadPath, ($payload | ConvertTo-Json -Depth 5), [Text.UTF8Encoding]::new($false))
+          gh api --method PUT "repos/$repo/contents/beta/manifest.json" --input $payloadPath | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw 'Could not atomically activate main/beta/manifest.json.' }
+
+      - name: Verify automatic Beta channel from main
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $repo = $env:GITHUB_REPOSITORY
+          $encoded = gh api "repos/$repo/contents/beta/manifest.json?ref=main" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { throw 'Could not re-read official Beta manifest.' }
+          $text = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String(([string]$encoded.content -replace '\s','')))
+          $beta = $text | ConvertFrom-Json
+          if ([string]$beta.channel -ne "beta") { throw 'Official channel is not beta.' }
+          if ([string]$beta.version -ne $env:BETA_VERSION) { throw "Wrong official Beta version: $($beta.version)" }
+          if ([string]$beta.source_commit -ne $env:PRODUCTION_SOURCE_SHA) { throw "Wrong official source: $($beta.source_commit)" }
+          if ([string]$beta.bundle.sha256 -ne $env:BETA_BUNDLE_SHA256) { throw 'Official bundle SHA mismatch.' }
+          if ([int64]$beta.bundle.size -ne [int64]$env:BETA_BUNDLE_SIZE) { throw 'Official bundle size mismatch.' }
+          if ([string]$beta.bundle.url -notmatch '/g2-beta-31/SR_STUDIO_G2_BETA_31_PROFESSIONAL\.zip$') { throw 'Official bundle URL mismatch.' }
+          Write-Host "BETA_AUTO_DOWNLOAD_ACTIVE=$($beta.version)"
+          Write-Host "SOURCE=$($beta.source_commit)"
+          Write-Host "BUNDLE_SHA256=$($beta.bundle.sha256)"
+          Write-Host "BUNDLE_SIZE=$($beta.bundle.size)"

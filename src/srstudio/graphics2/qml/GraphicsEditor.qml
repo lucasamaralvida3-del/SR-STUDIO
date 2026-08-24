@@ -19,6 +19,14 @@ ApplicationWindow {
     property bool showRulers: true
     property real gridStep: 50
     property string selectedSlotId: ""
+    property string hoveredSlotId: ""
+    property bool smartSlotInspectionMode: false
+    property bool smartSlotEditMode: false
+    property bool smartSlotSnap: true
+    property real smartSlotLastCommitMs: 0
+    property int smartSlotPreviewEvents: 0
+    property int smartSlotPreviewUpdates: 0
+    property string smartSlotInteractionKind: ""
     property var anchorNode: selectedNode()
     property var draggedProduct: null
     property bool productDragActive: false
@@ -155,6 +163,13 @@ ApplicationWindow {
     function slotBounds(slot) {
         if (!page || !slot)
             return {"x": 0, "y": 0, "width": 0, "height": 0}
+        var effective = slot.metadata ? slot.metadata.effective_bounds : null
+        if (effective) {
+            var ew = Math.max(0, Number(effective.width || 0))
+            var eh = Math.max(0, Number(effective.height || 0))
+            if (ew > 0 && eh > 0)
+                return {"x": Number(effective.x || 0), "y": Number(effective.y || 0), "width": ew, "height": eh}
+        }
         var cardId = slot.metadata ? String(slot.metadata.semantic_product_card_id || "") : ""
         var blocks = page.metadata && page.metadata.semantic_blocks ? page.metadata.semantic_blocks : {}
         if (cardId && blocks[cardId] && blocks[cardId].bounds) {
@@ -305,7 +320,9 @@ ApplicationWindow {
             if (availableSlots[i].id === selectedSlotId)
                 stillExists = true
         if (!stillExists)
-            selectedSlotId = availableSlots.length ? availableSlots[0].id : ""
+            selectedSlotId = ""
+        hoveredSlotId = ""
+        dragHoverSlotId = ""
         Qt.callLater(syncInspector)
     }
 
@@ -347,6 +364,34 @@ ApplicationWindow {
             ToolSeparator {}
             ToolButton { text: "▦"; checkable: true; checked: showGrid; ToolTip.text: "Grid"; ToolTip.visible: hovered; onClicked: showGrid = checked }
             ToolButton { text: "▤"; checkable: true; checked: showRulers; ToolTip.text: "Réguas"; ToolTip.visible: hovered; onClicked: showRulers = checked }
+            ToolButton { text: "Smart Slots"; checkable: true; checked: smartSlotInspectionMode; ToolTip.text: "Mostrar áreas inteligentes"; ToolTip.visible: hovered; onClicked: smartSlotInspectionMode = checked }
+            ToolButton {
+                text: "Ajustar Smart Slot"
+                checkable: true
+                checked: smartSlotEditMode
+                ToolTip.text: "Mover/redimensionar somente a área semântica do slot"
+                ToolTip.visible: hovered
+                onClicked: {
+                    smartSlotEditMode = checked
+                    if (checked) smartSlotInspectionMode = true
+                }
+            }
+            ToolButton { text: "Snap Slot"; visible: smartSlotEditMode; checkable: true; checked: smartSlotSnap; onClicked: smartSlotSnap = checked }
+            ToolButton {
+                text: "Restaurar Auto"
+                visible: smartSlotEditMode && selectedSlotId !== ""
+                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"restore_smart_slot_auto","slot_id":selectedSlotId}))
+            }
+            ToolButton {
+                text: "Não-produto"
+                visible: smartSlotEditMode && selectedSlotId !== ""
+                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"mark_smart_slot_non_product","slot_id":selectedSlotId}))
+            }
+            ToolButton {
+                text: "Excluir Slot"
+                visible: smartSlotEditMode && selectedSlotId !== ""
+                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"delete_smart_slot","slot_id":selectedSlotId}))
+            }
             ToolButton { text: "Agrupar"; onClicked: sceneBridge.dispatch('{"name":"group"}') }
             ToolButton { text: "Desagrupar"; onClicked: sceneBridge.dispatch('{"name":"ungroup"}') }
             ToolButton { text: "Frente"; onClicked: sceneBridge.dispatch('{"name":"layer","mode":"front"}') }
@@ -414,7 +459,6 @@ ApplicationWindow {
                                 textRole: "name"
                                 valueRole: "id"
                                 onActivated: selectedSlotId = currentValue
-                                Component.onCompleted: if (count > 0) selectedSlotId = currentValue
                             }
                             Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
                             ListView {
@@ -776,32 +820,268 @@ ApplicationWindow {
                             Repeater {
                                 model: slots()
                                 delegate: Item {
+                                    id: slotOverlay
+                                    objectName: "smartSlotOverlay-" + String(modelData.id || "")
                                     required property var modelData
                                     property var bounds: slotBounds(modelData)
+                                    property var preview_bounds: ({"x": bounds.x, "y": bounds.y, "width": bounds.width, "height": bounds.height})
+                                    property var pendingPreviewBounds: ({"x": bounds.x, "y": bounds.y, "width": bounds.width, "height": bounds.height})
+                                    property bool previewActive: false
+                                    property real lastPreviewAppliedMs: 0
+                                    property int previewEventCount: 0
+                                    property int previewUpdateCount: 0
+                                    property real previewIntervalMs: 16
+                                    property var displayBounds: previewActive ? preview_bounds : bounds
                                     property bool isDropTarget: productDragActive && dragHoverSlotId === modelData.id
-                                    x: bounds.x * zoom
-                                    y: bounds.y * zoom
-                                    width: bounds.width * zoom
-                                    height: bounds.height * zoom
-                                    visible: width > 2 && height > 2
+                                    property bool isSelectedSlot: selectedSlotId === modelData.id
+                                    property bool isHoveredSlot: hoveredSlotId === modelData.id
+                                    property bool showSlotOverlay: smartSlotEditMode || smartSlotInspectionMode || productDragActive || isSelectedSlot || isHoveredSlot
+                                    x: displayBounds.x * zoom
+                                    y: displayBounds.y * zoom
+                                    width: displayBounds.width * zoom
+                                    height: displayBounds.height * zoom
+                                    visible: showSlotOverlay && width > 2 && height > 2
                                     z: 100000
+
+                                    function clampPreview(raw) {
+                                        var pageW = page ? Number(page.width || 1) : 1
+                                        var pageH = page ? Number(page.height || 1) : 1
+                                        var widthValue = Math.max(1, Math.min(Number(raw.width || 1), pageW))
+                                        var heightValue = Math.max(1, Math.min(Number(raw.height || 1), pageH))
+                                        var xValue = Math.max(0, Math.min(Number(raw.x || 0), Math.max(0, pageW - widthValue)))
+                                        var yValue = Math.max(0, Math.min(Number(raw.y || 0), Math.max(0, pageH - heightValue)))
+                                        return {"x": xValue, "y": yValue, "width": widthValue, "height": heightValue}
+                                    }
+
+                                    function snapPreview(raw) {
+                                        var value = clampPreview(raw)
+                                        if (!smartSlotSnap || !scene.editor || !scene.editor.snap)
+                                            return value
+                                        var step = Math.max(0, Number(scene.editor.snap.grid_spacing || 0))
+                                        if (step <= 0)
+                                            return value
+                                        var left = Math.round(value.x / step) * step
+                                        var top = Math.round(value.y / step) * step
+                                        var right = Math.round((value.x + value.width) / step) * step
+                                        var bottom = Math.round((value.y + value.height) / step) * step
+                                        return clampPreview({
+                                            "x": left,
+                                            "y": top,
+                                            "width": Math.max(1, right - left),
+                                            "height": Math.max(1, bottom - top)
+                                        })
+                                    }
+
+                                    function beginPreview(raw, kind) {
+                                        var value = snapPreview(raw)
+                                        previewActive = true
+                                        pendingPreviewBounds = value
+                                        preview_bounds = value
+                                        lastPreviewAppliedMs = Date.now()
+                                        previewEventCount = 0
+                                        previewUpdateCount = 0
+                                        window.smartSlotInteractionKind = String(kind || "")
+                                    }
+
+                                    function queuePreview(raw, force) {
+                                        if (!previewActive)
+                                            return
+                                        pendingPreviewBounds = snapPreview(raw)
+                                        previewEventCount += 1
+                                        window.smartSlotPreviewEvents += 1
+                                        var now = Date.now()
+                                        if (force || lastPreviewAppliedMs <= 0 || now - lastPreviewAppliedMs >= previewIntervalMs) {
+                                            applyPendingPreview()
+                                        } else if (!previewTimer.running) {
+                                            previewTimer.start()
+                                        }
+                                    }
+
+                                    function applyPendingPreview() {
+                                        if (!previewActive)
+                                            return
+                                        preview_bounds = pendingPreviewBounds
+                                        lastPreviewAppliedMs = Date.now()
+                                        previewUpdateCount += 1
+                                        window.smartSlotPreviewUpdates += 1
+                                    }
+
+                                    function commitPreview(raw, kind) {
+                                        if (!previewActive)
+                                            return
+                                        queuePreview(raw, true)
+                                        var finalBounds = preview_bounds
+                                        var started = Date.now()
+                                        sceneBridge.dispatch(JSON.stringify({
+                                            "name":"adjust_smart_slot",
+                                            "slot_id":slotOverlay.modelData.id,
+                                            "x":finalBounds.x,
+                                            "y":finalBounds.y,
+                                            "width":finalBounds.width,
+                                            "height":finalBounds.height,
+                                            "snap":smartSlotSnap
+                                        }))
+                                        window.smartSlotLastCommitMs = Math.max(0, Date.now() - started)
+                                        window.smartSlotInteractionKind = String(kind || "")
+                                        previewActive = false
+                                        previewTimer.stop()
+                                    }
+
+                                    Timer {
+                                        id: previewTimer
+                                        interval: 16
+                                        repeat: false
+                                        onTriggered: slotOverlay.applyPendingPreview()
+                                    }
+
                                     Rectangle {
                                         anchors.fill: parent
-                                        color: isDropTarget ? "#16A34A2A" : (selectedSlotId === modelData.id ? "#0F5BD811" : "transparent")
-                                        border.width: isDropTarget ? 3 : (selectedSlotId === modelData.id ? 2 : 1)
-                                        border.color: isDropTarget ? "#16A34A" : (selectedSlotId === modelData.id ? "#0F5BD8" : "#0F5BD855")
+                                        color: isDropTarget ? "#16A34A2A" : (isSelectedSlot ? "#0F5BD811" : (productDragActive ? "#0F5BD808" : "transparent"))
+                                        border.width: isDropTarget ? 3 : (isSelectedSlot ? 2 : 1)
+                                        border.color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#0F5BD855")
                                         radius: 4
                                     }
                                     Label {
                                         x: 4; y: 4
-                                        text: isDropTarget ? "SOLTAR PRODUTO AQUI" : (modelData.name || "Smart Slot")
+                                        text: isDropTarget ? "SOLTAR PRODUTO AQUI" : ((modelData.metadata && modelData.metadata.display_label) ? modelData.metadata.display_label : (modelData.name || "Smart Slot"))
                                         color: "white"
                                         font.bold: true
                                         font.pixelSize: 9
                                         padding: 3
-                                        background: Rectangle { color: isDropTarget ? "#16A34A" : (selectedSlotId === modelData.id ? "#0F5BD8" : "#64748BAA"); radius: 3 }
+                                        background: Rectangle { color: isDropTarget ? "#16A34A" : (isSelectedSlot ? "#0F5BD8" : "#64748BAA"); radius: 3 }
                                     }
-                                    MouseArea { anchors.fill: parent; acceptedButtons: Qt.LeftButton; onClicked: selectedSlotId = modelData.id }
+                                    MouseArea {
+                                        id: slotMoveArea
+                                        objectName: "smartSlotMoveArea-" + String(slotOverlay.modelData.id || "")
+                                        anchors.fill: parent
+                                        acceptedButtons: Qt.LeftButton
+                                        hoverEnabled: true
+                                        preventStealing: smartSlotEditMode
+                                        property real startGlobalX: 0
+                                        property real startGlobalY: 0
+                                        property var startBounds: ({"x":0,"y":0,"width":1,"height":1})
+                                        onEntered: hoveredSlotId = slotOverlay.modelData.id
+                                        onExited: if (hoveredSlotId === slotOverlay.modelData.id) hoveredSlotId = ""
+                                        onPressed: {
+                                            selectedSlotId = slotOverlay.modelData.id
+                                            if (!smartSlotEditMode)
+                                                return
+                                            var point = mapToItem(sheet, mouse.x, mouse.y)
+                                            startGlobalX = point.x / zoom
+                                            startGlobalY = point.y / zoom
+                                            startBounds = {"x":slotOverlay.bounds.x,"y":slotOverlay.bounds.y,"width":slotOverlay.bounds.width,"height":slotOverlay.bounds.height}
+                                            slotOverlay.beginPreview(startBounds, "move")
+                                        }
+                                        onClicked: selectedSlotId = slotOverlay.modelData.id
+                                        onPositionChanged: {
+                                            if (!pressed || !smartSlotEditMode || !slotOverlay.previewActive)
+                                                return
+                                            var point = mapToItem(sheet, mouse.x, mouse.y)
+                                            var dx = point.x / zoom - startGlobalX
+                                            var dy = point.y / zoom - startGlobalY
+                                            slotOverlay.queuePreview({
+                                                "x":startBounds.x + dx,
+                                                "y":startBounds.y + dy,
+                                                "width":startBounds.width,
+                                                "height":startBounds.height
+                                            }, false)
+                                        }
+                                        onReleased: {
+                                            if (!smartSlotEditMode || !slotOverlay.previewActive)
+                                                return
+                                            var point = mapToItem(sheet, mouse.x, mouse.y)
+                                            var dx = point.x / zoom - startGlobalX
+                                            var dy = point.y / zoom - startGlobalY
+                                            slotOverlay.commitPreview({
+                                                "x":startBounds.x + dx,
+                                                "y":startBounds.y + dy,
+                                                "width":startBounds.width,
+                                                "height":startBounds.height
+                                            }, "move")
+                                        }
+                                        onCanceled: {
+                                            slotOverlay.previewActive = false
+                                            previewTimer.stop()
+                                        }
+                                    }
+                                    Repeater {
+                                        model: [
+                                            {"dir":"nw","fx":0,"fy":0,"cursor":Qt.SizeFDiagCursor},
+                                            {"dir":"n","fx":0.5,"fy":0,"cursor":Qt.SizeVerCursor},
+                                            {"dir":"ne","fx":1,"fy":0,"cursor":Qt.SizeBDiagCursor},
+                                            {"dir":"e","fx":1,"fy":0.5,"cursor":Qt.SizeHorCursor},
+                                            {"dir":"se","fx":1,"fy":1,"cursor":Qt.SizeFDiagCursor},
+                                            {"dir":"s","fx":0.5,"fy":1,"cursor":Qt.SizeVerCursor},
+                                            {"dir":"sw","fx":0,"fy":1,"cursor":Qt.SizeBDiagCursor},
+                                            {"dir":"w","fx":0,"fy":0.5,"cursor":Qt.SizeHorCursor}
+                                        ]
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            objectName: "smartSlotHandle-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                            visible: smartSlotEditMode && slotOverlay.isSelectedSlot
+                                            width: 11; height: 11; radius: 2
+                                            x: modelData.fx * slotOverlay.width - width / 2
+                                            y: modelData.fy * slotOverlay.height - height / 2
+                                            color: "white"
+                                            border.width: 2
+                                            border.color: "#0F5BD8"
+                                            z: 10
+                                            MouseArea {
+                                                id: slotResizeArea
+                                                objectName: "smartSlotResizeArea-" + String(modelData.dir) + "-" + String(slotOverlay.modelData.id || "")
+                                                anchors.fill: parent
+                                                cursorShape: modelData.cursor
+                                                preventStealing: true
+                                                property real startGlobalX: 0
+                                                property real startGlobalY: 0
+                                                property real startX: 0
+                                                property real startY: 0
+                                                property real startW: 0
+                                                property real startH: 0
+                                                function resizedBounds(px, py) {
+                                                    var dx = px / zoom - startGlobalX
+                                                    var dy = py / zoom - startGlobalY
+                                                    var nx = startX
+                                                    var ny = startY
+                                                    var nw = startW
+                                                    var nh = startH
+                                                    if (modelData.dir.indexOf("w") >= 0) { nx += dx; nw -= dx }
+                                                    if (modelData.dir.indexOf("e") >= 0) nw += dx
+                                                    if (modelData.dir.indexOf("n") >= 0) { ny += dy; nh -= dy }
+                                                    if (modelData.dir.indexOf("s") >= 0) nh += dy
+                                                    if (nw < 1) { if (modelData.dir.indexOf("w") >= 0) nx -= (1 - nw); nw = 1 }
+                                                    if (nh < 1) { if (modelData.dir.indexOf("n") >= 0) ny -= (1 - nh); nh = 1 }
+                                                    return {"x":nx,"y":ny,"width":nw,"height":nh}
+                                                }
+                                                onPressed: {
+                                                    var point = mapToItem(sheet, mouse.x, mouse.y)
+                                                    startGlobalX = point.x / zoom
+                                                    startGlobalY = point.y / zoom
+                                                    startX = slotOverlay.displayBounds.x
+                                                    startY = slotOverlay.displayBounds.y
+                                                    startW = slotOverlay.displayBounds.width
+                                                    startH = slotOverlay.displayBounds.height
+                                                    slotOverlay.beginPreview({"x":startX,"y":startY,"width":startW,"height":startH}, "resize")
+                                                }
+                                                onPositionChanged: {
+                                                    if (!pressed || !slotOverlay.previewActive)
+                                                        return
+                                                    var point = mapToItem(sheet, mouse.x, mouse.y)
+                                                    slotOverlay.queuePreview(resizedBounds(point.x, point.y), false)
+                                                }
+                                                onReleased: {
+                                                    if (!slotOverlay.previewActive)
+                                                        return
+                                                    var point = mapToItem(sheet, mouse.x, mouse.y)
+                                                    slotOverlay.commitPreview(resizedBounds(point.x, point.y), "resize")
+                                                }
+                                                onCanceled: {
+                                                    slotOverlay.previewActive = false
+                                                    previewTimer.stop()
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
 
