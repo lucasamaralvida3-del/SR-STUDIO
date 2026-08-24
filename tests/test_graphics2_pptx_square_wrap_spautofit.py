@@ -154,11 +154,15 @@ def test_square_shape_autofit_emergency_wraps_decimal_by_longest_prefix(qt):
     QtCore, QtGui, _ = qt
     text = ",86"
     font = _font(QtGui)
-    rect = _narrow_rect(text, font, QtCore, QtGui)
-    layout = _pptx_shape_autofit_wrapped_layout(text, rect, _style(), font, QtCore, QtGui)
+    style = _style()
+    prefix_width = qt_renderer._pptx_source_layout_width(",8", style, font, QtGui)
+    full_width = qt_renderer._pptx_source_layout_width(text, style, font, QtGui)
+    assert prefix_width < full_width
+    rect = QtCore.QRectF(10.0, 20.0, (prefix_width + full_width) * 0.5, 8.0)
+    layout = _pptx_shape_autofit_wrapped_layout(text, rect, style, font, QtCore, QtGui)
     assert layout is not None
-    assert len(layout) == 2
-    assert "".join(line for line, _, _ in layout) == text
+    assert [line for line, _, _ in layout] == [",8", "6"]
+    assert len({baseline for _, _, baseline in layout}) == 2
 
 
 def test_narrow_latin_word_stays_one_line_and_uses_explicit_overflow_baseline(qt):
