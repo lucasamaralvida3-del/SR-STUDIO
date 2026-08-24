@@ -44,26 +44,6 @@ def _font_for(node, QtGui, qt_renderer):
     return font
 
 
-def _role_nodes(session, slots):
-    from srstudio.graphics2.model import BindingRole
-
-    bindings = {
-        "currency": BindingRole.CURRENCY,
-        "decimal": BindingRole.PRICE_CENTS,
-        "unit": BindingRole.UNIT,
-        "integer": BindingRole.PRICE_REAIS,
-        "name": BindingRole.NAME,
-        "image": BindingRole.IMAGE,
-    }
-    result = {}
-    for profile, slot in slots:
-        result[profile] = {
-            key: session.page.node(slot.node_by_role[binding.value])
-            for key, binding in bindings.items()
-        }
-    return result
-
-
 def _build_meat_document():
     from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
     from srstudio.graphics2.model import GraphicsDocument, GraphicsPage
@@ -90,36 +70,21 @@ def _build_meat_document():
     return document, session, slots
 
 
-def _crop_box(node, width: int, height: int, *, extra_bottom: int = 24) -> list[int]:
-    rect = node.rect.normalized()
-    left = max(0, int(math.floor(rect.x)) - 3)
-    top = max(0, int(math.floor(rect.y)) - 3)
-    right = min(width, int(math.ceil(rect.right)) + 3)
-    bottom = min(height, int(math.ceil(rect.bottom)) + extra_bottom)
-    return [left, top, max(left + 1, right), max(top + 1, bottom)]
+def _role_nodes(session, slots):
+    from srstudio.graphics2.model import BindingRole
 
-
-def _save_isolated_text_probe(node, output: Path, QtCore, QtGui, qt_renderer):
-    rect = node.rect.normalized()
-    pad = 32
-    width = max(8, int(math.ceil(rect.width)) + pad * 2)
-    height = max(8, int(math.ceil(rect.height)) + pad * 2 + 50)
-    image = QtGui.QImage(width, height, QtGui.QImage.Format_ARGB32_Premultiplied)
-    image.fill(QtGui.QColor("#FFFFFF"))
-    painter = QtGui.QPainter(image)
-    qt_renderer._configure_painter(painter, QtGui)
-    clone = type(node).from_dict(node.to_dict())
-    clone.transform.x = float(pad)
-    clone.transform.y = float(pad)
-    clone.transform.width = float(rect.width)
-    clone.transform.height = float(rect.height)
-    try:
-        qt_renderer._draw_text(painter, clone, QtCore, QtGui)
-    finally:
-        painter.end()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    if not image.save(str(output), "PNG", 100):
-        raise RuntimeError(f"could not save probe {output}")
+    bindings = {
+        "currency": BindingRole.CURRENCY,
+        "decimal": BindingRole.PRICE_CENTS,
+        "unit": BindingRole.UNIT,
+        "integer": BindingRole.PRICE_REAIS,
+        "name": BindingRole.NAME,
+        "image": BindingRole.IMAGE,
+    }
+    return {
+        profile: {key: session.page.node(slot.node_by_role[binding.value]) for key, binding in bindings.items()}
+        for profile, slot in slots
+    }
 
 
 def _layout_info(node, QtCore, QtGui, qt_renderer):
@@ -137,32 +102,54 @@ def _layout_info(node, QtCore, QtGui, qt_renderer):
         baselines = [float(single[1])]
         route = "shape_autofit_explicit_baseline"
     else:
-        segments = [text]
-        baselines = []
-        route = "qt_rect_fallback"
-    source_width = None
-    if hasattr(qt_renderer, "_pptx_source_layout_width"):
-        source_width = float(qt_renderer._pptx_source_layout_width(text, node.style, font, QtGui))
-    latin_default = None
-    overflow_default = None
-    if hasattr(qt_renderer, "_pptx_effective_latin_line_break"):
-        latin_default = qt_renderer._pptx_effective_latin_line_break(node.style)
-    if hasattr(qt_renderer, "_pptx_effective_horizontal_overflow"):
-        overflow_default = qt_renderer._pptx_effective_horizontal_overflow(node.style)
+        segments, baselines, route = [text], [], "qt_rect_fallback"
+    latin = getattr(qt_renderer, "_pptx_effective_latin_line_break", lambda _style: None)(node.style)
+    overflow = getattr(qt_renderer, "_pptx_effective_horizontal_overflow", lambda _style: None)(node.style)
     return {
         "TEXT": text,
         "ROUTE": route,
         "SEGMENTS": segments,
-        "LINE_COUNT": len(segments) if baselines or wrapped is not None or single is not None else 0,
+        "LINE_COUNT": len(segments) if wrapped is not None or single is not None else 0,
         "BASELINE_COUNT": len(baselines),
         "BASELINES": baselines,
-        "SOURCE_WIDTH": source_width,
-        "RECT_WIDTH": float(rect.width()),
-        "LATIN_LINE_BREAK_EFFECTIVE": latin_default,
-        "HORIZONTAL_OVERFLOW_EFFECTIVE": overflow_default,
+        "LATIN_LINE_BREAK_EFFECTIVE": latin,
+        "HORIZONTAL_OVERFLOW_EFFECTIVE": overflow,
         "PPTX_WRAP": str(node.style.get("pptx_wrap") or ""),
         "PPTX_AUTOFIT": str(node.style.get("pptx_auto_fit") or ""),
     }
+
+
+def _save_probe(node, output: Path, QtCore, QtGui, qt_renderer):
+    rect = node.rect.normalized()
+    pad = 32
+    image = QtGui.QImage(
+        max(8, int(math.ceil(rect.width)) + pad * 2),
+        max(8, int(math.ceil(rect.height)) + pad * 2 + 50),
+        QtGui.QImage.Format_ARGB32_Premultiplied,
+    )
+    image.fill(QtGui.QColor("#FFFFFF"))
+    painter = QtGui.QPainter(image)
+    qt_renderer._configure_painter(painter, QtGui)
+    clone = node.clone(preserve_id=True)
+    clone.transform.x = float(pad)
+    clone.transform.y = float(pad)
+    try:
+        qt_renderer._draw_text(painter, clone, QtCore, QtGui)
+    finally:
+        painter.end()
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not image.save(str(output), "PNG", 100):
+        raise RuntimeError(f"could not save probe: {output}")
+
+
+def _crop_box(node, width: int, height: int) -> list[int]:
+    rect = node.rect.normalized()
+    return [
+        max(0, int(math.floor(rect.x)) - 3),
+        max(0, int(math.floor(rect.y)) - 3),
+        min(width, int(math.ceil(rect.right)) + 3),
+        min(height, int(math.ceil(rect.bottom)) + 24),
+    ]
 
 
 def _dominant_rgb(image):
@@ -181,10 +168,9 @@ def _components(image, threshold: int = 38):
     for y in range(height):
         for x in range(width):
             color = pixels[x, y]
-            delta = max(abs(int(color[i]) - int(background[i])) for i in range(3))
-            mask[y][x] = delta >= threshold
+            mask[y][x] = max(abs(int(color[i]) - int(background[i])) for i in range(3)) >= threshold
     seen = [[False] * width for _ in range(height)]
-    components = []
+    rows = []
     for y in range(height):
         for x in range(width):
             if not mask[y][x] or seen[y][x]:
@@ -208,11 +194,9 @@ def _components(image, threshold: int = 38):
             xs = [point[0] for point in points]
             ys = [point[1] for point in points]
             box = [min(xs), min(ys), max(xs) + 1, max(ys) + 1]
-            # Ignore only wide crop-edge contaminants. Legitimate second lines
-            # may reach the bottom edge because spAutoFit can grow beyond xfrm.
             if box[1] == 0 and box[2] - box[0] > width * 0.45:
                 continue
-            components.append(
+            rows.append(
                 {
                     "AREA": len(points),
                     "BBOX": box,
@@ -221,36 +205,26 @@ def _components(image, threshold: int = 38):
                     "BASELINE_PROXY_Y": float(max(ys)),
                 }
             )
-    return components, list(background)
+    return rows, list(background)
 
 
 def _cluster_lines(image):
     components, background = _components(image)
     if not components:
-        return {
-            "CLUSTER_COUNT": 0,
-            "CLUSTER_Y": [],
-            "CLUSTER_BASELINE_Y": [],
-            "COMPONENTS": [],
-            "BACKGROUND_RGB": background,
-        }
+        return {"CLUSTER_COUNT": 0, "CLUSTERS": [], "COMPONENTS": [], "BACKGROUND_RGB": background}
     heights = sorted(max(1, row["BBOX"][3] - row["BBOX"][1]) for row in components)
-    median_height = heights[len(heights) // 2]
-    tolerance = max(4.0, min(6.0, float(median_height) * 0.42))
+    tolerance = max(4.0, min(6.0, heights[len(heights) // 2] * 0.42))
     groups = []
     for component in sorted(components, key=lambda row: row["BASELINE_PROXY_Y"]):
-        best_index = None
-        best_distance = None
-        for index, group in enumerate(groups):
-            baseline = max(row["BASELINE_PROXY_Y"] for row in group)
-            distance = abs(component["BASELINE_PROXY_Y"] - baseline)
-            if distance <= tolerance and (best_distance is None or distance < best_distance):
-                best_index = index
-                best_distance = distance
-        if best_index is None:
-            groups.append([component])
+        choices = [
+            (abs(component["BASELINE_PROXY_Y"] - max(item["BASELINE_PROXY_Y"] for item in group)), index)
+            for index, group in enumerate(groups)
+        ]
+        choices = [choice for choice in choices if choice[0] <= tolerance]
+        if choices:
+            groups[min(choices)[1]].append(component)
         else:
-            groups[best_index].append(component)
+            groups.append([component])
     clusters = []
     for group in groups:
         area = sum(row["AREA"] for row in group)
@@ -284,13 +258,13 @@ def _overlay(image, topology, path: Path):
 
     result = image.convert("RGB").copy()
     draw = ImageDraw.Draw(result)
-    colors = ("#00ff00", "#00ffff", "#ff00ff", "#ffff00")
+    colors = ("#00ff00", "#00ffff", "#ff00ff")
     for component in topology.get("COMPONENTS", []):
         draw.rectangle(tuple(component["BBOX"]), outline="#ff8800")
     for index, cluster in enumerate(topology.get("CLUSTERS", [])):
         color = colors[index % len(colors)]
         y = int(round(cluster["BASELINE_PROXY_Y"]))
-        draw.line((0, y, result.width - 1, y), fill=color, width=1)
+        draw.line((0, y, result.width - 1, y), fill=color)
         draw.text((2, max(0, y - 10)), f"L{index + 1}", fill=color)
     path.parent.mkdir(parents=True, exist_ok=True)
     result.resize((result.width * 6, result.height * 6)).save(path)
@@ -325,7 +299,6 @@ def probe(args) -> int:
         raise RuntimeError("exact PPTX SHA mismatch")
     sys.path.insert(0, str(args.source_root.resolve() / "src"))
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-
     from PIL import Image
     from PySide6 import QtCore, QtGui
     from srstudio.graphics2 import qt_renderer
@@ -339,13 +312,11 @@ def probe(args) -> int:
     font = _font_gate(args.pptx)
     document, session, slots = _build_meat_document()
     nodes = _role_nodes(session, slots)
+    args.out.mkdir(parents=True, exist_ok=True)
     page_path = args.out / "meat-page.png"
     report = render_png(document, page_path, target_width=1080)
     page_image = Image.open(page_path).convert("RGB")
-
-    roles = {}
-    images = {}
-    ownership = {}
+    roles, images, ownership = {}, {}, {}
     for profile, slot in slots:
         roles[profile] = {}
         ownership[profile] = ownership_snapshot(session.page, slot)
@@ -353,7 +324,7 @@ def probe(args) -> int:
             node = nodes[profile][role]
             info = _layout_info(node, QtCore, QtGui, qt_renderer)
             probe_path = args.out / "probes" / f"{profile}-{role}.png"
-            _save_isolated_text_probe(node, probe_path, QtCore, QtGui, qt_renderer)
+            _save_probe(node, probe_path, QtCore, QtGui, qt_renderer)
             info["PROBE_SHA256"] = sha256(probe_path)
             info["NODE_RECT"] = [node.rect.x, node.rect.y, node.rect.width, node.rect.height]
             if role == "decimal":
@@ -362,15 +333,12 @@ def probe(args) -> int:
                 crop_path = args.out / "decimal-crops" / f"{profile}.png"
                 crop_path.parent.mkdir(parents=True, exist_ok=True)
                 crop.save(crop_path)
-                topology = _cluster_lines(crop)
-                info["VISUAL_TOPOLOGY"] = topology
                 info["CROP_BOX"] = box
-                _overlay(crop, topology, args.out / "decimal-overlays" / f"{profile}.png")
+                info["VISUAL_TOPOLOGY"] = _cluster_lines(crop)
+                _overlay(crop, info["VISUAL_TOPOLOGY"], args.out / "decimal-overlays" / f"{profile}.png")
             roles[profile][role] = info
-
         image_node = nodes[profile]["image"]
-        profile_contract = meat_full_card_profile(profile)
-        expected_fill = dict(profile_contract["image_asset"]["fill_rect"])
+        expected_fill = dict(meat_full_card_profile(profile)["image_asset"]["fill_rect"])
         actual_fill = dict(image_node.style.get("fill_rect") or {})
         images[profile] = {
             "SOURCE_IMAGE_SHA256": str(image_node.metadata.get("image_sha256") or ""),
@@ -379,10 +347,8 @@ def probe(args) -> int:
             "EXPECTED_FILL_RECT": expected_fill,
             "FILL_RECT_PRESERVED": actual_fill == expected_fill,
         }
-
     payload = {
         "LABEL": args.label,
-        "SOURCE_ROOT": str(args.source_root),
         "PPTX_SHA256": sha256(args.pptx),
         "FONT": font,
         "ROLES": roles,
@@ -391,7 +357,6 @@ def probe(args) -> int:
         "RENDER_WARNINGS": [warning.message for warning in report.warnings],
         "PAGE_SHA256": sha256(page_path),
     }
-    args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "probe-summary.json").write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(payload, ensure_ascii=False, indent=2))
     return 0
@@ -399,22 +364,17 @@ def probe(args) -> int:
 
 def _image_metrics(reference, rendered):
     if reference.size != rendered.size:
-        return {"MAE": None, "CHANGED_RATIO": None, "SIZE_MATCH": False}
+        return {"SIZE_MATCH": False, "MAE": None, "CHANGED_RATIO": None}
     left = list(reference.convert("RGB").getdata())
     right = list(rendered.convert("RGB").getdata())
-    total = len(left)
-    absolute = 0
+    total = max(1, len(left))
+    delta_sum = 0
     changed = 0
     for a, b in zip(left, right):
         delta = sum(abs(int(a[i]) - int(b[i])) for i in range(3))
-        absolute += delta
-        if delta:
-            changed += 1
-    return {
-        "MAE": absolute / max(1, total * 3),
-        "CHANGED_RATIO": changed / max(1, total),
-        "SIZE_MATCH": True,
-    }
+        delta_sum += delta
+        changed += int(delta > 0)
+    return {"SIZE_MATCH": True, "MAE": delta_sum / (total * 3), "CHANGED_RATIO": changed / total}
 
 
 def compare(args) -> int:
@@ -426,28 +386,16 @@ def compare(args) -> int:
     after_page = Image.open(args.after / "meat-page.png").convert("RGB")
     if reference.size != after_page.size:
         raise RuntimeError(f"reference size {reference.size} != AFTER page {after_page.size}")
-
-    reference_topology = {}
-    visual_metrics = {}
+    reference_topology, visual_metrics = {}, {}
     for profile in PROFILES:
         box = after["ROLES"][profile]["decimal"]["CROP_BOX"]
         ref_crop = reference.crop(tuple(box))
         aft_crop = after_page.crop(tuple(box))
-        topology = _cluster_lines(ref_crop)
-        reference_topology[profile] = topology
-        _overlay(ref_crop, topology, args.out / "reference-overlays" / f"{profile}.png")
+        reference_topology[profile] = _cluster_lines(ref_crop)
         visual_metrics[profile] = _image_metrics(ref_crop, aft_crop)
-
-    currency = all(
-        after["ROLES"][p]["currency"]["LINE_COUNT"] == 2
-        and after["ROLES"][p]["currency"]["BASELINE_COUNT"] == 2
-        for p in PROFILES
-    )
-    decimal = all(
-        after["ROLES"][p]["decimal"]["LINE_COUNT"] == 2
-        and after["ROLES"][p]["decimal"]["BASELINE_COUNT"] == 2
-        for p in PROFILES
-    )
+        _overlay(ref_crop, reference_topology[profile], args.out / "reference-overlays" / f"{profile}.png")
+    currency = all(after["ROLES"][p]["currency"]["LINE_COUNT"] == 2 and after["ROLES"][p]["currency"]["BASELINE_COUNT"] == 2 for p in PROFILES)
+    decimal = all(after["ROLES"][p]["decimal"]["LINE_COUNT"] == 2 and after["ROLES"][p]["decimal"]["BASELINE_COUNT"] == 2 for p in PROFILES)
     unit = all(
         after["ROLES"][p]["unit"]["LINE_COUNT"] == 1
         and after["ROLES"][p]["unit"]["BASELINE_COUNT"] == 1
@@ -455,33 +403,13 @@ def compare(args) -> int:
         and after["ROLES"][p]["unit"]["HORIZONTAL_OVERFLOW_EFFECTIVE"] == "overflow"
         for p in PROFILES
     )
-    integer = all(
-        after["ROLES"][p]["integer"]["ROUTE"] == "shape_autofit_explicit_baseline"
-        and before["ROLES"][p]["integer"]["PROBE_SHA256"] == after["ROLES"][p]["integer"]["PROBE_SHA256"]
-        for p in PROFILES
-    )
-    name = all(
-        after["ROLES"][p]["name"]["ROUTE"] == "shape_autofit_explicit_baseline"
-        and before["ROLES"][p]["name"]["PROBE_SHA256"] == after["ROLES"][p]["name"]["PROBE_SHA256"]
-        for p in PROFILES
-    )
+    integer = all(after["ROLES"][p]["integer"]["ROUTE"] == "shape_autofit_explicit_baseline" and before["ROLES"][p]["integer"]["PROBE_SHA256"] == after["ROLES"][p]["integer"]["PROBE_SHA256"] for p in PROFILES)
+    name = all(after["ROLES"][p]["name"]["ROUTE"] == "shape_autofit_explicit_baseline" and before["ROLES"][p]["name"]["PROBE_SHA256"] == after["ROLES"][p]["name"]["PROBE_SHA256"] for p in PROFILES)
     reference_clusters = {p: reference_topology[p]["CLUSTER_COUNT"] for p in PROFILES}
     after_clusters = {p: after["ROLES"][p]["decimal"]["VISUAL_TOPOLOGY"]["CLUSTER_COUNT"] for p in PROFILES}
     topology = all(reference_clusters[p] == 2 and after_clusters[p] == 2 for p in PROFILES)
-    font = bool(after["FONT"].get("ANTON_EXACT"))
-    images = all(
-        bool(after["IMAGES"][p]["SOURCE_IMAGE_SHA256"])
-        and bool(after["IMAGES"][p]["INTERNAL_MEDIA"])
-        for p in PROFILES
-    )
-    musculo_fill = bool(after["IMAGES"]["musculo"]["FILL_RECT_PRESERVED"])
-    ownership = all(
-        after["OWNERSHIP"][p]["role"] == "product_cell"
-        and bool(after["OWNERSHIP"][p]["strip_root_id"])
-        and after["OWNERSHIP"][p]["parent_id"] == after["OWNERSHIP"][p]["strip_root_id"]
-        for p in PROFILES
-    )
-
+    images = all(bool(after["IMAGES"][p]["SOURCE_IMAGE_SHA256"]) and bool(after["IMAGES"][p]["INTERNAL_MEDIA"]) for p in PROFILES)
+    ownership = all(after["OWNERSHIP"][p]["role"] == "product_cell" and after["OWNERSHIP"][p]["parent_id"] == after["OWNERSHIP"][p]["strip_root_id"] and bool(after["OWNERSHIP"][p]["strip_root_id"]) for p in PROFILES)
     result = {
         "BEFORE_SHA": BEFORE_SHA,
         "AFTER_SHA": AFTER_SHA,
@@ -495,27 +423,13 @@ def compare(args) -> int:
         "AFTER_DECIMAL_CLUSTERS": after_clusters,
         "DECIMAL_TOPOLOGY": topology,
         "VISUAL_METRICS_SECONDARY": visual_metrics,
-        "FONT_ANTON_EXACT": font,
+        "FONT_ANTON_EXACT": bool(after["FONT"].get("ANTON_EXACT")),
         "IMAGES_4_OF_4": images,
-        "MUSCULO_FILL_RECT_PRESERVED": musculo_fill,
+        "MUSCULO_FILL_RECT_PRESERVED": bool(after["IMAGES"]["musculo"]["FILL_RECT_PRESERVED"]),
         "OWNERSHIP": ownership,
         "PRODUCTION_FILES_CHANGED_IN_DIAGNOSTIC_PR": 0,
     }
-    result["PRIMARY_GATES_PASS"] = all(
-        result[key]
-        for key in (
-            "CURRENCY",
-            "DECIMAL",
-            "UNIT",
-            "INTEGER",
-            "NAME",
-            "DECIMAL_TOPOLOGY",
-            "FONT_ANTON_EXACT",
-            "IMAGES_4_OF_4",
-            "MUSCULO_FILL_RECT_PRESERVED",
-            "OWNERSHIP",
-        )
-    )
+    result["PRIMARY_GATES_PASS"] = all(result[key] for key in ("CURRENCY", "DECIMAL", "UNIT", "INTEGER", "NAME", "DECIMAL_TOPOLOGY", "FONT_ANTON_EXACT", "IMAGES_4_OF_4", "MUSCULO_FILL_RECT_PRESERVED", "OWNERSHIP"))
     args.out.mkdir(parents=True, exist_ok=True)
     (args.out / "final-recert-summary.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(result, ensure_ascii=False, indent=2))
@@ -525,20 +439,18 @@ def compare(args) -> int:
 def main() -> int:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
-    probe_parser = sub.add_parser("probe")
-    probe_parser.add_argument("--label", required=True, choices=("before", "after"))
-    probe_parser.add_argument("--source-root", required=True, type=Path)
-    probe_parser.add_argument("--pptx", required=True, type=Path)
-    probe_parser.add_argument("--out", required=True, type=Path)
-    compare_parser = sub.add_parser("compare")
-    compare_parser.add_argument("--before", required=True, type=Path)
-    compare_parser.add_argument("--after", required=True, type=Path)
-    compare_parser.add_argument("--reference", required=True, type=Path)
-    compare_parser.add_argument("--out", required=True, type=Path)
+    p = sub.add_parser("probe")
+    p.add_argument("--label", required=True, choices=("before", "after"))
+    p.add_argument("--source-root", required=True, type=Path)
+    p.add_argument("--pptx", required=True, type=Path)
+    p.add_argument("--out", required=True, type=Path)
+    c = sub.add_parser("compare")
+    c.add_argument("--before", required=True, type=Path)
+    c.add_argument("--after", required=True, type=Path)
+    c.add_argument("--reference", required=True, type=Path)
+    c.add_argument("--out", required=True, type=Path)
     args = parser.parse_args()
-    if args.command == "probe":
-        return probe(args)
-    return compare(args)
+    return probe(args) if args.command == "probe" else compare(args)
 
 
 if __name__ == "__main__":
