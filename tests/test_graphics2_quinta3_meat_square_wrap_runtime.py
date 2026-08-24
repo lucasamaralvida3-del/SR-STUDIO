@@ -21,6 +21,13 @@ PRODUCTS = {
     "moela": {"id": "wrap-moela", "name": "MOELA DE FRANGO", "price": "16.72", "unit": "KG"},
 }
 
+EXPECTED_DECIMAL_SEGMENTS = {
+    "costela": [",8", "6"],
+    "pernil": [",7", "4"],
+    "musculo": [",7", "3"],
+    "moela": [",7", "2"],
+}
+
 
 @pytest.fixture(scope="module")
 def qt():
@@ -66,7 +73,7 @@ def _bound_meat_nodes():
     return session, rows
 
 
-def test_real_meat_nodes_use_wrapped_route_for_currency_and_decimal_when_anton_is_available(qt):
+def test_real_meat_nodes_use_certified_office_effective_routes_when_anton_is_available(qt):
     QtCore, QtGui, _ = qt
     info = QtGui.QFontInfo(QtGui.QFont("Anton"))
     if not info.exactMatch() or str(info.family()).casefold() != "anton":
@@ -83,18 +90,45 @@ def test_real_meat_nodes_use_wrapped_route_for_currency_and_decimal_when_anton_i
     for profile_id, slot in rows:
         nodes = {role: session.page.node(slot.node_by_role[binding.value]) for role, binding in roles.items()}
         assert all(node is not None for node in nodes.values()), profile_id
-        for role in ("currency", "decimal"):
-            node = nodes[role]
-            font = _font_for(node, QtGui)
-            layout = qt_renderer._pptx_shape_autofit_wrapped_layout(
-                str(node.text or ""), QtCore.QRectF(0.0, 0.0, node.rect.width, node.rect.height), node.style, font, QtCore, QtGui
-            )
-            assert layout is not None and len(layout) > 1, (profile_id, role, node.text, node.rect)
-            assert qt_renderer._pptx_shape_autofit_single_line_layout(
-                str(node.text or ""), QtCore.QRectF(0.0, 0.0, node.rect.width, node.rect.height), node.style, font, QtGui
-            ) is None
 
-        for role in ("integer", "unit", "name"):
+        currency = nodes["currency"]
+        currency_font = _font_for(currency, QtGui)
+        currency_rect = QtCore.QRectF(0.0, 0.0, currency.rect.width, currency.rect.height)
+        currency_layout = qt_renderer._pptx_shape_autofit_wrapped_layout(
+            str(currency.text or ""), currency_rect, currency.style, currency_font, QtCore, QtGui
+        )
+        assert currency_layout is not None and len(currency_layout) == 2, profile_id
+        assert [line for line, _, _ in currency_layout] == ["R", "$"]
+        assert qt_renderer._pptx_shape_autofit_single_line_layout(
+            str(currency.text or ""), currency_rect, currency.style, currency_font, QtGui
+        ) is None
+
+        decimal = nodes["decimal"]
+        decimal_font = _font_for(decimal, QtGui)
+        decimal_rect = QtCore.QRectF(0.0, 0.0, decimal.rect.width, decimal.rect.height)
+        decimal_layout = qt_renderer._pptx_shape_autofit_wrapped_layout(
+            str(decimal.text or ""), decimal_rect, decimal.style, decimal_font, QtCore, QtGui
+        )
+        assert decimal_layout is not None and len(decimal_layout) == 2, profile_id
+        assert [line for line, _, _ in decimal_layout] == EXPECTED_DECIMAL_SEGMENTS[profile_id]
+        assert len({baseline for _, _, baseline in decimal_layout}) == 2, profile_id
+        assert qt_renderer._pptx_shape_autofit_single_line_layout(
+            str(decimal.text or ""), decimal_rect, decimal.style, decimal_font, QtGui
+        ) is None
+
+        unit = nodes["unit"]
+        unit_font = _font_for(unit, QtGui)
+        unit_rect = QtCore.QRectF(0.0, 0.0, unit.rect.width, unit.rect.height)
+        assert qt_renderer._pptx_effective_latin_line_break(unit.style) is False
+        assert qt_renderer._pptx_effective_horizontal_overflow(unit.style) == "overflow"
+        assert qt_renderer._pptx_shape_autofit_wrapped_layout(
+            str(unit.text or ""), unit_rect, unit.style, unit_font, QtCore, QtGui
+        ) is None, profile_id
+        assert qt_renderer._pptx_shape_autofit_single_line_layout(
+            str(unit.text or ""), unit_rect, unit.style, unit_font, QtGui
+        ) is not None, profile_id
+
+        for role in ("integer", "name"):
             node = nodes[role]
             font = _font_for(node, QtGui)
             rect = QtCore.QRectF(0.0, 0.0, node.rect.width, node.rect.height)
