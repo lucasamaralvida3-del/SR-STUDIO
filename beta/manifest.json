@@ -11,13 +11,13 @@
   "bundle": {
     "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-32/SR_STUDIO_G2_BETA_32_PROFESSIONAL.zip",
     "sha256": "73f0246b01b81c7980b0c8c9d92da1f43af466aaa378f75fd3b5b816f868da16",
-    "size": 296620997,
+    "size": 0,
     "member_prefix": "files/"
   },
   "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-32/SR_STUDIO_G2_BETA_32_PROFESSIONAL.zip",
   "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-32/SR_STUDIO_G2_BETA_32_PROFESSIONAL.zip",
   "sha256": "73f0246b01b81c7980b0c8c9d92da1f43af466aaa378f75fd3b5b816f868da16",
-  "size": 296620997,
+  "size": 0,
   "member_prefix": "files/",
   "previous_version": "5.0.0-hybrid.g2beta.31",
   "entrypoint": "SR_Studio_Gerador.py",
@@ -27,5 +27,5 @@
   "source_commit": "59f1484518c274f069c2b5e51a04191144eca83c",
   "workflow_run": "32775864658",
   "poster_quantity": true,
-  "notes": "Canal Beta automático — restaura Qtd. Cartazes por produto e preserva o Studio de Encartes G2 da Beta 31."
+  "notes": "Canal Beta automático — restaura Qtd. Cartazes por produto e preserva o Studio de Encartes G2 da Beta 31. SHA-256 é o gate autoritativo de integridade do bundle; size check desativado temporariamente devido falso negativo observado no Launcher Base 3.4."
 }
