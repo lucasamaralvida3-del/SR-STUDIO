@@ -92,6 +92,22 @@ Rectangle {
         return result
     }
 
+    function manualSlotChoices() {
+        var all = manualSlots()
+        var result = []
+        for (var i = 0; i < all.length; ++i) {
+            var slot = all[i]
+            var label = String(slot.name || slot.slot_id || "Slot")
+            var kind = String(slot.slot_kind || "single_item")
+            if (kind === "multi_item_root")
+                label += " · ROOT"
+            else if (kind === "product_cell")
+                label += " · CÉLULA " + (Number(slot.product_cell_index || 0) + 1)
+            result.push({"slot_id": slot.slot_id, "name": label})
+        }
+        return result
+    }
+
     function activeManualSlot() {
         var all = manualSlots()
         for (var i = 0; i < all.length; ++i)
@@ -474,7 +490,7 @@ Rectangle {
             ComboBox {
                 id: itemSlotCombo
                 Layout.fillWidth: true
-                model: panel.manualSlots()
+                model: panel.manualSlotChoices()
                 textRole: "name"
                 onActivated: {
                     if (currentIndex >= 0 && currentIndex < model.length) {

@@ -260,6 +260,10 @@ def test_qml_catalog_shows_single_multi_and_cell_counts() -> None:
     assert "MULTI" in qml
     assert "CÉLULAS" in qml
     assert "Limpar produto" in qml
+    assert "function manualSlotChoices()" in qml
+    assert 'label += " · ROOT"' in qml
+    assert 'label += " · CÉLULA " + (Number(slot.product_cell_index || 0) + 1)' in qml
+    assert "model: panel.manualSlotChoices()" in qml
 
 
 def test_multi_item_move_and_resize_use_local_preview_and_one_release_commit() -> None:
