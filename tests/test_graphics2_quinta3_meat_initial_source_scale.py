@@ -4,6 +4,7 @@ import pytest
 
 from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
 from srstudio.graphics2.model import GraphicsDocument, GraphicsPage, Rect
+from srstudio.graphics2.multi_item_slots import product_cells_for_root
 from srstudio.graphics2.operations import GraphicsSession
 from srstudio.graphics2.package import load_package, save_package
 from srstudio.graphics2.slot_corpus_families import QUINTA3_FAMILY_PRESETS
@@ -51,22 +52,25 @@ def _source_strip() -> Rect:
     return Rect(left, top, right - left, bottom - top)
 
 
-def _add_bound(router: ItemSlotCommandRouter, session: GraphicsSession, profile_id: str):
+def _create_bound_strip(router: ItemSlotCommandRouter, session: GraphicsSession):
     result = router.dispatch({"name": "add_item_slot", "preset_id": MEAT_FAMILY_ID})
     assert result.ok and result.changed, result.to_dict()
-    slot = session.page.slots[result.payload["slot_id"]]
-    assert slot.metadata["full_card_profile"] == profile_id
-    product = dict(PRODUCTS[profile_id])
-    product["quinta3_supervised_profile"] = profile_id
-    bound = router.dispatch({"name": "bind_product", "slot_id": slot.id, "product": product})
-    assert bound.ok and bound.changed, bound.to_dict()
-    return slot
+    root_slot = session.page.slots[result.payload["slot_id"]]
+    cells = product_cells_for_root(session.page, root_slot.id)
+    assert len(cells) == 4
+    for profile_id, cell in zip(PROFILE_ORDER, cells):
+        assert cell.metadata["full_card_profile"] == profile_id
+        product = dict(PRODUCTS[profile_id])
+        product["quinta3_supervised_profile"] = profile_id
+        bound = router.dispatch({"name": "bind_product", "slot_id": cell.id, "product": product})
+        assert bound.ok and bound.changed, bound.to_dict()
+    return root_slot, cells
 
 
 def _four_bound_cells():
     session = _session()
     router = ItemSlotCommandRouter(session)
-    slots = [_add_bound(router, session, profile_id) for profile_id in PROFILE_ORDER]
+    _root, slots = _create_bound_strip(router, session)
     return session, slots
 
 
@@ -90,8 +94,8 @@ def test_exact_pptx_source_page_contract_is_frozen_with_source_identity() -> Non
 def test_initial_source_scale_uses_exact_pptx_page_mapping_not_generic_preset() -> None:
     session = _session()
     router = ItemSlotCommandRouter(session)
-    first = _add_bound(router, session, "costela")
-    strip = session.page.node(str(first.metadata["meat_strip_root_id"]))
+    root_slot, _cells = _create_bound_strip(router, session)
+    strip = session.page.node(str(root_slot.metadata["root_node_id"]))
     assert strip is not None
 
     source_strip = _source_strip()
@@ -127,7 +131,10 @@ def test_initial_four_cells_exact_sizes_curve_right_and_separator_three_are_in_b
     strip = page.node(strip_id)
     assert strip is not None
     assert _inside(page, strip.rect)
-    assert strip.rect.normalized().right == pytest.approx(354.0 + SOURCE_STRIP_SIZE_ORACLE[0])
+    catalog_width = float(QUINTA3_FAMILY_PRESETS[MEAT_FAMILY_ID]["width"])
+    expected_x = (float(page.width) - catalog_width) / 2.0
+    assert strip.rect.normalized().x == pytest.approx(expected_x)
+    assert strip.rect.normalized().right == pytest.approx(expected_x + SOURCE_STRIP_SIZE_ORACLE[0])
 
     for profile_id, slot in zip(PROFILE_ORDER, slots):
         root = page.node(str(slot.metadata["root_node_id"]))
@@ -211,8 +218,8 @@ def test_strip_ownership_move_and_resize_still_propagate_to_product_cells() -> N
 def test_manual_strip_resize_remains_authoritative_across_more_cells_and_reopen(tmp_path) -> None:
     session = _session()
     router = ItemSlotCommandRouter(session)
-    first = _add_bound(router, session, "costela")
-    strip_id = str(first.metadata["meat_strip_root_id"])
+    root_slot, cells = _create_bound_strip(router, session)
+    strip_id = str(root_slot.metadata["root_node_id"])
     strip = session.page.node(strip_id)
     assert strip is not None
     initial = strip.rect.normalized()
@@ -232,10 +239,8 @@ def test_manual_strip_resize_remains_authoritative_across_more_cells_and_reopen(
     )
     after_edit = session.page.node(strip_id).rect.normalized()
 
-    # Adding the remaining supervised cells must reuse the edited root, not
-    # re-run source-page initial normalization.
-    for profile_id in PROFILE_ORDER[1:]:
-        _add_bound(router, session, profile_id)
+    # The public create operation materializes all four independent cells at
+    # once.  A manual root resize must remain authoritative thereafter.
     after_four = session.page.node(strip_id).rect.normalized()
     assert (after_four.x, after_four.y, after_four.width, after_four.height) == pytest.approx(
         (after_edit.x, after_edit.y, after_edit.width, after_edit.height)
@@ -254,7 +259,11 @@ def test_manual_strip_resize_remains_authoritative_across_more_cells_and_reopen(
     assert (restored_rect.x, restored_rect.y, restored_rect.width, restored_rect.height) == pytest.approx(
         (after_edit.x, after_edit.y, after_edit.width, after_edit.height)
     )
-    assert len(reopened.active_page.slots) == 4
+    assert len(reopened.active_page.slots) == 5
     restored_snapshot = strip_ownership_snapshot(reopened.active_page, strip_id)
     assert len(restored_snapshot["cell_slot_ids"]) == 4
     assert len(restored_snapshot["cell_root_ids"]) == 4
+    restored_root = reopened.active_page.slots[root_slot.id]
+    assert [cell.product_id for cell in product_cells_for_root(reopened.active_page, restored_root.id)] == [
+        cell.product_id for cell in cells
+    ]

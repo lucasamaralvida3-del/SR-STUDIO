@@ -14,7 +14,12 @@ from .item_slots import create_item_slot
 from .model import BindingRole, GraphicsNode, NodeKind, Rect, Transform
 from .operations import GraphicsSession
 from .slot_corpus_calibration import profile_parameters
-from .slot_corpus_families import QUINTA3_FAMILY_PRESETS, install_quinta3_family_presets
+from .slot_corpus_families import (
+    CUSTOM_PRESETS_KEY,
+    QUINTA3_FAMILY_PRESETS,
+    _LEGACY_RECURRING_PRESETS,
+    install_quinta3_family_presets,
+)
 from .slot_corpus_full_card import MEAT_FAMILY_ID, apply_meat_strip_full_card
 
 _SECONDARY_COMPONENTS: dict[tuple[str, str], dict[str, list[float]]] = {
@@ -47,9 +52,18 @@ def create_quinta3_item_slot(
     y: float | None = None,
 ):
     family_id = str(family_id or "").strip()
-    if family_id not in QUINTA3_FAMILY_PRESETS:
+    family = QUINTA3_FAMILY_PRESETS.get(family_id) or _LEGACY_RECURRING_PRESETS.get(family_id)
+    if family is None:
         raise KeyError(f"Família Quinta 3 inexistente: {family_id}")
     install_quinta3_family_presets(session.document)
+    # Keep the former internal recurring-family API readable for old scenes and
+    # migration tests without exposing the retired id in the Studio catalog.
+    # Blue and beige are distinct public multi-item roots in the new inventory.
+    if family_id not in QUINTA3_FAMILY_PRESETS:
+        from .slot_family_inventory import apply_document_font_fallback
+
+        custom = session.document.metadata.setdefault(CUSTOM_PRESETS_KEY, {})
+        custom[family_id] = apply_document_font_fallback(family, session.document)
     slot = create_item_slot(session, family_id, x=x, y=y)
     apply_quinta3_variant(session, slot.id, variant=variant, parameters=parameters)
     return slot
@@ -66,7 +80,7 @@ def apply_quinta3_variant(
     if slot is None or not slot.metadata.get("manual_item_slot"):
         return False
     family_id = str(slot.metadata.get("preset_id") or "")
-    family = QUINTA3_FAMILY_PRESETS.get(family_id)
+    family = QUINTA3_FAMILY_PRESETS.get(family_id) or _LEGACY_RECURRING_PRESETS.get(family_id)
     if family is None:
         return False
 

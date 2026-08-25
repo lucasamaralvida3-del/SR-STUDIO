@@ -92,6 +92,22 @@ Rectangle {
         return result
     }
 
+    function manualSlotChoices() {
+        var all = manualSlots()
+        var result = []
+        for (var i = 0; i < all.length; ++i) {
+            var slot = all[i]
+            var label = String(slot.name || slot.slot_id || "Slot")
+            var kind = String(slot.slot_kind || "single_item")
+            if (kind === "multi_item_root")
+                label += " · ROOT"
+            else if (kind === "product_cell")
+                label += " · CÉLULA " + (Number(slot.product_cell_index || 0) + 1)
+            result.push({"slot_id": slot.slot_id, "name": label})
+        }
+        return result
+    }
+
     function activeManualSlot() {
         var all = manualSlots()
         for (var i = 0; i < all.length; ++i)
@@ -428,7 +444,12 @@ Rectangle {
             model: panel.itemSlotPresets()
             delegate: MenuItem {
                 required property var modelData
-                text: String(modelData.name || modelData.id || "Preset")
+                text: {
+                    var base = String(modelData.catalog_name || modelData.name || modelData.id || "Preset")
+                    var kind = String(modelData.slot_kind || "single_item")
+                    var count = Math.max(1, Number(modelData.product_cell_count || 1))
+                    return kind === "multi_item" ? base + " · MULTI · " + count + " CÉLULAS" : base + " · UNITÁRIO"
+                }
                 onTriggered: panel.addPreset(String(modelData.id || "simples"))
             }
         }
@@ -469,7 +490,7 @@ Rectangle {
             ComboBox {
                 id: itemSlotCombo
                 Layout.fillWidth: true
-                model: panel.manualSlots()
+                model: panel.manualSlotChoices()
                 textRole: "name"
                 onActivated: {
                     if (currentIndex >= 0 && currentIndex < model.length) {
@@ -484,6 +505,12 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 Button { text: "Selecionar"; enabled: panel.activeManualSlotId !== ""; onClicked: panel.selectActiveSlot() }
+                Button {
+                    text: "Limpar produto"
+                    visible: panel.activeManualSlot() && String(panel.activeManualSlot().slot_kind || "") === "product_cell"
+                    enabled: visible && String(panel.activeManualSlot().product_id || "") !== ""
+                    onClicked: sceneBridge.dispatch(JSON.stringify({"name":"clear_item_slot_product", "slot_id":panel.activeManualSlotId}))
+                }
                 Button {
                     text: "Duplicar vazio"
                     enabled: panel.activeManualSlotId !== ""

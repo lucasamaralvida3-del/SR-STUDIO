@@ -44,7 +44,11 @@ srstudio = [
   "assets/poster_templates/legacy/manifest.json",
   "assets/poster_templates/legacy/models/*.pptx",
   "assets/poster_templates/legacy/engines/*.ps1",
-  "graphics2/qml/*.qml"
+  "graphics2/qml/*.qml",
+  "graphics2/slot-family-inventory.json",
+  "graphics2/assets/slot_families/*.png",
+  "graphics2/fonts/*.ttf",
+  "graphics2/fonts/OFL.txt"
 ]
 
 [tool.pytest.ini_options]

@@ -5,6 +5,7 @@ import pytest
 from srstudio.graphics2.item_slots import item_slot_snapshot
 from srstudio.graphics2.model import BindingRole, GraphicsDocument
 from srstudio.graphics2.operations import GraphicsSession
+from srstudio.graphics2.multi_item_slots import create_multi_item_slot, product_cells_for_root
 from srstudio.graphics2.semantic_blocks import build_semantic_blocks, semantic_block
 from srstudio.graphics2.slot_corpus_variant_runtime import create_quinta3_item_slot
 
@@ -45,23 +46,19 @@ def test_club_promo_variant_materializes_secondary_split_price_and_independent_l
     assert set(app_block["roles"]) == {"currency", "reais", "cents", "unit"}
 
 
-def test_compact_blue_and_beige_share_preset_but_apply_different_geometry() -> None:
+def test_compact_blue_and_beige_create_distinct_multi_item_roots() -> None:
     session = GraphicsSession(GraphicsDocument(name="Compact variants"))
-    blue = create_quinta3_item_slot(session, "quinta3-compact-promo", variant="blue", x=20, y=30)
-    blue_snapshot = item_slot_snapshot(session.page, blue)
-    beige = create_quinta3_item_slot(session, "quinta3-compact-promo", variant="beige", x=420, y=30)
-    beige_snapshot = item_slot_snapshot(session.page, beige)
+    blue = create_multi_item_slot(session, "quinta3-compact-blue-strip", x=20, y=30)
+    beige = create_multi_item_slot(session, "quinta3-compact-beige-strip", x=420, y=30)
 
-    assert blue.metadata["preset_id"] == beige.metadata["preset_id"] == "quinta3-compact-promo"
-    assert blue.metadata["quinta3_variant"] == "blue"
-    assert beige.metadata["quinta3_variant"] == "beige"
-    assert blue.metadata["quinta3_parameters"]["theme"] == "blue"
-    assert beige.metadata["quinta3_parameters"]["theme"] == "beige"
-
-    blue_image = blue_snapshot["internal_roles"]["image"]["relative"]
-    beige_image = beige_snapshot["internal_roles"]["image"]["relative"]
-    assert blue_image == pytest.approx([0.0, 0.0, 0.9438, 0.8673], abs=1e-4)
-    assert beige_image == pytest.approx([0.0, 0.0, 1.0, 1.0], abs=1e-4)
+    assert blue.metadata["preset_id"] == "quinta3-compact-blue-strip"
+    assert beige.metadata["preset_id"] == "quinta3-compact-beige-strip"
+    assert len(product_cells_for_root(session.page, blue.id)) == 4
+    assert len(product_cells_for_root(session.page, beige.id)) == 3
+    blue_strip = session.page.node(blue.metadata["shared_visual_nodes"][0])
+    beige_strip = session.page.node(beige.metadata["shared_visual_nodes"][0])
+    assert blue_strip is not None and beige_strip is not None
+    assert blue_strip.style["fill"] != beige_strip.style["fill"]
 
 
 def test_plain_wood_plaque_does_not_create_promotion_or_club_nodes() -> None:

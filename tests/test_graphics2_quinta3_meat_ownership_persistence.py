@@ -9,6 +9,7 @@ import pytest
 from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter, _bridge_save_wrapper
 from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsPage, Rect
 from srstudio.graphics2.operations import GraphicsSession
+from srstudio.graphics2.multi_item_slots import product_cells_for_root
 from srstudio.graphics2.package import load_package, save_package
 from srstudio.graphics2.slot_corpus_full_card import MEAT_FAMILY_ID, MEAT_STRIP_FULL_CARD_PROFILES
 from srstudio.graphics2.slot_corpus_meat_strip_ownership import (
@@ -36,17 +37,16 @@ def _session() -> GraphicsSession:
 def _four_bound_cells() -> tuple[GraphicsSession, list]:
     session = _session()
     router = ItemSlotCommandRouter(session)
-    slots = []
-    for expected_profile in PROFILE_ORDER:
-        result = router.dispatch({"name": "add_item_slot", "preset_id": MEAT_FAMILY_ID})
-        assert result.ok and result.changed, result.to_dict()
-        slot = session.page.slots[result.payload["slot_id"]]
+    result = router.dispatch({"name": "add_item_slot", "preset_id": MEAT_FAMILY_ID})
+    assert result.ok and result.changed, result.to_dict()
+    root = session.page.slots[result.payload["slot_id"]]
+    slots = product_cells_for_root(session.page, root.id)
+    assert len(slots) == 4
+    for expected_profile, slot in zip(PROFILE_ORDER, slots, strict=True):
         assert slot.metadata["full_card_profile"] == expected_profile
         product = dict(PRODUCTS[expected_profile])
-        product["quinta3_supervised_profile"] = expected_profile
         bound = router.dispatch({"name": "bind_product", "slot_id": slot.id, "product": product})
         assert bound.ok and bound.changed, bound.to_dict()
-        slots.append(slot)
     return session, slots
 
 
@@ -261,13 +261,12 @@ def test_save_package_serializes_four_cells_and_reopens_four_with_content(tmp_pa
     with zipfile.ZipFile(output, "r") as archive:
         scene = json.loads(archive.read("scene.json").decode("utf-8"))
     serialized_slots = scene["pages"][0]["slots"]
-    assert len(serialized_slots) == 4
-    assert set(serialized_slots) == set(before_slot_ids)
+    assert len(serialized_slots) == 5
+    assert set(before_slot_ids) < set(serialized_slots)
 
     reopened = load_package(output)
     reopened_page = reopened.active_page
-    assert len(reopened_page.slots) == 4
-    assert list(reopened_page.slots) == before_slot_ids
+    assert len(reopened_page.slots) == 5
     assert [reopened_page.slots[slot_id].product_id for slot_id in before_slot_ids] == before_product_ids
 
     strip_ids = {str(reopened_page.slots[slot_id].metadata.get("meat_strip_root_id") or "") for slot_id in before_slot_ids}
@@ -312,6 +311,6 @@ def test_full_studio_bridge_save_mirrors_selected_copy_into_canonical_session(tm
     assert canonical.is_file()
     selected = load_package(selected_copy)
     reopened_from_full_studio = load_package(canonical)
-    assert len(selected.active_page.slots) == 4
-    assert len(reopened_from_full_studio.active_page.slots) == 4
+    assert len(selected.active_page.slots) == 5
+    assert len(reopened_from_full_studio.active_page.slots) == 5
     assert selected.to_dict() == reopened_from_full_studio.to_dict()

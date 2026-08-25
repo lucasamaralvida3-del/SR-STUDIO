@@ -2,9 +2,9 @@ from __future__ import annotations
 
 """Edição manual persistente da área semântica dos Smart Slots.
 
-Somente metadata do SmartSlot/documento é alterado. Nenhum node visual é
-movido, redimensionado ou removido. As correções ficam disponíveis como corpus
-estruturado para futura melhoria do detector, sem treinamento online.
+Slots detectados continuam metadata-only para não alterar pixels importados.
+Slots de item criados manualmente são componentes editáveis: o mesmo commit
+transforma sua árvore visual para manter bounds semânticos e raster alinhados.
 """
 
 from datetime import datetime, timezone
@@ -36,6 +36,7 @@ def set_manual_slot_bounds(
         original = rect
 
     with session.transaction("Ajustar Smart Slot"):
+        _transform_manual_item_slot(session, slot, rect)
         slot.metadata.setdefault("original_detected_bounds", _rect_dict(original))
         slot.metadata["user_adjusted_bounds"] = _rect_dict(rect)
         slot.metadata["effective_bounds"] = _rect_dict(rect)
@@ -68,6 +69,7 @@ def restore_auto_slot_bounds(session: GraphicsSession, slot_id: str) -> dict[str
     if original is None:
         raise ValueError("Smart Slot não possui original_detected_bounds para restaurar.")
     with session.transaction("Restaurar detecção automática do Smart Slot"):
+        _transform_manual_item_slot(session, slot, original)
         slot.metadata.pop("user_adjusted_bounds", None)
         slot.metadata["effective_bounds"] = _rect_dict(original)
         slot.metadata["adjustment_source"] = "auto-restored"
@@ -263,6 +265,28 @@ def _slot_node_ids(slot: SmartSlot) -> list[str]:
                 if value and value not in result:
                     result.append(value)
     return result
+
+
+def _transform_manual_item_slot(session: GraphicsSession, slot: SmartSlot, bounds: Rect) -> None:
+    """Transforma uma família manual inteira uma única vez no commit da UI."""
+
+    if not bool(slot.metadata.get("manual_item_slot")):
+        return
+    root_id = str(slot.metadata.get("root_node_id") or "")
+    root = session.page.node(root_id)
+    if root is None or session.effective_locked(root_id):
+        return
+    session._scale_tree(root_id, root.rect.normalized(), bounds)  # noqa: SLF001
+    if bool(slot.metadata.get("multi_item_slot_root")):
+        from .multi_item_slots import refresh_multi_item_metadata
+
+        refresh_multi_item_metadata(session.page, slot)
+    elif bool(slot.metadata.get("multi_item_product_cell")):
+        from .multi_item_slots import refresh_multi_item_metadata
+
+        root_slot = session.page.slots.get(str(slot.metadata.get("multi_item_root_slot_id") or ""))
+        if root_slot is not None:
+            refresh_multi_item_metadata(session.page, root_slot)
 
 
 def _require_slot(page: GraphicsPage, slot_id: str) -> SmartSlot:
