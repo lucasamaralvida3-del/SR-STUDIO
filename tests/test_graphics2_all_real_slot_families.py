@@ -296,6 +296,44 @@ def test_multi_item_move_and_resize_use_local_preview_and_one_release_commit() -
     assert router.session.history.undo_label == "Redimensionar elemento"
 
 
+@pytest.mark.parametrize("family_id", [*single_item_family_ids(), *multi_item_family_ids()])
+def test_real_ui_adjust_transforms_the_manual_slot_visual_tree(family_id: str) -> None:
+    router = _router()
+    created = router.dispatch({"name": "add_item_slot", "preset_id": family_id, "x": 80, "y": 90})
+    slot = router.session.page.slots[created.payload["slot_id"]]
+    root_id = str(slot.metadata["root_node_id"])
+    root = router.session.page.node(root_id)
+    assert root is not None
+    before = _relative_snapshot(router.session.page, root_id)
+    old = root.rect.normalized()
+    target = {
+        "x": old.x + 33,
+        "y": old.y + 27,
+        "width": old.width * 1.2,
+        "height": old.height * 0.85,
+    }
+
+    adjusted = router.dispatch({"name": "adjust_smart_slot", "slot_id": slot.id, **target})
+
+    assert adjusted.ok and adjusted.changed
+    final_root = root.rect.normalized()
+    assert (final_root.x, final_root.y, final_root.width, final_root.height) == pytest.approx(tuple(target.values()))
+    assert slot.metadata["effective_bounds"] == pytest.approx(target)
+    after = _relative_snapshot(router.session.page, root_id)
+    assert set(after) == set(before)
+    for node_id, relative in before.items():
+        assert after[node_id] == pytest.approx(relative, abs=0.001)
+    if is_multi_item_root(slot):
+        validate_multi_item_ownership(router.session.page, slot)
+        for cell in product_cells_for_root(router.session.page, slot.id):
+            cell_root = router.session.page.node(str(cell.metadata["root_node_id"]))
+            assert cell_root is not None
+            cell_rect = cell_root.rect.normalized()
+            assert cell.metadata["effective_bounds"] == pytest.approx(
+                {"x": cell_rect.x, "y": cell_rect.y, "width": cell_rect.width, "height": cell_rect.height}
+            )
+
+
 def test_visual_assets_and_anton_are_self_contained_package_data() -> None:
     document = GraphicsDocument(name="Frozen slot assets")
     assert slot_font_family(document) == "Anton"
