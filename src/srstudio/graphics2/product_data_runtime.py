@@ -22,6 +22,8 @@ from typing import Any
 from urllib.parse import unquote, urlparse
 import os
 
+from srstudio.images.library import ImageLibrary
+
 from . import binding_runtime as binding_runtime
 from . import import_bridge as import_bridge
 
@@ -39,6 +41,16 @@ class ProductUpdateResult:
         result = asdict(self)
         result["page_ids"] = list(self.page_ids or [])
         return result
+
+
+def _product_image_library() -> ImageLibrary:
+    """Return the same persistent product-image bank used by the full Studio."""
+
+    return ImageLibrary(Path.home() / ".srstudio5" / "images")
+
+
+def _product_import_service() -> Any:
+    return import_bridge.GraphicsImportService(image_library=_product_image_library())
 
 
 def install_product_data_runtime(session_type: Any, command_module: Any) -> None:
@@ -155,7 +167,7 @@ def _install_session_methods(session_type: Any) -> None:
         path = _source_path(source)
         if path.suffix.lower() not in {".xlsx", ".xlsm"}:
             raise ValueError("Selecione uma planilha XLSX/XLSM de produtos.")
-        imported = import_bridge.GraphicsImportService().import_file(path, project_name=path.stem)
+        imported = _product_import_service().import_file(path, project_name=path.stem)
         products = imported.document.metadata.get("products")
         if not isinstance(products, list):
             products = []

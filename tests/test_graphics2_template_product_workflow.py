@@ -29,6 +29,11 @@ def _document(name: str, *, products: list[dict] | None = None, slot: bool = Fal
 
 
 class _FakeImportService:
+    last_image_library = None
+
+    def __init__(self, *, image_library=None, layout_corpus=None):
+        type(self).last_image_library = image_library
+
     def import_file(self, path, *, project_name=""):
         source = Path(path)
         if source.suffix.lower() in {".xlsx", ".xlsm"}:
@@ -71,6 +76,17 @@ def test_canva_then_spreadsheet_keeps_template_pages_and_loads_catalog(tmp_path,
     assert session.document.active_page_id == template_page_id
     assert "slot-1" in session.document.active_page.slots
     assert [item["id"] for item in session.document.metadata["products"]] == ["p-1", "p-2"]
+
+
+def test_spreadsheet_import_connects_the_full_studio_image_library(monkeypatch) -> None:
+    image_library = object()
+    monkeypatch.setattr(product_data_runtime, "_product_image_library", lambda: image_library)
+    monkeypatch.setattr(product_data_runtime.import_bridge, "GraphicsImportService", _FakeImportService)
+
+    service = product_data_runtime._product_import_service()
+
+    assert isinstance(service, _FakeImportService)
+    assert _FakeImportService.last_image_library is image_library
 
 
 def test_spreadsheet_then_canva_preserves_catalog_and_replaces_only_layout(tmp_path, monkeypatch) -> None:
