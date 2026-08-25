@@ -51,6 +51,22 @@ ApplicationWindow {
         return page ? Object.values(page.slots || {}) : []
     }
 
+    function productTargetSlots() {
+        var available = slots()
+        var targets = []
+        for (var i = 0; i < available.length; ++i) {
+            var slot = available[i]
+            var metadata = slot.metadata || {}
+            if (metadata.multi_item_slot_root)
+                continue
+            var label = String(slot.name || slot.id || "Slot")
+            if (metadata.multi_item_product_cell)
+                label += " · CÉLULA " + (Number(metadata.product_cell_index || 0) + 1)
+            targets.push({"id": slot.id, "name": label})
+        }
+        return targets
+    }
+
     function products() {
         return scene.editor && scene.editor.products ? scene.editor.products : []
     }
@@ -455,7 +471,7 @@ ApplicationWindow {
                             ComboBox {
                                 id: slotCombo
                                 Layout.fillWidth: true
-                                model: slots()
+                                model: productTargetSlots()
                                 textRole: "name"
                                 valueRole: "id"
                                 onActivated: selectedSlotId = currentValue

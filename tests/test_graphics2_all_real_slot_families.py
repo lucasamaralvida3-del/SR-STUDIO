@@ -112,6 +112,14 @@ def test_real_studio_catalog_exposes_all_families_with_type_and_cell_count() -> 
         assert preset["catalog_name"]
 
 
+def test_real_studio_product_target_combo_identifies_multi_item_cells() -> None:
+    qml = Path("src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
+    assert "function productTargetSlots()" in qml
+    assert "if (metadata.multi_item_slot_root)" in qml
+    assert 'label += " · CÉLULA " + (Number(metadata.product_cell_index || 0) + 1)' in qml
+    assert "model: productTargetSlots()" in qml
+
+
 @pytest.mark.parametrize("family_id", single_item_family_ids())
 def test_every_single_item_family_is_creatable_bindable_and_generic(family_id: str) -> None:
     router = _router()
