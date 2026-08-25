@@ -152,6 +152,7 @@ def _make_text(page, parent_id: str, name: str, text: str, bounds: Rect, style: 
         name=name,
         text=text,
         transform=Transform(x=bounds.x, y=bounds.y, width=bounds.width, height=bounds.height),
+        z_index=20,
         binding_role=role,
         style=copy.deepcopy(style),
         metadata={"manual_item_slot_child": True},
@@ -189,26 +190,81 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 kind=NodeKind.RECT,
                 name="ItemSlot Background",
                 transform=Transform(x=px, y=py, width=width, height=height),
+                z_index=-30,
                 style=copy.deepcopy(background_style),
                 metadata={"manual_item_slot_child": True, "item_slot_background": True},
             )
             _add_node(page, background, root.id)
             background_id = background.id
 
+        decoration_ids: list[str] = []
+        raw_decorations = dict(preset.get("metadata") or {}).get("decorations")
+        if isinstance(raw_decorations, list):
+            for index, raw in enumerate(raw_decorations):
+                if not isinstance(raw, dict):
+                    continue
+                try:
+                    kind = NodeKind(str(raw.get("kind") or "rect"))
+                except ValueError:
+                    continue
+                bounds = raw.get("bounds")
+                if not isinstance(bounds, (list, tuple)) or len(bounds) != 4:
+                    continue
+                decoration_rect = _absolute(root_rect, list(bounds))
+                decoration = GraphicsNode(
+                    kind=kind,
+                    name=str(raw.get("name") or f"SLOT DECORATION {index + 1}"),
+                    transform=Transform(
+                        x=decoration_rect.x,
+                        y=decoration_rect.y,
+                        width=decoration_rect.width,
+                        height=decoration_rect.height,
+                    ),
+                    z_index=int(raw.get("z_index") or -20),
+                    style=copy.deepcopy(raw.get("style") or {}),
+                    metadata={
+                        **copy.deepcopy(raw.get("metadata") or {}),
+                        "manual_item_slot_child": True,
+                        "item_slot_decoration": True,
+                        "decoration_index": index,
+                    },
+                )
+                if kind is NodeKind.IMAGE:
+                    from .package import register_local_asset
+                    from .slot_family_inventory import cached_slot_asset_path
+
+                    asset_path = cached_slot_asset_path(
+                        str(raw.get("asset_basename") or ""),
+                        str(raw.get("asset_sha256") or ""),
+                    )
+                    if asset_path is None:
+                        continue
+                    asset = register_local_asset(session.document, asset_path, kind="image")
+                    decoration.asset_id = asset.id
+                    decoration.metadata["bound_image_source"] = str(asset_path)
+                    decoration.metadata["slot_decoration_asset_sha256"] = str(raw.get("asset_sha256") or "")
+                _add_node(page, decoration, root.id)
+                decoration_ids.append(decoration.id)
+
         image_spec = dict(roles.get("image") or {})
         image_rect = _absolute(root_rect, list(image_spec.get("bounds") or [0.1, 0.2, 0.8, 0.45]))
-        image_backplate = GraphicsNode(
-            kind=NodeKind.RECT,
-            name="IMAGE AREA",
-            transform=Transform(x=image_rect.x, y=image_rect.y, width=image_rect.width, height=image_rect.height),
-            style={"fill": "#F8FAFC", "stroke": "#CBD5E1", "stroke_width": 1.0, "radius_ratio": 0.04},
-            metadata={"manual_item_slot_child": True, "item_slot_image_backplate": True},
-        )
-        _add_node(page, image_backplate, root.id)
+        image_backplate_id = ""
+        if dict(preset.get("metadata") or {}).get("image_backplate", True) is not False:
+            image_backplate = GraphicsNode(
+                kind=NodeKind.RECT,
+                name="IMAGE AREA",
+                transform=Transform(x=image_rect.x, y=image_rect.y, width=image_rect.width, height=image_rect.height),
+                z_index=-10,
+                style={"fill": "#F8FAFC", "stroke": "#CBD5E1", "stroke_width": 1.0, "radius_ratio": 0.04},
+                metadata={"manual_item_slot_child": True, "item_slot_image_backplate": True},
+            )
+            _add_node(page, image_backplate, root.id)
+            image_backplate_id = image_backplate.id
         image = GraphicsNode(
             kind=NodeKind.IMAGE,
             name="IMAGE ROLE",
             transform=Transform(x=image_rect.x, y=image_rect.y, width=image_rect.width, height=image_rect.height),
+            z_index=0,
             binding_role=BindingRole.IMAGE,
             style=copy.deepcopy(image_spec.get("style") or {"fit": "contain"}),
             metadata={"manual_item_slot_child": True, "item_slot_role_area": "image", "placeholder": True},
@@ -229,6 +285,7 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
             kind=NodeKind.GROUP,
             name="PRICE AREA",
             transform=Transform(x=price_rect.x, y=price_rect.y, width=price_rect.width, height=price_rect.height),
+            z_index=10,
             metadata={"manual_item_slot_child": True, "item_slot_role_area": "price"},
         )
         _add_node(page, price_group, root.id)
@@ -238,6 +295,7 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 kind=NodeKind.RECT,
                 name="PRICE BACKGROUND",
                 transform=Transform(x=price_rect.x, y=price_rect.y, width=price_rect.width, height=price_rect.height),
+                z_index=-10,
                 style=copy.deepcopy(price_spec["background"]),
                 metadata={"manual_item_slot_child": True, "item_slot_price_background": True},
             )
@@ -281,7 +339,11 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 "preset_id": str(preset.get("id") or preset_id),
                 "root_node_id": root.id,
                 "role_area_nodes": {"image": image.id, "name": name_node.id, "price": price_group.id, "unit": unit.id},
-                "decorative_nodes": [item for item in (background_id, image_backplate.id, price_background_id) if item],
+                "decorative_nodes": [
+                    item
+                    for item in (background_id, *decoration_ids, image_backplate_id, price_background_id)
+                    if item
+                ],
                 "price_block": {
                     "currency_node": component_nodes["currency"].id,
                     "integer_node": component_nodes["integer"].id,
@@ -346,6 +408,10 @@ def item_slot_snapshot(page, slot: SmartSlot) -> dict[str, Any]:
         "price_block": copy.deepcopy(slot.metadata.get("price_block") or {}),
         "state": "filled" if slot.product_id else "empty",
         "product_id": slot.product_id,
+        "slot_kind": "multi_item_root" if slot.metadata.get("multi_item_slot_root") else ("product_cell" if slot.metadata.get("multi_item_product_cell") else "single_item"),
+        "product_cell_index": int(slot.metadata.get("product_cell_index") or 0),
+        "product_cell_count": int(slot.metadata.get("product_cell_count") or 1),
+        "multi_item_root_slot_id": str(slot.metadata.get("multi_item_root_slot_id") or ""),
     }
 
 
@@ -364,6 +430,20 @@ def list_item_slots(document) -> list[dict[str, Any]]:
 def refresh_item_slot_metadata(page, slot: SmartSlot) -> None:
     if not is_manual_item_slot(slot):
         return
+    if slot.metadata.get("multi_item_slot_root"):
+        from .multi_item_slots import refresh_multi_item_metadata
+
+        refresh_multi_item_metadata(page, slot)
+        return
+    root = page.node(str(slot.metadata.get("root_node_id") or ""))
+    if slot.metadata.get("multi_item_product_cell") and root is not None:
+        rect = root.rect.normalized()
+        slot.metadata["effective_bounds"] = {
+            "x": rect.x,
+            "y": rect.y,
+            "width": rect.width,
+            "height": rect.height,
+        }
     price = slot.metadata.setdefault("price_block", {})
     integer = page.node(str(price.get("integer_node") or ""))
     decimal = page.node(str(price.get("decimal_node") or ""))

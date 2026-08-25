@@ -428,7 +428,12 @@ Rectangle {
             model: panel.itemSlotPresets()
             delegate: MenuItem {
                 required property var modelData
-                text: String(modelData.name || modelData.id || "Preset")
+                text: {
+                    var base = String(modelData.catalog_name || modelData.name || modelData.id || "Preset")
+                    var kind = String(modelData.slot_kind || "single_item")
+                    var count = Math.max(1, Number(modelData.product_cell_count || 1))
+                    return kind === "multi_item" ? base + " · MULTI · " + count + " CÉLULAS" : base + " · UNITÁRIO"
+                }
                 onTriggered: panel.addPreset(String(modelData.id || "simples"))
             }
         }
@@ -484,6 +489,12 @@ Rectangle {
             RowLayout {
                 Layout.fillWidth: true
                 Button { text: "Selecionar"; enabled: panel.activeManualSlotId !== ""; onClicked: panel.selectActiveSlot() }
+                Button {
+                    text: "Limpar produto"
+                    visible: panel.activeManualSlot() && String(panel.activeManualSlot().slot_kind || "") === "product_cell"
+                    enabled: visible && String(panel.activeManualSlot().product_id || "") !== ""
+                    onClicked: sceneBridge.dispatch(JSON.stringify({"name":"clear_item_slot_product", "slot_id":panel.activeManualSlotId}))
+                }
                 Button {
                     text: "Duplicar vazio"
                     enabled: panel.activeManualSlotId !== ""

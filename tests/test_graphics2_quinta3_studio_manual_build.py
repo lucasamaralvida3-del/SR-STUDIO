@@ -7,22 +7,13 @@ import pytest
 from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
 from srstudio.graphics2.model import BindingRole, GraphicsDocument
 from srstudio.graphics2.operations import GraphicsSession
+from srstudio.graphics2.multi_item_slots import product_cells_for_root
+from srstudio.graphics2.slot_family_inventory import multi_item_family_ids, slot_family_entries
 
 
-REQUIRED_FAMILIES = {
-    "quinta3-meat-strip",
-    "quinta3-wood-plaque",
-    "quinta3-compact-promo",
-    "quinta3-club-side",
-    "quinta3-stationery-round",
-}
+REQUIRED_FAMILIES = {item["FAMILY_ID"] for item in slot_family_entries()}
 
 EXAMPLES = [
-    (
-        "quinta3-meat-strip",
-        "costela",
-        {"id": "costela", "name": "COSTELA GAÚCHA", "price": "26,99", "unit": "KG"},
-    ),
     (
         "quinta3-wood-plaque",
         "extra",
@@ -35,19 +26,6 @@ EXAMPLES = [
             "secondary_unit": "UN",
             "promotion_label": "PROMOÇÃO",
             "club_label": "NO SR CLUBE SMART",
-        },
-    ),
-    (
-        "quinta3-compact-promo",
-        "odor-boom",
-        {
-            "id": "odor-boom",
-            "name": "ODOR BOOM PERFUME EM CRISTAIS 275G",
-            "price": "19,43",
-            "secondary_price": "16,99",
-            "unit": "UN",
-            "secondary_unit": "UN",
-            "image_asset_id": "asset-odor-boom",
         },
     ),
     (
@@ -80,12 +58,25 @@ def _router(document: GraphicsDocument | None = None) -> ItemSlotCommandRouter:
     return ItemSlotCommandRouter(GraphicsSession(document or GraphicsDocument(name="Quinta3 manual Studio test")))
 
 
-def test_real_studio_payload_exposes_exactly_five_certified_quinta3_families() -> None:
+def test_real_studio_payload_exposes_all_seventeen_certified_quinta3_families() -> None:
     router = _router()
     payload = router.payload()
     preset_ids = {str(item.get("id") or "") for item in payload["editor"]["item_slot_presets"]}
     quinta_ids = {item for item in preset_ids if item.startswith("quinta3-")}
     assert quinta_ids == REQUIRED_FAMILIES
+
+
+@pytest.mark.parametrize("family_id", multi_item_family_ids())
+def test_real_studio_multi_item_creation_exposes_independent_product_cells(family_id: str) -> None:
+    router = _router()
+    created = router.dispatch({"name": "add_item_slot", "preset_id": family_id})
+    root = router.session.page.slots[str(created.payload["slot_id"])]
+    cells = product_cells_for_root(router.session.page, root.id)
+    assert len(cells) == int(root.metadata["product_cell_count"])
+    for index, cell in enumerate(cells):
+        product = {"id": f"p-{index}", "name": f"PRODUTO {index}", "price": "12,34", "unit": "UN"}
+        assert router.dispatch({"name": "bind_product", "slot_id": cell.id, "product": product}).ok
+    assert [cell.product_id for cell in cells] == [f"p-{index}" for index in range(len(cells))]
 
 
 @pytest.mark.parametrize(("family_id", "profile_id", "product"), EXAMPLES)
@@ -131,7 +122,7 @@ def test_real_studio_create_and_apply_product_uses_certified_family_runtime(
         assert router.session.page.node(extras["club_label"][0]).text == product.get("club_label", "NO SR CLUBE SMART")
 
 
-def test_studio_save_reopen_preserves_five_presets_and_created_family_state() -> None:
+def test_studio_save_reopen_preserves_all_presets_and_created_family_state() -> None:
     router = _router()
     created_ids: list[str] = []
     for family_id in sorted(REQUIRED_FAMILIES):
@@ -148,7 +139,10 @@ def test_studio_save_reopen_preserves_five_presets_and_created_family_state() ->
         slot = reopened.active_page.slots[slot_id]
         assert slot.metadata["preset_id"] in REQUIRED_FAMILIES
         assert slot.metadata["quinta3_family"] == slot.metadata["preset_id"]
-        assert slot.metadata.get("source_supervised_geometry") is True
+        if slot.metadata.get("multi_item_slot_root"):
+            assert len(product_cells_for_root(reopened.active_page, slot.id)) == slot.metadata["product_cell_count"]
+        else:
+            assert slot.metadata.get("source_supervised_geometry") is True
 
 
 def test_project_actions_qml_consumes_backend_item_slot_presets_without_ui_fork() -> None:

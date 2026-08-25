@@ -330,8 +330,10 @@ def install_quinta3_family_presets(document) -> list[str]:
     if not isinstance(custom, dict):
         custom = {}
         document.metadata[CUSTOM_PRESETS_KEY] = custom
+    from .slot_family_inventory import apply_document_font_fallback
+
     for preset_id, preset in QUINTA3_FAMILY_PRESETS.items():
-        custom[preset_id] = deepcopy(preset)
+        custom[preset_id] = apply_document_font_fallback(preset, document)
     return list(QUINTA3_FAMILY_PRESETS)
 
 
@@ -350,10 +352,8 @@ def resolve_quinta3_variant(strict_family: str, *, promotion: bool = False, club
     if not preset_id:
         return {"preset_id": "", "variant": "", "parameters": {}}
 
-    if strict == "quinta_compact_promo_beige":
-        variant = "beige"
-    elif strict == "quinta_compact_promo_blue":
-        variant = "blue"
+    if preset_id in {"quinta3-compact-blue-strip", "quinta3-compact-beige-strip", "quinta3-meat-strip"}:
+        variant = "default"
     elif preset_id == "quinta3-wood-plaque":
         variant = "club-promo" if promotion or club else "plain"
     elif preset_id == "quinta3-club-side":
@@ -364,3 +364,49 @@ def resolve_quinta3_variant(strict_family: str, *, promotion: bool = False, club
     variants = QUINTA3_FAMILY_PRESETS[preset_id]["metadata"].get("variants", {})
     parameters = deepcopy(variants.get(variant, {})) if isinstance(variants, dict) else {}
     return {"preset_id": preset_id, "variant": variant, "parameters": parameters}
+
+
+# Mission G2/all-real-slot-families-usable promotes every visually distinct
+# strict corpus family to the real Studio catalog.  Keep the definitions above
+# as migration/source documentation, then replace the active catalog from the
+# frozen inventory.  Runtime family selection remains purely structural: the
+# mapping contains strict visual-family ids, never product/category/SKU text.
+from .slot_family_inventory import slot_family_presets as _inventory_presets
+
+
+_LEGACY_RECURRING_PRESETS = deepcopy(QUINTA3_FAMILY_PRESETS)
+QUINTA3_FAMILY_PRESETS = _inventory_presets()
+
+# The multi-item catalog entry represents the shared Meat Strip container, but
+# each of its four ProductCells must keep using the already-certified Meat
+# runtime definition.  Preserve those exact role templates and supervised
+# variants for cell materialization; only the public catalog semantics change
+# from four loose cards to one root with four independently bindable cells.
+_legacy_meat = _LEGACY_RECURRING_PRESETS["quinta3-meat-strip"]
+_active_meat = QUINTA3_FAMILY_PRESETS["quinta3-meat-strip"]
+_active_meat["roles"] = deepcopy(_legacy_meat["roles"])
+_active_meat["background"] = deepcopy(_legacy_meat.get("background"))
+_active_meat["metadata"]["variants"] = deepcopy(_legacy_meat["metadata"]["variants"])
+for _preset_value in QUINTA3_FAMILY_PRESETS.values():
+    _preset_value.setdefault("metadata", {}).setdefault("parameter_schema", deepcopy(_PARAMETER_SCHEMA))
+
+STRICT_TO_BASE_FAMILY = {
+    strict_family: family_id
+    for family_id, preset in QUINTA3_FAMILY_PRESETS.items()
+    for strict_family in preset.get("metadata", {}).get("strict_families", [])
+}
+STRICT_TO_BASE_FAMILY.update(
+    {
+        "quinta_meat_strip": "quinta3-meat-strip",
+        "quinta_compact_promo_blue": "quinta3-compact-blue-strip",
+        "quinta_compact_promo_beige": "quinta3-compact-beige-strip",
+    }
+)
+
+# Retained as a compatibility export for callers that used the former name.
+# These are no longer excluded from the catalog.
+SINGLETON_FAMILIES = {
+    strict_family
+    for strict_family in STRICT_TO_BASE_FAMILY
+    if strict_family.startswith("singleton_")
+}

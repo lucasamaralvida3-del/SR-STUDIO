@@ -32,8 +32,17 @@ from .slot_corpus_bindings import bind_product_to_quinta3_slot
 from .slot_corpus_calibration import QUINTA3_SUPERVISED_PROFILES
 from .slot_corpus_families import QUINTA3_FAMILY_PRESETS, install_quinta3_family_presets
 from .slot_corpus_full_card import MEAT_FAMILY_ID
-from .slot_corpus_meat_strip_ownership import next_meat_profile, normalize_meat_strip_ownership
+from .slot_corpus_meat_strip_ownership import normalize_meat_strip_ownership
 from .slot_corpus_variant_runtime import apply_quinta3_variant, create_quinta3_item_slot
+from .multi_item_slots import (
+    bind_product_to_multi_item_cell,
+    clear_multi_item_cell,
+    create_multi_item_slot,
+    duplicate_multi_item_slot,
+    is_multi_item_root,
+    is_product_cell,
+)
+from .slot_family_inventory import is_multi_item_family
 
 
 # One certified source example is used only to materialize the initial visual
@@ -81,23 +90,24 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         if name == "add_item_slot":
             preset_id = str(command.get("preset_id") or "simples")
             if preset_id in QUINTA3_FAMILY_PRESETS:
-                profile_id = (
-                    next_meat_profile(self.session.page)
-                    if preset_id == MEAT_FAMILY_ID
-                    else _QUINTA3_DEFAULT_PROFILE_BY_FAMILY[preset_id]
-                )
-                profile = QUINTA3_SUPERVISED_PROFILES[profile_id]
-                slot = create_quinta3_item_slot(
-                    self.session,
-                    preset_id,
-                    variant=str(profile["variant"]),
-                    parameters={"supervisedProfile": profile_id},
-                    x=_optional_number(command.get("x")),
-                    y=_optional_number(command.get("y")),
-                )
-                if preset_id == MEAT_FAMILY_ID:
-                    with self.session.transaction("Normalizar ownership Meat Strip"):
-                        normalize_meat_strip_ownership(self.session.page, slot, profile_id=profile_id)
+                if is_multi_item_family(preset_id):
+                    slot = create_multi_item_slot(
+                        self.session,
+                        preset_id,
+                        x=_optional_number(command.get("x")),
+                        y=_optional_number(command.get("y")),
+                    )
+                else:
+                    profile_id = _QUINTA3_DEFAULT_PROFILE_BY_FAMILY.get(preset_id, "")
+                    profile = QUINTA3_SUPERVISED_PROFILES.get(profile_id)
+                    slot = create_quinta3_item_slot(
+                        self.session,
+                        preset_id,
+                        variant=str(profile["variant"]) if profile else "default",
+                        parameters={"supervisedProfile": profile_id} if profile_id else None,
+                        x=_optional_number(command.get("x")),
+                        y=_optional_number(command.get("y")),
+                    )
             else:
                 slot = create_item_slot(
                     self.session,
@@ -137,13 +147,23 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
 
         if name == "duplicate_item_slot":
             slot_id = str(command.get("slot_id") or "")
-            clone = duplicate_item_slot(
-                self.session,
-                slot_id,
-                dx=float(command.get("dx") or 20.0),
-                dy=float(command.get("dy") or 20.0),
-                include_product=bool(command.get("include_product", False)),
-            )
+            source = self.session.page.slots.get(slot_id)
+            if is_multi_item_root(source) or is_product_cell(source):
+                clone = duplicate_multi_item_slot(
+                    self.session,
+                    slot_id,
+                    dx=float(command.get("dx") or 20.0),
+                    dy=float(command.get("dy") or 20.0),
+                    include_product=bool(command.get("include_product", False)),
+                )
+            else:
+                clone = duplicate_item_slot(
+                    self.session,
+                    slot_id,
+                    dx=float(command.get("dx") or 20.0),
+                    dy=float(command.get("dy") or 20.0),
+                    include_product=bool(command.get("include_product", False)),
+                )
             return CommandResult(
                 True,
                 True,
@@ -162,13 +182,22 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         if name == "duplicate":
             manual = item_slot_for_node(self.session.page, self.session.anchor_id or "")
             if manual is not None:
-                clone = duplicate_item_slot(
-                    self.session,
-                    manual.id,
-                    dx=float(command.get("dx") or 20.0),
-                    dy=float(command.get("dy") or 20.0),
-                    include_product=bool(command.get("include_product", False)),
-                )
+                if is_multi_item_root(manual) or is_product_cell(manual):
+                    clone = duplicate_multi_item_slot(
+                        self.session,
+                        manual.id,
+                        dx=float(command.get("dx") or 20.0),
+                        dy=float(command.get("dy") or 20.0),
+                        include_product=bool(command.get("include_product", False)),
+                    )
+                else:
+                    clone = duplicate_item_slot(
+                        self.session,
+                        manual.id,
+                        dx=float(command.get("dx") or 20.0),
+                        dy=float(command.get("dy") or 20.0),
+                        include_product=bool(command.get("include_product", False)),
+                    )
                 return CommandResult(
                     True,
                     True,
@@ -180,6 +209,8 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
             slot_id = str(command.get("slot_id") or "")
             slot = self.session.page.slots.get(slot_id)
             if is_manual_item_slot(slot):
+                if is_multi_item_root(slot):
+                    return CommandResult(False, False, "Escolha uma ProductCell do container para aplicar o produto.")
                 product = command.get("product")
                 if not isinstance(product, dict):
                     product_id = str(command.get("product_id") or "")
@@ -188,7 +219,9 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 if not isinstance(product, dict):
                     return CommandResult(False, False, "Produto não encontrado.")
 
-                if slot.metadata.get("quinta3_family"):
+                if is_product_cell(slot):
+                    changed = bind_product_to_multi_item_cell(self.session, slot_id, product)
+                elif slot.metadata.get("quinta3_family"):
                     profile_id = str(product.get("quinta3_supervised_profile") or "").strip()
                     profile = QUINTA3_SUPERVISED_PROFILES.get(profile_id)
                     if profile and str(profile.get("family_id") or "") == str(slot.metadata.get("preset_id") or ""):
@@ -206,6 +239,16 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 else:
                     changed = bind_product_to_item_slot(self.session, slot_id, product)
                 return CommandResult(True, changed, "Produto aplicado ao ItemSlot.")
+
+        if name in {"clear_item_slot_product", "delete_product_from_cell"}:
+            changed = clear_multi_item_cell(self.session, str(command.get("slot_id") or ""))
+            return CommandResult(True, changed, "Produto removido da célula." if changed else "ProductCell não encontrada.")
+
+        if name == "delete":
+            manual = item_slot_for_node(self.session.page, self.session.anchor_id or "")
+            if is_product_cell(manual):
+                changed = clear_multi_item_cell(self.session, manual.id)
+                return CommandResult(True, changed, "Produto removido; estrutura multi-item preservada.")
 
         result = super().dispatch(command)
         if result.changed and name in {"drop_product", "paste", "undo", "redo", "delete"}:

@@ -68,17 +68,11 @@ def test_exact_product_image_provenance_covers_all_products_without_parallel_db(
     }
 
 
-def test_only_recurring_structures_become_reusable_family_presets() -> None:
-    assert quinta3_family_ids() == (
-        "quinta3-meat-strip",
-        "quinta3-wood-plaque",
-        "quinta3-compact-promo",
-        "quinta3-club-side",
-        "quinta3-stationery-round",
-    )
-    assert len(STRICT_TO_BASE_FAMILY) == 6
+def test_every_real_structure_becomes_a_reusable_family_preset() -> None:
+    assert len(quinta3_family_ids()) == 17
+    assert len(STRICT_TO_BASE_FAMILY) == 17
     assert len(SINGLETON_FAMILIES) == 11
-    assert set(SINGLETON_FAMILIES).isdisjoint(QUINTA3_FAMILY_PRESETS)
+    assert all(STRICT_TO_BASE_FAMILY[item] in QUINTA3_FAMILY_PRESETS for item in SINGLETON_FAMILIES)
 
     document = GraphicsDocument(name="Quinta 3 learned families")
     installed = install_quinta3_family_presets(document)
@@ -89,7 +83,7 @@ def test_only_recurring_structures_become_reusable_family_presets() -> None:
     assert set(custom) == set(quinta3_family_ids())
     listed_ids = {preset["id"] for preset in list_item_slot_presets(document)}
     assert set(quinta3_family_ids()) <= listed_ids
-    assert not (SINGLETON_FAMILIES & listed_ids)
+    assert set(quinta3_family_ids()) <= listed_ids
 
 
 def test_unit_wording_never_selects_or_splits_a_family() -> None:
@@ -106,17 +100,15 @@ def test_unit_wording_never_selects_or_splits_a_family() -> None:
         assert resolved["preset_id"] == "quinta3-meat-strip", unit
 
 
-def test_compact_blue_and_beige_are_one_base_slot_with_theme_geometry_variant() -> None:
+def test_compact_blue_and_beige_are_distinct_multi_item_structures() -> None:
     blue = resolve_quinta3_variant("quinta_compact_promo_blue", promotion=True)
     beige = resolve_quinta3_variant("quinta_compact_promo_beige", promotion=True)
 
-    assert blue["preset_id"] == beige["preset_id"] == "quinta3-compact-promo"
-    assert blue["variant"] == "blue"
-    assert beige["variant"] == "beige"
-    assert blue["parameters"]["theme"] == "blue"
-    assert beige["parameters"]["theme"] == "beige"
-    assert "role_overrides" not in blue["parameters"]
-    assert beige["parameters"]["role_overrides"]["image"] == [0.0, 0.0, 1.0, 1.0]
+    assert blue["preset_id"] == "quinta3-compact-blue-strip"
+    assert beige["preset_id"] == "quinta3-compact-beige-strip"
+    assert blue["variant"] == beige["variant"] == "default"
+    assert QUINTA3_FAMILY_PRESETS[blue["preset_id"]]["product_cell_count"] == 4
+    assert QUINTA3_FAMILY_PRESETS[beige["preset_id"]]["product_cell_count"] == 3
 
 
 def test_wood_plaque_reuses_one_family_for_plain_and_club_promo() -> None:
@@ -140,10 +132,10 @@ def test_image_copies_and_promotion_are_parameters_not_family_discriminators() -
 
     # Every frozen decoration/media hash must remain a real 64-char SHA.
     hashes = [
-        decoration["media_sha256"]
+        decoration["asset_sha256"]
         for preset in QUINTA3_FAMILY_PRESETS.values()
         for decoration in preset["metadata"].get("decorations", [])
-        if decoration.get("media_sha256")
+        if decoration.get("asset_sha256")
     ]
     assert hashes
     assert all(len(item) == 64 for item in hashes)
