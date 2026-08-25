@@ -858,7 +858,10 @@ ApplicationWindow {
                                     width: displayBounds.width * zoom
                                     height: displayBounds.height * zoom
                                     visible: showSlotOverlay && width > 2 && height > 2
-                                    z: 100000
+                                    // Keep the explicitly selected semantic slot above overlapping
+                                    // ProductCells so a selected multi-item ROOT can receive MOVE and
+                                    // RESIZE input across its full bounds.
+                                    z: isSelectedSlot ? 100001 : 100000
 
                                     function clampPreview(raw) {
                                         var pageW = page ? Number(page.width || 1) : 1

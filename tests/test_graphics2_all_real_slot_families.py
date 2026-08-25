@@ -121,6 +121,7 @@ def test_real_studio_product_target_combo_identifies_multi_item_cells() -> None:
 
     product_mouse = qml[qml.index("id: productMouse") : qml.index("onDoubleClicked: if (selectedSlotId)")]
     assert "anchors.rightMargin: 44" in product_mouse
+    assert "z: isSelectedSlot ? 100001 : 100000" in qml
 
 
 @pytest.mark.parametrize("family_id", single_item_family_ids())
