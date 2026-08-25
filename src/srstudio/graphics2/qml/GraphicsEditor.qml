@@ -527,6 +527,7 @@ ApplicationWindow {
                                     MouseArea {
                                         id: productMouse
                                         anchors.fill: parent
+                                        anchors.rightMargin: 44
                                         hoverEnabled: true
                                         acceptedButtons: Qt.LeftButton
                                         preventStealing: dragging
