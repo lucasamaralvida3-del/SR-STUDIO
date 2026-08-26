@@ -14,10 +14,16 @@ from srstudio.core.models import Product
 from srstudio.posters.auto_model import PosterAutoModelResolver
 from srstudio.posters.core import PosterBatchResult, PosterKind, PosterTemplate
 from srstudio.posters.legacy import SRPosterEngine
+from srstudio.posters.preprinted_offer import materialize_preprinted_offer_assets
+
+
+def _packaged_legacy_assets_root() -> Path:
+    return Path(__file__).resolve().parents[1] / "assets" / "poster_templates" / "legacy"
 
 
 def legacy_assets_root() -> Path:
-    return Path(__file__).resolve().parents[1] / "assets" / "poster_templates" / "legacy"
+    """Return the runtime poster assets calibrated for preprinted OFERTA paper."""
+    return materialize_preprinted_offer_assets(_packaged_legacy_assets_root())
 
 
 def legacy_models_root() -> Path:
@@ -138,7 +144,9 @@ class LegacyPosterBridge:
             decision = self.model_resolver.promotion(product)
             poster_type = forced_spec[0] if forced_spec is not None else decision.poster_type
             forced_has_limit = forced_spec[1] if forced_spec is not None else None
-            campaign = campaign_override or product.campaign or "OFERTA!!"
+            # The physical stock now carries the large OFERTA headline. An empty
+            # campaign must stay empty instead of falling back to "OFERTA!!".
+            campaign = campaign_override or product.campaign or ""
             promo = ""
             club = ""
             if poster_type == PosterAutoModelResolver.TYPE_CLUB_ONLY:
@@ -213,34 +221,22 @@ class LegacyPosterBridge:
                 paths["sale"] = forced_path
 
         args = [
-            "-JobsJson",
-            str(jobs),
-            "-OutputDir",
-            str(output),
-            "-Model1",
-            str(paths["model1"]),
-            "-Model2",
-            str(paths["model2"]),
-            "-Model1Limit",
-            str(paths["model1_limit"]),
-            "-Model2Limit",
-            str(paths["model2_limit"]),
-            "-ClubModel",
-            str(paths["club"]),
-            "-ClubModelLimit",
-            str(paths["club_limit"]),
-            "-SaleModel",
-            str(paths["sale"]),
+            "-JobsJson", str(jobs),
+            "-OutputDir", str(output),
+            "-Model1", str(paths["model1"]),
+            "-Model2", str(paths["model2"]),
+            "-Model1Limit", str(paths["model1_limit"]),
+            "-Model2Limit", str(paths["model2_limit"]),
+            "-ClubModel", str(paths["club"]),
+            "-ClubModelLimit", str(paths["club_limit"]),
+            "-SaleModel", str(paths["sale"]),
         ]
         self._run_script(script, args)
 
     def _run_wholesale(self, jobs: Path, output: Path) -> None:
         script = legacy_engines_root() / "AtacadoEngine.ps1"
         model = legacy_models_root() / "ATACADO.pptx"
-        self._run_script(
-            script,
-            ["-JobsJson", str(jobs), "-OutputDir", str(output), "-Model", str(model)],
-        )
+        self._run_script(script, ["-JobsJson", str(jobs), "-OutputDir", str(output), "-Model", str(model)])
 
     @staticmethod
     def _forced_promotion_spec(filename: str) -> tuple[int, bool] | None:
@@ -267,19 +263,11 @@ class LegacyPosterBridge:
             shell,
             "-NoProfile",
             "-NonInteractive",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-File",
-            str(script),
+            "-ExecutionPolicy", "Bypass",
+            "-File", str(script),
             *args,
         ]
-        completed = subprocess.run(
-            command,
-            capture_output=True,
-            text=True,
-            timeout=300,
-            check=False,
-        )
+        completed = subprocess.run(command, capture_output=True, text=True, timeout=300, check=False)
         if completed.returncode != 0:
             detail = (completed.stderr or completed.stdout or "Falha no engine de cartazes.").strip()
             raise RuntimeError(detail[-5000:])
@@ -312,7 +300,6 @@ class LegacyPosterBridge:
     @staticmethod
     def _money(value) -> str:
         from srstudio.core.models import to_decimal
-
         decimal = to_decimal(value)
         if decimal is None:
             return ""
