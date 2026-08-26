@@ -42,6 +42,7 @@ srstudio = [
   "assets/brand/*.png",
   "assets/brand/*.ico",
   "assets/poster_templates/legacy/manifest.json",
+  "assets/poster_templates/legacy/preprinted_offer_layouts.json",
   "assets/poster_templates/legacy/models/*.pptx",
   "assets/poster_templates/legacy/engines/*.ps1",
   "graphics2/qml/*.qml"
