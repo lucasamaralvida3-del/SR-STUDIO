@@ -1,0 +1,267 @@
+name: Publish G2 Beta 34 Verified
+
+on:
+  pull_request:
+    branches:
+      - beta/cartazes-preprinted-offer-paper-v2
+    types: [opened, synchronize, reopened]
+    paths:
+      - '.github/workflows/g2-beta34-cartazes-preprinted-offer-release.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PRODUCTION_SOURCE_SHA: aed3c91379e83f912935c0d2f87fb4167a3a9ae6
+      BETA_VERSION: 5.0.0-hybrid.g2beta.34
+      BETA_TAG: g2-beta-34
+      BETA_LABEL: G2 Beta 34 — Cartazes para papel OFERTA pré-impresso
+      BETA_BUNDLE_NAME: SR_STUDIO_G2_BETA_34_PROFESSIONAL.zip
+
+    steps:
+      - name: Checkout exact production candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCTION_SOURCE_SHA }}
+          fetch-depth: 0
+
+      - name: Verify exact source
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:PRODUCTION_SOURCE_SHA) { throw "Wrong source SHA: $actual" }
+          if (git status --porcelain) { throw 'Source checkout is not clean.' }
+          Write-Host "SOURCE_SHA=$actual"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2-build]" pyinstaller
+
+      - name: Cartazes and regression gates
+        shell: pwsh
+        run: |
+          python -m compileall -q src
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          ruff check src tests --select E9,F63,F7,F82
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          @'
+          import pytest
+          raise SystemExit(pytest.main([
+              "-q",
+              "tests/test_cartazes_preprinted_offer_runtime.py",
+              "tests/test_cartazes_table_visual.py",
+              "tests/test_graphics2_pptx_square_wrap_spautofit.py",
+              "tests/test_graphics2_quinta3_meat_square_wrap_runtime.py",
+              "tests/test_graphics2_full_studio_entrypoint.py",
+              "tests/test_graphics2_studio_bridge.py",
+          ]))
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Materialize and validate seven runtime poster models
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          import json
+          import zipfile
+          from srstudio.posters.preprinted_offer import materialize_preprinted_offer_assets
+          root = Path('src/srstudio/assets/poster_templates/legacy').resolve()
+          runtime = materialize_preprinted_offer_assets(root)
+          layout = json.loads((root / 'preprinted_offer_layouts.json').read_text(encoding='utf-8'))['models']
+          assert len(layout) == 7, len(layout)
+          for name in layout:
+              model = runtime / 'models' / name
+              assert model.is_file(), model
+              with zipfile.ZipFile(model) as archive:
+                  assert archive.testzip() is None, name
+          engine = (runtime / 'engines' / 'PowerPointEngine.ps1').read_text(encoding='utf-8-sig')
+          assert '50.79' in engine
+          assert 'Set-TextExact $unit1 ([string]$job.unidade_exibicao) 36.0' in engine
+          assert 'Set-TextExact $unit2 ([string]$job.unidade_exibicao) 44.0' in engine
+          print('PREPRINTED_OFFER_MODELS=7/7')
+          print('PREPRINTED_OFFER_RUNTIME=PASS')
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Build full SR Studio shell
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" `
+            --paths src `
+            --collect-all pypdfium2 `
+            --collect-all pypdfium2_raw `
+            --icon "src/srstudio/assets/brand/SR_Studio.ico" `
+            --add-data "src/srstudio/assets/brand;srstudio/assets/brand" `
+            --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" `
+            src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw 'SR Studio 5.exe missing.' }
+
+      - name: Build and embed Graphics2 host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $source = "dist/graphics2-host/SRGraphicsEngine2Host"
+          if (!(Test-Path "$source/SRGraphicsEngine2Host.exe")) { throw 'Graphics2 host missing.' }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
+          Copy-Item "$source/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          @'
+          from pathlib import Path
+          from srstudio.graphics2.host_runtime import validate_runtime_host
+          report = validate_runtime_host(Path(r"dist/SR Studio 5/Graphics2Host").resolve(), full=True)
+          assert report.ok, report
+          print(f"GRAPHICS2_RUNTIME_OK={report.ok}")
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Validate frozen poster assets
+        shell: pwsh
+        run: |
+          $assets = "dist/SR Studio 5/_internal/srstudio/assets/poster_templates/legacy"
+          if (!(Test-Path "$assets/preprinted_offer_layouts.json")) { throw 'Preprinted layout contract missing from frozen app.' }
+          $modelCount = (Get-ChildItem "$assets/models" -Filter *.pptx).Count
+          if ($modelCount -lt 7) { throw "Frozen poster model catalog incomplete: $modelCount" }
+          if (!(Test-Path "$assets/engines/PowerPointEngine.ps1")) { throw 'PowerPoint engine missing from frozen app.' }
+          Write-Host "FROZEN_POSTER_LAYOUT_CONTRACT=PASS"
+
+      - name: Assemble launcher-compatible bundle
+        shell: pwsh
+        run: |
+          $betaRoot = "release/channel-beta"
+          $filesRoot = Join-Path $betaRoot "files"
+          $studioRoot = Join-Path $filesRoot "SRStudio5"
+          Remove-Item $betaRoot -Recurse -Force -ErrorAction SilentlyContinue
+          New-Item -ItemType Directory -Force -Path $studioRoot | Out-Null
+          Copy-Item "dist/SR Studio 5/*" $studioRoot -Recurse -Force
+          $wrapper = @'
+          from pathlib import Path
+          import subprocess
+          import sys
+          root = Path(__file__).resolve().parent
+          exe = root / "SRStudio5" / "SR Studio 5.exe"
+          if not exe.is_file():
+              raise FileNotFoundError(f"SR Studio G2 executable not found: {exe}")
+          subprocess.Popen([str(exe)], cwd=str(exe.parent))
+          sys.exit(0)
+          '@
+          [IO.File]::WriteAllText((Join-Path $filesRoot "SR_Studio_Gerador.py"), $wrapper, (New-Object Text.UTF8Encoding($false)))
+          @{
+            version = $env:BETA_VERSION
+            product_version = "5.0.0"
+            channel = "beta"
+            release_label = $env:BETA_LABEL
+            entrypoint = "SR_Studio_Gerador.py"
+            professional_executable = "SRStudio5/SR Studio 5.exe"
+            graphics2_primary = $true
+            source_commit = $env:PRODUCTION_SOURCE_SHA
+            poster_quantity = $true
+            preprinted_offer_paper = $true
+            poster_layouts = 7
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $filesRoot "version.json") -Encoding UTF8
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $bundle = Join-Path "release" $env:BETA_BUNDLE_NAME
+          Remove-Item $bundle -Force -ErrorAction SilentlyContinue
+          Push-Location $betaRoot
+          try {
+            $destination = Join-Path (Resolve-Path "../").Path $env:BETA_BUNDLE_NAME
+            Compress-Archive -Path "files" -DestinationPath $destination -CompressionLevel Optimal -Force
+          } finally { Pop-Location }
+          if (!(Test-Path $bundle)) { throw 'Beta bundle was not created.' }
+          $hash = (Get-FileHash $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item $bundle).Length
+          "BETA_BUNDLE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_BUNDLE_SIZE=$size" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "LOCAL_BETA_SHA256=$hash"
+          Write-Host "LOCAL_BETA_SIZE=$size"
+
+      - name: Validate local bundle layout
+        shell: pwsh
+        run: |
+          $validation = "release/beta34-local-validate"
+          Remove-Item $validation -Recurse -Force -ErrorAction SilentlyContinue
+          Expand-Archive -LiteralPath (Join-Path "release" $env:BETA_BUNDLE_NAME) -DestinationPath $validation -Force
+          if (!(Test-Path "$validation/files/SR_Studio_Gerador.py")) { throw 'Launcher shim missing.' }
+          if (!(Test-Path "$validation/files/SRStudio5/SR Studio 5.exe")) { throw 'Professional executable missing.' }
+          if (!(Test-Path "$validation/files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw 'Graphics2 host missing from bundle.' }
+          $version = Get-Content "$validation/files/version.json" -Raw | ConvertFrom-Json
+          if (!$version.poster_quantity) { throw 'Qtd. Cartazes flag missing.' }
+          if (!$version.preprinted_offer_paper) { throw 'Preprinted OFERTA flag missing.' }
+          if ([int]$version.poster_layouts -ne 7) { throw 'Seven-layout contract missing.' }
+
+      - name: Publish Beta 34 prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $bundle = Join-Path "release" $env:BETA_BUNDLE_NAME
+          $notes = @"
+          SR Studio — $env:BETA_LABEL
+
+          Exact source SHA: $env:PRODUCTION_SOURCE_SHA
+          Gerador de Cartazes calibrado para os 7 layouts finais em papel com OFERTA pré-impresso.
+          Preserva Qtd. Cartazes e o Studio de Encartes da Beta anterior.
+          O canal Beta só será promovido após re-download público e verificação byte a byte.
+
+          BETA / TEST BUILD — not Stable.
+          "@
+          gh release view $env:BETA_TAG *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Beta 34 tag already exists; refusing to clobber immutable release.' }
+          gh release create $env:BETA_TAG $bundle --title "SR Studio — $env:BETA_LABEL" --notes $notes --prerelease --latest=false --target $env:PRODUCTION_SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish Beta 34.' }
+
+      - name: Verify public release asset with Invoke-WebRequest
+        shell: pwsh
+        run: |
+          $url = "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/$env:BETA_TAG/$env:BETA_BUNDLE_NAME"
+          $out = Join-Path $env:RUNNER_TEMP 'beta34-public-iwr.zip'
+          $uri = $url + '?verify=' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          Invoke-WebRequest -UseBasicParsing -Uri $uri -OutFile $out -TimeoutSec 300 -Headers @{'Cache-Control'='no-cache'}
+          $sha = (Get-FileHash -LiteralPath $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item -LiteralPath $out).Length
+          Write-Host "PUBLIC_IWR_SHA256=$sha"
+          Write-Host "PUBLIC_IWR_SIZE=$size"
+          if ($sha -ne $env:BETA_BUNDLE_SHA256) { throw "Public IWR SHA mismatch: $sha" }
+          if ($size -ne [int64]$env:BETA_BUNDLE_SIZE) { throw "Public IWR size mismatch: $size" }
+          $extract = Join-Path $env:RUNNER_TEMP 'beta34-public-iwr-extract'
+          Expand-Archive -LiteralPath $out -DestinationPath $extract -Force
+          if (!(Test-Path "$extract/files/SRStudio5/SR Studio 5.exe")) { throw 'Public IWR ZIP layout invalid.' }
+
+      - name: Verify public release asset with curl
+        shell: pwsh
+        run: |
+          $url = "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/$env:BETA_TAG/$env:BETA_BUNDLE_NAME"
+          $out = Join-Path $env:RUNNER_TEMP 'beta34-public-curl.zip'
+          $uri = $url + '?verify=' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          & curl.exe -L --fail --no-progress-meter -H 'Cache-Control: no-cache' -o $out $uri
+          if ($LASTEXITCODE -ne 0) { throw "curl failed: $LASTEXITCODE" }
+          $sha = (Get-FileHash -LiteralPath $out -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item -LiteralPath $out).Length
+          Write-Host "PUBLIC_CURL_SHA256=$sha"
+          Write-Host "PUBLIC_CURL_SIZE=$size"
+          if ($sha -ne $env:BETA_BUNDLE_SHA256) { throw "Public curl SHA mismatch: $sha" }
+          if ($size -ne [int64]$env:BETA_BUNDLE_SIZE) { throw "Public curl size mismatch: $size" }
+          $extract = Join-Path $env:RUNNER_TEMP 'beta34-public-curl-extract'
+          Expand-Archive -LiteralPath $out -DestinationPath $extract -Force
+          if (!(Test-Path "$extract/files/SRStudio5/SR Studio 5.exe")) { throw 'Public curl ZIP layout invalid.' }
+
+      - name: Print verified release evidence
+        shell: pwsh
+        run: |
+          Write-Host "BETA_VERSION=$env:BETA_VERSION"
+          Write-Host "SOURCE_SHA=$env:PRODUCTION_SOURCE_SHA"
+          Write-Host "VERIFIED_PUBLIC_SHA256=$env:BETA_BUNDLE_SHA256"
+          Write-Host "VERIFIED_PUBLIC_SIZE=$env:BETA_BUNDLE_SIZE"
+          Write-Host 'PUBLIC_ASSET_VERIFIED=TRUE'
