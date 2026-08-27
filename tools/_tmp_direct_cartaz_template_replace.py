@@ -28,12 +28,22 @@ def payload_path(model_name: str) -> Path:
     return PAYLOADS / (Path(model_name).stem + ".txt")
 
 
+def decode_payload(model_name: str) -> bytes:
+    text = payload_path(model_name).read_text(encoding="ascii").strip()
+    text += "=" * (-len(text) % 4)
+    try:
+        return zlib.decompress(base64.b64decode(text))
+    except Exception as exc:
+        raise RuntimeError(f"cannot decode payload {model_name}: len={len(text)}") from exc
+
+
 def replace(model_name: str) -> bool:
     model = MODELS / model_name
-    slide = zlib.decompress(base64.b64decode(payload_path(model_name).read_text(encoding="ascii").strip()))
+    slide = decode_payload(model_name)
     expected = EXPECTED[model_name]
-    if hashlib.sha256(slide).hexdigest() != expected:
-        raise RuntimeError(f"payload SHA mismatch: {model_name}")
+    actual_payload = hashlib.sha256(slide).hexdigest()
+    if actual_payload != expected:
+        raise RuntimeError(f"payload SHA mismatch: {model_name}: {actual_payload} != {expected}")
     with ZipFile(model, "r") as source:
         if hashlib.sha256(source.read(ENTRY)).hexdigest() == expected:
             return False
