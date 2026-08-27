@@ -56,7 +56,9 @@ jobs:
           ruff check src tests --select E9,F63,F7,F82
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           @'
+          from PySide6 import QtCore, QtGui
           import pytest
+          print(f"QT={QtCore.qVersion()} | QFONT={QtGui.QFont.__name__}")
           raise SystemExit(pytest.main([
               "-q",
               "tests/test_cartazes_preprinted_offer_runtime.py",
