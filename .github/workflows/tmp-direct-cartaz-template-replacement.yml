@@ -1,0 +1,51 @@
+name: TEMP Direct Cartaz Template Replacement
+
+on:
+  pull_request:
+    branches:
+      - beta/g2beta32-cartazes-quantity
+    types: [opened, synchronize, reopened]
+    paths:
+      - 'tools/_tmp_direct_cartaz_template_replace.py'
+      - 'tools/_tmp_cartaz_payloads/**'
+      - '.github/workflows/tmp-direct-cartaz-template-replacement.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  replace:
+    if: github.head_ref == 'beta/cartazes-direct-pptx-replacement'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Replace only seven legacy PPTX templates
+        run: python tools/_tmp_direct_cartaz_template_replace.py
+      - name: Gate changed paths and commit binaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t changed < <(git status --porcelain | sed -E 's/^...//' | sort)
+          expected=(
+            src/srstudio/assets/poster_templates/legacy/models/CARTAZ_VENDA.pptx
+            src/srstudio/assets/poster_templates/legacy/models/CLUBE_EXCLUSIVO.pptx
+            src/srstudio/assets/poster_templates/legacy/models/CLUBE_EXCLUSIVO_COM_LIMITE.pptx
+            src/srstudio/assets/poster_templates/legacy/models/SEGUNDA_DA_LIMPEZA_1_PRECO.pptx
+            src/srstudio/assets/poster_templates/legacy/models/SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx
+            src/srstudio/assets/poster_templates/legacy/models/SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx
+            src/srstudio/assets/poster_templates/legacy/models/SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx
+          )
+          printf '%s\n' "${changed[@]}" > /tmp/changed
+          printf '%s\n' "${expected[@]}" | sort > /tmp/expected
+          diff -u /tmp/expected /tmp/changed
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -- "${expected[@]}"
+          git commit -m 'fix(cartazes): replace legacy PPTX templates with supplied layouts'
+          git push origin HEAD:${{ github.head_ref }}
