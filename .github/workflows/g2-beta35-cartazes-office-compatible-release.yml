@@ -1,0 +1,518 @@
+name: Publish G2 Beta 35 Cartazes Office Compatible
+
+on:
+  push:
+    branches:
+      - release/g2beta35-cartazes-office-compatible
+    paths:
+      - '.github/workflows/g2-beta35-cartazes-office-compatible-release.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-g2-beta-35
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'lucasamaralvida3-del/SR-STUDIO' && github.ref == 'refs/heads/release/g2beta35-cartazes-office-compatible'
+    runs-on: windows-latest
+    timeout-minutes: 60
+    env:
+      PRODUCTION_SOURCE_SHA: e68357db3d708e756d0dbfab646847b3a16f5b19
+      BETA_VERSION: 5.0.0-hybrid.g2beta.35
+      BETA_TAG: g2-beta-35
+      BETA_LABEL: G2 Beta 35 — Cartazes Office Compatible
+      BETA_BUNDLE_NAME: SR_STUDIO_G2_BETA_35_PROFESSIONAL.zip
+      PYTHONDONTWRITEBYTECODE: '1'
+      PYTHONIOENCODING: utf-8
+
+    steps:
+      - name: Checkout exact production candidate
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.PRODUCTION_SOURCE_SHA }}
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Freeze source and install release-only verification script
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($LASTEXITCODE -ne 0 -or $actual -ne $env:PRODUCTION_SOURCE_SHA) { throw "Wrong source SHA: $actual" }
+          if (git status --porcelain) { throw 'Source checkout is not clean.' }
+          $script = Join-Path $env:RUNNER_TEMP 'verify_beta35.py'
+          @'
+          """Release-only gates embedded in the Beta 35 workflow; never production code."""
+          import hashlib
+          import json
+          import marshal
+          import os
+          from pathlib import Path, PurePosixPath
+          import re
+          import subprocess
+          import sys
+          import types
+          import xml.etree.ElementTree as ET
+          import zipfile
+
+          SOURCE = "e68357db3d708e756d0dbfab646847b3a16f5b19"
+          BASE = "59f1484518c274f069c2b5e51a04191144eca83c"
+          ROOT = Path.cwd().resolve()
+          TEMP = Path(os.environ["RUNNER_TEMP"]).resolve()
+          EVIDENCE = TEMP / "beta35-evidence"
+          EVIDENCE.mkdir(exist_ok=True)
+          MODELS = "src/srstudio/assets/poster_templates/legacy/models/"
+          APPROVED = {
+              "CARTAZ_VENDA.pptx": (41210, "e146795ec89d339fa5b566b96570a6947434883a83f28931fc2250c55e7498e4"),
+              "CLUBE_EXCLUSIVO.pptx": (325130, "75515a16a7105add27d6597441fa2056946d9e7904d0df2d130206bedc9a44c7"),
+              "CLUBE_EXCLUSIVO_COM_LIMITE.pptx": (326985, "5227a827f35a97f45f5afdc98210f1d41f54bca5f4a97bed1437d85666348a6f"),
+              "SEGUNDA_DA_LIMPEZA_1_PRECO.pptx": (288760, "7a0ef3c245606c1b3fcdddd015ca24a649fde3dad7d9efe2e8a66c0c078b6b1d"),
+              "SEGUNDA_DA_LIMPEZA_1_PRECO_COM_LIMITE.pptx": (290244, "1dae5fce1053eeb36bdcee5912cd519e06bd29466cad5060ed06c3a77e89d7a9"),
+              "SEGUNDA_DA_LIMPEZA_2_PRECOS.pptx": (427538, "fb5b9e275c4e070ded884d8c4bbc4b68db0ea93fc01694354739e3267a89a2a8"),
+              "SEGUNDA_DA_LIMPEZA_2_PRECOS_COM_LIMITE.pptx": (428591, "2190d731c54fd8ee18ea0d151676ca65319a1c4480c4f0663958c559870757eb"),
+          }
+          TESTS = [
+              "test_cartazes_table_visual.py", "test_legacy_poster_bridge_v5.py",
+              "test_legacy_poster_compat_v5.py", "test_poster_auto_model.py",
+              "test_poster_model_catalog_v5.py", "test_poster_template_helpers_v5.py",
+              "test_poster_turbo_v5.py", "test_graphics2_full_studio_entrypoint.py",
+              "test_graphics2_studio_bridge.py", "test_graphics2_host_runtime.py",
+              "test_graphics2_pptx_square_wrap_spautofit.py",
+              "test_graphics2_quinta3_meat_square_wrap_runtime.py",
+          ]
+
+
+          def save(name, data):
+              (EVIDENCE / (name + ".json")).write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+              print(name.upper() + "=" + json.dumps(data, ensure_ascii=False), flush=True)
+
+
+          def sha(path):
+              with Path(path).open("rb") as handle:
+                  return hashlib.file_digest(handle, "sha256").hexdigest()
+
+
+          def git(*args, cwd=ROOT):
+              return subprocess.check_output(["git", "-C", str(cwd), *args], text=True, encoding="utf-8").strip()
+
+
+          def guard(clean=False):
+              assert os.environ["PRODUCTION_SOURCE_SHA"] == SOURCE
+              assert git("rev-parse", "HEAD") == SOURCE
+              assert git("rev-parse", "HEAD^") == BASE
+              changed = git("diff", "--name-status", "--no-renames", BASE + ".." + SOURCE).splitlines()
+              assert sorted(changed) == sorted("M\t" + MODELS + name for name in APPROVED), changed
+              assert not git("diff", "HEAD", "--name-only"), "Tracked source changed"
+              if clean:
+                  assert not git("status", "--porcelain"), "Source must be clean before building"
+              rows = []
+              for name, (size, digest) in APPROVED.items():
+                  path = ROOT / MODELS / name
+                  assert path.stat().st_size == size and sha(path) == digest, name
+                  blob = subprocess.check_output(["git", "-C", str(ROOT), "show", SOURCE + ":" + MODELS + name])
+                  assert hashlib.sha256(blob).hexdigest() == digest
+                  with zipfile.ZipFile(path) as archive:
+                      assert archive.testzip() is None, name
+                      for member in archive.namelist():
+                          if member.endswith((".xml", ".rels")):
+                              ET.fromstring(archive.read(member))
+                  rows.append({"name": name, "sha256": digest, "size": size})
+              return rows
+
+
+          def source():
+              save("source", {"source_sha": SOURCE, "base": BASE, "files_changed": 7, "code_changed": 0,
+                              "approved_pptx": guard(clean=True), "pptx_hashes": "7/7 PASS"})
+
+
+          def regressions():
+              from srstudio.posters.catalog import PosterModelCatalog
+              from srstudio.posters.core import PosterKind, PosterTemplateAnalyzer
+              guard(clean=True)
+              catalog = PosterModelCatalog(EVIDENCE / "catalog")
+              entries = catalog.list(PosterKind.PROMOTION, groups={catalog.GROUP_OFFICIAL})
+              assert {entry.filename for entry in entries} == set(APPROVED)
+              assert len(catalog.list(PosterKind.WHOLESALE, groups={catalog.GROUP_OFFICIAL})) == 1
+              for entry in entries:
+                  template = PosterTemplateAnalyzer().inspect(Path(entry.path), PosterKind.PROMOTION)
+                  assert template.width_mm > 0 and template.height_mm > 0
+              baseline = TEMP / "beta35-baseline"
+              assert not baseline.exists()
+              git("worktree", "add", "--detach", str(baseline), BASE)
+              outcomes = {}
+              for label, repo in (("baseline", baseline), ("source", ROOT)):
+                  scratch = TEMP / ("beta35-tests-" + label)
+                  scratch.mkdir()
+                  env = os.environ.copy()
+                  env["PYTHONPATH"] = str(repo / "src") + os.pathsep + env.get("PYTHONPATH", "")
+                  env["PYTHONPYCACHEPREFIX"] = ("\\\\?\\" if os.name == "nt" else "") + str(scratch / "pycache")
+                  env["PYTHONDONTWRITEBYTECODE"] = "1"
+                  env["PYTEST_DISABLE_PLUGIN_AUTOLOAD"] = "1"
+                  commands = {
+                      "compileall": [sys.executable, "-m", "compileall", "-q", "src"],
+                      "ruff": [sys.executable, "-m", "ruff", "check", "src", "tests", "--select", "E9,F63,F7,F82", "--no-cache"],
+                      "pytest": [sys.executable, "-c", "from PySide6 import QtCore, QtGui; import pytest, sys; raise SystemExit(pytest.main(sys.argv[1:]))",
+                                 "-q", "-p", "no:cacheprovider", "--tb=short", "--basetemp=" + str(scratch / "pt"),
+                                 "--junitxml=" + str(EVIDENCE / (label + "-pytest.xml")), *["tests/" + name for name in TESTS]],
+                  }
+                  exits = {}
+                  for gate, command in commands.items():
+                      log = EVIDENCE / (label + "-" + gate + ".log")
+                      with log.open("w", encoding="utf-8") as handle:
+                          run = subprocess.run(command, cwd=repo, env=env, stdout=handle, stderr=subprocess.STDOUT, timeout=600)
+                      exits[gate] = run.returncode
+                      print(f"{label}/{gate}: exit {run.returncode}", flush=True)
+                      if gate != "pytest":
+                          assert run.returncode == 0, log.read_text(encoding="utf-8", errors="replace")
+                      else:
+                          assert run.returncode in (0, 1), log.read_text(encoding="utf-8", errors="replace")
+                  cases = {}
+                  for case in ET.parse(EVIDENCE / (label + "-pytest.xml")).iter("testcase"):
+                      key = case.attrib.get("classname", "") + "::" + case.attrib["name"]
+                      failure = case.find("failure")
+                      error = case.find("error")
+                      assert error is None, ET.tostring(case, encoding="unicode")
+                      message = "" if failure is None else failure.get("message", "")
+                      for location in (str(repo), str(scratch), str(ROOT), str(TEMP)):
+                          message = message.replace(location, "<PATH>").replace(location.replace("\\", "\\\\"), "<PATH>")
+                      message = re.sub(r"srstudio-proven-batch-[\w-]+", "srstudio-proven-batch-<TMP>", message)
+                      message = re.sub(r"0x[0-9a-fA-F]+", "<ADDRESS>", message)
+                      cases[key] = {"status": "failed" if failure is not None else "skipped" if case.find("skipped") is not None else "passed",
+                                    "type": "" if failure is None else failure.get("type", ""), "message": message}
+                  assert cases, "Empty test suite"
+                  outcomes[label] = {"exits": exits, "cases": cases}
+              base_cases, source_cases = outcomes["baseline"]["cases"], outcomes["source"]["cases"]
+              assert base_cases.keys() == source_cases.keys(), "Different test collection"
+              new = [key for key in source_cases if source_cases[key] != base_cases[key] and source_cases[key]["status"] != "passed"]
+              known = [key for key in source_cases if source_cases[key]["status"] == "failed" and key not in new]
+              result = {"source_sha": SOURCE, "historical_baseline_failures": 5,
+                        "known_baseline_failures": len(known), "known_baseline_failure_tests": known,
+                        "new_regressions": len(new), "new_regression_tests": new,
+                        "counts": {label: {status: sum(case["status"] == status for case in data["cases"].values())
+                                            for status in ("passed", "failed", "skipped")} for label, data in outcomes.items()},
+                        "catalog": "7/7 PASS", "quantity_preserved": True, "test_files": TESTS, "details": outcomes}
+              save("regressions", result)
+              assert not new, new
+              guard(clean=True)
+
+
+          def signature(code):
+              if not isinstance(code, types.CodeType):
+                  return code
+              names = ("co_argcount", "co_posonlyargcount", "co_kwonlyargcount", "co_nlocals", "co_stacksize", "co_flags",
+                       "co_code", "co_names", "co_varnames", "co_freevars", "co_cellvars", "co_firstlineno", "co_linetable", "co_exceptiontable")
+              return tuple(getattr(code, name) for name in names) + (tuple(signature(item) for item in code.co_consts),)
+
+
+          def strings(code):
+              for item in code.co_consts:
+                  if isinstance(item, str):
+                      yield item
+                  elif isinstance(item, types.CodeType):
+                      yield from strings(item)
+
+
+          def frozen(exe, entry):
+              from PyInstaller.archive.readers import CArchiveReader
+              archive = CArchiveReader(str(exe))
+              pyz = archive.open_embedded_archive("PYZ.pyz")
+              count = 0
+              for name in sorted(name for name in pyz.toc if name == "srstudio" or name.startswith("srstudio.")):
+                  code = pyz.extract(name)
+                  if code is None:
+                      continue
+                  path = ROOT / "src" / Path(*name.split("."))
+                  path = path.with_suffix(".py") if path.with_suffix(".py").is_file() else path / "__init__.py"
+                  assert path.is_file(), name
+                  assert signature(code) == signature(compile(path.read_bytes(), str(path), "exec", dont_inherit=True, optimize=0)), name
+                  count += 1
+              entry = ROOT / entry
+              assert signature(marshal.loads(archive.extract(entry.stem))) == signature(compile(entry.read_bytes(), str(entry), "exec", dont_inherit=True, optimize=0))
+              assert count > 0
+              if entry.stem == "turbo_posters":
+                  assert {"Qtd. Cartazes", "poster_copies"} <= set(strings(pyz.extract("srstudio.app.cartazes_table_visual")))
+                  assert {"srstudio.posters.catalog", "srstudio.graphics2.full_studio_bridge", "srstudio.graphics2.studio_bridge"} <= set(pyz.toc)
+              return count
+
+
+          def bundle(label, path, destination):
+              from srstudio.graphics2.host_runtime import validate_runtime_host
+              guard()
+              path, destination = Path(path).resolve(), Path(destination).resolve()
+              assert destination.is_relative_to(TEMP) or destination.is_relative_to(ROOT / "release")
+              assert not destination.exists(), "Refusing to overwrite an existing extraction"
+              digest, size = sha(path), path.stat().st_size
+              assert digest == os.environ["BETA_BUNDLE_SHA256"] and size == int(os.environ["BETA_BUNDLE_SIZE"])
+              with zipfile.ZipFile(path) as archive:
+                  names = [info.filename.replace("\\", "/") for info in archive.infolist()]
+                  assert len(names) == len(set(names))
+                  assert len({name.casefold() for name in names}) == len(names), "Case-colliding ZIP members"
+                  for name in names:
+                      parts = PurePosixPath(name).parts
+                      assert parts and parts[0] == "files" and ".." not in parts and ":" not in name
+                  assert archive.testzip() is None
+                  archive.extractall(destination)
+              studio = destination / "files/SRStudio5"
+              host = studio / "Graphics2Host"
+              for required in (destination / "files/SR_Studio_Gerador.py", studio / "SR Studio 5.exe", host / "SRGraphicsEngine2Host.exe"):
+                  assert required.is_file(), required
+              metadata = json.loads((destination / "files/version.json").read_text(encoding="utf-8-sig"))
+              assert metadata["source_commit"] == SOURCE and metadata["version"] == os.environ["BETA_VERSION"]
+              assert metadata["poster_quantity"] is True
+              expected_names = set(APPROVED) | {"ATACADO.pptx"}
+              copies = []
+              for runtime in (studio, host):
+                  models = runtime / "_internal/srstudio/assets/poster_templates/legacy/models"
+                  assert {item.name for item in models.glob("*.pptx")} == expected_names
+                  for name in sorted(expected_names):
+                      packaged, original = models / name, ROOT / MODELS / name
+                      assert sha(packaged) == sha(original) and packaged.stat().st_size == original.stat().st_size, packaged
+                      if name in APPROVED:
+                          copies.append({"path": packaged.relative_to(destination).as_posix(), "sha256": sha(packaged), "size": packaged.stat().st_size})
+                  engine = models.parent / "engines/PowerPointEngine.ps1"
+                  assert sha(engine) == sha(ROOT / "src/srstudio/assets/poster_templates/legacy/engines/PowerPointEngine.ps1")
+              runtime = validate_runtime_host(host, full=True)
+              assert runtime.ok, runtime
+              frozen_counts = {
+                  "shell": frozen(studio / "SR Studio 5.exe", "src/srstudio/app/turbo_posters.py"),
+                  "host": frozen(host / "SRGraphicsEngine2Host.exe", "build/graphics2_host_entry.py"),
+              }
+              if label == "local":
+                  smoke = subprocess.run([str(host / "SRGraphicsEngine2Host.exe"), "--version"], capture_output=True, text=True,
+                                         encoding="utf-8", errors="replace", timeout=90, creationflags=subprocess.CREATE_NO_WINDOW)
+                  (EVIDENCE / "host-version.log").write_text(smoke.stdout + smoke.stderr, encoding="utf-8")
+                  assert smoke.returncode == 0, smoke.stdout + smoke.stderr
+              result = {"sha256": digest, "size": size, "members": len(names), "zip_crc": "PASS", "layout": "PASS",
+                        "pptx_hashes": "7/7 PASS", "pptx_copies": copies, "host_runtime": "PASS", "host_files": runtime.total_files,
+                        "frozen_source_modules": frozen_counts, "quantity_preserved": True, "source_sha": SOURCE}
+              save(label, result)
+              guard()
+
+
+          def complete():
+              guard()
+              data = {name: json.loads((EVIDENCE / (name + ".json")).read_text(encoding="utf-8"))
+                      for name in ("source", "regressions", "local", "public-iwr", "public-curl")}
+              assert data["regressions"]["new_regressions"] == 0
+              assert all(data[name]["sha256"] == data["local"]["sha256"] and data[name]["size"] == data["local"]["size"]
+                         and data[name]["pptx_copies"] == data["local"]["pptx_copies"] for name in ("public-iwr", "public-curl"))
+              save("BETA35_EVIDENCE", {"source_sha": SOURCE, "version": os.environ["BETA_VERSION"], "tag": os.environ["BETA_TAG"],
+                   "asset": os.environ["BETA_BUNDLE_NAME"], "workflow_run": os.environ["GITHUB_RUN_ID"],
+                   "build": "PASS", "new_regressions": 0, "known_baseline_failures": data["regressions"]["known_baseline_failures"],
+                   "historical_baseline_failures": 5, "public_asset_verified": True, "public_asset_verified_via": ["Invoke-WebRequest", "curl"],
+                   "local": data["local"], "public_iwr": data["public-iwr"], "public_curl": data["public-curl"],
+                   "beta_manifest": "NOT UPDATED BY WORKFLOW", "stable": "UNCHANGED"})
+
+
+          if __name__ == "__main__":
+              action = sys.argv[1]
+              if action == "source":
+                  source()
+              elif action == "regressions":
+                  regressions()
+              elif action == "bundle":
+                  bundle(*sys.argv[2:])
+              elif action == "complete":
+                  complete()
+              else:
+                  raise SystemExit("Unknown release gate: " + action)
+
+          '@ | Set-Content -LiteralPath $script -Encoding utf8
+          "BETA35_VERIFY_SCRIPT=$script" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PYTHONPATH=$env:GITHUB_WORKSPACE/src" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          python $script source
+          if ($LASTEXITCODE -ne 0) { throw 'Frozen source/PPTX gate failed.' }
+
+      - name: Install the same Beta 32 build dependencies outside production checkout
+        shell: pwsh
+        run: |
+          $dependencySource = Join-Path $env:RUNNER_TEMP 'beta35-dependency-source'
+          if (Test-Path -LiteralPath $dependencySource) { throw 'Dependency checkout already exists.' }
+          git worktree add --detach $dependencySource $env:PRODUCTION_SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Could not create dependency checkout.' }
+          python -m pip install --upgrade pip
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip install -e "$dependencySource[dev,graphics2-build]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pip freeze | Out-File -LiteralPath (Join-Path $env:RUNNER_TEMP 'beta35-evidence/dependencies.log') -Encoding utf8
+
+      - name: Compare regression gates against the exact Beta 33 baseline
+        shell: pwsh
+        run: |
+          python $env:BETA35_VERIFY_SCRIPT regressions
+          if ($LASTEXITCODE -ne 0) { throw 'Regression, compileall, Ruff or catalog gate failed.' }
+          python $env:BETA35_VERIFY_SCRIPT source
+          if ($LASTEXITCODE -ne 0) { throw 'Source is not clean before build.' }
+
+      - name: Build full SR Studio shell using Beta 32 pipeline
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" `
+            --paths src `
+            --collect-all pypdfium2 `
+            --collect-all pypdfium2_raw `
+            --icon "src/srstudio/assets/brand/SR_Studio.ico" `
+            --add-data "src/srstudio/assets/brand;srstudio/assets/brand" `
+            --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" `
+            src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path -LiteralPath 'dist/SR Studio 5/SR Studio 5.exe')) { throw 'SR Studio 5.exe missing.' }
+
+      - name: Build and embed Graphics2 host using unchanged source builder
+        shell: pwsh
+        run: |
+          $workspace = [IO.Path]::GetFullPath($env:GITHUB_WORKSPACE).TrimEnd('\') + '\'
+          foreach ($relative in @('dist/graphics2-host', '.build/graphics2-host/work', '.build/graphics2-host/spec')) {
+            $target = [IO.Path]::GetFullPath((Join-Path $env:GITHUB_WORKSPACE $relative))
+            if (!$target.StartsWith($workspace, [StringComparison]::OrdinalIgnoreCase)) { throw 'Unsafe build path.' }
+          }
+          python build/build_graphics2_host.py --output 'dist/graphics2-host'
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $source = 'dist/graphics2-host/SRGraphicsEngine2Host'
+          if (!(Test-Path -LiteralPath "$source/SRGraphicsEngine2Host.exe")) { throw 'Graphics2 host missing.' }
+          $destination = 'dist/SR Studio 5/Graphics2Host'
+          if (Test-Path -LiteralPath $destination) { throw 'Embedded host destination already exists.' }
+          New-Item -ItemType Directory -Path $destination | Out-Null
+          Get-ChildItem -LiteralPath $source -Force | Copy-Item -Destination $destination -Recurse
+
+      - name: Assemble launcher-compatible professional bundle
+        shell: pwsh
+        run: |
+          $betaRoot = 'release/channel-beta35'
+          $filesRoot = Join-Path $betaRoot 'files'
+          $studioRoot = Join-Path $filesRoot 'SRStudio5'
+          if (Test-Path -LiteralPath $betaRoot) { throw 'Bundle staging already exists.' }
+          New-Item -ItemType Directory -Path $studioRoot | Out-Null
+          Get-ChildItem -LiteralPath 'dist/SR Studio 5' -Force | Copy-Item -Destination $studioRoot -Recurse
+          $wrapper = @'
+          from pathlib import Path
+          import subprocess
+          import sys
+          root = Path(__file__).resolve().parent
+          exe = root / "SRStudio5" / "SR Studio 5.exe"
+          if not exe.is_file():
+              raise FileNotFoundError(f"SR Studio G2 executable not found: {exe}")
+          subprocess.Popen([str(exe)], cwd=str(exe.parent))
+          sys.exit(0)
+          '@
+          [IO.File]::WriteAllText((Join-Path $filesRoot 'SR_Studio_Gerador.py'), $wrapper, (New-Object Text.UTF8Encoding($false)))
+          @{
+            version = $env:BETA_VERSION
+            product_version = '5.0.0'
+            channel = 'beta'
+            release_label = $env:BETA_LABEL
+            entrypoint = 'SR_Studio_Gerador.py'
+            professional_executable = 'SRStudio5/SR Studio 5.exe'
+            graphics2_primary = $true
+            source_commit = $env:PRODUCTION_SOURCE_SHA
+            poster_quantity = $true
+          } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $filesRoot 'version.json') -Encoding utf8
+          $bundle = Join-Path 'release' $env:BETA_BUNDLE_NAME
+          if (Test-Path -LiteralPath $bundle) { throw 'Refusing to overwrite an existing ZIP.' }
+          $destination = [IO.Path]::GetFullPath($bundle)
+          Push-Location $betaRoot
+          try { Compress-Archive -Path 'files' -DestinationPath $destination -CompressionLevel Optimal }
+          finally { Pop-Location }
+          $hash = (Get-FileHash -LiteralPath $bundle -Algorithm SHA256).Hash.ToLowerInvariant()
+          $size = (Get-Item -LiteralPath $bundle).Length
+          "BETA_BUNDLE_SHA256=$hash" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "BETA_BUNDLE_SIZE=$size" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          Write-Host "LOCAL_SHA256=$hash"
+          Write-Host "LOCAL_SIZE=$size"
+
+      - name: Validate local ZIP, frozen source, quantity and all packaged PPTX
+        shell: pwsh
+        run: |
+          python $env:BETA35_VERIFY_SCRIPT bundle local (Join-Path 'release' $env:BETA_BUNDLE_NAME) (Join-Path $env:RUNNER_TEMP 'beta35-local-extract')
+          if ($LASTEXITCODE -ne 0) { throw 'Local package verification failed.' }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR-Studio-G2-Beta-35
+          path: release/${{ env.BETA_BUNDLE_NAME }}
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Publish immutable Beta 35 prerelease
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = git ls-remote origin "refs/tags/$env:BETA_TAG" "refs/tags/$env:BETA_TAG^{}"
+          if ($LASTEXITCODE -ne 0) { throw 'Could not verify tag availability.' }
+          if ($tag) { throw 'Beta 35 tag already exists; refusing to reuse it.' }
+          gh release view $env:BETA_TAG *> $null
+          if ($LASTEXITCODE -eq 0) { throw 'Beta 35 release already exists; refusing to clobber it.' }
+          $notes = @"
+          Sete modelos de cartazes aprovados pelo usuário.
+          PowerPoint real: 7/7 PASS.
+          Geração PDF real: 7/7 PASS.
+          Visual manual do usuário: 7/7 PASS.
+          Engine e código funcional preservados da Beta 33.
+          Qtd. Cartazes preservada. Stable não alterada.
+
+          Source: $env:PRODUCTION_SOURCE_SHA
+          Workflow: https://github.com/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID
+          SHA256: $env:BETA_BUNDLE_SHA256
+          Size: $env:BETA_BUNDLE_SIZE bytes
+
+          BETA / TEST BUILD. A promoção do canal depende da verificação pública do asset.
+          "@
+          $notesPath = Join-Path $env:RUNNER_TEMP 'beta35-release-notes.md'
+          [IO.File]::WriteAllText($notesPath, $notes, (New-Object Text.UTF8Encoding($false)))
+          gh release create $env:BETA_TAG (Join-Path 'release' $env:BETA_BUNDLE_NAME) `
+            --title "SR Studio — $env:BETA_LABEL" --notes-file $notesPath `
+            --prerelease --latest=false --target $env:PRODUCTION_SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) { throw 'Could not publish Beta 35.' }
+          $remote = gh api "repos/$env:GITHUB_REPOSITORY/git/ref/tags/$env:BETA_TAG" | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $remote.object.type -ne 'commit' -or $remote.object.sha -ne $env:PRODUCTION_SOURCE_SHA) { throw 'Release tag source mismatch.' }
+
+      - name: Verify public asset with Invoke-WebRequest
+        shell: pwsh
+        run: |
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:BETA_TAG/$env:BETA_BUNDLE_NAME"
+          $out = Join-Path $env:RUNNER_TEMP 'beta35-public-iwr.zip'
+          $uri = $url + '?verify=iwr-' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          Invoke-WebRequest -Uri $uri -OutFile $out -TimeoutSec 600 -Headers @{'Cache-Control'='no-cache'}
+          python $env:BETA35_VERIFY_SCRIPT bundle public-iwr $out (Join-Path $env:RUNNER_TEMP 'beta35-public-iwr-extract')
+          if ($LASTEXITCODE -ne 0) { throw 'Public IWR verification failed. Do not promote Beta.' }
+
+      - name: Verify public asset with curl.exe
+        shell: pwsh
+        run: |
+          $url = "https://github.com/$env:GITHUB_REPOSITORY/releases/download/$env:BETA_TAG/$env:BETA_BUNDLE_NAME"
+          $out = Join-Path $env:RUNNER_TEMP 'beta35-public-curl.zip'
+          $uri = $url + '?verify=curl-' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+          & curl.exe -L --fail --no-progress-meter --retry 3 --retry-delay 3 --connect-timeout 30 --max-time 600 -H 'Cache-Control: no-cache' -o $out $uri
+          if ($LASTEXITCODE -ne 0) { throw "Public curl download failed: $LASTEXITCODE" }
+          python $env:BETA35_VERIFY_SCRIPT bundle public-curl $out (Join-Path $env:RUNNER_TEMP 'beta35-public-curl-extract')
+          if ($LASTEXITCODE -ne 0) { throw 'Public curl verification failed. Do not promote Beta.' }
+
+      - name: Record verified public SHA, size, layout and PPTX evidence
+        shell: pwsh
+        run: |
+          python $env:BETA35_VERIFY_SCRIPT complete
+          if ($LASTEXITCODE -ne 0) { throw 'Final public verification failed. Do not promote Beta.' }
+          Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'beta35-evidence/BETA35_EVIDENCE.json') -Raw | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          Write-Host 'PUBLIC_ASSET_VERIFIED=TRUE'
+          Write-Host 'BETA_MANIFEST=NOT_UPDATED_BY_WORKFLOW'
+          Write-Host 'STABLE=UNCHANGED'
+
+      - name: Upload release verification evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: SR-Studio-G2-Beta-35-Evidence
+          path: |
+            ${{ runner.temp }}/beta35-evidence/*.json
+            ${{ runner.temp }}/beta35-evidence/*.log
+            ${{ runner.temp }}/beta35-evidence/*.xml
+          if-no-files-found: warn
+          retention-days: 90
