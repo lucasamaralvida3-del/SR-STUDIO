@@ -1,0 +1,47 @@
+name: Preparar abertura para Alexa
+
+on:
+  push:
+    branches:
+      - alexa-audios
+    paths:
+      - .github/workflows/alexa-audio.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-audio:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Baixar branch
+        uses: actions/checkout@v4
+        with:
+          ref: alexa-audios
+
+      - name: Instalar yt-dlp e FFmpeg
+        run: |
+          python -m pip install --upgrade yt-dlp
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Baixar a abertura original
+        run: |
+          yt-dlp -f ba -o '/tmp/source.%(ext)s' 'https://www.youtube.com/watch?v=MxNqnT9uWwo'
+
+      - name: Converter para o formato aceito pelo SSML da Alexa
+        run: |
+          mkdir -p alexa-audio
+          SOURCE="$(find /tmp -maxdepth 1 -type f -name 'source.*' | head -n 1)"
+          test -n "$SOURCE"
+          ffmpeg -y -i "$SOURCE" -ac 2 -codec:a libmp3lame -b:a 48k -ar 24000 -write_xing 0 alexa-audio/abertura_o_mentalista_alexa.mp3
+          ffprobe -v error -show_entries format=duration,bit_rate -show_entries stream=codec_name,sample_rate,channels,bit_rate -of json alexa-audio/abertura_o_mentalista_alexa.mp3
+
+      - name: Publicar MP3 na branch alexa-audios
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add alexa-audio/abertura_o_mentalista_alexa.mp3
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat(alexa): host opening audio'
+          git push origin HEAD:alexa-audios
