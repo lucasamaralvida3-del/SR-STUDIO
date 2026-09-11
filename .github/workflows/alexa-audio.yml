@@ -19,15 +19,22 @@ jobs:
         with:
           ref: alexa-audios
 
-      - name: Instalar yt-dlp e FFmpeg
+      - name: Instalar yt-dlp com EJS e FFmpeg
         run: |
-          python -m pip install --upgrade yt-dlp
+          python -m pip install --upgrade "yt-dlp[default]"
           sudo apt-get update
           sudo apt-get install -y ffmpeg
+          node --version
+          yt-dlp --version
 
       - name: Baixar a abertura original
         run: |
-          yt-dlp -f ba -o '/tmp/source.%(ext)s' 'https://www.youtube.com/watch?v=MxNqnT9uWwo'
+          yt-dlp \
+            --js-runtimes node \
+            --remote-components ejs:github \
+            -f ba \
+            -o '/tmp/source.%(ext)s' \
+            'https://www.youtube.com/watch?v=MxNqnT9uWwo'
 
       - name: Converter para o formato aceito pelo SSML da Alexa
         run: |
