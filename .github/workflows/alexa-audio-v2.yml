@@ -1,0 +1,89 @@
+name: Preparar abertura Alexa v2
+
+on:
+  push:
+    branches:
+      - alexa-audios
+    paths:
+      - .github/workflows/alexa-audio-v2.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build-audio:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout da branch isolada
+        uses: actions/checkout@v4
+        with:
+          ref: alexa-audios
+
+      - name: Instalar Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Instalar yt-dlp e FFmpeg
+        run: |
+          python -m pip install --upgrade "yt-dlp[default,curl-cffi]"
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Baixar a abertura com fallback de clientes
+        shell: bash
+        run: |
+          set -euo pipefail
+          URL='https://www.youtube.com/watch?v=MxNqnT9uWwo'
+          rm -f /tmp/source.*
+
+          download_audio() {
+            local client="$1"
+            echo "Tentando cliente: $client"
+            yt-dlp \
+              --js-runtimes deno \
+              --extractor-args "youtube:player_client=$client" \
+              --no-playlist \
+              -f 'bestaudio/best' \
+              -o '/tmp/source.%(ext)s' \
+              "$URL"
+          }
+
+          download_audio 'android_vr' || \
+          download_audio 'tv_embedded' || \
+          download_audio 'web_safari' || \
+          download_audio 'web'
+
+          find /tmp -maxdepth 1 -type f -name 'source.*' -print
+          test -n "$(find /tmp -maxdepth 1 -type f -name 'source.*' -print -quit)"
+
+      - name: Converter para MP3 compatível com Alexa
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p alexa-audio
+          SOURCE="$(find /tmp -maxdepth 1 -type f -name 'source.*' -print -quit)"
+          test -n "$SOURCE"
+          ffmpeg -y -i "$SOURCE" \
+            -vn -ac 2 -codec:a libmp3lame -b:a 48k -ar 24000 -write_xing 0 \
+            alexa-audio/abertura_o_mentalista_alexa.mp3
+
+          ffprobe -v error \
+            -show_entries stream=codec_name,sample_rate,channels,bit_rate \
+            -show_entries format=duration,bit_rate \
+            -of json \
+            alexa-audio/abertura_o_mentalista_alexa.mp3
+
+      - name: Publicar MP3 na branch alexa-audios
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add alexa-audio/abertura_o_mentalista_alexa.mp3
+          if git diff --cached --quiet; then
+            echo 'MP3 já está publicado e não mudou.'
+            exit 0
+          fi
+          git commit -m 'feat(alexa): publish opening audio'
+          git push origin HEAD:alexa-audios
