@@ -1,0 +1,160 @@
+name: Publicar abertura Alexa v3
+
+on:
+  push:
+    branches:
+      - alexa-audios
+    paths:
+      - .github/workflows/alexa-audio-v3.yml
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: alexa-audios
+
+      - name: Se o MP3 já existir, validar e encerrar
+        id: existing
+        shell: bash
+        run: |
+          if [ -s alexa-audio/abertura_o_mentalista_alexa.mp3 ]; then
+            echo 'exists=true' >> "$GITHUB_OUTPUT"
+          else
+            echo 'exists=false' >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Instalar Deno
+        if: steps.existing.outputs.exists != 'true'
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Instalar ferramentas
+        if: steps.existing.outputs.exists != 'true'
+        shell: bash
+        run: |
+          python -m pip install --upgrade "yt-dlp[default,curl-cffi]"
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg
+
+      - name: Tentar baixar diretamente do YouTube
+        if: steps.existing.outputs.exists != 'true'
+        id: youtube
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -u
+          URL='https://www.youtube.com/watch?v=MxNqnT9uWwo'
+          rm -f /tmp/source.*
+          for client in android_vr tv_embedded web_safari web mweb; do
+            echo "Tentando $client"
+            if yt-dlp --js-runtimes deno --impersonate chrome \
+              --extractor-args "youtube:player_client=$client" \
+              --no-playlist -f 'bestaudio/best' \
+              -o '/tmp/source.%(ext)s' "$URL"; then
+              exit 0
+            fi
+            rm -f /tmp/source.*
+          done
+          exit 1
+
+      - name: Fallback por instâncias públicas Invidious
+        if: steps.existing.outputs.exists != 'true' && steps.youtube.outcome != 'success'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, urllib.request, urllib.parse, ssl, sys, os
+          video_id='MxNqnT9uWwo'
+          ctx=ssl.create_default_context()
+          req=urllib.request.Request('https://api.invidious.io/instances.json',headers={'User-Agent':'Mozilla/5.0'})
+          with urllib.request.urlopen(req,timeout=20,context=ctx) as r:
+              instances=json.load(r)
+          errors=[]
+          for host,meta in instances:
+              details=meta.get('details') or {}
+              if not details.get('api') or details.get('type')!='https':
+                  continue
+              base='https://'+host
+              try:
+                  api=base+'/api/v1/videos/'+video_id
+                  req=urllib.request.Request(api,headers={'User-Agent':'Mozilla/5.0'})
+                  with urllib.request.urlopen(req,timeout=12,context=ctx) as r:
+                      data=json.load(r)
+                  formats=[]
+                  for f in data.get('adaptiveFormats',[]):
+                      typ=f.get('type','')
+                      url=f.get('url')
+                      if url and typ.startswith('audio/'):
+                          formats.append((int(f.get('bitrate') or 0),url))
+                  if not formats:
+                      continue
+                  formats.sort(reverse=True)
+                  stream=formats[0][1]
+                  req=urllib.request.Request(stream,headers={'User-Agent':'Mozilla/5.0','Referer':base+'/'})
+                  with urllib.request.urlopen(req,timeout=30,context=ctx) as r, open('/tmp/source.webm','wb') as out:
+                      while True:
+                          chunk=r.read(1024*1024)
+                          if not chunk: break
+                          out.write(chunk)
+                  if os.path.getsize('/tmp/source.webm')>10000:
+                      print('Obtido por',host)
+                      sys.exit(0)
+              except Exception as e:
+                  errors.append((host,str(e)))
+                  try: os.remove('/tmp/source.webm')
+                  except FileNotFoundError: pass
+          print('Nenhuma instância funcionou. Últimos erros:',errors[-5:])
+          sys.exit(1)
+          PY
+
+      - name: Converter para o formato da Alexa
+        if: steps.existing.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE="$(find /tmp -maxdepth 1 -type f -name 'source.*' -print -quit)"
+          test -n "$SOURCE"
+          mkdir -p alexa-audio
+          ffmpeg -y -i "$SOURCE" -vn -ac 2 -codec:a libmp3lame -b:a 48k -ar 24000 -write_xing 0 \
+            alexa-audio/abertura_o_mentalista_alexa.mp3
+          test -s alexa-audio/abertura_o_mentalista_alexa.mp3
+
+      - name: Validar formato final
+        shell: bash
+        run: |
+          if ! command -v ffprobe >/dev/null 2>&1; then
+            sudo apt-get update >/dev/null
+            sudo apt-get install -y ffmpeg >/dev/null
+          fi
+          FILE=alexa-audio/abertura_o_mentalista_alexa.mp3
+          test -s "$FILE"
+          echo '--- ffprobe ---'
+          ffprobe -v error -show_entries stream=codec_name,sample_rate,channels,bit_rate -show_entries format=duration,bit_rate -of json "$FILE"
+          SR=$(ffprobe -v error -select_streams a:0 -show_entries stream=sample_rate -of default=nw=1:nk=1 "$FILE")
+          BR=$(ffprobe -v error -select_streams a:0 -show_entries stream=bit_rate -of default=nw=1:nk=1 "$FILE")
+          [ "$SR" = '24000' ]
+          [ "$BR" = '48000' ]
+
+      - name: Publicar na branch alexa-audios
+        if: steps.existing.outputs.exists != 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add alexa-audio/abertura_o_mentalista_alexa.mp3
+          git commit -m 'feat(alexa): publish opening audio'
+          git pull --rebase origin alexa-audios
+          git push origin HEAD:alexa-audios
+
+      - name: Mostrar URL final
+        shell: bash
+        run: |
+          echo 'https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/alexa-audios/alexa-audio/abertura_o_mentalista_alexa.mp3'
