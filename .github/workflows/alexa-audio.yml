@@ -27,14 +27,27 @@ jobs:
           node --version
           yt-dlp --version
 
-      - name: Baixar a abertura original
+      - name: Baixar a abertura por cliente alternativo
+        shell: bash
         run: |
-          yt-dlp \
-            --js-runtimes node \
-            --remote-components ejs:github \
-            -f ba \
-            -o '/tmp/source.%(ext)s' \
-            'https://www.youtube.com/watch?v=MxNqnT9uWwo'
+          set +e
+          for CLIENT in android_vr web_embedded tv; do
+            echo "Tentando cliente: $CLIENT"
+            rm -f /tmp/source.*
+            yt-dlp \
+              --js-runtimes node \
+              --remote-components ejs:github \
+              --extractor-args "youtube:player_client=${CLIENT};player_skip=webpage" \
+              -f ba \
+              -o '/tmp/source.%(ext)s' \
+              'https://www.youtube.com/watch?v=MxNqnT9uWwo'
+            if find /tmp -maxdepth 1 -type f -name 'source.*' | grep -q .; then
+              echo "Download concluído com $CLIENT"
+              exit 0
+            fi
+          done
+          echo "Nenhum cliente conseguiu baixar o áudio"
+          exit 1
 
       - name: Converter para o formato aceito pelo SSML da Alexa
         run: |
