@@ -1,0 +1,74 @@
+name: Build Casa 3D APK V23
+
+on:
+  push:
+    branches:
+      - build/planta3d-apk-v23
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK 36
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Set up Gradle 9.6
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.6.0'
+
+      - name: Prepare offline V23 assets
+        working-directory: tools/planta3d-apk
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p app/src/main/assets
+          cat assets/v23.part* > /tmp/v23.b64
+          echo "8e411ca42006cb1bbfab8b149c040fdfcecc1c1e0364457a62a66fd31e698de3  /tmp/v23.b64" | sha256sum -c -
+          base64 -d /tmp/v23.b64 > /tmp/v23-compact.html.xz
+          echo "a6a5bb1eb08533fceeaef239ba52671c07f8fa95b62739a7e3bffa5be008d28d  /tmp/v23-compact.html.xz" | sha256sum -c -
+          xz -dc /tmp/v23-compact.html.xz > app/src/main/assets/index.html
+          echo "1b809d25962c7f469584eacbef6bd59b781b1dd6d29bc1f796652924e886ad98  app/src/main/assets/index.html" | sha256sum -c -
+
+          npm install three@0.160.0 --prefix /tmp/threepkg --no-audit --no-fund
+          mkdir -p app/src/main/assets/vendor
+          cp -R /tmp/threepkg/node_modules/three app/src/main/assets/vendor/three
+
+          test -s app/src/main/assets/index.html
+          grep -q "./vendor/three/build/three.module.js" app/src/main/assets/index.html
+          grep -q "./vendor/three/examples/jsm/postprocessing/SSAOPass.js" app/src/main/assets/index.html
+
+      - name: Build debug APK
+        working-directory: tools/planta3d-apk
+        run: gradle --no-daemon assembleDebug
+
+      - name: Verify APK exists
+        run: |
+          set -euo pipefail
+          test -s tools/planta3d-apk/app/build/outputs/apk/debug/app-debug.apk
+          unzip -t tools/planta3d-apk/app/build/outputs/apk/debug/app-debug.apk >/dev/null
+          unzip -l tools/planta3d-apk/app/build/outputs/apk/debug/app-debug.apk | grep -q 'assets/index.html'
+          unzip -l tools/planta3d-apk/app/build/outputs/apk/debug/app-debug.apk | grep -q 'classes.dex'
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Casa3D-v23-debug
+          path: tools/planta3d-apk/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
