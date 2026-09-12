@@ -1,0 +1,22 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.lucas.casa3d'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId 'com.lucas.casa3d'
+        minSdk 26
+        targetSdk 36
+        versionCode 23
+        versionName '23.0'
+    }
+
+    buildTypes {
+        debug {
+            minifyEnabled false
+        }
+    }
+}
