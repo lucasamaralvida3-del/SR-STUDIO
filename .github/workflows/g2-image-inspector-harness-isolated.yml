@@ -1,0 +1,63 @@
+name: G2 ImageInspector Harness Isolated
+
+on:
+  pull_request:
+    branches:
+      - g2/integration-beta
+    paths:
+      - tests/test_graphics2_image_inspector_harness_ab_diagnostic.py
+      - .github/workflows/g2-image-inspector-harness-isolated.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  isolated-harness:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - name: Checkout frozen base
+        uses: actions/checkout@v4
+        with:
+          ref: 3e568f7717bb86978c58f50a5162fe44e27c4bd8
+          path: base
+      - name: Checkout diagnostic harness
+        uses: actions/checkout@v4
+        with:
+          ref: g2/diag-image-inspector-harness-base
+          path: diag
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Linux Qt prerequisites
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+      - name: Install frozen base runtime
+        shell: bash
+        run: python -m pip install -e './base[dev,graphics2]'
+      - name: Record exact base
+        shell: bash
+        run: |
+          echo "BASE_REQUESTED=3e568f7717bb86978c58f50a5162fe44e27c4bd8"
+          echo "BASE_CHECKED_OUT=$(git -C base rev-parse HEAD)"
+      - name: A - original orphan test in fresh process
+        id: original
+        continue-on-error: true
+        shell: bash
+        run: python -m pytest -q -s base/tests/test_graphics2_image_replace_qml.py::test_image_inspector_qml_loads_offscreen_with_selected_image
+      - name: Report A outcome
+        shell: bash
+        run: echo "BASE_OFFSCREEN_ORIGINAL_OUTCOME=${{ steps.original.outcome }}"
+      - name: B - hosted QQuickWindow contract in fresh process
+        shell: bash
+        run: python -m pytest -q -s diag/tests/test_graphics2_image_inspector_harness_ab_diagnostic.py::test_base_qquickwindow_hosted_harness_contract
