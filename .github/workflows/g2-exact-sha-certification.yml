@@ -1,0 +1,626 @@
+name: G2 Exact SHA Certification
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_sha:
+        description: "Exact 40-character commit SHA to certify"
+        required: true
+        type: string
+  pull_request:
+    branches:
+      - g2/integration-beta
+    paths:
+      - ".github/workflows/g2-exact-sha-certification.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: g2-exact-sha-certification-${{ github.event_name }}-${{ github.run_id }}
+  cancel-in-progress: false
+
+env:
+  # PR is bootstrap-only for this infrastructure change. Manual runs always use target_sha input.
+  CERT_TARGET_SHA: ${{ github.event_name == 'workflow_dispatch' && inputs.target_sha || 'fa6c5a75848991596a6cbb1ea6b3a98a8d526031' }}
+  QT_QPA_PLATFORM: offscreen
+  PYTHONUNBUFFERED: "1"
+
+jobs:
+  exact-sha:
+    name: Exact SHA preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      checked_out_sha: ${{ steps.verify.outputs.checked_out_sha }}
+      sha_match: ${{ steps.verify.outputs.sha_match }}
+    steps:
+      - name: Reject non-SHA input
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ ! "$CERT_TARGET_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "target_sha must be exactly 40 hexadecimal characters" >&2
+            exit 2
+          fi
+      - name: Checkout exact requested SHA
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - name: Verify workspace HEAD is exact target
+        id: verify
+        shell: bash
+        run: |
+          set -euo pipefail
+          requested="$(printf '%s' "$CERT_TARGET_SHA" | tr '[:upper:]' '[:lower:]')"
+          actual="$(git rev-parse HEAD | tr '[:upper:]' '[:lower:]')"
+          match=false
+          if [[ "$actual" == "$requested" ]]; then match=true; fi
+          echo "checked_out_sha=$actual" >> "$GITHUB_OUTPUT"
+          echo "sha_match=$match" >> "$GITHUB_OUTPUT"
+          python - <<PY
+          import json
+          payload = {
+              "requested_sha": "$requested",
+              "checked_out_sha": "$actual",
+              "sha_match": "$match" == "true",
+          }
+          with open("g2-exact-sha-preflight.json", "w", encoding="utf-8") as f:
+              json.dump(payload, f, indent=2)
+              f.write("\n")
+          PY
+          cat g2-exact-sha-preflight.json
+          if [[ "$match" != "true" ]]; then
+            echo "FATAL: ACTUAL_HEAD != TARGET_SHA" >&2
+            exit 3
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g2-exact-sha-preflight
+          path: g2-exact-sha-preflight.json
+          retention-days: 14
+          if-no-files-found: warn
+
+  compile-lint:
+    name: Compile and lint
+    needs: exact-sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - name: Prove exact HEAD
+        run: test "$(git rev-parse HEAD)" = "${CERT_TARGET_SHA,,}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -U pip && python -m pip install -e '.[dev,graphics2]'
+      - name: Compile G2 runtime
+        run: python -m compileall -q src/srstudio/graphics2 src/srstudio/importers tests
+      - name: Ruff G2 correctness
+        run: python -m ruff check src/srstudio/graphics2 src/srstudio/importers tests/test_graphics2_*.py
+
+  graphics2-full:
+    name: Graphics2 full
+    needs: exact-sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - run: test "$(git rev-parse HEAD)" = "${CERT_TARGET_SHA,,}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+      - run: python -m pip install -e '.[dev,graphics2]'
+      - name: Complete Graphics2 suite
+        run: python -m pytest -q tests -k graphics2 --durations=20
+
+  linux-global:
+    name: G2 Global Linux
+    needs: exact-sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - run: test "$(git rev-parse HEAD)" = "${CERT_TARGET_SHA,,}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+      - run: python -m pip install -e '.[dev,graphics2]'
+      - run: python -m compileall -q src/srstudio/graphics2 src/srstudio/importers
+      - name: Full Graphics2 regression suite
+        run: python -m pytest -q tests -k graphics2 --durations=20
+      - name: Performance smoke
+        run: python tools/g2_qa_baseline.py --output g2-global-performance-linux.json --pages 1,10,25
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g2-exact-global-linux
+          path: g2-global-performance-linux.json
+          if-no-files-found: ignore
+
+  windows-global:
+    name: G2 Global Windows Qt
+    needs: exact-sha
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - name: Prove exact HEAD
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          $requested = $env:CERT_TARGET_SHA.ToLowerInvariant()
+          if($actual -ne $requested) { throw "ACTUAL_HEAD != TARGET_SHA: $actual != $requested" }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e ".[dev,graphics2]"
+        shell: pwsh
+      - run: python -m compileall -q src/srstudio/graphics2 src/srstudio/importers
+        shell: pwsh
+      - name: Full Graphics2 regression suite
+        shell: pwsh
+        run: python -m pytest -q tests -k graphics2 --durations=20
+      - name: Qt Quick runtime probe
+        shell: pwsh
+        run: |
+          python -c "from srstudio.graphics2.qt_host import qt_quick_available; assert qt_quick_available(); print('Qt Quick runtime OK')"
+          python -m srstudio.graphics2.qt_host --graphics-api software --probe-graphics-api
+      - name: Performance smoke
+        shell: pwsh
+        run: python tools/g2_qa_baseline.py --output g2-global-performance-windows.json --pages 1,10
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: g2-exact-global-windows
+          path: g2-global-performance-windows.json
+          if-no-files-found: ignore
+
+  qa:
+    name: QA (${{ matrix.os }})
+    needs: exact-sha
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - name: Prove exact HEAD
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD | tr '[:upper:]' '[:lower:]')"
+          requested="$(printf '%s' "$CERT_TARGET_SHA" | tr '[:upper:]' '[:lower:]')"
+          test "$actual" = "$requested"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Linux Qt prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+      - run: python -m pip install -e '.[dev,graphics2]'
+        shell: bash
+      - name: Focused production-flow QA
+        shell: bash
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_autosave.py
+          tests/test_graphics2_bridge_roundtrip.py
+          tests/test_graphics2_package_stress.py
+          tests/test_graphics2_page_clone_ids.py
+          tests/test_graphics2_project_actions.py
+          tests/test_graphics2_product_card_duplicate.py
+          tests/test_graphics2_pdf_multipage.py
+          tests/test_graphics2_real_flyer_e2e.py
+          tests/test_graphics2_image_replace_qml.py
+          tests/test_graphics2_qa_longrun.py
+          tests/test_graphics2_qa_pptx_e2e.py
+      - name: Generic performance baseline
+        shell: bash
+        run: python tools/g2_qa_baseline.py --output g2-qa-baseline.json --pages 1,10
+      - name: PPTX performance baseline
+        if: runner.os == 'Linux'
+        run: python tools/g2_qa_pptx_baseline.py --output g2-qa-pptx-baseline.json
+
+  export:
+    name: Export (${{ matrix.os }})
+    needs: exact-sha
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - name: Prove exact HEAD
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD | tr '[:upper:]' '[:lower:]')"
+          requested="$(printf '%s' "$CERT_TARGET_SHA" | tr '[:upper:]' '[:lower:]')"
+          test "$actual" = "$requested"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Linux Qt prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1
+      - run: python -m pip install -e '.[dev,graphics2]'
+        shell: bash
+      - name: Export contracts and renderer regression
+        shell: bash
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_export_output.py
+          tests/test_graphics2_export_roundtrip.py
+          tests/test_graphics2_export_batch_transaction.py
+          tests/test_graphics2_export_print_contract.py
+          tests/test_graphics2_qt_renderer.py
+      - name: Export performance smoke
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: python tests/benchmark_graphics2_export_output.py --output g2-export-benchmark.json
+
+  release:
+    name: Release Engineering (${{ matrix.os }})
+    needs: exact-sha
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - name: Prove exact HEAD
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD | tr '[:upper:]' '[:lower:]')"
+          requested="$(printf '%s' "$CERT_TARGET_SHA" | tr '[:upper:]' '[:lower:]')"
+          test "$actual" = "$requested"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Linux Qt prerequisite
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1
+      - name: Install release runtime
+        shell: bash
+        run: |
+          python -m pip install -U pip
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            python -m pip install -e '.[dev,graphics2-build]'
+          else
+            python -m pip install -e '.[dev,graphics2]'
+          fi
+      - name: Release engineering contracts
+        shell: bash
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_release_engineering.py
+          tests/test_graphics2_host_build.py
+          tests/test_graphics2_host_runtime.py
+          tests/test_graphics2_host_install.py
+          tests/test_graphics2_studio_bridge.py
+          tests/test_graphics2_component_package.py
+          tests/test_graphics2_launcher_component.py
+          tests/test_graphics2_launcher_manifest.py
+          tests/test_graphics2_installer_component.py
+      - name: Development release smoke
+        shell: bash
+        run: |
+          smoke="$RUNNER_TEMP/g2-exact-release-smoke"
+          cd "$RUNNER_TEMP"
+          sr-graphics2-release-smoke --output-dir "$smoke"
+          test -s "$smoke/release-smoke.srscene"
+          test -s "$smoke/release-smoke.png"
+          test -s "$smoke/release-smoke.pdf"
+          test -s "$smoke/release-smoke.json"
+      - name: Build isolated frozen Qt host
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: python build/build_graphics2_host.py --output "$env:RUNNER_TEMP\graphics2-host"
+      - name: Validate frozen runtime integrity
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'graphics2-host'
+          $bundle = Join-Path $root 'SRGraphicsEngine2Host'
+          $engineVersion = python -c "from srstudio.graphics2 import ENGINE_VERSION; print(ENGINE_VERSION)"
+          python -m srstudio.graphics2.host_runtime "$bundle" --full --engine-version $engineVersion
+
+  alpha43:
+    name: Alpha 43 (${{ matrix.os }})
+    needs: exact-sha
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - name: Prove exact HEAD
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD | tr '[:upper:]' '[:lower:]')"
+          requested="$(printf '%s' "$CERT_TARGET_SHA" | tr '[:upper:]' '[:lower:]')"
+          test "$actual" = "$requested"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Linux Qt prerequisites
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libegl1 libgl1 libxkbcommon-x11-0 libxcb-cursor0
+      - run: python -m pip install -U pip && python -m pip install -e '.[dev,graphics2]'
+        shell: bash
+      - name: Alpha 43 focused regression
+        shell: bash
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_real_flyer_e2e.py
+          tests/test_graphics2_global_id_preflight.py
+          tests/test_graphics2_page_clone_ids.py
+          tests/test_graphics2_id_repair.py
+          tests/test_graphics2_id_repair_router.py
+          tests/test_graphics2_recovered_optional_bindings.py
+          tests/test_graphics2_recovered_spatial_atomic.py
+          tests/test_graphics2_qt_renderer.py
+          tests/test_graphics2_package_stress.py
+          tests/test_graphics2_image_replace.py
+          tests/test_graphics2_image_replace_portable.py
+          tests/test_graphics2_image_replace_router.py
+          tests/test_graphics2_image_replace_qml.py
+      - name: Complete G2 suite
+        shell: bash
+        run: python -m pytest -q tests -k graphics2
+
+  quality:
+    name: Quality
+    needs: exact-sha
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - name: Prove exact HEAD
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim().ToLowerInvariant()
+          $requested = $env:CERT_TARGET_SHA.ToLowerInvariant()
+          if($actual -ne $requested) { throw "ACTUAL_HEAD != TARGET_SHA" }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install
+        shell: pwsh
+        run: python -m pip install -e ".[dev,graphics2]"
+      - name: Compile
+        shell: pwsh
+        run: python -m compileall -q src tests
+      - name: Ruff correctness gate
+        shell: pwsh
+        run: python -m ruff check src tests
+      - name: Full SR Studio regression suite
+        shell: pwsh
+        run: python -m pytest -q
+
+  custgeom-regression:
+    name: custGeom late recovery certification
+    needs: exact-sha
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.CERT_TARGET_SHA }}
+          fetch-depth: 1
+          clean: true
+      - run: test "$(git rev-parse HEAD)" = "${CERT_TARGET_SHA,,}"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: python -m pip install -e '.[dev,graphics2]'
+      - name: Late-recovery fixture 1/1
+        run: >-
+          python -m pytest -q
+          tests/test_graphics2_custgeom_picture_fill_diagnostic.py::test_import_bridge_recovers_late_artwork_before_custgeom_fidelity_pass
+      - name: Full custGeom diagnostic regression
+        run: python -m pytest -q tests/test_graphics2_custgeom_picture_fill_diagnostic.py
+      - name: Idempotency and generic PPTX smoke
+        run: |
+          python - <<'PY'
+          import importlib.util
+          import tempfile
+          from pathlib import Path
+          import zipfile
+
+          spec = importlib.util.spec_from_file_location(
+              "custgeom_fixture", "tests/test_graphics2_custgeom_picture_fill_diagnostic.py"
+          )
+          mod = importlib.util.module_from_spec(spec)
+          assert spec.loader is not None
+          spec.loader.exec_module(mod)
+
+          from srstudio.graphics2.import_bridge import GraphicsImportService
+          from srstudio.graphics2.model import NodeKind
+
+          def import_with_blank_pipeline(path: Path):
+              service = GraphicsImportService()
+              service.pipeline = mod._NoImagePipeline()
+              return service.import_file(path, project_name="exact-sha-certification")
+
+          with tempfile.TemporaryDirectory() as td:
+              root = Path(td)
+              late = mod._write_late_artwork_pptx(root / "late.pptx")
+              first = import_with_blank_pipeline(late)
+              second = import_with_blank_pipeline(late)
+
+              def signature(result):
+                  images = [n for n in result.document.active_page.nodes.values() if n.kind is NodeKind.IMAGE]
+                  assert len(images) == 1
+                  image = images[0]
+                  return {
+                      "image_count": len(images),
+                      "clip_path": image.metadata.get("clip_path"),
+                      "fill_rect": image.style.get("fill_rect"),
+                      "recovered": image.metadata.get("pptx_artwork_recovered"),
+                      "recovered_nodes": result.document.metadata["pptx_artwork_recovery"]["recovered_nodes"],
+                  }
+
+              assert signature(first) == signature(second), "late-recovery import is not idempotent"
+
+              p_ns = mod.P_NS
+              presentation = (
+                  f'<p:presentation xmlns:p="{p_ns}"><p:sldSz cx="1000000" cy="1000000"/></p:presentation>'
+              )
+              slide = f'''<p:sld xmlns:p="{p_ns}" xmlns:a="{mod.A_NS}">
+              <p:cSld><p:spTree><p:nvGrpSpPr/><p:grpSpPr/>
+              <p:sp><p:nvSpPr><p:cNvPr id="2" name="Generic Rectangle"/><p:cNvSpPr/><p:nvPr/></p:nvSpPr>
+              <p:spPr><a:xfrm><a:off x="0" y="0"/><a:ext cx="100000" cy="100000"/></a:xfrm>
+              <a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:sp>
+              </p:spTree></p:cSld></p:sld>'''
+              generic = root / "generic.pptx"
+              with zipfile.ZipFile(generic, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                  archive.writestr("ppt/presentation.xml", presentation)
+                  archive.writestr("ppt/slides/slide1.xml", slide)
+              generic_result = import_with_blank_pipeline(generic)
+              assert generic_result.document.active_page is not None
+              assert generic_result.document.metadata.get("pptx_artwork_recovery", {}).get("error") is None
+
+          print("idempotency=PASS")
+          print("generic_pptx=PASS")
+          PY
+
+  certification-report:
+    name: Persist exact SHA certification report
+    if: always()
+    needs:
+      - exact-sha
+      - compile-lint
+      - graphics2-full
+      - linux-global
+      - windows-global
+      - qa
+      - export
+      - release
+      - alpha43
+      - quality
+      - custgeom-regression
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build certification report
+        env:
+          CHECKED_OUT_SHA: ${{ needs.exact-sha.outputs.checked_out_sha }}
+          SHA_MATCH: ${{ needs.exact-sha.outputs.sha_match }}
+          COMPILE_LINT: ${{ needs.compile-lint.result }}
+          GRAPHICS2: ${{ needs.graphics2-full.result }}
+          LINUX: ${{ needs.linux-global.result }}
+          WINDOWS: ${{ needs.windows-global.result }}
+          QA: ${{ needs.qa.result }}
+          EXPORT: ${{ needs.export.result }}
+          RELEASE: ${{ needs.release.result }}
+          ALPHA43: ${{ needs.alpha43.result }}
+          QUALITY: ${{ needs.quality.result }}
+          CUSTGEOM: ${{ needs.custgeom-regression.result }}
+        run: |
+          python - <<'PY'
+          import json, os
+          requested = os.environ["CERT_TARGET_SHA"].lower()
+          checked = os.environ.get("CHECKED_OUT_SHA", "").lower()
+          sha_match = os.environ.get("SHA_MATCH", "false").lower() == "true" and checked == requested
+          gates = {
+              "compile_lint": os.environ["COMPILE_LINT"],
+              "graphics2": os.environ["GRAPHICS2"],
+              "linux": os.environ["LINUX"],
+              "windows_qt": os.environ["WINDOWS"],
+              "qa": os.environ["QA"],
+              "export": os.environ["EXPORT"],
+              "release": os.environ["RELEASE"],
+              "alpha43": os.environ["ALPHA43"],
+              "quality": os.environ["QUALITY"],
+              "custgeom_regression": os.environ["CUSTGEOM"],
+          }
+          all_pass = sha_match and all(v == "success" for v in gates.values())
+          payload = {
+              "requested_sha": requested,
+              "checked_out_sha": checked,
+              "sha_match": sha_match,
+              "gates": gates,
+              "ready_for_integration": all_pass,
+              "workflow_run_id": os.environ["GITHUB_RUN_ID"],
+              "workflow_run_attempt": os.environ["GITHUB_RUN_ATTEMPT"],
+          }
+          with open("g2-exact-sha-certification.json", "w", encoding="utf-8") as f:
+              json.dump(payload, f, indent=2)
+              f.write("\n")
+          print(json.dumps(payload, indent=2))
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: g2-exact-sha-certification-${{ env.CERT_TARGET_SHA }}
+          path: g2-exact-sha-certification.json
+          retention-days: 30
+      - name: Fail summary if certification is not green
+        run: |
+          python - <<'PY'
+          import json
+          data = json.load(open("g2-exact-sha-certification.json", encoding="utf-8"))
+          if not data["ready_for_integration"]:
+              raise SystemExit("Exact SHA certification failed")
+          PY
