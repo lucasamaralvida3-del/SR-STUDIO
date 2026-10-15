@@ -1,0 +1,32 @@
+name: CHAT7 PySide6 Wheel Probe
+
+on:
+  pull_request:
+    branches: [g2/integration-beta]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wheels:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Download PySide6 wheels
+        run: |
+          python -m pip download --only-binary=:all: 'PySide6>=6.8,<7' -d wheels
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          for p in sorted(Path('wheels').glob('*')):
+              print(hashlib.sha256(p.read_bytes()).hexdigest(), p.name)
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pyside6-linux-wheels
+          path: wheels/
+          retention-days: 1
+          if-no-files-found: error
