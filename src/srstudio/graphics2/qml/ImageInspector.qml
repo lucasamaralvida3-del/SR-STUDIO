@@ -16,19 +16,11 @@ Rectangle {
     color: "#FFFFFFF8"
     border.width: 1
     border.color: "#CBD5E1"
-    visible: bridgeHasImageSelection
+    visible: hasImageSelection
 
     property var scene: ({})
     property var imageNode: null
     property bool hasImageSelection: false
-    readonly property bool bridgeHasImageSelection: {
-        try {
-            var parsedScene = JSON.parse(sceneBridge.sceneJson)
-            return selectedImage(parsedScene) !== null
-        } catch (error) {
-            return false
-        }
-    }
     property bool syncing: false
 
     function activePage(sourceScene) {
@@ -145,12 +137,13 @@ Rectangle {
         cropCommand(command)
     }
 
-    Connections {
-        target: sceneBridge
-        function onSceneChanged() { panel.refresh() }
+    Component.onCompleted: {
+        sceneBridge.sceneChanged.connect(panel.refresh)
+        refresh()
     }
-
-    Component.onCompleted: refresh()
+    Component.onDestruction: {
+        try { sceneBridge.sceneChanged.disconnect(panel.refresh) } catch (error) {}
+    }
 
     FileDialog {
         id: replaceImageDialog
