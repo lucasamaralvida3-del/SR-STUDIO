@@ -67,11 +67,11 @@ class AutosaveManager:
                     "saved_at": stamp,
                 },
             )
-            self._prune(folder)
+            self._prune(folder, document.id)
             return path
 
     def latest(self, document_id: str) -> RecoveryPoint | None:
-        points = self._points(self.root / _safe_id(document_id))
+        points = self._points(self.root / _safe_id(document_id), expected_document_id=document_id)
         return points[0] if points else None
 
     def recover(self, point: RecoveryPoint, *, extract_assets_to: str | Path | None = None) -> GraphicsDocument:
@@ -83,20 +83,22 @@ class AutosaveManager:
 
     def list_recovery_points(self, document_id: str | None = None) -> list[RecoveryPoint]:
         if document_id:
-            return self._points(self.root / _safe_id(document_id))
+            return self._points(self.root / _safe_id(document_id), expected_document_id=document_id)
         out: list[RecoveryPoint] = []
         for folder in self.root.iterdir():
             if folder.is_dir():
                 out.extend(self._points(folder))
         return sorted(out, key=lambda item: item.saved_at, reverse=True)
 
-    def _points(self, folder: Path) -> list[RecoveryPoint]:
+    def _points(self, folder: Path, *, expected_document_id: str | None = None) -> list[RecoveryPoint]:
         if not folder.is_dir():
             return []
         points: list[RecoveryPoint] = []
         for path in folder.glob("*.srscene"):
             try:
                 document = load_package(path)
+                if expected_document_id is not None and document.id != expected_document_id:
+                    continue
                 stat = path.stat()
                 saved = datetime.fromtimestamp(stat.st_mtime, tz=timezone.utc)
                 points.append(RecoveryPoint(path, document.id, document.name, saved, stat.st_size))
@@ -106,10 +108,10 @@ class AutosaveManager:
                 continue
         return sorted(points, key=lambda item: item.saved_at, reverse=True)
 
-    def _prune(self, folder: Path) -> None:
+    def _prune(self, folder: Path, document_id: str) -> None:
         # Retenha N recovery points *válidos*. Um arquivo corrompido recente não
         # pode fazer uma cópia boa mais antiga ser apagada.
-        valid = self._points(folder)
+        valid = self._points(folder, expected_document_id=document_id)
         for old in valid[self.generations :]:
             old.path.unlink(missing_ok=True)
 
