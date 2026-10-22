@@ -128,3 +128,30 @@ def test_default_autosave_root_is_dedicated_to_graphics2():
 
     assert root.name == "autosave-g2"
     assert root.parent.name == ".srstudio5"
+
+
+def test_autosave_document_ids_colliding_after_sanitization_remain_isolated(tmp_path):
+    manager = AutosaveManager(tmp_path, generations=2)
+    first = GraphicsDocument(name="Campanha A")
+    second = GraphicsDocument(name="Campanha B")
+    first.id = "campanha/2026"
+    second.id = "campanha2026"
+    assert first.id != second.id
+
+    manager.save(first)
+    manager.save(second)
+    # Os IDs compartilham a pasta normalizada, mas nunca os recovery points.
+    first_points = manager.list_recovery_points(first.id)
+    second_points = manager.list_recovery_points(second.id)
+    assert len(first_points) == 1
+    assert len(second_points) == 1
+    assert first_points[0].document_id == first.id
+    assert second_points[0].document_id == second.id
+    assert manager.latest(first.id).document_id == first.id
+    assert manager.latest(second.id).document_id == second.id
+
+    manager.save(first)
+    manager.save(first)
+    # A retenção de A não deve excluir os snapshots de B.
+    assert len(manager.list_recovery_points(first.id)) == 2
+    assert len(manager.list_recovery_points(second.id)) == 1
