@@ -913,14 +913,24 @@ ApplicationWindow {
                                         // and text remain independently selectable.
                                         enabled: !smartSlotEditMode && !effectiveLocked(modelData)
                                         preventStealing: true
-                                        onPressed: sceneBridge.selectNodeAdvanced(modelData.id, (mouse.modifiers & Qt.ShiftModifier) !== 0, (mouse.modifiers & Qt.ControlModifier) !== 0)
+                                        // Selecting on press emitted sceneChanged and rebuilt the
+                                        // delegate while Qt still held the drag. This detached
+                                        // drag.target and made moving images feel frozen.
                                         onReleased: {
                                             var dx = (parent.x / zoom) - Number(modelData.transform.x)
                                             var dy = (parent.y / zoom) - Number(modelData.transform.y)
+                                            var id = String(modelData.id)
+                                            var shift = (mouse.modifiers & Qt.ShiftModifier) !== 0
+                                            var ctrl = (mouse.modifiers & Qt.ControlModifier) !== 0
+                                            sceneBridge.selectNodeAdvanced(id, shift, ctrl)
                                             if (Math.abs(dx) > 0.001 || Math.abs(dy) > 0.001)
                                                 sceneBridge.moveSelectionAtZoom(dx, dy, zoom)
                                         }
-                                        onDoubleClicked: if (modelData.kind === "text") textEditor.forceActiveFocus()
+                                        onDoubleClicked: {
+                                            sceneBridge.selectNodeAdvanced(modelData.id, false, false)
+                                            if (modelData.kind === "text")
+                                                textEditor.forceActiveFocus()
+                                        }
                                     }
                                 }
                             }
