@@ -1,0 +1,33 @@
+name: G2 Beta39 QML Interactive Compatibility
+on:
+  push:
+    branches:
+      - release/g2beta39-smart-slot-withoutbg
+    paths:
+      - '.github/workflows/g2-beta39-qml-smoke.yml'
+permissions:
+  contents: read
+jobs:
+  qml-rendering:
+    runs-on: windows-latest
+    timeout-minutes: 18
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QSG_RHI_BACKEND: software
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: d9b64eae091b6cf0de37ed8bc3d2211b2ea16e39
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Qt and test dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Load real editor and image inspector QML offscreen
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_qml_load.py tests/test_graphics2_image_inspector_qquickwindow_harness.py tests/test_graphics2_image_inspector_qml.py tests/test_graphics2_smart_slot_interaction_perf.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
