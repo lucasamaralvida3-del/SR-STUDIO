@@ -55,7 +55,10 @@ def _text_role(x: float, y: float, w: float, h: float, *, size: float, weight: i
 
 
 def _builtins() -> dict[str, ItemSlotPreset]:
+    from .slot_limpeza_blue import LIMPEZA_PRESET
+
     return {
+        "limpeza-blue-v1": ItemSlotPreset(**copy.deepcopy(LIMPEZA_PRESET)),
         "destaque": ItemSlotPreset(
             id="destaque",
             name="DESTAQUE",
@@ -431,6 +434,20 @@ def _reset_clone_content(page, slot: SmartSlot) -> None:
             node.metadata["placeholder"] = True
         elif role in placeholders and node.kind is NodeKind.TEXT:
             node.text = placeholders[role]
+    # Product-free duplicates must not retain secondary promotion amounts.
+    extra_placeholders = {
+        "promotion_integer": "00", "promotion_cents": ",00",
+        "promotion_currency": "R$", "promotion_unit": "CADA",
+        "app_price_integer": "00", "app_price_cents": ",00",
+        "app_price_currency": "R$", "app_unit": "UN",
+    }
+    extras = slot.metadata.get("extra_bindings")
+    if isinstance(extras, dict):
+        for role, value in extra_placeholders.items():
+            for node_id in extras.get(role, []):
+                node = page.node(str(node_id))
+                if node is not None and node.kind is NodeKind.TEXT:
+                    node.text = value
     refresh_item_slot_metadata(page, slot)
 
 
@@ -459,6 +476,17 @@ def duplicate_item_slot(session: GraphicsSession, slot_id: str, *, dx: float = 2
             if node_id in mapping
         }
         clone.metadata["decorative_nodes"] = [mapping[node_id] for node_id in source_slot.metadata.get("decorative_nodes") or [] if node_id in mapping]
+        # Secondary price and label nodes must belong to the NEW tree.
+        extras = source_slot.metadata.get("extra_bindings")
+        if isinstance(extras, dict):
+            clone.metadata["extra_bindings"] = {
+                role: [mapping[node_id] for node_id in raw if node_id in mapping]
+                for role, raw in extras.items() if isinstance(raw, (list, tuple))
+            }
+        if isinstance(source_slot.metadata.get("limpeza_blue_nodes"), list):
+            clone.metadata["limpeza_blue_nodes"] = [
+                mapping[node_id] for node_id in source_slot.metadata["limpeza_blue_nodes"] if node_id in mapping
+            ]
         price = copy.deepcopy(source_slot.metadata.get("price_block") or {})
         for key in ("currency_node", "integer_node", "decimal_node", "unit_node"):
             old = str(price.get(key) or "")
