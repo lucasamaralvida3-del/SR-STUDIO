@@ -38,6 +38,9 @@ jobs:
           set -euo pipefail
           outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq .conclusion)
           test "$outcome" = success
+          qml_outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/40020872957" --jq .conclusion)
+          test "$qml_outcome" = success
+          echo "VALIDATED_QML_WINDOWS_RUN=40020872957"
           gh api -H 'Accept: application/vnd.github.raw+json' "repos/$GITHUB_REPOSITORY/contents/manifests/launcher.json?ref=main" > launcher-live.json
           python - <<'PY'
           import json
