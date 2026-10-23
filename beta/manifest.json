@@ -6,8 +6,8 @@
   "product_version": "5.0.0",
   "release_label": "G2 Beta 37 - Limpeza Azul V2",
   "published_at": "2026-10-23T19:27:20.131552+00:00",
-  "min_launcher": "4.0.1-hybrid.base2.5",
-  "min_launcher_version": "4.0.1-hybrid.base2.5",
+  "min_launcher": "4.0.1-hybrid.base2.6",
+  "min_launcher_version": "4.0.1-hybrid.base2.6",
   "bundle": {
     "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-37/SR_STUDIO_G2_BETA_37_LIMPEZA_BLUE_V2_PROFESSIONAL.zip",
     "sha256": "358df75ccf9c38c8704db00954c2d74029fe8091687851a79b00f0aa4817f9dd",
