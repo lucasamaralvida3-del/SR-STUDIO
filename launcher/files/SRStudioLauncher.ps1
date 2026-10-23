@@ -10,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 # GitHub and Python.org require modern TLS on Windows PowerShell 5.1.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$LauncherVersion = '4.0.1-hybrid.base2.5'
+$LauncherVersion = '4.0.1-hybrid.base2.6'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir      = Join-Path $SrHomeRoot 'App'
 $DataDir     = Join-Path $SrHomeRoot 'Data'
