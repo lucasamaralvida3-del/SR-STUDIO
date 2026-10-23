@@ -1,5 +1,10 @@
 name: Publish G2 Beta 40 Azul One/Two Prices + Delta
 on:
+  push:
+    branches:
+      - release/g2beta40-blue-price-variants-publish
+    paths:
+      - '.github/workflows/g2-beta40-blue-price-variants-publish.yml'
   workflow_dispatch:
 
 permissions:
