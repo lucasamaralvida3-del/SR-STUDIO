@@ -2,38 +2,95 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio",
   "channel": "beta",
-  "version": "5.0.0-hybrid.g2beta.37",
+  "version": "5.0.0-hybrid.g2beta.38",
   "product_version": "5.0.0",
-  "release_label": "G2 Beta 37 - Limpeza Azul V2",
-  "published_at": "2026-10-23T19:27:20.131552+00:00",
+  "release_label": "G2 Beta 38 - Smart Slot fluido e Delta",
+  "published_at": "2026-10-23T20:22:45.617554+00:00",
   "min_launcher": "4.0.1-hybrid.base2.6",
   "min_launcher_version": "4.0.1-hybrid.base2.6",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-37/SR_STUDIO_G2_BETA_37_LIMPEZA_BLUE_V2_PROFESSIONAL.zip",
-    "sha256": "358df75ccf9c38c8704db00954c2d74029fe8091687851a79b00f0aa4817f9dd",
-    "size": 300857050,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-38/SR_STUDIO_G2_BETA_38_FLUID_SMART_SLOT_PROFESSIONAL.zip",
+    "sha256": "3644e092d4788eee0b5c7eb9751f3c17140fe9cff1877dff28be6dbce48400cb",
+    "size": 300859445,
     "member_prefix": "files/"
   },
-  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-37/SR_STUDIO_G2_BETA_37_LIMPEZA_BLUE_V2_PROFESSIONAL.zip",
-  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-37/SR_STUDIO_G2_BETA_37_LIMPEZA_BLUE_V2_PROFESSIONAL.zip",
-  "sha256": "358df75ccf9c38c8704db00954c2d74029fe8091687851a79b00f0aa4817f9dd",
-  "size": 300857050,
+  "delta": {
+    "format": "SRSTUDIO_DELTA_FILES_1",
+    "from_version": "5.0.0-hybrid.g2beta.37",
+    "target_version": "5.0.0-hybrid.g2beta.38",
+    "member_prefix": "files/",
+    "sha256": "25644b9617107250b12600ab9a4ec3f954ded279b9f5752760b685426fbd5b45",
+    "size": 12025881,
+    "files": [
+      {
+        "path": "SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe",
+        "sha256": "eed4b381ebc1ddc4c7a3e843fde6b55d6b2eb1cab009666c8c800f5c1cd608e2",
+        "size": 5334631
+      },
+      {
+        "path": "SRStudio5/Graphics2Host/_internal/base_library.zip",
+        "sha256": "051c02f5f5388c1c032db039a097dc0d533cb38b126aa5c386964a1c9bb40917",
+        "size": 1443565
+      },
+      {
+        "path": "SRStudio5/Graphics2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml",
+        "sha256": "a872230d5701af91f4d8ed490478c5ea199b091bd4eef3ae7e3a8ac5641e9ad6",
+        "size": 85277
+      },
+      {
+        "path": "SRStudio5/Graphics2Host/graphics2-host-runtime.json",
+        "sha256": "aa26f016864cdaee5d0c50c287fe5e89c3b272380d82cb8cc0c7b4601c1e9be6",
+        "size": 636101
+      },
+      {
+        "path": "SRStudio5/SR Studio 5.exe",
+        "sha256": "e6845c63a11519e69c8ae0adf17cfe582f9f94787140d50399fbe8806aa79914",
+        "size": 6109686
+      },
+      {
+        "path": "SRStudio5/_internal/base_library.zip",
+        "sha256": "d18e83924b04dffd69c0107ac6c96c1bc676aaf84932997537c2a87c4fb71aec",
+        "size": 1443565
+      },
+      {
+        "path": "SRStudio5/_internal/pypdfium2-5.14.0.dist-info/RECORD",
+        "sha256": "6145dde0221ddc295de641d69e154c01f64a9c4098af6fe6e9dae06fbf6aae4b",
+        "size": 9523
+      },
+      {
+        "path": "VERSAO.txt",
+        "sha256": "922215044e78c8f1988d1af50564a1ea387e523538524ef4f0683bd71adafa4f",
+        "size": 23
+      },
+      {
+        "path": "version.json",
+        "sha256": "ca94379f7c04727bc602d1f470b5b742f12d1e1233e0d5e7c9f0482f517c009b",
+        "size": 406
+      }
+    ],
+    "delete": [],
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-38/SR_STUDIO_G2_BETA_38_DELTA_FROM_37.zip"
+  },
+  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-38/SR_STUDIO_G2_BETA_38_FLUID_SMART_SLOT_PROFESSIONAL.zip",
+  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-38/SR_STUDIO_G2_BETA_38_FLUID_SMART_SLOT_PROFESSIONAL.zip",
+  "sha256": "3644e092d4788eee0b5c7eb9751f3c17140fe9cff1877dff28be6dbce48400cb",
+  "size": 300859445,
   "member_prefix": "files/",
-  "previous_version": "5.0.0-hybrid.g2beta.36",
+  "previous_version": "5.0.0-hybrid.g2beta.37",
   "entrypoint": "SR_Studio_Gerador.py",
   "graphics2_test": true,
   "graphics2_primary": true,
   "launcher_path_safe": true,
   "poster_quantity": true,
-  "source_commit": "50a86f8c8bfaec91c58ee4ce467ab00f2bc03551",
-  "workflow_run": "40011029939",
+  "source_commit": "754d65b114d0482b882276cfb22fbac727a70e77",
+  "workflow_run": "40018513510",
   "public_asset_verified": true,
   "public_asset_verified_via": [
     "curl",
     "wget"
   ],
   "limpeza_blue_single_slot": true,
-  "notes": "G2 Beta 37 com Limpeza Azul V2 (camadas, tipografia, edição); visual precisa de aprovação manual.",
-  "tag": "g2-beta-37",
-  "asset": "SR_STUDIO_G2_BETA_37_LIMPEZA_BLUE_V2_PROFESSIONAL.zip"
+  "notes": "G2 Beta 38 com Limpeza Azul V2 (camadas, tipografia, edição); visual precisa de aprovação manual.",
+  "tag": "g2-beta-38",
+  "asset": "SR_STUDIO_G2_BETA_38_FLUID_SMART_SLOT_PROFESSIONAL.zip"
 }
