@@ -1,0 +1,280 @@
+name: Publish G2 Beta 36 Limpeza Azul
+on:
+  push:
+    branches:
+      - release/g2beta36-limpeza-blue-publish
+    paths:
+      - '.github/workflows/g2-beta36-limpeza-blue-publish.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: sr-studio-beta-channel-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote-beta36:
+    if: github.repository == 'lucasamaralvida3-del/SR-STUDIO' && github.ref == 'refs/heads/release/g2beta36-limpeza-blue-publish'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      SOURCE_SHA: bedab055a311ea118b8bd769741e420245977821
+      SOURCE_RUN_ID: '40002971905'
+      CANDIDATE_ARTIFACT: SR-Studio-G2-Limpeza-Azul-Beta-Candidate-Windows-x64
+      BETA_VERSION: 5.0.0-hybrid.g2beta.36
+      BETA_TAG: g2-beta-36
+      BETA_LABEL: G2 Beta 36 - Limpeza Azul
+      BETA_BUNDLE_NAME: SR_STUDIO_G2_BETA_36_LIMPEZA_BLUE_PROFESSIONAL.zip
+      GH_TOKEN: ${{ github.token }}
+      PYTHONDONTWRITEBYTECODE: '1'
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Verify validated source run
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_sha=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq .head_sha)
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq .conclusion)
+          event=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq .event)
+          test "$source_sha" = "$SOURCE_SHA"
+          test "$conclusion" = success
+          test "$event" = push
+          echo "VALIDATED_CANDIDATE_SOURCE=$source_sha"
+
+      - name: Download exact Windows build artifact
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p candidate
+          gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$CANDIDATE_ARTIFACT" --dir candidate
+          test -f candidate/SR-Studio-G2-Limpeza-Azul-Beta-Candidate-Windows-x64.zip
+          test -f candidate/limpeza-blue-provenance.json
+
+      - name: Verify candidate and assemble launcher-compatible bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path, PurePosixPath
+          import hashlib, json, os, shutil, zipfile
+          root = Path.cwd()
+          archive = root / 'candidate/SR-Studio-G2-Limpeza-Azul-Beta-Candidate-Windows-x64.zip'
+          provenance = json.loads((root / 'candidate/limpeza-blue-provenance.json').read_text(encoding='utf-8-sig'))
+          sha = os.environ['SOURCE_SHA']
+          digest = hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest()
+          assert provenance['schema'] == 'srstudio/g2-limpeza-blue-test-candidate/1'
+          assert provenance['source_sha'] == sha, (provenance['source_sha'], sha)
+          assert provenance['sha256'].lower() == digest, 'Candidate hash mismatch'
+          assert provenance['size_bytes'] == archive.stat().st_size
+          assert provenance['preset'] == 'limpeza-blue-v1'
+          source = root / 'candidate-extracted'
+          source.mkdir()
+          with zipfile.ZipFile(archive) as z:
+              names = [i.filename.replace('\\', '/') for i in z.infolist()]
+              assert len(names) == len(set(names))
+              assert len(names) == len({n.casefold() for n in names})
+              for name in names:
+                  parts = PurePosixPath(name).parts
+                  assert parts and '..' not in parts and not name.startswith('/') and ':' not in name
+              assert z.testzip() is None
+              z.extractall(source)
+          assert (source / 'SR Studio 5.exe').is_file()
+          assert (source / 'Graphics2Host/SRGraphicsEngine2Host.exe').is_file()
+          qt = list((source / 'Graphics2Host').rglob('*Qt*Quick*'))
+          assert qt, 'Missing Qt Quick runtime'
+          stage = root / 'bundle-stage'
+          files = stage / 'files'
+          studio = files / 'SRStudio5'
+          shutil.copytree(source, studio)
+          launcher = (
+              'from pathlib import Path\n'
+              'import subprocess\n'
+              'import sys\n'
+              'root = Path(__file__).resolve().parent\n'
+              'exe = root / "SRStudio5" / "SR Studio 5.exe"\n'
+              'if not exe.is_file():\n'
+              '    raise FileNotFoundError(str(exe))\n'
+              'subprocess.Popen([str(exe)], cwd=str(exe.parent))\n'
+              'sys.exit(0)\n'
+          )
+          (files / 'SR_Studio_Gerador.py').write_text(launcher, encoding='utf-8')
+          (files / 'VERSAO.txt').write_text(os.environ['BETA_VERSION'] + '\n', encoding='utf-8')
+          version = {
+              'version': os.environ['BETA_VERSION'],
+              'product_version': '5.0.0',
+              'channel': 'beta',
+              'release_label': os.environ['BETA_LABEL'],
+              'entrypoint': 'SR_Studio_Gerador.py',
+              'professional_executable': 'SRStudio5/SR Studio 5.exe',
+              'graphics2_primary': True,
+              'poster_quantity': True,
+              'source_commit': sha,
+              'limpeza_blue_single_slot': True,
+          }
+          (files / 'version.json').write_text(json.dumps(version, indent=2, ensure_ascii=False), encoding='utf-8')
+          out = root / os.environ['BETA_BUNDLE_NAME']
+          # Deterministic archive for safe retries, without relying on filesystem timestamps.
+          with zipfile.ZipFile(out, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=6, allowZip64=True) as z:
+              for path in sorted(files.rglob('*')):
+                  if not path.is_file():
+                      continue
+                  rel = path.relative_to(stage).as_posix()
+                  info = zipfile.ZipInfo(rel, date_time=(2020, 1, 1, 0, 0, 0))
+                  info.compress_type = zipfile.ZIP_DEFLATED
+                  info.external_attr = 0o100644 << 16
+                  with path.open('rb') as inp, z.open(info, 'w', force_zip64=True) as dest:
+                      shutil.copyfileobj(inp, dest, length=1024*1024)
+          with zipfile.ZipFile(out) as z:
+              assert z.testzip() is None
+              names = set(z.namelist())
+              assert 'files/SR_Studio_Gerador.py' in names
+              assert 'files/SRStudio5/SR Studio 5.exe' in names
+              assert 'files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe' in names
+              assert json.loads(z.read('files/version.json'))['source_commit'] == sha
+          final_sha = hashlib.file_digest(out.open('rb'), 'sha256').hexdigest()
+          size = out.stat().st_size
+          with (root / 'beta36-checksum.txt').open('w') as f:
+              f.write(f'{final_sha}  {out.name}\n')
+          with (root / 'beta36-evidence.json').open('w') as f:
+              json.dump({'source_sha': sha, 'source_run_id': os.environ['SOURCE_RUN_ID'], 'sha256': final_sha,
+                         'bytes': size, 'artifact': out.name, 'candidate_sha256': digest,
+                         'visual_certification': 'pending manual review'}, f, indent=2)
+          with (Path(os.environ['GITHUB_ENV'])).open('a') as f:
+              f.write(f'BETA_SHA256={final_sha}\nBETA_SIZE={size}\n')
+          print('BETA_BUNDLE_SHA256', final_sha, 'BYTES', size)
+          PY
+
+      - name: Create prerelease without touching Beta 35
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release view "$BETA_TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 && {
+            echo "Beta 36 release tag already exists; refusing to overwrite" >&2
+            exit 1
+          }
+          cat > release-notes.md <<'MD'
+          # SR Studio G2 Beta 36 - Limpeza Azul
+          - Novo ItemSlot manual: LIMPEZA / AZUL / 2 PRECOS.
+          - Produto, imagem, preco promocional e preco do clube independentes.
+          - Comando de inspecao estrutural do perfil e testes de round-trip .srscene.
+          - Construido a partir da Beta 35, preservando os 7 cartazes Office-compatible.
+          - Windows test build, Graphics Engine 2 CI e Quality aprovados.
+          - Fidelidade visual exata e reconhecimento automatico em PPTX **nao certificados**.
+          - Distribuicao experimental Beta; versao Stable nao alterada.
+          MD
+          gh release create "$BETA_TAG" "$BETA_BUNDLE_NAME" beta36-checksum.txt \
+            --repo "$GITHUB_REPOSITORY" --title "SR Studio - G2 Beta 36 Limpeza Azul" \
+            --notes-file release-notes.md --prerelease --latest=false --target "$SOURCE_SHA"
+          tag_target=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$BETA_TAG" --jq .object.sha)
+          test "$tag_target" = "$SOURCE_SHA"
+
+      - name: Verify public download using two independent clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="https://github.com/$GITHUB_REPOSITORY/releases/download/$BETA_TAG/$BETA_BUNDLE_NAME"
+          curl --fail --location --retry 3 --retry-delay 4 --connect-timeout 30 -o public-curl.zip "$url"
+          wget --tries=3 --timeout=60 --quiet -O public-wget.zip "$url"
+          echo "$BETA_SHA256  public-curl.zip" | sha256sum --check -
+          echo "$BETA_SHA256  public-wget.zip" | sha256sum --check -
+          test "$(stat -c %s public-curl.zip)" = "$BETA_SIZE"
+          test "$(stat -c %s public-wget.zip)" = "$BETA_SIZE"
+          python - <<'PY'
+          import json, zipfile
+          for name in ('public-curl.zip', 'public-wget.zip'):
+              with zipfile.ZipFile(name) as z:
+                  assert z.testzip() is None
+                  names = set(z.namelist())
+                  assert 'files/SR_Studio_Gerador.py' in names
+                  assert 'files/SRStudio5/SR Studio 5.exe' in names
+                  assert 'files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe' in names
+                  meta = json.loads(z.read('files/version.json'))
+                  assert meta['version'] == '5.0.0-hybrid.g2beta.36'
+                  assert meta['source_commit'] == 'bedab055a311ea118b8bd769741e420245977821'
+          PY
+          echo "PUBLIC_BUNDLE_VERIFIED=TRUE"
+
+      - name: Checkout Beta channel control file
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: channel
+          fetch-depth: 0
+
+      - name: Promote verified Beta 36 and leave Stable untouched
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, datetime
+          from pathlib import Path
+          path = Path('channel/beta/manifest.json')
+          old = json.loads(path.read_text(encoding='utf-8'))
+          assert old['channel'] == 'beta'
+          assert old['version'] == '5.0.0-hybrid.g2beta.35', f"Unexpected beta version {old['version']}"
+          asset_url = (f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/"
+                       f"{os.environ['BETA_TAG']}/{os.environ['BETA_BUNDLE_NAME']}")
+          sha, size = os.environ['BETA_SHA256'], int(os.environ['BETA_SIZE'])
+          new = {
+              'format': 'SRSTUDIO_HYBRID_BUNDLE_1',
+              'product': 'SR Studio', 'channel': 'beta',
+              'version': os.environ['BETA_VERSION'], 'product_version': '5.0.0',
+              'release_label': os.environ['BETA_LABEL'],
+              'published_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
+              'min_launcher': old['min_launcher'],
+              'min_launcher_version': old['min_launcher_version'],
+              'bundle': {'url': asset_url, 'sha256': sha, 'size': size, 'member_prefix': 'files/'},
+              'url': asset_url, 'bundle_url': asset_url, 'sha256': sha, 'size': size,
+              'member_prefix': 'files/', 'previous_version': old['version'],
+              'entrypoint': 'SR_Studio_Gerador.py',
+              'graphics2_test': True, 'graphics2_primary': True,
+              'launcher_path_safe': True, 'poster_quantity': True,
+              'source_commit': os.environ['SOURCE_SHA'],
+              'workflow_run': os.environ['GITHUB_RUN_ID'],
+              'public_asset_verified': True,
+              'public_asset_verified_via': ['curl', 'wget'],
+              'limpeza_blue_single_slot': True,
+              'notes': 'G2 Beta 36 com ItemSlot Limpeza Azul (2 precos) para teste; geometria aproximada.',
+              'tag': os.environ['BETA_TAG'], 'asset': os.environ['BETA_BUNDLE_NAME'],
+          }
+          path.write_text(json.dumps(new, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          PY
+          cd channel
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add beta/manifest.json
+          test "$(git diff --cached --name-only)" = "beta/manifest.json"
+          git commit -m "chore(beta): promote verified G2 Beta 36 Limpeza Azul"
+          git push origin HEAD:main
+
+      - name: Verify Beta channel manifest at GitHub
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh api -H 'Accept: application/vnd.github.raw+json' "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" > beta36-live-manifest.json
+          python - <<'PY'
+          import json, os
+          data = json.load(open('beta36-live-manifest.json', encoding='utf-8-sig'))
+          assert data['version'] == os.environ['BETA_VERSION']
+          assert data['bundle']['sha256'] == os.environ['BETA_SHA256']
+          assert data['source_commit'] == os.environ['SOURCE_SHA']
+          assert data['public_asset_verified'] is True
+          print('LIVE_BETA_36_VERIFIED')
+          PY
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: SR-Studio-G2-Beta36-Publication-Evidence
+          path: |
+            beta36-evidence.json
+            beta36-checksum.txt
+            beta36-live-manifest.json
+          if-no-files-found: warn
