@@ -1,0 +1,45 @@
+name: Refresh Beta Delta Launcher Manifest
+on:
+  push:
+    branches:
+      - feature/launcher-beta-delta-file-updates
+    paths:
+      - '.github/workflows/refresh-beta-delta-launcher-manifest.yml'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  manifest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/launcher-beta-delta-file-updates
+      - name: Refresh launcher SHA, size and version
+        run: |
+          python - <<'PY'
+          import hashlib, json
+          from pathlib import Path
+          source = Path('launcher/files/SRStudioLauncher.ps1')
+          data = source.read_bytes()
+          assert b"4.0.1-hybrid.base2.6" in data
+          path = Path('manifests/launcher.json')
+          manifest = json.loads(path.read_text(encoding='utf-8-sig'))
+          assert manifest['format'] == 'SRSTUDIO_LAUNCHER_MANIFEST_1'
+          manifest['version'] = '4.0.1-hybrid.base2.6'
+          matching = [f for f in manifest['files'] if f.get('path') == 'SRStudioLauncher.ps1']
+          assert len(matching) == 1
+          matching[0]['sha256'] = hashlib.sha256(data).hexdigest()
+          matching[0]['size'] = len(data)
+          path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+          print('launcher SHA256',matching[0]['sha256'])
+          PY
+      - name: Commit verified manifest
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add manifests/launcher.json
+          if ! git diff --cached --quiet; then
+            git commit -m "chore(launcher): publish base2.6 delta installer digest"
+            git push origin HEAD:feature/launcher-beta-delta-file-updates
+          fi

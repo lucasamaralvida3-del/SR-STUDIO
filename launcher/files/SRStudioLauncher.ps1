@@ -10,7 +10,7 @@ $ProgressPreference = 'SilentlyContinue'
 # GitHub and Python.org require modern TLS on Windows PowerShell 5.1.
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
 
-$LauncherVersion = '4.0.1-hybrid.base2.5'
+$LauncherVersion = '4.0.1-hybrid.base2.6'
 $SrHomeRoot = Join-Path $env:LOCALAPPDATA 'SRStudio'
 $AppDir      = Join-Path $SrHomeRoot 'App'
 $DataDir     = Join-Path $SrHomeRoot 'Data'
@@ -397,6 +397,141 @@ function Test-SrIntegrityCatalog($Catalog) {
   return $true
 }
 
+function Test-SrSafeDeltaPath([string]$Relative) {
+  if(-not $Relative -or $Relative.StartsWith('/') -or $Relative.StartsWith('\') -or $Relative.Contains(':') -or $Relative.Contains('\')) { return $false }
+  if($Relative.Split('/') -contains '..' -or $Relative.Split('/') -contains '.' -or $Relative.Contains('//')) { return $false }
+  if([IO.Path]::IsPathRooted($Relative)) { return $false }
+  return $true
+}
+
+function Apply-SrBundleDelta($Source,$Manifest) {
+  # Only Beta installs with an authenticated previous integrity catalog can use
+  # file-granular updates. Stable, first installs and repairs retain full bundles.
+  if($channel -ne 'beta' -or $Source.kind -ne 'remote' -or $FullRepair -or $RepairOnly) { return $false }
+  $delta = Get-SrProperty $Manifest 'delta' $null
+  if($null -eq $delta) { return $false }
+  $installed = Get-SrInstalledState
+  if($null -eq $installed) { return $false }
+  $currentVersion = [string](Get-SrProperty $installed 'version' '')
+  $fromVersion = [string](Get-SrProperty $delta 'from_version' '')
+  $targetVersion = [string]$Manifest.version
+  if(-not $fromVersion -or $currentVersion -ne $fromVersion -or $targetVersion -eq $currentVersion) { return $false }
+  if([string](Get-SrProperty $delta 'target_version' '') -ne $targetVersion) { throw 'Delta target version mismatch.' }
+  $catalog = Get-SrIntegrityCatalog
+  if($null -eq $catalog -or [string]$catalog.version -ne $currentVersion -or -not (Test-SrIntegrityCatalog $catalog)) {
+    Write-SrLog 'Delta base is missing or altered: falling back to full verified bundle.'
+    return $false
+  }
+  $changes = @($delta.files)
+  if($changes.Count -lt 1) { return $false }
+  $removed = @()
+  if(Get-SrProperty $delta 'delete' $null) { $removed = @($delta.delete) }
+  $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+  foreach($entry in $changes) {
+    $rel = [string]$entry.path
+    if(-not (Test-SrSafeDeltaPath $rel) -or -not $seen.Add($rel)) { throw ('Unsafe/duplicate delta path: ' + $rel) }
+    $hash = [string]$entry.sha256
+    if($hash -notmatch '^[0-9a-fA-F]{64}$' -or [int64]$entry.size -lt 0) { throw ('Invalid delta metadata: ' + $rel) }
+  }
+  foreach($rel in $removed) {
+    $p = [string]$rel
+    if(-not (Test-SrSafeDeltaPath $p) -or -not $seen.Add($p)) { throw ('Unsafe/duplicate deleted path: ' + $p) }
+  }
+  $url = [string](Get-SrProperty $delta 'url' '')
+  if(-not (Test-SrUrlAllowed $url)) { throw 'Unsafe delta URL.' }
+  $deltaHash = ([string](Get-SrProperty $delta 'sha256' '')).ToLowerInvariant()
+  $expectedBytes = [int64](Get-SrProperty $delta 'size' 0)
+  if($deltaHash -notmatch '^[0-9a-f]{64}$' -or $expectedBytes -le 0) { throw 'Invalid delta package metadata.' }
+  $stage = Join-Path $StageDir ('delta_' + [guid]::NewGuid().ToString('N'))
+  $backup = Join-Path $stage 'backup'
+  $prepared = Join-Path $stage 'prepared'
+  New-Item -ItemType Directory -Path $backup,$prepared -Force | Out-Null
+  $backupExisting = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+  $modified = New-Object 'System.Collections.Generic.List[string]'
+  try {
+    $zipPath = Join-Path $stage 'delta.zip'
+    Write-SrLog ('Downloading incremental Beta update (' + $expectedBytes + ' bytes) instead of full bundle.')
+    Invoke-SrDownload $url $zipPath ([int](Get-SrProperty $cfg 'download_timeout_seconds' 600)) ([int](Get-SrProperty $cfg 'download_retries' 3))
+    if((Get-Item -LiteralPath $zipPath).Length -ne $expectedBytes -or (Get-SrSha256 $zipPath) -ne $deltaHash) { throw 'Delta zip size/hash mismatch.' }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+      $expected = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+      foreach($entry in $changes) { [void]$expected.Add('files/' + [string]$entry.path) }
+      $archiveSeen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+      foreach($item in $archive.Entries) {
+        if($item.FullName.EndsWith('/')) { continue }
+        if(-not $item.FullName.StartsWith('files/',[StringComparison]::Ordinal) -or -not $archiveSeen.Add($item.FullName) -or -not $expected.Contains($item.FullName)) {
+          throw ('Unexpected delta archive member: ' + $item.FullName)
+        }
+      }
+      if($archiveSeen.Count -ne $expected.Count) { throw 'Delta archive is missing required members.' }
+      foreach($entry in $changes) {
+        $rel = [string]$entry.path
+        $item = $archive.GetEntry('files/' + $rel)
+        if($null -eq $item) { throw ('Missing delta file: ' + $rel) }
+        $to = Join-Path $prepared ($rel.Replace('/','\'))
+        New-Item -ItemType Directory -Path (Split-Path $to -Parent) -Force | Out-Null
+        $stream = $item.Open()
+        $dest = [IO.File]::Create($to)
+        try { $stream.CopyTo($dest) } finally { $dest.Dispose(); $stream.Dispose() }
+        if((Get-Item -LiteralPath $to).Length -ne [int64]$entry.size -or (Get-SrSha256 $to) -ne ([string]$entry.sha256).ToLowerInvariant()) { throw ('Delta file verification failed: ' + $rel) }
+      }
+    } finally { $archive.Dispose() }
+    foreach($rel in @($changes | ForEach-Object { [string]$_.path }) + $removed) {
+      $original = Join-Path $AppDir ($rel.Replace('/','\'))
+      if(Test-Path -LiteralPath $original -PathType Leaf) {
+        $copy = Join-Path $backup ($rel.Replace('/','\'))
+        New-Item -ItemType Directory -Path (Split-Path $copy -Parent) -Force | Out-Null
+        Copy-Item -LiteralPath $original -Destination $copy -Force
+        [void]$backupExisting.Add($rel)
+      }
+    }
+    foreach($entry in $changes) {
+      $rel = [string]$entry.path
+      $current = Join-Path $AppDir ($rel.Replace('/','\'))
+      New-Item -ItemType Directory -Path (Split-Path $current -Parent) -Force | Out-Null
+      $tmp = $current + '.srnew'
+      Copy-Item -LiteralPath (Join-Path $prepared ($rel.Replace('/','\'))) -Destination $tmp -Force
+      if((Get-SrSha256 $tmp) -ne ([string]$entry.sha256).ToLowerInvariant()) { throw ('Delta post-copy check failed: ' + $rel) }
+      Move-Item -LiteralPath $tmp -Destination $current -Force
+      [void]$modified.Add($rel)
+    }
+    foreach($rel in $removed) {
+      $current = Join-Path $AppDir ($rel.Replace('/','\'))
+      if(Test-Path -LiteralPath $current -PathType Leaf) {
+        Remove-Item -LiteralPath $current -Force
+        [void]$modified.Add($rel)
+      }
+    }
+    $newCatalog = New-SrIntegrityCatalog $AppDir $targetVersion
+    if(@($newCatalog.files).Count -lt @($catalog.files).Count - $removed.Count) { throw 'Delta integrity catalog has unexpected omissions.' }
+    # Cross-check changed files *again* after activating them.
+    foreach($entry in $changes) {
+      $current = Join-Path $AppDir (([string]$entry.path).Replace('/','\'))
+      if((Get-SrSha256 $current) -ne ([string]$entry.sha256).ToLowerInvariant()) { throw 'Activated delta file hash mismatch.' }
+    }
+    Save-SrJson $newCatalog $IntegrityPath
+    Save-SrJson ([ordered]@{version=$targetVersion;channel=$channel;updated_at=(Get-Date).ToString('o');checked_at=(Get-Date).ToString('o');last_full_repair=(Get-Date).ToString('o');launcher_version=$LauncherVersion;distribution='delta'}) $InstalledPath
+    Write-SrLog ('Incremental Beta update applied: ' + $fromVersion + ' -> ' + $targetVersion + '; changed files: ' + $changes.Count)
+    return $true
+  }
+  catch {
+    $failure = $_.Exception.Message
+    Write-SrLog ('Incremental update failed; reverting changed files: ' + $failure)
+    foreach($rel in $modified) {
+      $original = Join-Path $AppDir ($rel.Replace('/','\'))
+      if($backupExisting.Contains($rel)) {
+        Copy-Item -LiteralPath (Join-Path $backup ($rel.Replace('/','\'))) -Destination $original -Force
+      } elseif(Test-Path -LiteralPath $original) {
+        Remove-Item -LiteralPath $original -Force
+      }
+    }
+    throw ('Delta update rolled back: ' + $failure)
+  }
+  finally { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 function Apply-SrBundleManifest($Source,$Manifest) {
   $targetVersion = [string]$Manifest.version
   $installedState = Get-SrInstalledState
@@ -418,6 +553,13 @@ function Apply-SrBundleManifest($Source,$Manifest) {
   if($Source.kind -eq 'cached') {
     Write-SrLog 'Offline mode: an update or repair is needed, but the server is unavailable. Opening the last local installation.'
     return $false
+  }
+
+  # Beta-only incremental upgrades; Stable and full repair are unchanged.
+  try {
+    if(Apply-SrBundleDelta $Source $Manifest) { return $true }
+  } catch {
+    Write-SrLog ('Delta unavailable; falling back to full verified bundle: ' + $_.Exception.Message)
   }
 
   $bundleInfo = Get-SrProperty $Manifest 'bundle' $null

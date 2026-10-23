@@ -1,0 +1,76 @@
+name: Beta Incremental Launcher CI
+on:
+  push:
+    branches:
+      - feature/launcher-beta-delta-file-updates
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-native-delta:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Parse launcher under Windows PowerShell
+        shell: pwsh
+        run: |
+          $errors = $null
+          $tokens = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path launcher/files/SRStudioLauncher.ps1).Path,[ref]$tokens,[ref]$errors) | Out-Null
+          if ($errors.Count -gt 0) { $errors | ForEach-Object { Write-Host ("LINE " + $_.Extent.StartLineNumber + ": " + $_.Message + " TEXT " + $_.Extent.Text) }; throw "Launcher parse failed" }
+      - name: Prepare v1 fixture and v2 delta/full bundles
+        shell: pwsh
+        run: |
+          @'
+          import hashlib,json,os,pathlib,zipfile
+          root=pathlib.Path(os.environ["RUNNER_TEMP"])
+          home=root/"delta-profile"/"SRStudio"
+          app=home/"App"
+          cfg=home/"Config"
+          pub=root/"delta-http"/"beta"
+          for d in (app,cfg,pub):d.mkdir(parents=True,exist_ok=True)
+          old={"SR_Studio_Gerador.py":b"print('start')\n","demo.txt":b"old-value","unchanged.bin":b"A"*2000000,"deleted.txt":b"delete-me"}
+          new={**old,"demo.txt":b"new-value","version.json":b'{"version":"test-delta-v2"}'}
+          new.pop("deleted.txt")
+          sha=lambda data:hashlib.sha256(data).hexdigest()
+          for name,data in old.items():(app/name).write_bytes(data)
+          (cfg/"integrity.json").write_text(json.dumps({"version":"test-delta-v1","files":[{"path":k,"sha256":sha(v),"size":len(v)} for k,v in old.items()]}))
+          (cfg/"installed.json").write_text(json.dumps({"version":"test-delta-v1","channel":"beta"}))
+          (cfg/"launcher.json").write_text(json.dumps({"channel":"beta","auto_update":True,"repair_on_start":True,"remote_manifest_base":"http://127.0.0.1:8779","entrypoint":"SR_Studio_Gerador.py","allow_offline":False,"full_repair_every_days":0,"download_retries":1,"download_timeout_seconds":45}))
+          for name,entries in [("delta.zip",{"demo.txt":new["demo.txt"],"version.json":new["version.json"]}),("full.zip",new)]:
+           with zipfile.ZipFile(pub/name,"w",zipfile.ZIP_DEFLATED) as z:
+            for key,data in entries.items():z.writestr("files/"+key,data)
+          def info(p):
+           data=p.read_bytes()
+           return {"url":"http://127.0.0.1:8779/beta/"+p.name,"sha256":sha(data),"size":len(data),"member_prefix":"files/"}
+          delta=info(pub/"delta.zip")
+          delta.update({"from_version":"test-delta-v1","target_version":"test-delta-v2","files":[{"path":k,"sha256":sha(new[k]),"size":len(new[k])} for k in ("demo.txt","version.json")],"delete":["deleted.txt"]})
+          (pub/"manifest.json").write_text(json.dumps({"format":"SRSTUDIO_HYBRID_BUNDLE_1","version":"test-delta-v2","channel":"beta","bundle":info(pub/"full.zip"),"delta":delta,"entrypoint":"SR_Studio_Gerador.py"}))
+          print("Fixture delta",delta["size"],"full",info(pub/"full.zip")["size"])
+          
+          '@ | python -
+      - name: Test delta upgrade under Windows PowerShell 5.1
+        shell: pwsh
+        run: |
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'delta-profile'
+          $www = Join-Path $env:RUNNER_TEMP 'delta-http'
+          $server = Start-Process -FilePath python -ArgumentList "-m http.server 8779 --bind 127.0.0.1 --directory $www" -PassThru -WindowStyle Hidden
+          try {
+            Start-Sleep -Seconds 2
+            & powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File launcher/files/SRStudioLauncher.ps1 -NoLaunch
+            if ($LASTEXITCODE -ne 0) { throw "Launcher exited $LASTEXITCODE" }
+            $app = Join-Path $env:LOCALAPPDATA 'SRStudio/App'
+            $config = Join-Path $env:LOCALAPPDATA 'SRStudio/Config'
+            $log = Join-Path $env:LOCALAPPDATA 'SRStudio/Logs/launcher.log'
+            if ((Get-Content (Join-Path $app 'demo.txt') -Raw) -ne 'new-value') { throw 'Delta did not apply changed file' }
+            if (!(Test-Path (Join-Path $app 'version.json'))) { throw 'Delta did not create new file' }
+            if (Test-Path (Join-Path $app 'deleted.txt')) { throw 'Delta did not delete removed file' }
+            if ((Get-Item (Join-Path $app 'unchanged.bin')).Length -ne 2000000) { throw 'Unchanged file was lost' }
+            if (!(Select-String -Path $log -Pattern 'Incremental Beta update applied' -Quiet)) { throw 'Delta path was not used' }
+            $state = Get-Content (Join-Path $config 'installed.json') -Raw | ConvertFrom-Json
+            if ($state.distribution -ne 'delta' -or $state.version -ne 'test-delta-v2') { throw 'Delta state was not saved' }
+          } finally { Stop-Process -Id $server.Id -Force -ErrorAction SilentlyContinue }
