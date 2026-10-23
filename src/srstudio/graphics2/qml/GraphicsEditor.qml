@@ -73,7 +73,7 @@ ApplicationWindow {
         // For highly detailed imported cards, transforming every vector path
         // and rerasterizing it on each pointer event is prohibitively slow.
         // Use an outline-only transient preview; artwork moves on mouse release.
-        if (Object.keys(ids).length > 24)
+        if ((slot.metadata && slot.metadata.limpeza_blue_profile) || Object.keys(ids).length > 24)
             return ({})
         return ids
     }
