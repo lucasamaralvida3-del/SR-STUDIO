@@ -397,6 +397,636 @@ function Test-SrIntegrityCatalog($Catalog) {
   return $true
 }
 
+
+function Test-SrSafeDeltaPath([string]$Relative) {
+  if(-not $Relative -or $Relative.StartsWith('/') -or $Relative.StartsWith('\') -or $Relative.Contains(':') -or $Relative.Contains('\')) { return $false }
+  if($Relative.Split('/') -contains '..' -or $Relative.Split('/') -contains '.' -or $Relative.Contains('//')) { return $false }
+  if([IO.Path]::IsPathRooted($Relative)) { return $false }
+  return $true
+}
+
+function Apply-SrBundleDelta($Source,$Manifest) {
+  # Only Beta installs with an authenticated previous integrity catalog can use
+  # file-granular updates. Stable, first installs and repairs retain full bundles.
+  if($channel -ne 'beta' -or $Source.kind -ne 'remote' -or $FullRepair -or $RepairOnly) { return $false }
+  $delta = Get-SrProperty $Manifest 'delta' $null
+  if($null -eq $delta) { return $false }
+  $installed = Get-SrInstalledState
+  if($null -eq $installed) { return $false }
+  $currentVersion = [string](Get-SrProperty $installed 'version' '')
+  $fromVersion = [string](Get-SrProperty $delta 'from_version' '')
+  $targetVersion = [string]$Manifest.version
+  if(-not $fromVersion -or $currentVersion -ne $fromVersion -or $targetVersion -eq $currentVersion) { return $false }
+  if([string](Get-SrProperty $delta 'target_version' '') -ne $targetVersion) { throw 'Delta target version mismatch.' }
+  $catalog = Get-SrIntegrityCatalog
+  if($null -eq $catalog -or [string]$catalog.version -ne $currentVersion -or -not (Test-SrIntegrityCatalog $catalog)) {
+    Write-SrLog 'Delta base is missing or altered: falling back to full verified bundle.'
+    return $false
+  }
+  $changes = @($delta.files)
+  if($changes.Count -lt 1) { return $false }
+  $removed = @()
+  if(Get-SrProperty $delta 'delete' $null) { $removed = @($delta.delete) }
+  $seen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+  foreach($entry in $changes) {
+    $rel = [string]$entry.path
+    if(-not (Test-SrSafeDeltaPath $rel) -or -not $seen.Add($rel)) { throw ('Unsafe/duplicate delta path: ' + $rel) }
+    $hash = [string]$entry.sha256
+    if($hash -notmatch '^[0-9a-fA-F]{64}
+  $targetVersion = [string]$Manifest.version
+  $installedState = Get-SrInstalledState
+  $installedVersion = ''
+  if($installedState) { $installedVersion = [string](Get-SrProperty $installedState 'version' '') }
+  $needsInstall = ($installedVersion -ne $targetVersion) -or -not (Test-Path (Join-Path $AppDir ([string](Get-SrProperty $cfg 'entrypoint' 'SR_Studio_Gerador.py'))))
+
+  if(-not $needsInstall -and (Test-SrFullRepairDue)) {
+    $catalog = Get-SrIntegrityCatalog
+    if(-not (Test-SrIntegrityCatalog $catalog)) { $needsInstall = $true }
+    else { Write-SrLog ('Integrity catalog verified. Version ' + $targetVersion) }
+  }
+
+  if(-not $needsInstall) {
+    Write-SrLog ('Desktop Core is current: ' + $targetVersion)
+    return $false
+  }
+
+  if($Source.kind -eq 'cached') {
+    Write-SrLog 'Offline mode: an update or repair is needed, but the server is unavailable. Opening the last local installation.'
+    return $false
+  }
+
+  # V4: beta-only incremental upgrades, never for repairs or Stable.
+  # A malformed/unusable delta retains the standard full bundle as fallback.
+  try {
+    if(Apply-SrBundleDelta $Source $Manifest) { return $true }
+  } catch {
+    Write-SrLog ('Delta unavailable; falling back to full verified bundle: ' + $_.Exception.Message)
+  }
+
+  $bundleInfo = Get-SrProperty $Manifest 'bundle' $null
+  if($null -eq $bundleInfo) { throw 'Bundle manifest does not contain bundle information.' }
+  $bundleUrl = [string](Get-SrProperty $bundleInfo 'url' '')
+  if(-not $bundleUrl -or -not (Test-SrUrlAllowed $bundleUrl)) { throw 'Invalid or unsafe bundle URL.' }
+  $expectedBundleHash = ([string](Get-SrProperty $bundleInfo 'sha256' '')).ToLowerInvariant()
+  $expectedBundleSize = [int64](Get-SrProperty $bundleInfo 'size' 0)
+  $memberPrefix = [string](Get-SrProperty $bundleInfo 'member_prefix' 'files/')
+
+  $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+  $stage = Join-Path $StageDir ('bundle_' + $stamp)
+  $backup = Join-Path $BackupDir ('bundle_' + $stamp)
+  New-Item -ItemType Directory -Path $stage -Force | Out-Null
+  New-Item -ItemType Directory -Path $backup -Force | Out-Null
+  try {
+    $bundleZip = Join-Path $stage 'desktop_core.zip'
+    Write-SrLog ('Downloading verified Desktop Core bundle: ' + $bundleUrl)
+    Invoke-SrDownload $bundleUrl $bundleZip ([int](Get-SrProperty $cfg 'download_timeout_seconds' 180)) ([int](Get-SrProperty $cfg 'download_retries' 3))
+    if($expectedBundleSize -gt 0 -and (Get-Item -LiteralPath $bundleZip).Length -ne $expectedBundleSize) { throw 'Desktop Core bundle size validation failed.' }
+    if($expectedBundleHash -and (Get-SrSha256 $bundleZip) -ne $expectedBundleHash) { throw 'Desktop Core bundle SHA256 validation failed.' }
+
+    $extractDir = Join-Path $stage 'extracted'
+    Expand-Archive -LiteralPath $bundleZip -DestinationPath $extractDir -Force
+    $sourceRoot = Join-Path $extractDir ($memberPrefix.Trim('/').Replace('/','\\'))
+    if(-not (Test-Path $sourceRoot)) { throw ('Bundle member prefix not found: ' + $memberPrefix) }
+
+    $newCatalog = New-SrIntegrityCatalog $sourceRoot $targetVersion
+    if(@($newCatalog.files).Count -eq 0) { throw 'Desktop Core bundle contains no distributable files.' }
+    Write-SrLog ('Bundle validated: ' + @($newCatalog.files).Count + ' files.')
+
+    foreach($fileEntry in @($newCatalog.files)) {
+      $relative = [string]$fileEntry.path
+      $current = Join-Path $AppDir ($relative.Replace('/','\\'))
+      if(Test-Path $current) {
+        $backupPath = Join-Path $backup ($relative.Replace('/','\\'))
+        New-Item -ItemType Directory -Path (Split-Path $backupPath -Parent) -Force | Out-Null
+        Copy-Item -LiteralPath $current -Destination $backupPath -Force
+      }
+    }
+
+    foreach($fileEntry in @($newCatalog.files)) {
+      $relative = [string]$fileEntry.path
+      $from = Join-Path $sourceRoot ($relative.Replace('/','\\'))
+      $to = Join-Path $AppDir ($relative.Replace('/','\\'))
+      New-Item -ItemType Directory -Path (Split-Path $to -Parent) -Force | Out-Null
+      $temp = $to + '.srnew'
+      Copy-Item -LiteralPath $from -Destination $temp -Force
+      if((Get-SrSha256 $temp) -ne ([string]$fileEntry.sha256).ToLowerInvariant()) { throw ('Post-copy integrity failed: ' + $relative) }
+      Move-Item -LiteralPath $temp -Destination $to -Force
+    }
+
+    if($Manifest.delete) {
+      foreach($deleteEntry in @($Manifest.delete)) {
+        $deletePath = Join-Path $AppDir ([string]$deleteEntry).Replace('/','\\')
+        if(Test-Path $deletePath) { Remove-Item -LiteralPath $deletePath -Recurse -Force }
+      }
+    }
+
+    Save-SrJson $newCatalog $IntegrityPath
+    $stateObj = [ordered]@{version=$targetVersion;channel=$channel;updated_at=(Get-Date).ToString('o');checked_at=(Get-Date).ToString('o');last_full_repair=(Get-Date).ToString('o');launcher_version=$LauncherVersion;distribution='bundle'}
+    Save-SrJson $stateObj $InstalledPath
+    Write-SrLog ('Bundle update applied successfully: ' + $targetVersion)
+  }
+  catch {
+    Write-SrLog ('Bundle update failed: ' + $_.Exception.Message)
+    if(Test-Path $backup) {
+      Get-ChildItem -LiteralPath $backup -Recurse -File | ForEach-Object {
+        $relativeBackup = $_.FullName.Substring($backup.Length).TrimStart('\\')
+        $restorePath = Join-Path $AppDir $relativeBackup
+        New-Item -ItemType Directory -Path (Split-Path $restorePath -Parent) -Force | Out-Null
+        Copy-Item -LiteralPath $_.FullName -Destination $restorePath -Force
+      }
+      Write-SrLog 'Rollback completed.'
+    }
+    throw
+  }
+  finally { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
+  return $true
+}
+
+function Ensure-SrPythonRuntime {
+  $pythonRoot = Join-Path $RuntimeDir 'python'
+  $pythonExe = Join-Path $pythonRoot 'python.exe'
+  $pythonwExe = Join-Path $pythonRoot 'pythonw.exe'
+  if(-not (Test-Path $pythonExe) -or -not (Test-Path $pythonwExe)) {
+    Write-SrLog 'Python runtime is not present. Preparing private per-user runtime (ZERO ADMIN).'
+    New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+    $installer = Join-Path $CacheDir 'python-3.12.10-amd64.exe'
+    if(-not (Test-Path $installer)) {
+      Invoke-SrDownload 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' $installer 300 3
+    }
+    $arguments = @(
+      '/quiet',
+      'InstallAllUsers=0',
+      ('TargetDir=' + $pythonRoot),
+      'Include_launcher=0',
+      'InstallLauncherAllUsers=0',
+      'PrependPath=0',
+      'AppendPath=0',
+      'AssociateFiles=0',
+      'Shortcuts=0',
+      'Include_test=0',
+      'Include_doc=0',
+      'Include_dev=0',
+      'Include_debug=0',
+      'Include_symbols=0',
+      'Include_tcltk=1',
+      'Include_pip=1'
+    )
+    $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+    if($process.ExitCode -ne 0 -or -not (Test-Path $pythonExe)) {
+      throw ('Private Python runtime installation failed. Exit code: ' + $process.ExitCode)
+    }
+    Write-SrLog 'Private Python runtime prepared successfully.'
+  }
+
+  $requirementsPath = Join-Path $AppDir 'requirements.txt'
+  if(Test-Path $requirementsPath) {
+    $requirementsHash = Get-SrSha256 $requirementsPath
+    $marker = Join-Path $pythonRoot 'srstudio_requirements.sha256'
+    $installedHash = ''
+    if(Test-Path $marker) { try { $installedHash = (Get-Content -Raw -LiteralPath $marker).Trim() } catch { } }
+    if($installedHash -ne $requirementsHash) {
+      Write-SrLog 'Installing/updating SR Studio Python dependencies in the private runtime.'
+      $pipLog = Join-Path $LogDir 'pip_runtime.log'
+      $pipArgs = @('-m','pip','install','--disable-pip-version-check','--no-warn-script-location','--upgrade','-r',$requirementsPath)
+      $proc = Start-Process -FilePath $pythonExe -ArgumentList $pipArgs -Wait -PassThru -RedirectStandardOutput $pipLog -RedirectStandardError ($pipLog + '.err')
+      if($proc.ExitCode -ne 0) { throw ('Python dependencies failed to install. See ' + $pipLog + '.err') }
+      [IO.File]::WriteAllText($marker,$requirementsHash,(New-Object Text.UTF8Encoding($false)))
+      Write-SrLog 'SR Studio Python dependencies are ready.'
+    }
+  }
+  return $pythonwExe
+}
+
+function Start-SrDesktop {
+  $entry = Join-Path $AppDir ([string](Get-SrProperty $cfg 'entrypoint' 'SR_Studio_Gerador.py')).Replace('/','\')
+  if(-not (Test-Path $entry)) {
+    Write-SrLog ('Desktop Core entrypoint not found: ' + $entry)
+    Start-Process -FilePath 'explorer.exe' -ArgumentList @($AppDir)
+    throw 'Desktop Core entrypoint not found.'
+  }
+  $extension = [IO.Path]::GetExtension($entry).ToLowerInvariant()
+  Write-SrLog ('Opening Desktop Core: ' + $entry)
+  if($extension -eq '.exe') {
+    Start-Process -FilePath $entry -WorkingDirectory $AppDir
+    return
+  }
+  if($extension -eq '.py') {
+    $pythonPath = Ensure-SrPythonRuntime
+    $configuredPython = [string](Get-SrProperty $cfg 'python_command' '')
+    if($configuredPython) {
+      $configuredCandidate = Expand-SrEnv $configuredPython
+      $looksLikeStoreAlias = ($configuredCandidate -match '\\WindowsApps\\')
+      if((Test-Path -LiteralPath $configuredCandidate -PathType Leaf) -and -not $looksLikeStoreAlias) {
+        $pythonPath = $configuredCandidate
+        Write-SrLog ('Using configured Python runtime: ' + $configuredCandidate)
+      } else {
+        Write-SrLog ('Ignoring invalid/Store Python alias and using the private SR Studio runtime: ' + $configuredCandidate)
+      }
+    }
+    $portableCandidates = @(
+      (Join-Path $RuntimeDir 'python\\pythonw.exe'),
+      (Join-Path $AppDir 'runtime\\python\\pythonw.exe'),
+      (Join-Path $RuntimeDir 'python\\python.exe'),
+      (Join-Path $AppDir 'runtime\\python\\python.exe')
+    )
+    if(-not $pythonPath) {
+      foreach($candidatePath in $portableCandidates) { if(Test-Path $candidatePath) { $pythonPath=$candidatePath; break } }
+    }
+    if(-not $pythonPath) {
+      $pythonCommand = Get-Command pythonw.exe -ErrorAction SilentlyContinue
+      if($pythonCommand) { $pythonPath=$pythonCommand.Source }
+    }
+    if(-not $pythonPath) {
+      $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+      if($pythonCommand) { $pythonPath=$pythonCommand.Source }
+    }
+    if(-not $pythonPath) { throw 'Python runtime not found. The Stable repository must provide a portable runtime for a new computer.' }
+    Start-Process -FilePath $pythonPath -ArgumentList @('"' + $entry + '"') -WorkingDirectory $AppDir
+    return
+  }
+  Start-Process -FilePath $entry -WorkingDirectory $AppDir
+}
+
+try {
+  $hasMutex = $launcherMutex.WaitOne(0,$false)
+  if(-not $hasMutex) { Write-SrLog 'Another SR Studio Launcher instance is already running.'; exit 5 }
+
+  Write-SrLog ('SR Studio Launcher ' + $LauncherVersion + ' - channel ' + $channel)
+  $source = Resolve-SrManifest
+  $manifest = Read-SrJson $source.manifest
+  $manifestFormat = [string]$manifest.format
+  if(($manifestFormat -ne 'SRSTUDIO_HYBRID_MANIFEST_1') -and ($manifestFormat -ne 'SRSTUDIO_HYBRID_MANIFEST_2') -and ($manifestFormat -ne 'SRSTUDIO_HYBRID_BUNDLE_1')) { throw 'Incompatible repository manifest format.' }
+
+  $minLauncher = [string](Get-SrProperty $manifest 'min_launcher_version' '')
+  if($minLauncher) { Write-SrLog ('Repository minimum launcher: ' + $minLauncher + '. Current: ' + $LauncherVersion) }
+
+  if([bool](Get-SrProperty $cfg 'auto_update' $true) -or [bool](Get-SrProperty $cfg 'repair_on_start' $true) -or $RepairOnly) {
+    if($manifestFormat -eq 'SRSTUDIO_HYBRID_BUNDLE_1') { [void](Apply-SrBundleManifest $source $manifest) } else { [void](Apply-SrManifest $source $manifest) }
+  }
+
+  if($RepairOnly) { Write-SrLog 'Repair completed.'; exit 0 }
+  if($NoLaunch) { exit 0 }
+  Start-SrDesktop
+}
+catch {
+  $errorMessage = $_.Exception.Message
+  Write-SrLog ('ERROR: ' + $errorMessage)
+  try {
+    Add-Type -AssemblyName PresentationFramework -ErrorAction Stop
+    $dialogText = 'SR Studio could not start.' + [Environment]::NewLine + [Environment]::NewLine + $errorMessage + [Environment]::NewLine + [Environment]::NewLine + 'Log: ' + $LogFile
+    [System.Windows.MessageBox]::Show($dialogText,'SR Studio Launcher') | Out-Null
+  }
+  catch { Write-Host ('See log: ' + $LogFile) }
+  exit 1
+}
+finally {
+  if($hasMutex) { try { $launcherMutex.ReleaseMutex() | Out-Null } catch { } }
+  $launcherMutex.Dispose()
+}
+ -or [int64]$entry.size -lt 0) { throw ('Invalid delta metadata: ' + $rel) }
+  }
+  foreach($rel in $removed) {
+    $p = [string]$rel
+    if(-not (Test-SrSafeDeltaPath $p) -or -not $seen.Add($p)) { throw ('Unsafe/duplicate deleted path: ' + $p) }
+  }
+  $url = [string](Get-SrProperty $delta 'url' '')
+  if(-not (Test-SrUrlAllowed $url) -or -not $url.StartsWith('https://')) { throw 'Unsafe delta URL.' }
+  $deltaHash = ([string](Get-SrProperty $delta 'sha256' '')).ToLowerInvariant()
+  $expectedBytes = [int64](Get-SrProperty $delta 'size' 0)
+  if($deltaHash -notmatch '^[0-9a-f]{64}
+  $targetVersion = [string]$Manifest.version
+  $installedState = Get-SrInstalledState
+  $installedVersion = ''
+  if($installedState) { $installedVersion = [string](Get-SrProperty $installedState 'version' '') }
+  $needsInstall = ($installedVersion -ne $targetVersion) -or -not (Test-Path (Join-Path $AppDir ([string](Get-SrProperty $cfg 'entrypoint' 'SR_Studio_Gerador.py'))))
+
+  if(-not $needsInstall -and (Test-SrFullRepairDue)) {
+    $catalog = Get-SrIntegrityCatalog
+    if(-not (Test-SrIntegrityCatalog $catalog)) { $needsInstall = $true }
+    else { Write-SrLog ('Integrity catalog verified. Version ' + $targetVersion) }
+  }
+
+  if(-not $needsInstall) {
+    Write-SrLog ('Desktop Core is current: ' + $targetVersion)
+    return $false
+  }
+
+  if($Source.kind -eq 'cached') {
+    Write-SrLog 'Offline mode: an update or repair is needed, but the server is unavailable. Opening the last local installation.'
+    return $false
+  }
+
+  $bundleInfo = Get-SrProperty $Manifest 'bundle' $null
+  if($null -eq $bundleInfo) { throw 'Bundle manifest does not contain bundle information.' }
+  $bundleUrl = [string](Get-SrProperty $bundleInfo 'url' '')
+  if(-not $bundleUrl -or -not (Test-SrUrlAllowed $bundleUrl)) { throw 'Invalid or unsafe bundle URL.' }
+  $expectedBundleHash = ([string](Get-SrProperty $bundleInfo 'sha256' '')).ToLowerInvariant()
+  $expectedBundleSize = [int64](Get-SrProperty $bundleInfo 'size' 0)
+  $memberPrefix = [string](Get-SrProperty $bundleInfo 'member_prefix' 'files/')
+
+  $stamp = Get-Date -Format 'yyyyMMdd_HHmmss'
+  $stage = Join-Path $StageDir ('bundle_' + $stamp)
+  $backup = Join-Path $BackupDir ('bundle_' + $stamp)
+  New-Item -ItemType Directory -Path $stage -Force | Out-Null
+  New-Item -ItemType Directory -Path $backup -Force | Out-Null
+  try {
+    $bundleZip = Join-Path $stage 'desktop_core.zip'
+    Write-SrLog ('Downloading verified Desktop Core bundle: ' + $bundleUrl)
+    Invoke-SrDownload $bundleUrl $bundleZip ([int](Get-SrProperty $cfg 'download_timeout_seconds' 180)) ([int](Get-SrProperty $cfg 'download_retries' 3))
+    if($expectedBundleSize -gt 0 -and (Get-Item -LiteralPath $bundleZip).Length -ne $expectedBundleSize) { throw 'Desktop Core bundle size validation failed.' }
+    if($expectedBundleHash -and (Get-SrSha256 $bundleZip) -ne $expectedBundleHash) { throw 'Desktop Core bundle SHA256 validation failed.' }
+
+    $extractDir = Join-Path $stage 'extracted'
+    Expand-Archive -LiteralPath $bundleZip -DestinationPath $extractDir -Force
+    $sourceRoot = Join-Path $extractDir ($memberPrefix.Trim('/').Replace('/','\\'))
+    if(-not (Test-Path $sourceRoot)) { throw ('Bundle member prefix not found: ' + $memberPrefix) }
+
+    $newCatalog = New-SrIntegrityCatalog $sourceRoot $targetVersion
+    if(@($newCatalog.files).Count -eq 0) { throw 'Desktop Core bundle contains no distributable files.' }
+    Write-SrLog ('Bundle validated: ' + @($newCatalog.files).Count + ' files.')
+
+    foreach($fileEntry in @($newCatalog.files)) {
+      $relative = [string]$fileEntry.path
+      $current = Join-Path $AppDir ($relative.Replace('/','\\'))
+      if(Test-Path $current) {
+        $backupPath = Join-Path $backup ($relative.Replace('/','\\'))
+        New-Item -ItemType Directory -Path (Split-Path $backupPath -Parent) -Force | Out-Null
+        Copy-Item -LiteralPath $current -Destination $backupPath -Force
+      }
+    }
+
+    foreach($fileEntry in @($newCatalog.files)) {
+      $relative = [string]$fileEntry.path
+      $from = Join-Path $sourceRoot ($relative.Replace('/','\\'))
+      $to = Join-Path $AppDir ($relative.Replace('/','\\'))
+      New-Item -ItemType Directory -Path (Split-Path $to -Parent) -Force | Out-Null
+      $temp = $to + '.srnew'
+      Copy-Item -LiteralPath $from -Destination $temp -Force
+      if((Get-SrSha256 $temp) -ne ([string]$fileEntry.sha256).ToLowerInvariant()) { throw ('Post-copy integrity failed: ' + $relative) }
+      Move-Item -LiteralPath $temp -Destination $to -Force
+    }
+
+    if($Manifest.delete) {
+      foreach($deleteEntry in @($Manifest.delete)) {
+        $deletePath = Join-Path $AppDir ([string]$deleteEntry).Replace('/','\\')
+        if(Test-Path $deletePath) { Remove-Item -LiteralPath $deletePath -Recurse -Force }
+      }
+    }
+
+    Save-SrJson $newCatalog $IntegrityPath
+    $stateObj = [ordered]@{version=$targetVersion;channel=$channel;updated_at=(Get-Date).ToString('o');checked_at=(Get-Date).ToString('o');last_full_repair=(Get-Date).ToString('o');launcher_version=$LauncherVersion;distribution='bundle'}
+    Save-SrJson $stateObj $InstalledPath
+    Write-SrLog ('Bundle update applied successfully: ' + $targetVersion)
+  }
+  catch {
+    Write-SrLog ('Bundle update failed: ' + $_.Exception.Message)
+    if(Test-Path $backup) {
+      Get-ChildItem -LiteralPath $backup -Recurse -File | ForEach-Object {
+        $relativeBackup = $_.FullName.Substring($backup.Length).TrimStart('\\')
+        $restorePath = Join-Path $AppDir $relativeBackup
+        New-Item -ItemType Directory -Path (Split-Path $restorePath -Parent) -Force | Out-Null
+        Copy-Item -LiteralPath $_.FullName -Destination $restorePath -Force
+      }
+      Write-SrLog 'Rollback completed.'
+    }
+    throw
+  }
+  finally { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
+  return $true
+}
+
+function Ensure-SrPythonRuntime {
+  $pythonRoot = Join-Path $RuntimeDir 'python'
+  $pythonExe = Join-Path $pythonRoot 'python.exe'
+  $pythonwExe = Join-Path $pythonRoot 'pythonw.exe'
+  if(-not (Test-Path $pythonExe) -or -not (Test-Path $pythonwExe)) {
+    Write-SrLog 'Python runtime is not present. Preparing private per-user runtime (ZERO ADMIN).'
+    New-Item -ItemType Directory -Path $pythonRoot -Force | Out-Null
+    $installer = Join-Path $CacheDir 'python-3.12.10-amd64.exe'
+    if(-not (Test-Path $installer)) {
+      Invoke-SrDownload 'https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe' $installer 300 3
+    }
+    $arguments = @(
+      '/quiet',
+      'InstallAllUsers=0',
+      ('TargetDir=' + $pythonRoot),
+      'Include_launcher=0',
+      'InstallLauncherAllUsers=0',
+      'PrependPath=0',
+      'AppendPath=0',
+      'AssociateFiles=0',
+      'Shortcuts=0',
+      'Include_test=0',
+      'Include_doc=0',
+      'Include_dev=0',
+      'Include_debug=0',
+      'Include_symbols=0',
+      'Include_tcltk=1',
+      'Include_pip=1'
+    )
+    $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+    if($process.ExitCode -ne 0 -or -not (Test-Path $pythonExe)) {
+      throw ('Private Python runtime installation failed. Exit code: ' + $process.ExitCode)
+    }
+    Write-SrLog 'Private Python runtime prepared successfully.'
+  }
+
+  $requirementsPath = Join-Path $AppDir 'requirements.txt'
+  if(Test-Path $requirementsPath) {
+    $requirementsHash = Get-SrSha256 $requirementsPath
+    $marker = Join-Path $pythonRoot 'srstudio_requirements.sha256'
+    $installedHash = ''
+    if(Test-Path $marker) { try { $installedHash = (Get-Content -Raw -LiteralPath $marker).Trim() } catch { } }
+    if($installedHash -ne $requirementsHash) {
+      Write-SrLog 'Installing/updating SR Studio Python dependencies in the private runtime.'
+      $pipLog = Join-Path $LogDir 'pip_runtime.log'
+      $pipArgs = @('-m','pip','install','--disable-pip-version-check','--no-warn-script-location','--upgrade','-r',$requirementsPath)
+      $proc = Start-Process -FilePath $pythonExe -ArgumentList $pipArgs -Wait -PassThru -RedirectStandardOutput $pipLog -RedirectStandardError ($pipLog + '.err')
+      if($proc.ExitCode -ne 0) { throw ('Python dependencies failed to install. See ' + $pipLog + '.err') }
+      [IO.File]::WriteAllText($marker,$requirementsHash,(New-Object Text.UTF8Encoding($false)))
+      Write-SrLog 'SR Studio Python dependencies are ready.'
+    }
+  }
+  return $pythonwExe
+}
+
+function Start-SrDesktop {
+  $entry = Join-Path $AppDir ([string](Get-SrProperty $cfg 'entrypoint' 'SR_Studio_Gerador.py')).Replace('/','\')
+  if(-not (Test-Path $entry)) {
+    Write-SrLog ('Desktop Core entrypoint not found: ' + $entry)
+    Start-Process -FilePath 'explorer.exe' -ArgumentList @($AppDir)
+    throw 'Desktop Core entrypoint not found.'
+  }
+  $extension = [IO.Path]::GetExtension($entry).ToLowerInvariant()
+  Write-SrLog ('Opening Desktop Core: ' + $entry)
+  if($extension -eq '.exe') {
+    Start-Process -FilePath $entry -WorkingDirectory $AppDir
+    return
+  }
+  if($extension -eq '.py') {
+    $pythonPath = Ensure-SrPythonRuntime
+    $configuredPython = [string](Get-SrProperty $cfg 'python_command' '')
+    if($configuredPython) {
+      $configuredCandidate = Expand-SrEnv $configuredPython
+      $looksLikeStoreAlias = ($configuredCandidate -match '\\WindowsApps\\')
+      if((Test-Path -LiteralPath $configuredCandidate -PathType Leaf) -and -not $looksLikeStoreAlias) {
+        $pythonPath = $configuredCandidate
+        Write-SrLog ('Using configured Python runtime: ' + $configuredCandidate)
+      } else {
+        Write-SrLog ('Ignoring invalid/Store Python alias and using the private SR Studio runtime: ' + $configuredCandidate)
+      }
+    }
+    $portableCandidates = @(
+      (Join-Path $RuntimeDir 'python\\pythonw.exe'),
+      (Join-Path $AppDir 'runtime\\python\\pythonw.exe'),
+      (Join-Path $RuntimeDir 'python\\python.exe'),
+      (Join-Path $AppDir 'runtime\\python\\python.exe')
+    )
+    if(-not $pythonPath) {
+      foreach($candidatePath in $portableCandidates) { if(Test-Path $candidatePath) { $pythonPath=$candidatePath; break } }
+    }
+    if(-not $pythonPath) {
+      $pythonCommand = Get-Command pythonw.exe -ErrorAction SilentlyContinue
+      if($pythonCommand) { $pythonPath=$pythonCommand.Source }
+    }
+    if(-not $pythonPath) {
+      $pythonCommand = Get-Command python.exe -ErrorAction SilentlyContinue
+      if($pythonCommand) { $pythonPath=$pythonCommand.Source }
+    }
+    if(-not $pythonPath) { throw 'Python runtime not found. The Stable repository must provide a portable runtime for a new computer.' }
+    Start-Process -FilePath $pythonPath -ArgumentList @('"' + $entry + '"') -WorkingDirectory $AppDir
+    return
+  }
+  Start-Process -FilePath $entry -WorkingDirectory $AppDir
+}
+
+try {
+  $hasMutex = $launcherMutex.WaitOne(0,$false)
+  if(-not $hasMutex) { Write-SrLog 'Another SR Studio Launcher instance is already running.'; exit 5 }
+
+  Write-SrLog ('SR Studio Launcher ' + $LauncherVersion + ' - channel ' + $channel)
+  $source = Resolve-SrManifest
+  $manifest = Read-SrJson $source.manifest
+  $manifestFormat = [string]$manifest.format
+  if(($manifestFormat -ne 'SRSTUDIO_HYBRID_MANIFEST_1') -and ($manifestFormat -ne 'SRSTUDIO_HYBRID_MANIFEST_2') -and ($manifestFormat -ne 'SRSTUDIO_HYBRID_BUNDLE_1')) { throw 'Incompatible repository manifest format.' }
+
+  $minLauncher = [string](Get-SrProperty $manifest 'min_launcher_version' '')
+  if($minLauncher) { Write-SrLog ('Repository minimum launcher: ' + $minLauncher + '. Current: ' + $LauncherVersion) }
+
+  if([bool](Get-SrProperty $cfg 'auto_update' $true) -or [bool](Get-SrProperty $cfg 'repair_on_start' $true) -or $RepairOnly) {
+    if($manifestFormat -eq 'SRSTUDIO_HYBRID_BUNDLE_1') { [void](Apply-SrBundleManifest $source $manifest) } else { [void](Apply-SrManifest $source $manifest) }
+  }
+
+  if($RepairOnly) { Write-SrLog 'Repair completed.'; exit 0 }
+  if($NoLaunch) { exit 0 }
+  Start-SrDesktop
+}
+catch {
+  $errorMessage = $_.Exception.Message
+  Write-SrLog ('ERROR: ' + $errorMessage)
+  try {
+    Add-Type -AssemblyName PresentationFramework -ErrorAction Stop
+    $dialogText = 'SR Studio could not start.' + [Environment]::NewLine + [Environment]::NewLine + $errorMessage + [Environment]::NewLine + [Environment]::NewLine + 'Log: ' + $LogFile
+    [System.Windows.MessageBox]::Show($dialogText,'SR Studio Launcher') | Out-Null
+  }
+  catch { Write-Host ('See log: ' + $LogFile) }
+  exit 1
+}
+finally {
+  if($hasMutex) { try { $launcherMutex.ReleaseMutex() | Out-Null } catch { } }
+  $launcherMutex.Dispose()
+}
+ -or $expectedBytes -le 0) { throw 'Invalid delta package metadata.' }
+  $stage = Join-Path $StageDir ('delta_' + [guid]::NewGuid().ToString('N'))
+  $backup = Join-Path $stage 'backup'
+  $prepared = Join-Path $stage 'prepared'
+  New-Item -ItemType Directory -Path $backup,$prepared -Force | Out-Null
+  $backupExisting = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+  $modified = New-Object 'System.Collections.Generic.List[string]'
+  try {
+    $zipPath = Join-Path $stage 'delta.zip'
+    Write-SrLog ('Downloading incremental Beta update (' + $expectedBytes + ' bytes) instead of full bundle.')
+    Invoke-SrDownload $url $zipPath ([int](Get-SrProperty $cfg 'download_timeout_seconds' 600)) ([int](Get-SrProperty $cfg 'download_retries' 3))
+    if((Get-Item -LiteralPath $zipPath).Length -ne $expectedBytes -or (Get-SrSha256 $zipPath) -ne $deltaHash) { throw 'Delta zip size/hash mismatch.' }
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $archive = [IO.Compression.ZipFile]::OpenRead($zipPath)
+    try {
+      $expected = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+      foreach($entry in $changes) { [void]$expected.Add('files/' + [string]$entry.path) }
+      $archiveSeen = New-Object 'System.Collections.Generic.HashSet[string]' ([StringComparer]::OrdinalIgnoreCase)
+      foreach($item in $archive.Entries) {
+        if($item.FullName.EndsWith('/')) { continue }
+        if(-not $item.FullName.StartsWith('files/',[StringComparison]::Ordinal) -or -not $archiveSeen.Add($item.FullName) -or -not $expected.Contains($item.FullName)) {
+          throw ('Unexpected delta archive member: ' + $item.FullName)
+        }
+      }
+      if($archiveSeen.Count -ne $expected.Count) { throw 'Delta archive is missing required members.' }
+      foreach($entry in $changes) {
+        $rel = [string]$entry.path
+        $item = $archive.GetEntry('files/' + $rel)
+        if($null -eq $item) { throw ('Missing delta file: ' + $rel) }
+        $to = Join-Path $prepared ($rel.Replace('/','\'))
+        New-Item -ItemType Directory -Path (Split-Path $to -Parent) -Force | Out-Null
+        $stream = $item.Open()
+        $dest = [IO.File]::Create($to)
+        try { $stream.CopyTo($dest) } finally { $dest.Dispose(); $stream.Dispose() }
+        if((Get-Item -LiteralPath $to).Length -ne [int64]$entry.size -or (Get-SrSha256 $to) -ne ([string]$entry.sha256).ToLowerInvariant()) { throw ('Delta file verification failed: ' + $rel) }
+      }
+    } finally { $archive.Dispose() }
+    foreach($rel in @($changes | ForEach-Object { [string]$_.path }) + $removed) {
+      $original = Join-Path $AppDir ($rel.Replace('/','\'))
+      if(Test-Path -LiteralPath $original -PathType Leaf) {
+        $copy = Join-Path $backup ($rel.Replace('/','\'))
+        New-Item -ItemType Directory -Path (Split-Path $copy -Parent) -Force | Out-Null
+        Copy-Item -LiteralPath $original -Destination $copy -Force
+        [void]$backupExisting.Add($rel)
+      }
+    }
+    foreach($entry in $changes) {
+      $rel = [string]$entry.path
+      $current = Join-Path $AppDir ($rel.Replace('/','\'))
+      New-Item -ItemType Directory -Path (Split-Path $current -Parent) -Force | Out-Null
+      $tmp = $current + '.srnew'
+      Copy-Item -LiteralPath (Join-Path $prepared ($rel.Replace('/','\'))) -Destination $tmp -Force
+      if((Get-SrSha256 $tmp) -ne ([string]$entry.sha256).ToLowerInvariant()) { throw ('Delta post-copy check failed: ' + $rel) }
+      Move-Item -LiteralPath $tmp -Destination $current -Force
+      [void]$modified.Add($rel)
+    }
+    foreach($rel in $removed) {
+      $current = Join-Path $AppDir ($rel.Replace('/','\'))
+      if(Test-Path -LiteralPath $current -PathType Leaf) {
+        Remove-Item -LiteralPath $current -Force
+        [void]$modified.Add($rel)
+      }
+    }
+    $newCatalog = New-SrIntegrityCatalog $AppDir $targetVersion
+    if(@($newCatalog.files).Count -lt @($catalog.files).Count - $removed.Count) { throw 'Delta integrity catalog has unexpected omissions.' }
+    # Cross-check changed files *again* after activating them.
+    foreach($entry in $changes) {
+      $current = Join-Path $AppDir (([string]$entry.path).Replace('/','\'))
+      if((Get-SrSha256 $current) -ne ([string]$entry.sha256).ToLowerInvariant()) { throw 'Activated delta file hash mismatch.' }
+    }
+    Save-SrJson $newCatalog $IntegrityPath
+    Save-SrJson ([ordered]@{version=$targetVersion;channel=$channel;updated_at=(Get-Date).ToString('o');checked_at=(Get-Date).ToString('o');last_full_repair=(Get-Date).ToString('o');launcher_version=$LauncherVersion;distribution='delta'}) $InstalledPath
+    Write-SrLog ('Incremental Beta update applied: ' + $fromVersion + ' -> ' + $targetVersion + '; changed files: ' + $changes.Count)
+    return $true
+  }
+  catch {
+    $failure = $_.Exception.Message
+    Write-SrLog ('Incremental update failed; reverting changed files: ' + $failure)
+    foreach($rel in $modified) {
+      $original = Join-Path $AppDir ($rel.Replace('/','\'))
+      if($backupExisting.Contains($rel)) {
+        Copy-Item -LiteralPath (Join-Path $backup ($rel.Replace('/','\'))) -Destination $original -Force
+      } elseif(Test-Path -LiteralPath $original) {
+        Remove-Item -LiteralPath $original -Force
+      }
+    }
+    throw ('Delta update rolled back: ' + $failure)
+  }
+  finally { Remove-Item -LiteralPath $stage -Recurse -Force -ErrorAction SilentlyContinue }
+}
+
 function Apply-SrBundleManifest($Source,$Manifest) {
   $targetVersion = [string]$Manifest.version
   $installedState = Get-SrInstalledState
