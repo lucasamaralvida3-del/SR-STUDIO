@@ -469,6 +469,16 @@ def launch_qt_quick_editor(
             return result_raw
 
         @Slot(str)
+        def removeSlotBackground(self, slot_id: str) -> None:
+            from .model import BindingRole
+            slot = session.page.slots.get(str(slot_id or ""))
+            if slot is None:
+                return
+            image_id = str(slot.node_by_role.get(BindingRole.IMAGE.value) or "")
+            if image_id:
+                self.removeBackground(image_id)
+
+        @Slot(str)
         def removeBackground(self, node_id: str) -> None:
             # Never download weights or run segmentation on the Qt UI thread.
             if self._bg_running:
