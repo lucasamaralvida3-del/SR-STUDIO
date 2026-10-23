@@ -46,6 +46,14 @@ def remove_product_background(source: str | Path, *, cache_root: str | Path | No
     output = root / (digest.hexdigest() + ".png")
     if output.is_file() and output.stat().st_size > 0:
         return output
+    # Product PNGs already cut out should remain untouched, with zero model
+    # initialization and no unnecessary ~1.5 GB first-run download.
+    from PIL import Image
+    with Image.open(path) as original:
+        if "A" in original.getbands():
+            lo, hi = original.getchannel("A").getextrema()
+            if lo < 255:
+                return path
 
     with _MODEL_LOCK:
         if output.is_file() and output.stat().st_size > 0:
