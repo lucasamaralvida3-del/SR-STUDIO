@@ -1,5 +1,10 @@
 name: Publish G2 Beta 38 Fluid Smart Slot + Delta
 on:
+  push:
+    branches:
+      - release/g2beta38-fluid-delta-publish
+    paths:
+      - '.github/workflows/g2-beta38-fluid-delta-publish.yml'
   workflow_dispatch:
 
 permissions:
@@ -21,7 +26,7 @@ jobs:
       CANDIDATE_ARTIFACT: SR-Studio-G2-Beta38-Fluid-Slots-Windows-x64
       BETA_VERSION: 5.0.0-hybrid.g2beta.38
       BETA_TAG: g2-beta-38
-      BETA_LABEL: G2 Beta 38 - Limpeza Azul V2
+      BETA_LABEL: G2 Beta 38 - Smart Slot fluido e Delta
       BETA_BUNDLE_NAME: SR_STUDIO_G2_BETA_38_FLUID_SMART_SLOT_PROFESSIONAL.zip
       BETA_DELTA_NAME: SR_STUDIO_G2_BETA_38_DELTA_FROM_37.zip
       GH_TOKEN: ${{ github.token }}
