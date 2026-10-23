@@ -30,7 +30,8 @@ def set_manual_slot_bounds(
     page = session.page
     slot = _require_slot(page, slot_id)
     rect = _validated_rect(page, Rect(float(x), float(y), float(width), float(height)))
-    before = _effective_bounds(slot)
+    root = page.node(str(slot.metadata.get("root_node_id") or ""))
+    before = root.rect.normalized() if root is not None else _effective_bounds(slot)
     original = _original_bounds(slot) or before
     if original is None:
         original = rect
@@ -70,7 +71,8 @@ def restore_auto_slot_bounds(session: GraphicsSession, slot_id: str) -> dict[str
     if original is None:
         raise ValueError("Smart Slot não possui original_detected_bounds para restaurar.")
     with session.transaction("Restaurar detecção automática do Smart Slot"):
-        current = _effective_bounds(slot)
+        root = page.node(str(slot.metadata.get("root_node_id") or ""))
+        current = root.rect.normalized() if root is not None else _effective_bounds(slot)
         if current is not None:
             _transform_exclusive_nodes(page, slot, current, original)
         slot.metadata.pop("user_adjusted_bounds", None)
