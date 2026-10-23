@@ -165,11 +165,14 @@ Rectangle {
         onAccepted: {
             if (!imageNode)
                 return
-            sceneBridge.dispatch(JSON.stringify({
+            var targetId = imageNode.id
+            var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
                 "name": "replace_image",
-                "node_id": imageNode.id,
+                "node_id": targetId,
                 "source": selectedFile.toString()
-            }))
+            })))
+            if (result.ok && autoRemoveOnReplace.checked)
+                sceneBridge.removeBackground(targetId)
         }
     }
 
@@ -232,6 +235,25 @@ Rectangle {
                 Layout.fillWidth: true
                 text: "Substituir imagem…"
                 onClicked: if (imageNode) replaceImageDialog.open()
+            }
+            CheckBox {
+                id: autoRemoveOnReplace
+                Layout.fillWidth: true
+                text: "Remover fundo automaticamente ao substituir"
+                checked: true
+            }
+            Button {
+                Layout.fillWidth: true
+                enabled: !!imageNode
+                text: "Remover fundo com withoutBG (offline)"
+                onClicked: if (imageNode) sceneBridge.removeBackground(imageNode.id)
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pixelSize: 9
+                color: "#64748B"
+                text: "Primeiro uso: baixa modelo local (~1,5 GB). Processa em segundo plano; a imagem original é preservada."
             }
 
             RowLayout {
