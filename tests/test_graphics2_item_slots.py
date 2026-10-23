@@ -26,7 +26,9 @@ def _session() -> GraphicsSession:
 
 def test_builtin_presets_create_empty_multinode_item_slots() -> None:
     session = _session()
-    assert {item["id"] for item in list_item_slot_presets(session.document)} >= {"destaque", "simples", "card"}
+    # Legacy constructors remain for loading already saved projects, but only
+    # Azul is offered for creating new cards.
+    assert {item["id"] for item in list_item_slot_presets(session.document)} == {"limpeza-blue-v1"}
 
     for preset in ("destaque", "simples", "card"):
         slot = create_item_slot(session, preset, x=50, y=70)
@@ -227,16 +229,26 @@ def test_qml_dispatch_contract_creates_item_slot_without_scene_payload() -> None
     router = ItemSlotCommandRouter(session)
 
     raw = router.dispatch_json(
-        json.dumps({"name": "add_item_slot", "preset_id": "simples"}),
+        json.dumps({"name": "add_item_slot", "preset_id": "limpeza-blue-v1"}),
         include_scene_payload=False,
     )
     result = json.loads(raw)
 
     assert result["ok"] is True
     assert result["changed"] is True
-    assert result["payload"]["preset_id"] == "simples"
+    assert result["payload"]["preset_id"] == "limpeza-blue-v1"
     slot_id = result["payload"]["slot_id"]
     assert slot_id in session.page.slots
     slot = session.page.slots[slot_id]
     assert slot.metadata["state"] == "empty"
     assert session.page.node(slot.metadata["root_node_id"]) is not None
+
+def test_removed_presets_are_not_creatable_but_existing_manual_slots_load():
+    session = _session()
+    router = ItemSlotCommandRouter(session)
+    blocked = router.dispatch({"name": "add_item_slot", "preset_id": "simples"})
+    assert blocked.ok is False
+    assert len(session.page.slots) == 0
+    old = create_item_slot(session, "simples")
+    assert old.metadata["preset_id"] == "simples"
+    assert "simples" not in {x["id"] for x in list_item_slot_presets(session.document)}
