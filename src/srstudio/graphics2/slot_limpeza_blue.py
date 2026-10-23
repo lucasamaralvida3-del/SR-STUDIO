@@ -26,7 +26,7 @@ LIMPEZA_PRESET: dict[str, Any] = {
     "name": "LIMPEZA · AZUL · 2 PRECOS",
     "width": 867.0,
     "height": 664.0,
-    "background": {"fill": BLUE, "stroke": BLUE, "stroke_width": 0.0, "radius_ratio": 0.13},
+    "background": None,  # outer frame does not cover the exposed right margin
     "roles": {
         "name": {
             "bounds": [0.09, 0.025, 0.66, 0.145],
@@ -53,6 +53,7 @@ LIMPEZA_PRESET: dict[str, Any] = {
 
 # Dois grupos sobrepostos, sem criar outro SmartSlot.
 ROLE_RECTS: dict[str, tuple[float, float, float, float]] = {
+    "outer_frame": (0.000, 0.000, 0.747, 0.977),
     "white_panel": (0.027, 0.180, 0.694, 0.767),
     "promotion_background": (0.540, 0.420, 0.215, 0.203),
     "promotion_label": (0.580, 0.432, 0.137, 0.051),
@@ -110,6 +111,7 @@ def create_limpeza_blue_slot(session: GraphicsSession, *, x: float | None = None
         # Artwork nao e produto: contornos e paineis nunca viram outros slots.
         background_nodes: list[str] = []
         for role, fill, radius, z in (
+            ("outer_frame", BLUE, 0.15, -100),
             ("white_panel", WHITE, 0.20, -70),
             ("promotion_background", BLUE, 0.32, -50),
             ("club_background", BLUE, 0.18, -40),
