@@ -1,0 +1,89 @@
+name: G2 Beta38 Fluid Smart Slot Windows Build
+on:
+  push:
+    branches:
+      - feature/g2-beta38-delta-fluid-slot
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-windows:
+    runs-on: windows-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install host/build/test dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,graphics2-build]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate slot and baseline
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/graphics2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m pytest -q tests/test_graphics2_slot_limpeza_blue.py tests/test_graphics2_slot_limpeza_blue_v2.py tests/test_graphics2_slot_fast_preview.py tests/test_graphics2_item_slots.py tests/test_graphics2_quinta3_slot_variant_runtime.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m ruff check src/srstudio/graphics2/item_slot_host.py src/srstudio/graphics2/item_slots.py src/srstudio/graphics2/slot_limpeza_blue.py tests/test_graphics2_slot_limpeza_blue.py tests/test_graphics2_slot_limpeza_blue_v2.py tests/test_graphics2_slot_fast_preview.py --select E9,F63,F7,F82
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build SR Studio shell
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "Shell ausente" }
+      - name: Build G2 Qt child host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $source = "dist/graphics2-host/SRGraphicsEngine2Host"
+          if (!(Test-Path "$source/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host ausente" }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
+          Copy-Item "$source/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Graphics2Host nao incorporado" }
+      - name: Validate package runtime
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; from srstudio.graphics2.host_runtime import validate_runtime_host; r=validate_runtime_host(Path('dist/SR Studio 5/Graphics2Host').resolve(), full=True); assert r.ok, r; print('G2_RUNTIME_OK')"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $qt = Get-ChildItem "dist/SR Studio 5/Graphics2Host" -Recurse -File | Where-Object { $_.Name -match 'Qt6Quick|QtQuick' } | Select-Object -First 1
+          if ($null -eq $qt) { throw "Qt Quick runtime ausente" }
+      - name: Package test candidate and provenance
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $zip = "release/SR-Studio-G2-Beta38-Fluid-Slots-Windows-x64.zip"
+          Compress-Archive -Path "dist/SR Studio 5/*" -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+          $info = [ordered]@{
+            schema = "srstudio/g2-beta38-fluid-slots-candidate/1"
+            source_sha = "$env:GITHUB_SHA"
+            base_branch = "release/g2beta35-cartazes-office-compatible"
+            package = (Split-Path $zip -Leaf)
+            sha256 = $hash
+            size_bytes = (Get-Item $zip).Length
+            preset = "limpeza-blue-v1"
+            profile_version = 2
+            channel = "beta-candidate-artifact-only"
+            official_beta_manifest_unchanged = $true
+          }
+          $info | ConvertTo-Json -Depth 5 | Out-File "release/limpeza-blue-provenance.json" -Encoding utf8
+          Write-Host "BUILD_SHA=$env:GITHUB_SHA"
+          Write-Host "PACKAGE_SHA256=$hash"
+          Write-Host "PACKAGE_BYTES=$((Get-Item $zip).Length)"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR-Studio-G2-Beta38-Fluid-Slots-Windows-x64
+          path: |
+            release/SR-Studio-G2-Beta38-Fluid-Slots-Windows-x64.zip
+            release/limpeza-blue-provenance.json
+          if-no-files-found: error
+          retention-days: 30
