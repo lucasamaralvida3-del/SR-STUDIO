@@ -23,7 +23,7 @@ jobs:
     env:
       SOURCE_SHA: d9b64eae091b6cf0de37ed8bc3d2211b2ea16e39
       SOURCE_RUN_ID: '40020449403'
-      CANDIDATE_ARTIFACT: SR-Studio-G2-Beta39-Fluid-Slots-Windows-x64
+      CANDIDATE_ARTIFACT: SR-Studio-G2-Beta39-Slot-WithoutBG-Windows-x64
       BETA_VERSION: 5.0.0-hybrid.g2beta.39
       BETA_TAG: g2-beta-39
       BETA_LABEL: G2 Beta 39 - Smart Slot otimizado e withoutBG
@@ -71,7 +71,7 @@ jobs:
           set -euo pipefail
           mkdir -p candidate
           gh run download "$SOURCE_RUN_ID" --repo "$GITHUB_REPOSITORY" --name "$CANDIDATE_ARTIFACT" --dir candidate
-          test -f candidate/SR-Studio-G2-Beta39-Fluid-Slots-Windows-x64.zip
+          test -f candidate/SR-Studio-G2-Beta39-Slot-WithoutBG-Windows-x64.zip
           test -f candidate/limpeza-blue-provenance.json
 
       - name: Verify candidate and assemble launcher-compatible bundle
@@ -82,7 +82,7 @@ jobs:
           from pathlib import Path, PurePosixPath
           import hashlib, json, os, shutil, zipfile
           root = Path.cwd()
-          archive = root / 'candidate/SR-Studio-G2-Beta39-Fluid-Slots-Windows-x64.zip'
+          archive = root / 'candidate/SR-Studio-G2-Beta39-Slot-WithoutBG-Windows-x64.zip'
           provenance = json.loads((root / 'candidate/limpeza-blue-provenance.json').read_text(encoding='utf-8-sig'))
           sha = os.environ['SOURCE_SHA']
           digest = hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest()
@@ -371,7 +371,7 @@ jobs:
           assert data['delta']['from_version'] == '5.0.0-hybrid.g2beta.38'
           assert data['source_commit'] == os.environ['SOURCE_SHA']
           assert data['public_asset_verified'] is True
-          print('LIVE_BETA_37_VERIFIED')
+          print('LIVE_BETA_39_VERIFIED')
           PY
 
       - uses: actions/upload-artifact@v4
