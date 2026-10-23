@@ -14,8 +14,8 @@ using System.Windows.Forms;
 [assembly: System.Reflection.AssemblyProduct("SR Studio")]
 [assembly: System.Reflection.AssemblyCompany("SR")]
 [assembly: System.Reflection.AssemblyDescription("Acesso universal resiliente ao canal Beta do SR Studio")]
-[assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
-[assembly: System.Reflection.AssemblyFileVersion("1.1.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.2.0.0")]
+[assembly: System.Reflection.AssemblyFileVersion("1.2.0.0")]
 
 namespace SRStudioBeta
 {
@@ -275,7 +275,7 @@ namespace SRStudioBeta
         {
             WebClient wc = new WebClient();
             wc.Encoding = Encoding.UTF8;
-            wc.Headers[HttpRequestHeader.UserAgent] = "SRStudioBeta/1.1";
+            wc.Headers[HttpRequestHeader.UserAgent] = "SRStudioBeta/1.2";
             wc.Headers[HttpRequestHeader.Accept] = "application/json,text/plain,*/*";
             return wc;
         }
@@ -320,7 +320,7 @@ namespace SRStudioBeta
             header.Controls.Add(title);
 
             Label subtitle = new Label();
-            subtitle.Text = "Acesso e atualização automática";
+            subtitle.Text = "Acesso Beta com atualização incremental";
             subtitle.ForeColor = Color.FromArgb(220, 236, 250);
             subtitle.AutoSize = true;
             subtitle.Location = new Point(31, 57);
@@ -348,7 +348,7 @@ namespace SRStudioBeta
             Controls.Add(progress);
 
             Label note = new Label();
-            note.Text = "Falhas temporárias do GitHub não bloqueiam mais uma cópia local válida.";
+            note.Text = "Baixa só arquivos alterados quando há atualização incremental disponível.";
             note.ForeColor = Color.FromArgb(90, 100, 110);
             note.Location = new Point(28, 211);
             note.Size = new Size(464, 24);
