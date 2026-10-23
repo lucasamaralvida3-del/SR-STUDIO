@@ -254,7 +254,7 @@ def test_manual_resize_save_close_reopen_preserves_user_bounds(tmp_path):
     assert restored.metadata["original_detected_bounds"] == auto
 
 
-def test_manual_slot_move_does_not_change_export_pixels(tmp_path):
+def test_manual_slot_move_updates_export_pixels_and_preserves_other_products(tmp_path):
     QtGui = pytest.importorskip("PySide6.QtGui")
     QGuiApplication = QtGui.QGuiApplication
 
@@ -285,8 +285,11 @@ def test_manual_slot_move_does_not_change_export_pixels(tmp_path):
 
     with Image.open(before_png) as before_image, Image.open(after_png) as after_image:
         assert before_image.size == after_image.size
-        assert before_image.tobytes() == after_image.tobytes()
-    assert _node_snapshot(document) == before_nodes
+        assert before_image.tobytes() != after_image.tobytes()
+    after_nodes = _node_snapshot(document)
+    assert document.active_page.nodes["p1-image"].transform.x == before_nodes["page-five"]["p1-image"][1] + 37
+    assert document.active_page.nodes["p1-image"].transform.y == before_nodes["page-five"]["p1-image"][2] + 29
+    assert after_nodes["page-five"]["p2-image"] == before_nodes["page-five"]["p2-image"]
 
 
 def test_manual_mark_non_product_survives_save_reopen_without_returning(tmp_path):
