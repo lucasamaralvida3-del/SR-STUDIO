@@ -12,9 +12,7 @@ ApplicationWindow {
     visible: true
     title: "SR Graphics Engine 2.0"
 
-    // Inicializado em Component.onCompleted para evitar um segundo JSON.parse
-    // além do refreshScene() no carregamento inicial.
-    property var scene: ({})
+    property var scene: JSON.parse(sceneBridge.sceneJson)
     property var page: activePage()
     property real zoom: 0.72
     property bool showGrid: true
