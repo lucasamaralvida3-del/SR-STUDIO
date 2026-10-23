@@ -88,6 +88,10 @@ def pyinstaller_args(
         "srstudio",
         "--collect-submodules",
         "srstudio.graphics2",
+        "--collect-all",
+        "withoutbg",
+        "--collect-all",
+        "onnxruntime",
     ]
     for module in QT_RUNTIME_MODULES:
         args.extend(["--hidden-import", module])
