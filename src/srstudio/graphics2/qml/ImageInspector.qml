@@ -21,14 +21,9 @@ Rectangle {
     property var scene: ({})
     property var imageNode: null
     property bool hasImageSelection: false
-    readonly property bool bridgeHasImageSelection: {
-        try {
-            var parsedScene = JSON.parse(sceneBridge.sceneJson)
-            return selectedImage(parsedScene) !== null
-        } catch (error) {
-            return false
-        }
-    }
+    // A única leitura JSON da cena ocorre em refresh(). Antes, esta propriedade
+    // fazia outra decodificação completa a cada signal sceneChanged.
+    readonly property bool bridgeHasImageSelection: hasImageSelection
     property bool syncing: false
 
     function activePage(sourceScene) {
