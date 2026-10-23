@@ -126,7 +126,11 @@ ApplicationWindow {
     }
 
     function slots() {
-        return page ? Object.values(page.slots || {}) : []
+        // Only the certified Azul slot can be offered to edit/new projects.
+        // Historical slots remain in saved documents for backwards compatibility.
+        return page ? Object.values(page.slots || {}).filter(function(slot) {
+            return slot.metadata && slot.metadata.limpeza_blue_profile === "limpeza-blue-v1"
+        }) : []
     }
 
     function products() {
@@ -241,6 +245,16 @@ ApplicationWindow {
     function slotBounds(slot) {
         if (!page || !slot)
             return {"x": 0, "y": 0, "width": 0, "height": 0}
+        // The previous bounding box came from old role metadata and could be
+        // hundreds of pixels away from the visible card after move/resize.
+        // Always anchor manual Azul slots to the ACTUAL scene root.
+        var rootId = slot.metadata ? String(slot.metadata.root_node_id || "") : ""
+        var root = rootId && page.nodes ? page.nodes[rootId] : null
+        if (root && root.transform) {
+            var t = root.transform
+            return {"x": Number(t.x), "y": Number(t.y),
+                    "width": Number(t.width), "height": Number(t.height)}
+        }
         var effective = slot.metadata ? slot.metadata.effective_bounds : null
         if (effective) {
             var ew = Math.max(0, Number(effective.width || 0))
@@ -459,6 +473,12 @@ ApplicationWindow {
             }
             ToolButton { text: "Snap Slot"; visible: smartSlotEditMode; checkable: true; checked: smartSlotSnap; onClicked: smartSlotSnap = checked }
             ToolButton { text: "Fundo automático"; checkable: true; checked: autoRemoveProductBackground; onClicked: autoRemoveProductBackground = checked; ToolTip.text: "withoutBG local no vínculo de produtos; primeiro uso baixa ~1,5 GB"; ToolTip.visible: hovered }
+            ToolButton {
+                text: "Remover Fundo"
+                enabled: selectedSlotId !== ""
+                ToolTip.text: "Processar imagem do Smart Slot selecionado com withoutBG"
+                onClicked: sceneBridge.removeSlotBackground(selectedSlotId)
+            }
             ToolButton {
                 text: "Restaurar Auto"
                 visible: smartSlotEditMode && selectedSlotId !== ""
@@ -888,7 +908,10 @@ ApplicationWindow {
                                         anchors.fill: parent
                                         acceptedButtons: Qt.LeftButton
                                         drag.target: parent
-                                        enabled: !effectiveLocked(modelData)
+                                        // The selection rectangle owns pointer gestures
+                                        // only in slot edit mode. In normal mode images
+                                        // and text remain independently selectable.
+                                        enabled: !smartSlotEditMode && !effectiveLocked(modelData)
                                         preventStealing: true
                                         onPressed: sceneBridge.selectNodeAdvanced(modelData.id, (mouse.modifiers & Qt.ShiftModifier) !== 0, (mouse.modifiers & Qt.ControlModifier) !== 0)
                                         onReleased: {
@@ -1062,7 +1085,8 @@ ApplicationWindow {
                                         objectName: "smartSlotMoveArea-" + String(slotOverlay.modelData.id || "")
                                         anchors.fill: parent
                                         acceptedButtons: Qt.LeftButton
-                                        hoverEnabled: true
+                                        enabled: smartSlotEditMode || productDragActive
+                                        hoverEnabled: smartSlotEditMode || productDragActive
                                         preventStealing: smartSlotEditMode
                                         property real startGlobalX: 0
                                         property real startGlobalY: 0
@@ -1416,6 +1440,15 @@ ApplicationWindow {
                 }
                 Button { text: "+"; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
                 Item { Layout.fillWidth: true }
+                Label {
+                    Layout.preferredWidth: 360
+                    text: sceneBridge.status || ""
+                    color: "#334155"
+                    font.pixelSize: 10
+                    elide: Text.ElideRight
+                    ToolTip.text: sceneBridge.status || ""
+                    ToolTip.visible: hovered
+                }
                 Label { text: productDragActive ? (dragHoverSlotId ? "Solte para aplicar o produto" : "Arraste sobre um card") : ("Snap ✓  ·  Grid " + (showGrid ? "✓" : "—") + "  ·  Réguas " + (showRulers ? "✓" : "—")); color: productDragActive ? (dragHoverSlotId ? "#16A34A" : "#0F5BD8") : "#64748B"; font.bold: productDragActive; font.pixelSize: 10 }
             }
         }
