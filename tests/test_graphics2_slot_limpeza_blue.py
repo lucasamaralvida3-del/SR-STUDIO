@@ -88,7 +88,7 @@ def test_bind_club_and_promotion_prices_independently():
     assert _extra_text(page, slot, "promotion_cents") == ",99"
     assert _extra_text(page, slot, "promotion_unit") == "CADA"
     assert _extra_text(page, slot, "promotion_label") == "NA PROMOÇÃO"
-    assert _extra_text(page, slot, "club_label") == "NO CLUBE"
+    assert _extra_text(page, slot, "club_label") == "NO CLUBE SR"
     assert slot.metadata["price_block"]["combined_value"] == "119.99"
 
 

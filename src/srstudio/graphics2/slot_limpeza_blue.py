@@ -2,9 +2,8 @@ from __future__ import annotations
 
 """Perfil supervisionado de UM ItemSlot de limpeza (azul, dois precos).
 
-Referencia visual: arte fornecida pelo usuario, 960x800. Coordenadas abaixo
-sao NORMALIZADAS ao card visual x=40..907 / y=60..724; servem como ponto
-de partida editavel, nao como afirmacao de fidelidade pixel-a-pixel ao PPTX.
+Referencia revisada: Papel Hig Fofinho / clube, 447x345. As proporcoes
+sao normalizadas; o teste visual permanece necessario antes da distribuicao.
 
 Esta criacao e opt-in pelo menu ItemSlot; nao modifica a deteccao global do
 PPTX, nao substitui SmartSlots importados e nao altera o formato .srscene.
@@ -17,53 +16,71 @@ from .model import BindingRole, GraphicsNode, NodeKind, Rect, Transform
 from .operations import GraphicsSession, _price_parts
 
 PRESET_ID = "limpeza-blue-v1"
-BLUE = "#155A98"
+BLUE = "#24518E"  # tom proximo a referencia azul royal
 WHITE = "#FFFFFF"
 
 # O preco PRINCIPAL e o do clube, o preco SECUNDARIO e o promocional.
 LIMPEZA_PRESET: dict[str, Any] = {
     "id": PRESET_ID,
     "name": "LIMPEZA · AZUL · 2 PRECOS",
-    "width": 867.0,
-    "height": 664.0,
+    "width": 418.0,
+    "height": 320.0,
     "background": None,  # outer frame does not cover the exposed right margin
     "roles": {
         "name": {
-            "bounds": [0.09, 0.025, 0.66, 0.145],
-            "style": {"font_family": "Anton", "font_size": 21, "font_size_unit": "pt",
+            "bounds": [0.105, 0.012, 0.61, 0.160],
+            "style": {"font_family": "Impact", "font_size": 25, "font_size_unit": "pt",
                       "font_weight": 700, "fill": WHITE, "color": WHITE, "align": "center",
                       "v_align": "center", "fit_inside_box": True, "nowrap": False},
         },
-        "image": {"bounds": [0.10, 0.28, 0.53, 0.56], "style": {"fit": "contain"}},
-        "price": {"bounds": [0.48, 0.67, 0.50, 0.28]},
-        "currency": {"bounds": [0.02, 0.24, 0.18, 0.52],
-                     "style": {"font_family": "Anton", "font_size": 26, "fill": WHITE, "color": WHITE,
+        "image": {"bounds": [0.073, 0.250, 0.65, 0.710], "style": {"fit": "contain"}},
+        "price": {"bounds": [0.469, 0.570, 0.518, 0.395]},
+        "currency": {"bounds": [0.035, 0.29, 0.20, 0.40],
+                     "style": {"font_family": "Impact", "font_size": 26, "fill": WHITE, "color": WHITE,
                                "align": "center", "fit_inside_box": True}},
-        "integer": {"bounds": [0.18, 0.00, 0.53, 0.96],
-                    "style": {"font_family": "Anton", "font_size": 100, "fill": WHITE, "color": WHITE,
+        "integer": {"bounds": [0.235, 0.000, 0.48, 0.865],
+                    "style": {"font_family": "Impact", "font_size": 108, "fill": WHITE, "color": WHITE,
                               "align": "center", "fit_inside_box": True}},
-        "decimal": {"bounds": [0.70, 0.04, 0.30, 0.38],
-                    "style": {"font_family": "Anton", "font_size": 38, "fill": WHITE, "color": WHITE,
+        "decimal": {"bounds": [0.695, 0.100, 0.305, 0.35],
+                    "style": {"font_family": "Impact", "font_size": 36, "fill": WHITE, "color": WHITE,
                               "align": "center", "fit_inside_box": True}},
-        "unit": {"bounds": [0.86, 0.83, 0.12, 0.11],
-                 "style": {"font_family": "Anton", "font_size": 27, "fill": WHITE, "color": WHITE,
+        "unit": {"bounds": [0.860, 0.790, 0.125, 0.150],
+                 "style": {"font_family": "Impact", "font_size": 26, "fill": WHITE, "color": WHITE,
                            "align": "center", "fit_inside_box": True}},
     },
 }
 
 # Dois grupos sobrepostos, sem criar outro SmartSlot.
 ROLE_RECTS: dict[str, tuple[float, float, float, float]] = {
-    "outer_frame": (0.000, 0.000, 0.747, 0.977),
-    "white_panel": (0.027, 0.180, 0.694, 0.767),
-    "promotion_background": (0.540, 0.420, 0.215, 0.203),
-    "promotion_label": (0.580, 0.432, 0.137, 0.051),
-    "promotion_currency": (0.545, 0.497, 0.043, 0.064),
-    "promotion_integer": (0.594, 0.482, 0.108, 0.095),
-    "promotion_cents": (0.695, 0.479, 0.066, 0.051),
-    "promotion_unit": (0.685, 0.551, 0.068, 0.053),
-    "club_background": (0.460, 0.572, 0.540, 0.428),
-    "club_label": (0.628, 0.593, 0.186, 0.050),
+    # Normalizado ao card x=12..430 / y=12..332 da referencia 447x345.
+    "outer_frame": (0.000, 0.000, 0.750, 0.980),
+    "white_panel": (0.026, 0.178, 0.696, 0.755),
+    "promotion_background": (0.680, 0.405, 0.244, 0.222),
+    "promotion_label": (0.712, 0.419, 0.175, 0.054),
+    "promotion_currency": (0.703, 0.490, 0.055, 0.087),
+    "promotion_integer": (0.748, 0.455, 0.105, 0.165),
+    "promotion_cents": (0.852, 0.462, 0.072, 0.072),
+    "promotion_unit": (0.856, 0.539, 0.067, 0.064),
+    "club_background": (0.460, 0.569, 0.540, 0.431),
+    "club_label": (0.642, 0.936, 0.246, 0.061),
 }
+# Um retangulo de preço principal e seus valores internos; nada se sobrepoe
+# por acidente aos demais nós graças às camadas abaixo.
+LAYERS = {
+    "outer_frame": -100, "white_panel": -90, "image_backplate": -80,
+    "image": 10, "club_background": 30, "promotion_background": 40,
+    "currency": 72, "integer": 73, "decimal": 74, "unit": 75,
+    "promotion_currency": 82, "promotion_integer": 83,
+    "promotion_cents": 84, "promotion_unit": 85,
+    "promotion_label": 86, "club_label": 87, "name": 90,
+}
+PRICE_COMPONENT_RECTS = {
+    "currency": (0.035, 0.29, 0.20, 0.40),
+    "integer": (0.235, 0.000, 0.48, 0.865),
+    "decimal": (0.695, 0.100, 0.305, 0.35),
+}
+MAIN_PRICE_RECT = (0.469, 0.570, 0.518, 0.395)
+
 PROMOTION_FIELDS = ("promotion_currency", "promotion_integer", "promotion_cents", "promotion_unit")
 
 
@@ -85,13 +102,14 @@ def _new_node(page, parent_id: str, role: str, *, text: str = "",
         z_index=z,
         transform=Transform(x=bounds.x, y=bounds.y, width=bounds.width, height=bounds.height),
         style=(
-            {"font_family": "Anton", "font_size": size, "font_size_unit": "pt",
+            {"font_family": "Impact", "font_size": size, "font_size_unit": "pt",
              "font_weight": 700, "fill": fill, "color": fill,
              "align": "center", "v_align": "center", "fit_inside_box": True}
             if is_text else
             {"fill": fill, "stroke": fill, "stroke_width": 0.0, "radius_ratio": radius}
         ),
         metadata={"manual_item_slot_child": True, "limpeza_blue_role": role},
+        locked=not is_text,
     )
     page.add_node(node, parent_id=parent_id)
     return node
@@ -111,10 +129,10 @@ def create_limpeza_blue_slot(session: GraphicsSession, *, x: float | None = None
         # Artwork nao e produto: contornos e paineis nunca viram outros slots.
         background_nodes: list[str] = []
         for role, fill, radius, z in (
-            ("outer_frame", BLUE, 0.15, -100),
-            ("white_panel", WHITE, 0.20, -70),
-            ("promotion_background", BLUE, 0.32, -50),
-            ("club_background", BLUE, 0.18, -40),
+            ("outer_frame", BLUE, 0.19, LAYERS["outer_frame"]),
+            ("white_panel", WHITE, 0.18, LAYERS["white_panel"]),
+            ("promotion_background", BLUE, 0.40, LAYERS["promotion_background"]),
+            ("club_background", BLUE, 0.25, LAYERS["club_background"]),
         ):
             background_nodes.append(_new_node(page, root_id, role, fill=fill, radius=radius, z=z).id)
 
@@ -124,20 +142,21 @@ def create_limpeza_blue_slot(session: GraphicsSession, *, x: float | None = None
             node = page.node(str(node_id))
             if node is not None and node.metadata.get("item_slot_image_backplate"):
                 node.style = {"fill": WHITE, "stroke": WHITE, "stroke_width": 0.0, "radius_ratio": 0.15}
-                node.z_index = -60
+                node.z_index = LAYERS["image_backplate"]
+                node.visible = False  # painel branco unico, sem hit-test redundante
             if node is not None and node.metadata.get("item_slot_background"):
-                node.z_index = -100
+                node.z_index = LAYERS["outer_frame"]
 
         labels = (
-            ("promotion_label", "NA PROMOÇÃO", 12.0),
-            ("club_label", "NO CLUBE", 22.0),
-            ("promotion_currency", "R$", 20.0),
-            ("promotion_integer", "00", 40.0),
-            ("promotion_cents", ",00", 22.0),
-            ("promotion_unit", "CADA", 12.0),
+            ("promotion_label", "NA PROMOÇÃO", 11.0),
+            ("club_label", "NO CLUBE SR", 15.0),
+            ("promotion_currency", "R$", 18.0),
+            ("promotion_integer", "00", 42.0),
+            ("promotion_cents", ",00", 19.0),
+            ("promotion_unit", "CADA", 10.0),
         )
         for role, value, size in labels:
-            node = _new_node(page, root_id, role, text=value, size=size)
+            node = _new_node(page, root_id, role, text=value, size=size, z=LAYERS[role])
             extras[role] = [node.id]
 
         slot.metadata["extra_bindings"] = extras
@@ -150,7 +169,111 @@ def create_limpeza_blue_slot(session: GraphicsSession, *, x: float | None = None
         slot.metadata["promotion_visible"] = True
         slot.metadata["single_slot_contract"] = {"primary": "club", "secondary": "promotion",
                                                  "area_count": 1, "pixel_exact": False}
+    upgrade_limpeza_blue_slot(page, slot)
     return slot
+
+
+def _position(node: GraphicsNode, parent: Rect, relative) -> None:
+    x, y, width, height = relative
+    node.transform.x = parent.x + x * parent.width
+    node.transform.y = parent.y + y * parent.height
+    node.transform.width = max(1.0, width * parent.width)
+    node.transform.height = max(1.0, height * parent.height)
+
+
+def upgrade_limpeza_blue_slot(page, slot) -> bool:
+    """Migração idempotente dos slots V1 ja salvos, inclusive suas camadas.
+
+    Nenhum nó é criado ou apagado. A fonte Impact é fornecida pelo Windows;
+    'Anton' sem instalação estava causando substituição imprevisível no Qt.
+    """
+    if slot.metadata.get("limpeza_blue_profile") != PRESET_ID:
+        return False
+    if int(slot.metadata.get("limpeza_blue_version") or 1) >= 2:
+        return False
+    root = page.node(str(slot.metadata.get("root_node_id") or ""))
+    if root is None:
+        return False
+    card = root.rect.normalized()
+    for node_id in page.descendants(root.id):
+        node = page.node(node_id)
+        if node is None:
+            continue
+        role = str(node.metadata.get("limpeza_blue_role") or "")
+        if role in ROLE_RECTS:
+            _position(node, card, ROLE_RECTS[role])
+            node.z_index = LAYERS.get(role, node.z_index)
+            if node.kind is NodeKind.RECT:
+                node.locked = True
+                node.style["fill"] = BLUE if role != "white_panel" else WHITE
+                node.style["stroke"] = node.style["fill"]
+                node.style["radius_ratio"] = {
+                    "outer_frame": 0.19, "white_panel": 0.18,
+                    "promotion_background": 0.40, "club_background": 0.25,
+                }.get(role, 0.0)
+            elif node.kind is NodeKind.TEXT:
+                node.style["font_family"] = "Impact"
+                node.style["font_weight"] = 700
+                node.style["fit_inside_box"] = True
+                if role == "club_label" and node.text == "NO CLUBE":
+                    node.text = "NO CLUBE SR"
+                sizes = {
+                    "promotion_label": 11.0, "club_label": 15.0,
+                    "promotion_currency": 18.0, "promotion_integer": 42.0,
+                    "promotion_cents": 19.0, "promotion_unit": 10.0,
+                }
+                node.style["font_size"] = sizes.get(role, 20.0)
+
+    role_nodes = slot.node_by_role
+    image = page.node(str(role_nodes.get(BindingRole.IMAGE.value) or ""))
+    if image is not None:
+        _position(image, card, LIMPEZA_PRESET["roles"]["image"]["bounds"])
+        image.z_index = LAYERS["image"]
+        image.style["fit"] = "contain" if not image.style.get("fit") else image.style["fit"]
+    name = page.node(str(role_nodes.get(BindingRole.NAME.value) or ""))
+    if name is not None:
+        _position(name, card, LIMPEZA_PRESET["roles"]["name"]["bounds"])
+        name.z_index = LAYERS["name"]
+        name.style.update(deepcopy(LIMPEZA_PRESET["roles"]["name"]["style"]))
+    unit = page.node(str(role_nodes.get(BindingRole.UNIT.value) or ""))
+    if unit is not None:
+        _position(unit, card, LIMPEZA_PRESET["roles"]["unit"]["bounds"])
+        unit.z_index = LAYERS["unit"]
+        unit.style.update(deepcopy(LIMPEZA_PRESET["roles"]["unit"]["style"]))
+
+    price = page.node(str((slot.metadata.get("role_area_nodes") or {}).get("price") or ""))
+    if price is not None:
+        _position(price, card, MAIN_PRICE_RECT)
+        price.z_index = 0
+        price_rect = price.rect.normalized()
+        for field, binding in (
+            ("currency", BindingRole.CURRENCY),
+            ("integer", BindingRole.PRICE_REAIS),
+            ("decimal", BindingRole.PRICE_CENTS),
+        ):
+            node = page.node(str(role_nodes.get(binding.value) or ""))
+            if node is not None:
+                _position(node, price_rect, PRICE_COMPONENT_RECTS[field])
+                node.z_index = LAYERS[field]
+                node.style.update(deepcopy(LIMPEZA_PRESET["roles"][field]["style"]))
+    for node_id in slot.metadata.get("decorative_nodes") or []:
+        node = page.node(str(node_id))
+        if node is None:
+            continue
+        if node.metadata.get("item_slot_image_backplate"):
+            node.visible = False
+            node.locked = True
+            node.z_index = LAYERS["image_backplate"]
+        if node.metadata.get("item_slot_background"):
+            node.z_index = LAYERS["outer_frame"]
+
+    slot.metadata["limpeza_blue_version"] = 2
+    slot.metadata["single_slot_contract"] = {
+        "primary": "club", "secondary": "promotion",
+        "area_count": 1, "pixel_exact": False, "layered": True,
+    }
+    return True
+
 
 
 def bind_product_to_limpeza_blue_slot(
@@ -200,7 +323,7 @@ def bind_product_to_limpeza_blue_slot(
                         node.text = str(value)
         for role, value in (
             ("promotion_label", product.get("promotion_label") or "NA PROMOÇÃO"),
-            ("club_label", product.get("club_label") or "NO CLUBE"),
+            ("club_label", product.get("club_label") or "NO CLUBE SR"),
         ):
             for node_id in extras.get(role, []):
                 node = session.page.node(str(node_id))

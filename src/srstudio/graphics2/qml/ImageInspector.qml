@@ -21,14 +21,16 @@ Rectangle {
     property var scene: ({})
     property var imageNode: null
     property bool hasImageSelection: false
-    readonly property bool bridgeHasImageSelection: {
+    // Uma decodificação por sceneChanged, compartilhada pela visibilidade do
+    // painel e por refresh(). Reage também na inicialização do QML.
+    readonly property var decodedScene: {
         try {
-            var parsedScene = JSON.parse(sceneBridge.sceneJson)
-            return selectedImage(parsedScene) !== null
+            return JSON.parse(sceneBridge.sceneJson)
         } catch (error) {
-            return false
+            return ({})
         }
     }
+    readonly property bool bridgeHasImageSelection: selectedImage(decodedScene) !== null
     property bool syncing: false
 
     function activePage(sourceScene) {
@@ -97,7 +99,7 @@ Rectangle {
     function refresh() {
         syncing = true
         try {
-            var parsedScene = JSON.parse(sceneBridge.sceneJson)
+            var parsedScene = decodedScene
             var selected = selectedImage(parsedScene)
             scene = parsedScene
             imageNode = selected
