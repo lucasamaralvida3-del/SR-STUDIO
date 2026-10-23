@@ -110,6 +110,6 @@ def test_existing_v1_slot_migrates_once_without_losing_product_or_saved_prices(t
 def test_image_inspector_does_not_decode_full_scene_in_computed_visibility():
     root = Path(__file__).resolve().parents[1]
     qml = (root / "src/srstudio/graphics2/qml/ImageInspector.qml").read_text(encoding="utf-8")
-    assert "readonly property bool bridgeHasImageSelection: hasImageSelection" in qml
+    assert "readonly property bool bridgeHasImageSelection: selectedImage(decodedScene) !== null" in qml
     assert qml.count("JSON.parse(sceneBridge.sceneJson)") == 1
     assert "onPressedChanged: if (!pressed) applyFraming()" in qml
