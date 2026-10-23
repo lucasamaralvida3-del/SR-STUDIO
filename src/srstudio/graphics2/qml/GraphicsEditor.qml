@@ -47,7 +47,14 @@ ApplicationWindow {
             if (nodeId && page.nodes[nodeId])
                 roots.push(nodeId)
         }
-        var extras = slot.metadata ? slot.metadata.extra_bindings || ({}) : ({})
+        var meta = slot.metadata || ({})
+        var others = [].concat(meta.decorative_nodes || [], meta.limpeza_blue_nodes || [], meta.source_node_ids || [])
+        var areas = meta.role_area_nodes || ({})
+        for (var area in areas)
+            others.push(String(areas[area]))
+        for (var oi = 0; oi < others.length; ++oi)
+            roots.push(String(others[oi]))
+        var extras = meta.extra_bindings || ({})
         for (var key in extras)
             for (var ei = 0; ei < extras[key].length; ++ei)
                 roots.push(String(extras[key][ei]))
@@ -953,7 +960,8 @@ ApplicationWindow {
                                     function queuePreview(raw, force) {
                                         if (!previewActive)
                                             return
-                                        pendingPreviewBounds = snapPreview(raw)
+                                        // Keep 1:1 mouse movement fluid. Snap only once at release.
+                                        pendingPreviewBounds = force ? snapPreview(raw) : clampPreview(raw)
                                         previewEventCount += 1
                                         window.smartSlotPreviewEvents += 1
                                         var now = Date.now()
