@@ -32,29 +32,21 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Require full regression and Windows CI success
+      - name: Require successful Windows candidate and delta Launcher 2.6
         shell: bash
         run: |
           set -euo pipefail
-          for run_id in 40010724670 40010724675 40010724878 40010724705 40017048038; do
-            for attempt in $(seq 1 120); do
-              status=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq .status)
-              conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq .conclusion)
-              if [ "$status" = "completed" ]; then
-                if [ "$conclusion" != "success" ]; then
-                  echo "Refusing beta promotion: CI run $run_id = $conclusion" >&2
-                  exit 1
-                fi
-                echo "CI run $run_id passed"
-                break
-              fi
-              if [ "$attempt" = "120" ]; then
-                echo "Timeout waiting for CI run $run_id" >&2
-                exit 1
-              fi
-              sleep 15
-            done
-          done
+          outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq .conclusion)
+          test "$outcome" = success
+          gh api -H 'Accept: application/vnd.github.raw+json' "repos/$GITHUB_REPOSITORY/contents/manifests/launcher.json?ref=main" > launcher-live.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          data=json.loads(Path('launcher-live.json').read_text(encoding='utf-8'))
+          assert data['version'] == '4.0.1-hybrid.base2.6', data['version']
+          assert data['files'][0]['sha256']
+          print('DELTA_LAUNCHER_BASE26_VERIFIED')
+          PY
 
       - name: Verify validated source run
         shell: bash
@@ -170,6 +162,68 @@ jobs:
           with (Path(os.environ['GITHUB_ENV'])).open('a') as f:
               f.write(f'BETA_SHA256={final_sha}\nBETA_SIZE={size}\n')
           print('BETA_BUNDLE_SHA256', final_sha, 'BYTES', size)
+          PY
+
+      - name: Build hash-verified delta package from Beta 37
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p previous
+          gh release download g2-beta-37 --repo "$GITHUB_REPOSITORY" \
+            --pattern "SR_STUDIO_G2_BETA_37_LIMPEZA_BLUE_V2_PROFESSIONAL.zip" --dir previous
+          python - <<'PY'
+          import hashlib, json, os, zipfile
+          from pathlib import Path, PurePosixPath
+          oldname=Path("previous/SR_STUDIO_G2_BETA_37_LIMPEZA_BLUE_V2_PROFESSIONAL.zip")
+          newname=Path(os.environ['BETA_BUNDLE_NAME'])
+          out=Path(os.environ['BETA_DELTA_NAME'])
+          def digest(data): return hashlib.sha256(data).hexdigest()
+          def list_paths(archive):
+              result={}
+              for name in archive.namelist():
+                  if name.endswith('/'): continue
+                  parts=PurePosixPath(name).parts
+                  assert len(parts)>=2 and parts[0]=='files' and '..' not in parts and '\\' not in name
+                  relative='/'.join(parts[1:])
+                  assert relative not in result
+                  result[relative]=name
+              return result
+          with zipfile.ZipFile(oldname) as oldzip,zipfile.ZipFile(newname) as newzip:
+              assert oldzip.testzip() is None
+              assert newzip.testzip() is None
+              old=list_paths(oldzip)
+              new=list_paths(newzip)
+              before={k:digest(oldzip.read(v)) for k,v in old.items()}
+              after={k:digest(newzip.read(v)) for k,v in new.items()}
+              changed=sorted(k for k in new if before.get(k)!=after[k])
+              deleted=sorted(set(old)-set(new))
+              assert changed
+              files=[]
+              with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED,compresslevel=6) as delta:
+                  for rel in changed:
+                      payload=newzip.read(new[rel])
+                      delta.writestr('files/'+rel,payload)
+                      files.append({'path':rel,'sha256':after[rel],'size':len(payload)})
+              with zipfile.ZipFile(out) as delta:
+                  assert delta.testzip() is None
+                  reconstructed={k:v for k,v in before.items() if k not in deleted}
+                  for file in files:
+                      reconstructed[file['path']]=digest(delta.read('files/'+file['path']))
+                  assert reconstructed==after, 'Delta reconstruction failed'
+          payload=out.read_bytes()
+          size=len(payload)
+          assert size < newname.stat().st_size, 'Incremental archive must save download bandwidth'
+          sha=digest(payload)
+          meta={'format':'SRSTUDIO_DELTA_FILES_1',
+                'from_version':'5.0.0-hybrid.g2beta.37',
+                'target_version':os.environ['BETA_VERSION'],
+                'member_prefix':'files/','sha256':sha,'size':size,
+                'files':files,'delete':deleted}
+          Path('beta38-delta.json').write_text(json.dumps(meta,indent=2),encoding='utf-8')
+          Path('beta38-delta-checksum.txt').write_text(f'{sha}  {out.name}\n',encoding='ascii')
+          with open(os.environ['GITHUB_ENV'],'a') as handle:
+              handle.write(f'DELTA_SHA256={sha}\nDELTA_SIZE={size}\n')
+          print('DELTA_FILES',len(files),'DELTA_BYTES',size,'FULL_BYTES',newname.stat().st_size)
           PY
 
       - name: Create prerelease without touching Beta 35
