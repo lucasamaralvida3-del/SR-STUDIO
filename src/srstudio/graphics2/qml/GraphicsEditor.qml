@@ -27,6 +27,65 @@ ApplicationWindow {
     property int smartSlotPreviewEvents: 0
     property int smartSlotPreviewUpdates: 0
     property string smartSlotInteractionKind: ""
+    // One temporary GPU-side transform for the active slot: no Python command,
+    // undo snapshot, full-scene JSON or image rebinding on mouse move.
+    property var activeSlotPreview: null
+    property var activeSlotPreviewMembers: ({})
+    property var activeSlotBaseBounds: null
+
+    function previewMemberIds(slot) {
+        var ids = ({})
+        if (!slot || !page)
+            return ids
+        var roots = []
+        var rootId = slot.metadata ? String(slot.metadata.root_node_id || "") : ""
+        if (rootId && page.nodes[rootId])
+            roots.push(rootId)
+        var roleMap = slot.node_by_role || {}
+        for (var role in roleMap) {
+            var nodeId = String(roleMap[role] || "")
+            if (nodeId && page.nodes[nodeId])
+                roots.push(nodeId)
+        }
+        var extras = slot.metadata ? slot.metadata.extra_bindings || ({}) : ({})
+        for (var key in extras)
+            for (var ei = 0; ei < extras[key].length; ++ei)
+                roots.push(String(extras[key][ei]))
+        // Traverse children only once on press, never for each mouse event.
+        var pending = roots.slice()
+        while (pending.length) {
+            var id = pending.pop()
+            if (ids[id] || !page.nodes[id])
+                continue
+            ids[id] = true
+            var children = page.nodes[id].children || []
+            for (var ci = 0; ci < children.length; ++ci)
+                pending.push(String(children[ci]))
+        }
+        return ids
+    }
+
+    function liveSlotNodeRect(node) {
+        var t = node.transform
+        var preview = activeSlotPreview
+        if (!preview || !activeSlotPreviewMembers[node.id] || !activeSlotBaseBounds)
+            return t
+        var base = activeSlotBaseBounds
+        var sx = preview.width / Math.max(1, base.width)
+        var sy = preview.height / Math.max(1, base.height)
+        return {
+            "x": preview.x + (Number(t.x) - base.x) * sx,
+            "y": preview.y + (Number(t.y) - base.y) * sy,
+            "width": Math.max(1, Number(t.width) * sx),
+            "height": Math.max(1, Number(t.height) * sy)
+        }
+    }
+
+    function clearSlotPreview() {
+        activeSlotPreview = null
+        activeSlotBaseBounds = null
+        activeSlotPreviewMembers = ({})
+    }
     property var anchorNode: selectedNode()
     property var draggedProduct: null
     property bool productDragActive: false
@@ -680,10 +739,13 @@ ApplicationWindow {
                                 delegate: Item {
                                     id: nodeItem
                                     required property var modelData
-                                    x: modelData.transform.x * zoom
-                                    y: modelData.transform.y * zoom
-                                    width: Math.max(1, modelData.transform.width * zoom)
-                                    height: Math.max(1, modelData.transform.height * zoom)
+                                    // During drag move/re-size the *actual slot artwork*,
+                                    // including its imported product image, at GPU speed.
+                                    readonly property var fastBounds: window.liveSlotNodeRect(modelData)
+                                    x: Number(fastBounds.x) * zoom
+                                    y: Number(fastBounds.y) * zoom
+                                    width: Math.max(1, Number(fastBounds.width) * zoom)
+                                    height: Math.max(1, Number(fastBounds.height) * zoom)
                                     rotation: Number(modelData.transform.rotation || 0)
                                     opacity: effectiveOpacity(modelData)
                                     visible: modelData.kind !== "group" || isSelected(modelData)
@@ -873,7 +935,12 @@ ApplicationWindow {
                                     }
 
                                     function beginPreview(raw, kind) {
-                                        var value = snapPreview(raw)
+                                        // Start at the original bounds, avoid an immediate
+                                        // snap/jump as soon as the user presses the mouse.
+                                        var value = clampPreview(raw)
+                                        window.activeSlotBaseBounds = value
+                                        window.activeSlotPreviewMembers = window.previewMemberIds(slotOverlay.modelData)
+                                        window.activeSlotPreview = value
                                         previewActive = true
                                         pendingPreviewBounds = value
                                         preview_bounds = value
@@ -901,6 +968,8 @@ ApplicationWindow {
                                         if (!previewActive)
                                             return
                                         preview_bounds = pendingPreviewBounds
+                                        // Only the affected nodes have reactive fastBounds.
+                                        window.activeSlotPreview = pendingPreviewBounds
                                         lastPreviewAppliedMs = Date.now()
                                         previewUpdateCount += 1
                                         window.smartSlotPreviewUpdates += 1
@@ -912,6 +981,9 @@ ApplicationWindow {
                                         queuePreview(raw, true)
                                         var finalBounds = preview_bounds
                                         var started = Date.now()
+                                        // The source-of-truth commit remains ONE operation
+                                        // at release; drop the transient transform first.
+                                        window.clearSlotPreview()
                                         sceneBridge.dispatch(JSON.stringify({
                                             "name":"adjust_smart_slot",
                                             "slot_id":slotOverlay.modelData.id,
@@ -1001,6 +1073,7 @@ ApplicationWindow {
                                         }
                                         onCanceled: {
                                             slotOverlay.previewActive = false
+                                            window.clearSlotPreview()
                                             previewTimer.stop()
                                         }
                                     }
@@ -1077,6 +1150,7 @@ ApplicationWindow {
                                                 }
                                                 onCanceled: {
                                                     slotOverlay.previewActive = false
+                                                    window.clearSlotPreview()
                                                     previewTimer.stop()
                                                 }
                                             }
