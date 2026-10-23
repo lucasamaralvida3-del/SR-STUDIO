@@ -355,8 +355,11 @@ ApplicationWindow {
                 }))
                 try {
                     var result = JSON.parse(resultRaw)
-                    if (result.ok && result.payload && result.payload.drop_target)
+                    if (result.ok && result.payload && result.payload.drop_target) {
                         selectedSlotId = String(result.payload.drop_target.slot_id || selectedSlotId)
+                        if (autoRemoveProductBackground && selectedSlotId)
+                            sceneBridge.removeSlotBackground(selectedSlotId)
+                    }
                 } catch (error) {
                     console.warn("SR drag-and-drop: resposta inválida", error)
                 }
