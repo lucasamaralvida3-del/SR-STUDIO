@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-"""Edição manual persistente da área semântica dos Smart Slots.
+"""Smart Slot manual geometry: semantic bounds AND exclusive artwork move together.
 
-Somente metadata do SmartSlot/documento é alterado. Nenhum node visual é
-movido, redimensionado ou removido. As correções ficam disponíveis como corpus
-estruturado para futura melhoria do detector, sem treinamento online.
+The old implementation only changed metadata and left the product/image/price
+nodes at their original positions. Each edit is applied in ONE transaction,
+preserving undo/redo and keeping shared PPTX decorations outside the transform.
 """
 
 from datetime import datetime, timezone
@@ -36,6 +36,8 @@ def set_manual_slot_bounds(
         original = rect
 
     with session.transaction("Ajustar Smart Slot"):
+        if before is not None:
+            _transform_exclusive_nodes(page, slot, before, rect)
         slot.metadata.setdefault("original_detected_bounds", _rect_dict(original))
         slot.metadata["user_adjusted_bounds"] = _rect_dict(rect)
         slot.metadata["effective_bounds"] = _rect_dict(rect)
@@ -68,6 +70,9 @@ def restore_auto_slot_bounds(session: GraphicsSession, slot_id: str) -> dict[str
     if original is None:
         raise ValueError("Smart Slot não possui original_detected_bounds para restaurar.")
     with session.transaction("Restaurar detecção automática do Smart Slot"):
+        current = _effective_bounds(slot)
+        if current is not None:
+            _transform_exclusive_nodes(page, slot, current, original)
         slot.metadata.pop("user_adjusted_bounds", None)
         slot.metadata["effective_bounds"] = _rect_dict(original)
         slot.metadata["adjustment_source"] = "auto-restored"
@@ -152,6 +157,57 @@ def snap_bounds_to_grid(
     if page is not None:
         rect = _validated_rect(page, rect)
     return _rect_dict(rect)
+
+
+def _exclusive_visual_node_ids(page: GraphicsPage, slot: SmartSlot) -> set[str]:
+    """Return only artwork owned by this slot, never shared neighboring nodes.
+
+    Imported cards may contain hundreds of shapes. The effective_node_ids list
+    is filtered by geometry detection to exclude shared decorations.
+    """
+    candidates: set[str] = set()
+    effective = slot.metadata.get("effective_node_ids")
+    if isinstance(effective, (list, tuple, set)):
+        candidates.update(str(value) for value in effective if value)
+    candidates.update(_slot_node_ids(slot))
+    metadata = slot.metadata
+    for key in ("decorative_nodes", "limpeza_blue_nodes", "source_node_ids"):
+        values = metadata.get(key)
+        if isinstance(values, (tuple, list, set)):
+            candidates.update(str(value) for value in values if value)
+    areas = metadata.get("role_area_nodes")
+    if isinstance(areas, dict):
+        candidates.update(str(value) for value in areas.values() if value)
+    root_id = str(metadata.get("root_node_id") or "")
+    if root_id and root_id in page.nodes:
+        candidates.add(root_id)
+        candidates.update(str(value) for value in page.descendants(root_id))
+    protected: set[str] = set()
+    for other in page.slots.values():
+        if other.id != slot.id:
+            protected.update(_slot_node_ids(other))
+            if isinstance(other.metadata.get("effective_node_ids"), list):
+                protected.update(str(v) for v in other.metadata["effective_node_ids"])
+    return {node_id for node_id in candidates - protected if node_id in page.nodes}
+
+
+def _transform_exclusive_nodes(page: GraphicsPage, slot: SmartSlot, before: Rect, after: Rect) -> None:
+    """Scale/translate absolute scene coordinates once on mouse release."""
+    if min(before.width, before.height) <= 0:
+        return
+    sx = after.width / before.width
+    sy = after.height / before.height
+    if abs(sx - 1) < 1e-8 and abs(sy - 1) < 1e-8 and abs(after.x - before.x) < 1e-8 and abs(after.y - before.y) < 1e-8:
+        return
+    for node_id in _exclusive_visual_node_ids(page, slot):
+        node = page.node(node_id)
+        if node is None:
+            continue
+        t = node.transform
+        t.x = after.x + (t.x - before.x) * sx
+        t.y = after.y + (t.y - before.y) * sy
+        t.width = max(0.01, t.width * sx)
+        t.height = max(0.01, t.height * sy)
 
 
 def _record_feedback(

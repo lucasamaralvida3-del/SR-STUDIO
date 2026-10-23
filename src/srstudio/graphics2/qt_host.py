@@ -220,6 +220,7 @@ def launch_qt_quick_editor(
         statusChanged = Signal()
         fileJobDone = Signal(bool, str, str, str)
         autosaveDone = Signal(bool, str, str)
+        backgroundRemovalDone = Signal(bool, str, str, str)
 
         def __init__(self) -> None:
             super().__init__()
@@ -240,6 +241,8 @@ def launch_qt_quick_editor(
             self._autosave_timer.timeout.connect(self._start_autosave)
             self.fileJobDone.connect(self._finish_file_job)
             self.autosaveDone.connect(self._finish_autosave)
+            self.backgroundRemovalDone.connect(self._finish_background_removal)
+            self._bg_running = False
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
@@ -464,6 +467,67 @@ def launch_qt_quick_editor(
             self.statusChanged.emit()
             self.sceneChanged.emit()
             return result_raw
+
+        @Slot(str)
+        def removeSlotBackground(self, slot_id: str) -> None:
+            from .model import BindingRole
+            slot = session.page.slots.get(str(slot_id or ""))
+            if slot is None:
+                return
+            image_id = str(slot.node_by_role.get(BindingRole.IMAGE.value) or "")
+            if image_id:
+                self.removeBackground(image_id)
+
+        @Slot(str)
+        def removeBackground(self, node_id: str) -> None:
+            # Never download weights or run segmentation on the Qt UI thread.
+            if self._bg_running:
+                self._status = "withoutBG já está processando outra imagem."
+                self.statusChanged.emit()
+                return
+            from .model import NodeKind
+            node = session.page.node(str(node_id or ""))
+            if node is None or node.kind not in (NodeKind.IMAGE, NodeKind.BACKGROUND):
+                self._status = "Selecione uma imagem de produto para remover o fundo."
+                self.statusChanged.emit()
+                return
+            source = str(node.metadata.get("bound_image_source") or node.metadata.get("source_url") or "")
+            if not source and node.asset_id in session.document.assets:
+                source = session.document.assets[node.asset_id].source
+            from .image_replace import normalize_local_image_source
+            try:
+                source = str(normalize_local_image_source(source))
+            except Exception as exc:
+                self._status = "withoutBG aceita somente imagens locais: " + str(exc)
+                self.statusChanged.emit()
+                return
+            self._bg_running = True
+            self._status = "withoutBG: removendo fundo em segundo plano (primeiro uso baixa o modelo ~1,5 GB)..."
+            self.statusChanged.emit()
+
+            def worker():
+                try:
+                    from .background_removal import remove_product_background
+                    result = remove_product_background(source)
+                    self.backgroundRemovalDone.emit(True, node_id, str(result), "")
+                except Exception as exc:
+                    self.backgroundRemovalDone.emit(False, node_id, "", f"{type(exc).__name__}: {exc}")
+            threading.Thread(target=worker, name="sr-g2-withoutbg", daemon=True).start()
+
+        def _finish_background_removal(self, ok: bool, node_id: str, output: str, error: str) -> None:
+            self._bg_running = False
+            if ok:
+                try:
+                    result = router.dispatch({"name": "replace_image", "node_id": node_id, "source": output})
+                    if result.changed:
+                        self._schedule_autosave()
+                    self._status = "Fundo removido com withoutBG · PNG transparente." if result.ok else result.message
+                    self.sceneChanged.emit()
+                except Exception as exc:
+                    self._status = "Falha ao aplicar PNG: " + str(exc)
+            else:
+                self._status = "withoutBG indisponível; imagem original preservada: " + error
+            self.statusChanged.emit()
 
         @Slot(str)
         def saveSceneAs(self, raw_target: str) -> None:

@@ -99,7 +99,11 @@ def test_release_commit_preserves_visual_nodes_updates_overlap_drop_target_and_f
     assert slot.metadata["manual_overlap_count"] == 1
     assert slot.metadata["manual_overlap_slot_ids"] == ["slot-2"]
     assert document.active_page.metadata["drop_target_revision"] == before_revision + 1
-    assert _node_snapshot(document) == before_nodes
+    after_nodes = _node_snapshot(document)
+    assert after_nodes["image-1"] != before_nodes["image-1"]
+    assert after_nodes["name-1"] != before_nodes["name-1"]
+    assert after_nodes["image-2"] == before_nodes["image-2"]
+    assert after_nodes["name-2"] == before_nodes["name-2"]
     assert document.metadata["smart_slot_feedback"][-1]["action"] == "manual-bounds"
 
     target = find_drop_target(document.active_page, 390, 170, magnet_distance=0)

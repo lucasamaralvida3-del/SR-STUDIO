@@ -23,6 +23,7 @@ ApplicationWindow {
     property bool smartSlotInspectionMode: false
     property bool smartSlotEditMode: false
     property bool smartSlotSnap: true
+    property bool autoRemoveProductBackground: true
     property real smartSlotLastCommitMs: 0
     property int smartSlotPreviewEvents: 0
     property int smartSlotPreviewUpdates: 0
@@ -69,15 +70,25 @@ ApplicationWindow {
             for (var ci = 0; ci < children.length; ++ci)
                 pending.push(String(children[ci]))
         }
+        // For highly detailed imported cards, transforming every vector path
+        // and rerasterizing it on each pointer event is prohibitively slow.
+        // Use an outline-only transient preview; artwork moves on mouse release.
+        if (Object.keys(ids).length > 24)
+            return ({})
         return ids
     }
 
     function liveSlotNodeRect(node) {
-        var t = node.transform
+        // Fast bailout BEFORE reading activeSlotPreview: ordinary artwork must
+        // not acquire a dependency on each mouse movement, or the entire scene
+        // rerenders continuously (especially imported PPTX with many nodes).
+        if (!activeSlotPreviewMembers[node.id])
+            return node.transform
         var preview = activeSlotPreview
-        if (!preview || !activeSlotPreviewMembers[node.id] || !activeSlotBaseBounds)
-            return t
         var base = activeSlotBaseBounds
+        if (!preview || !base)
+            return node.transform
+        var t = node.transform
         var sx = preview.width / Math.max(1, base.width)
         var sy = preview.height / Math.max(1, base.height)
         return {
@@ -87,6 +98,7 @@ ApplicationWindow {
             "height": Math.max(1, Number(t.height) * sy)
         }
     }
+
 
     function clearSlotPreview() {
         activeSlotPreview = null
@@ -350,7 +362,10 @@ ApplicationWindow {
             sceneBridge.dispatch(JSON.stringify({"name": "clear_selection"}))
             return
         }
-        sceneBridge.dispatch(JSON.stringify({"name": "bind_product", "slot_id": selectedSlotId, "product_id": product.id}))
+        var chosenSlot = selectedSlotId
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({"name": "bind_product", "slot_id": chosenSlot, "product_id": product.id})))
+        if (result.ok && autoRemoveProductBackground)
+            sceneBridge.removeSlotBackground(chosenSlot)
     }
 
     function syncInspector() {
@@ -443,6 +458,7 @@ ApplicationWindow {
                 }
             }
             ToolButton { text: "Snap Slot"; visible: smartSlotEditMode; checkable: true; checked: smartSlotSnap; onClicked: smartSlotSnap = checked }
+            ToolButton { text: "Fundo automático"; checkable: true; checked: autoRemoveProductBackground; onClicked: autoRemoveProductBackground = checked; ToolTip.text: "withoutBG local no vínculo de produtos; primeiro uso baixa ~1,5 GB"; ToolTip.visible: hovered }
             ToolButton {
                 text: "Restaurar Auto"
                 visible: smartSlotEditMode && selectedSlotId !== ""
@@ -1022,6 +1038,17 @@ ApplicationWindow {
                                         radius: 4
                                     }
                                     Label {
+                                        anchors.centerIn: parent
+                                        visible: slotOverlay.previewActive && Object.keys(window.activeSlotPreviewMembers).length === 0
+                                        text: "PRÉVIA LEVE · SOLTE PARA APLICAR"
+                                        color: "#0F5BD8"
+                                        font.bold: true
+                                        font.pixelSize: 12
+                                        padding: 7
+                                        background: Rectangle { color: "#FFFFFFD9"; radius: 5 }
+                                        z: 12
+                                    }
+                                    Label {
                                         x: 4; y: 4
                                         text: isDropTarget ? "SOLTAR PRODUTO AQUI" : ((modelData.metadata && modelData.metadata.display_label) ? modelData.metadata.display_label : (modelData.name || "Smart Slot"))
                                         color: "white"
@@ -1169,7 +1196,7 @@ ApplicationWindow {
 
                             Item {
                                 id: selectionOverlay
-                                visible: anchorNode && page && effectiveVisible(anchorNode)
+                                visible: !smartSlotEditMode && anchorNode && page && effectiveVisible(anchorNode)
                                 x: visible ? anchorNode.transform.x * zoom : 0
                                 y: visible ? anchorNode.transform.y * zoom : 0
                                 width: visible ? Math.max(1, anchorNode.transform.width * zoom) : 1
