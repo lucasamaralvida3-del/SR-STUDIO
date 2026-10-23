@@ -235,17 +235,16 @@ jobs:
             exit 1
           }
           cat > release-notes.md <<'MD'
-          # SR Studio G2 Beta 38 - Limpeza Azul
-          - Perfil Limpeza Azul V2: imagem atrás dos dois blocos de preço, com textos na frente.\n          - Geometria atualizada conforme referência Fofinho e fonte condensada Impact no Windows.\n          - Migração dos slots V1 preservando produto/preços e redução de trabalho redundante no painel da imagem.
-          - Produto, imagem, preco promocional e preco do clube independentes.
-          - Comando de inspecao estrutural do perfil e testes de round-trip .srscene.
-          - Construido a partir da Beta 35, preservando os 7 cartazes Office-compatible.
-          - Windows test build, Graphics Engine 2 CI e Quality aprovados.
-          - Fidelidade visual pixel a pixel e desempenho em hardware do usuário ainda exigem teste manual.
-          - Distribuicao experimental Beta; versao Stable nao alterada.
+          # SR Studio G2 Beta 38 — Smart Slot fluido
+          - Prévia local e fluida de todos os elementos do slot durante arraste e redimensionamento.
+          - Produto importado acompanha o slot; desenho e imagem atualizados sem comandos Python por movimento.
+          - Snap final na soltura, preservando ajustes, preços e SR Scene.
+          - Download incremental de arquivos alterados da Beta 37 para a Beta 38 com Launcher 2.6.
+          - Fallback seguro para pacote completo, SHA-256 e manutenção da versão Stable.
+          - A fluidez real deve ser verificada no equipamento do usuário.
           MD
-          gh release create "$BETA_TAG" "$BETA_BUNDLE_NAME" beta38-checksum.txt \
-            --repo "$GITHUB_REPOSITORY" --title "SR Studio - G2 Beta 38 Limpeza Azul" \
+          gh release create "$BETA_TAG" "$BETA_BUNDLE_NAME" beta38-checksum.txt "$BETA_DELTA_NAME" beta38-delta.json beta38-delta-checksum.txt \
+            --repo "$GITHUB_REPOSITORY" --title "SR Studio - G2 Beta 38 Smart Slot Fluido" \
             --notes-file release-notes.md --prerelease --latest=false --target "$SOURCE_SHA"
           tag_target=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$BETA_TAG" --jq .object.sha)
           test "$tag_target" = "$SOURCE_SHA"
@@ -274,7 +273,24 @@ jobs:
                   assert meta['version'] == '5.0.0-hybrid.g2beta.38'
                   assert meta['source_commit'] == '754d65b114d0482b882276cfb22fbac727a70e77'
           PY
-          echo "PUBLIC_BUNDLE_VERIFIED=TRUE"
+          delta_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$BETA_TAG/$BETA_DELTA_NAME"
+          curl --fail --location --retry 3 --connect-timeout 30 -o public-delta-curl.zip "$delta_url"
+          wget --tries=3 --timeout=60 --quiet -O public-delta-wget.zip "$delta_url"
+          echo "$DELTA_SHA256  public-delta-curl.zip" | sha256sum --check -
+          echo "$DELTA_SHA256  public-delta-wget.zip" | sha256sum --check -
+          test "$(stat -c %s public-delta-curl.zip)" = "$DELTA_SIZE"
+          test "$(stat -c %s public-delta-wget.zip)" = "$DELTA_SIZE"
+          python - <<'PY'
+          import json, zipfile
+          info=json.load(open('beta38-delta.json',encoding='utf-8'))
+          expected={'files/'+e['path'] for e in info['files']}
+          for filename in ['public-delta-curl.zip','public-delta-wget.zip']:
+              with zipfile.ZipFile(filename) as z:
+                  assert z.testzip() is None
+                  actual={n for n in z.namelist() if not n.endswith('/')}
+                  assert actual==expected, (len(actual),len(expected))
+          PY
+          echo "PUBLIC_FULL_AND_DELTA_VERIFIED=TRUE"
 
       - name: Checkout Beta channel control file
         uses: actions/checkout@v4
@@ -303,9 +319,14 @@ jobs:
               'version': os.environ['BETA_VERSION'], 'product_version': '5.0.0',
               'release_label': os.environ['BETA_LABEL'],
               'published_at': datetime.datetime.now(datetime.timezone.utc).isoformat(),
-              'min_launcher': old['min_launcher'],
-              'min_launcher_version': old['min_launcher_version'],
+              'min_launcher': '4.0.1-hybrid.base2.6',
+              'min_launcher_version': '4.0.1-hybrid.base2.6',
               'bundle': {'url': asset_url, 'sha256': sha, 'size': size, 'member_prefix': 'files/'},
+              'delta': dict(
+                  json.loads(Path('beta38-delta.json').read_text(encoding='utf-8')),
+                  url=(f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/"
+                       f"{os.environ['BETA_TAG']}/{os.environ['BETA_DELTA_NAME']}")
+              ),
               'url': asset_url, 'bundle_url': asset_url, 'sha256': sha, 'size': size,
               'member_prefix': 'files/', 'previous_version': old['version'],
               'entrypoint': 'SR_Studio_Gerador.py',
@@ -339,6 +360,8 @@ jobs:
           data = json.load(open('beta38-live-manifest.json', encoding='utf-8-sig'))
           assert data['version'] == os.environ['BETA_VERSION']
           assert data['bundle']['sha256'] == os.environ['BETA_SHA256']
+          assert data['delta']['sha256'] == os.environ['DELTA_SHA256']
+          assert data['delta']['from_version'] == '5.0.0-hybrid.g2beta.37'
           assert data['source_commit'] == os.environ['SOURCE_SHA']
           assert data['public_asset_verified'] is True
           print('LIVE_BETA_37_VERIFIED')
@@ -347,9 +370,11 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: SR-Studio-G2-Beta36-Publication-Evidence
+          name: SR-Studio-G2-Beta38-Publication-Evidence
           path: |
             beta38-evidence.json
             beta38-checksum.txt
+            beta38-delta.json
+            beta38-delta-checksum.txt
             beta38-live-manifest.json
           if-no-files-found: warn
