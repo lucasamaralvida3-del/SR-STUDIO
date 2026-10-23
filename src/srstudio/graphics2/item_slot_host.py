@@ -29,6 +29,12 @@ from .item_slots import (
     set_item_slot_role_bounds,
 )
 from .slot_corpus_bindings import bind_product_to_quinta3_slot
+from .slot_limpeza_blue import (
+    PRESET_ID as LIMPEZA_BLUE_ID,
+    bind_product_to_limpeza_blue_slot,
+    create_limpeza_blue_slot,
+    inspect_limpeza_blue_slot,
+)
 from .slot_corpus_calibration import QUINTA3_SUPERVISED_PROFILES
 from .slot_corpus_families import QUINTA3_FAMILY_PRESETS, install_quinta3_family_presets
 from .slot_corpus_full_card import MEAT_FAMILY_ID
@@ -80,7 +86,13 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         name = str(command.get("name") or "").strip().lower()
         if name == "add_item_slot":
             preset_id = str(command.get("preset_id") or "simples")
-            if preset_id in QUINTA3_FAMILY_PRESETS:
+            if preset_id == LIMPEZA_BLUE_ID:
+                slot = create_limpeza_blue_slot(
+                    self.session,
+                    x=_optional_number(command.get("x")),
+                    y=_optional_number(command.get("y")),
+                )
+            elif preset_id in QUINTA3_FAMILY_PRESETS:
                 profile_id = (
                     next_meat_profile(self.session.page)
                     if preset_id == MEAT_FAMILY_ID
@@ -111,6 +123,13 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 f"Slot de Item adicionado · {slot.name}",
                 {"slot_id": slot.id, "root_node_id": slot.metadata.get("root_node_id", ""), "preset_id": preset_id},
             )
+
+        if name == "inspect_limpeza_blue_slot":
+            slot = self.session.page.slots.get(str(command.get("slot_id") or ""))
+            if slot is None:
+                return CommandResult(False, False, "Slot inexistente.")
+            report = inspect_limpeza_blue_slot(self.session.page, slot)
+            return CommandResult(True, False, "Inspeção do perfil Limpeza Azul.", report)
 
         if name == "select_item_slot":
             slot = self.session.page.slots.get(str(command.get("slot_id") or ""))
@@ -188,7 +207,9 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 if not isinstance(product, dict):
                     return CommandResult(False, False, "Produto não encontrado.")
 
-                if slot.metadata.get("quinta3_family"):
+                if slot.metadata.get("limpeza_blue_profile") == LIMPEZA_BLUE_ID:
+                    changed = bind_product_to_limpeza_blue_slot(self.session, slot_id, product)
+                elif slot.metadata.get("quinta3_family"):
                     profile_id = str(product.get("quinta3_supervised_profile") or "").strip()
                     profile = QUINTA3_SUPERVISED_PROFILES.get(profile_id)
                     if profile and str(profile.get("family_id") or "") == str(slot.metadata.get("preset_id") or ""):
