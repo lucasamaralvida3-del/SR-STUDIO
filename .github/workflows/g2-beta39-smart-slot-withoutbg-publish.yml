@@ -84,7 +84,7 @@ jobs:
           provenance = json.loads((root / 'candidate/limpeza-blue-provenance.json').read_text(encoding='utf-8-sig'))
           sha = os.environ['SOURCE_SHA']
           digest = hashlib.file_digest(archive.open('rb'), 'sha256').hexdigest()
-          assert provenance['schema'] == 'srstudio/g2-beta39-fluid-slots-candidate/1'
+          assert provenance['schema'] == 'srstudio/g2-beta39-slot-withoutbg-candidate/1'
           assert provenance['source_sha'] == sha, (provenance['source_sha'], sha)
           assert provenance['sha256'].lower() == digest, 'Candidate hash mismatch'
           assert provenance['size_bytes'] == archive.stat().st_size
@@ -238,13 +238,13 @@ jobs:
             exit 1
           }
           cat > release-notes.md <<'MD'
-          # SR Studio G2 Beta 39 — Smart Slot fluido
+          # SR Studio G2 Beta 39 — Smart Slot e withoutBG
           - Correção estrutural: Smart Slot move e dimensiona o artwork real, inclusive produto e preços.
           - Remoção de fundo withoutBG local (download de modelo ao primeiro uso, sem bloqueio Qt).
           - Prévia leve para cartões densos de PPTX e sem renderizar toda a cena por movimento.
           - Produto importado acompanha o slot; desenho e imagem atualizados sem comandos Python por movimento.
           - Snap final na soltura, preservando ajustes, preços e SR Scene.
-          - Download incremental de arquivos alterados da Beta 37 para a Beta 38 com Launcher 2.6.
+          - Download incremental de arquivos alterados da Beta 38 para a Beta 39 com Launcher 2.6.
           - Fallback seguro para pacote completo, SHA-256 e manutenção da versão Stable.
           - A fluidez real, remoção de fundo e as licenças de modelos exigem confirmação do usuário no Windows.
           MD
@@ -352,7 +352,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add beta/manifest.json
           test "$(git diff --cached --name-only)" = "beta/manifest.json"
-          git commit -m "chore(beta): promote verified G2 Beta 39 Limpeza Azul"
+          git commit -m "chore(beta): promote verified G2 Beta 39 Smart Slot + withoutBG"
           git push origin HEAD:main
 
       - name: Verify Beta channel manifest at GitHub
