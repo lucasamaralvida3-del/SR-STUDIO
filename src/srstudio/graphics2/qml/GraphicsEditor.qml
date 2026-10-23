@@ -23,6 +23,7 @@ ApplicationWindow {
     property bool smartSlotInspectionMode: false
     property bool smartSlotEditMode: false
     property bool smartSlotSnap: true
+    property bool autoRemoveProductBackground: true
     property real smartSlotLastCommitMs: 0
     property int smartSlotPreviewEvents: 0
     property int smartSlotPreviewUpdates: 0
@@ -361,7 +362,10 @@ ApplicationWindow {
             sceneBridge.dispatch(JSON.stringify({"name": "clear_selection"}))
             return
         }
-        sceneBridge.dispatch(JSON.stringify({"name": "bind_product", "slot_id": selectedSlotId, "product_id": product.id}))
+        var chosenSlot = selectedSlotId
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({"name": "bind_product", "slot_id": chosenSlot, "product_id": product.id})))
+        if (result.ok && autoRemoveProductBackground)
+            sceneBridge.removeSlotBackground(chosenSlot)
     }
 
     function syncInspector() {
@@ -454,6 +458,7 @@ ApplicationWindow {
                 }
             }
             ToolButton { text: "Snap Slot"; visible: smartSlotEditMode; checkable: true; checked: smartSlotSnap; onClicked: smartSlotSnap = checked }
+            ToolButton { text: "Fundo automático"; checkable: true; checked: autoRemoveProductBackground; onClicked: autoRemoveProductBackground = checked; ToolTip.text: "withoutBG local no vínculo de produtos; primeiro uso baixa ~1,5 GB"; ToolTip.visible: hovered }
             ToolButton {
                 text: "Restaurar Auto"
                 visible: smartSlotEditMode && selectedSlotId !== ""
