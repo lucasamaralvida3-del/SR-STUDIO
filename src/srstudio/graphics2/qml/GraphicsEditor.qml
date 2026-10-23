@@ -464,6 +464,20 @@ ApplicationWindow {
             ToolButton { text: "▤"; checkable: true; checked: showRulers; ToolTip.text: "Réguas"; ToolTip.visible: hovered; onClicked: showRulers = checked }
             ToolButton { text: "Smart Slots"; checkable: true; checked: smartSlotInspectionMode; ToolTip.text: "Mostrar áreas inteligentes"; ToolTip.visible: hovered; onClicked: smartSlotInspectionMode = checked }
             ToolButton {
+                text: "+ Slot Azul"
+                ToolTip.text: "Criar o único Smart Slot ativo, com 1 ou 2 preços automáticos"
+                onClicked: {
+                    var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
+                        "name": "add_item_slot", "preset_id": "limpeza-blue-v1"
+                    })))
+                    if (result.ok && result.payload) {
+                        selectedSlotId = String(result.payload.slot_id || "")
+                        smartSlotEditMode = true
+                        smartSlotInspectionMode = true
+                    }
+                }
+            }
+            ToolButton {
                 text: "Ajustar Smart Slot"
                 checkable: true
                 checked: smartSlotEditMode
