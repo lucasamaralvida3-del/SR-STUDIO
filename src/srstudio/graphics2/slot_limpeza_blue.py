@@ -22,7 +22,7 @@ WHITE = "#FFFFFF"
 # O preco PRINCIPAL e o do clube, o preco SECUNDARIO e o promocional.
 LIMPEZA_PRESET: dict[str, Any] = {
     "id": PRESET_ID,
-    "name": "LIMPEZA · AZUL · 2 PRECOS",
+    "name": "AZUL · 1 OU 2 PREÇOS",
     "width": 418.0,
     "height": 320.0,
     "background": None,  # outer frame does not cover the exposed right margin
