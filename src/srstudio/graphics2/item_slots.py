@@ -386,8 +386,14 @@ def refresh_item_slot_metadata(page, slot: SmartSlot) -> None:
 
 
 def refresh_all_item_slots(document) -> None:
+    # Upgrade legacy Limpeza V1 once on load without creating extra slots.
+    # Version 2 is idempotent; later payload refreshes are effectively O(1).
+    from .slot_limpeza_blue import upgrade_limpeza_blue_slot
+
     for page in document.pages:
         for slot in page.slots.values():
+            if slot.metadata.get("limpeza_blue_profile"):
+                upgrade_limpeza_blue_slot(page, slot)
             refresh_item_slot_metadata(page, slot)
 
 
