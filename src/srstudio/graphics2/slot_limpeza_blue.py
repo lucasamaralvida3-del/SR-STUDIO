@@ -298,7 +298,9 @@ def _price_variant(product: dict[str, Any]) -> tuple[str, object, object | None]
     distinct = []
     for candidate in candidates:
         try:
-            numeric = float(str(candidate).strip().replace("R$", "").replace(".", "").replace(",", "."))
+            raw = str(candidate).strip().replace("R$", "").replace(" ", "")
+            normalized = raw.replace(".", "").replace(",", ".") if "," in raw else raw
+            numeric = round(float(normalized), 2)
         except ValueError:
             numeric = str(candidate).strip().casefold()
         if numeric not in distinct:
