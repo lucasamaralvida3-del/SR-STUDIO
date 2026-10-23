@@ -62,8 +62,12 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         # The five certified Quinta3 families live in the existing custom
         # preset store. Installing them here makes the generic QML preset menu
         # see them in every real Studio session without a UI-specific fork.
-        install_quinta3_family_presets(self.session.document)
-        refresh_all_item_slots(self.session.document)
+        # Creating five Quinta3 families during every scene serialization
+        # was wasteful and revived models removed from the creation UI.
+        # Migrate older Limpeza slots once, not for every repaint or selection.
+        if not getattr(self, "_limpeza_migrated", False):
+            refresh_all_item_slots(self.session.document)
+            self._limpeza_migrated = True
         payload = super().payload()
         editor = payload.setdefault("editor", {})
         editor["item_slot_presets"] = list_item_slot_presets(self.session.document)
@@ -85,7 +89,9 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
     def dispatch(self, command: dict[str, Any]) -> CommandResult:
         name = str(command.get("name") or "").strip().lower()
         if name == "add_item_slot":
-            preset_id = str(command.get("preset_id") or "simples")
+            preset_id = str(command.get("preset_id") or LIMPEZA_BLUE_ID)
+            if preset_id != LIMPEZA_BLUE_ID:
+                return CommandResult(False, False, "Modelo descontinuado. Use Limpeza Azul (1 ou 2 preços).")
             if preset_id == LIMPEZA_BLUE_ID:
                 slot = create_limpeza_blue_slot(
                     self.session,

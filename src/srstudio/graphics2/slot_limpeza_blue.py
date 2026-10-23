@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Perfil supervisionado de UM ItemSlot de limpeza (azul, dois precos).
+"""Perfil supervisionado de UM ItemSlot azul com uma ou duas etiquetas de preco.
 
 Referencia revisada: Papel Hig Fofinho / clube, 447x345. As proporcoes
 sao normalizadas; o teste visual permanece necessario antes da distribuicao.
@@ -22,7 +22,7 @@ WHITE = "#FFFFFF"
 # O preco PRINCIPAL e o do clube, o preco SECUNDARIO e o promocional.
 LIMPEZA_PRESET: dict[str, Any] = {
     "id": PRESET_ID,
-    "name": "LIMPEZA · AZUL · 2 PRECOS",
+    "name": "AZUL · 1 OU 2 PREÇOS",
     "width": 418.0,
     "height": 320.0,
     "background": None,  # outer frame does not cover the exposed right margin
@@ -268,11 +268,85 @@ def upgrade_limpeza_blue_slot(page, slot) -> bool:
             node.z_index = LAYERS["outer_frame"]
 
     slot.metadata["limpeza_blue_version"] = 2
+    slot.metadata["limpeza_blue_price_mode"] = "two"
     slot.metadata["single_slot_contract"] = {
         "primary": "club", "secondary": "promotion",
         "area_count": 1, "pixel_exact": False, "layered": True,
     }
     return True
+
+
+
+ONE_PRICE_MAIN_RECT = (0.505, 0.565, 0.495, 0.435)
+PROMO_NODE_ROLES = (
+    "promotion_background", "promotion_label", "promotion_currency",
+    "promotion_integer", "promotion_cents", "promotion_unit",
+)
+
+
+def _is_real_price(value: object) -> bool:
+    return value is not None and str(value).strip() not in ("", "None")
+
+
+def _price_variant(product: dict[str, Any]) -> tuple[str, object, object | None]:
+    """ONE if there is only one *distinct* price; TWO only for distinct prices."""
+    retail = product.get("price")
+    club = next((product.get(k) for k in ("club_price", "app_price")
+                 if _is_real_price(product.get(k))), None)
+    offer = product.get("promotion_price")
+    candidates = [v for v in (retail, club, offer) if _is_real_price(v)]
+    distinct = []
+    for candidate in candidates:
+        try:
+            raw = str(candidate).strip().replace("R$", "").replace(" ", "")
+            normalized = raw.replace(".", "").replace(",", ".") if "," in raw else raw
+            numeric = round(float(normalized), 2)
+        except ValueError:
+            numeric = str(candidate).strip().casefold()
+        if numeric not in distinct:
+            distinct.append(numeric)
+    if not candidates:
+        return ("one", None, None)
+    if len(distinct) <= 1:
+        return ("one", retail if _is_real_price(retail) else candidates[0], None)
+    # The highlighted price is club or promotional; retail sits in the badge.
+    primary = club if _is_real_price(club) else offer
+    secondary = retail if _is_real_price(retail) else offer
+    return ("two", primary, secondary)
+
+
+def _apply_price_variant(page, slot, variant: str) -> None:
+    """Switch one shared slot between 1/2-price visuals, without new slots."""
+    if variant not in ("one", "two"):
+        raise ValueError("Invalid price variant")
+    root = page.node(str(slot.metadata.get("root_node_id") or ""))
+    if root is None:
+        return
+    root_rect = root.rect.normalized()
+    one = variant == "one"
+    for node_id in page.descendants(root.id):
+        node = page.node(node_id)
+        if node is None:
+            continue
+        role = str(node.metadata.get("limpeza_blue_role") or "")
+        if role in PROMO_NODE_ROLES or role == "club_label":
+            node.visible = not one
+    main_area = page.node(str((slot.metadata.get("role_area_nodes") or {}).get("price") or ""))
+    if main_area is not None:
+        _position(main_area, root_rect, ONE_PRICE_MAIN_RECT if one else MAIN_PRICE_RECT)
+        area = main_area.rect.normalized()
+        for component, binding in (
+            ("currency", BindingRole.CURRENCY),
+            ("integer", BindingRole.PRICE_REAIS),
+            ("decimal", BindingRole.PRICE_CENTS),
+        ):
+            node = page.node(str(slot.node_by_role.get(binding.value) or ""))
+            if node is not None:
+                _position(node, area, PRICE_COMPONENT_RECTS[component])
+    slot.metadata["limpeza_blue_price_mode"] = variant
+    slot.metadata["secondary_price_visible"] = not one
+    slot.metadata["promotion_visible"] = not one
+    slot.metadata["club_visible"] = not one
 
 
 
@@ -292,10 +366,7 @@ def bind_product_to_limpeza_blue_slot(
     if not isinstance(product, dict):
         return False
 
-    primary = next((product[key] for key in ("club_price", "app_price", "price")
-                    if product.get(key) not in (None, "")), None)
-    secondary = next((product[key] for key in ("promotion_price", "price")
-                      if product.get(key) not in (None, "")), None)
+    variant, primary, secondary = _price_variant(product)
     payload = deepcopy(product)
     if primary is not None:
         payload["price"] = primary
@@ -304,7 +375,8 @@ def bind_product_to_limpeza_blue_slot(
 
     extras = slot.metadata.get("extra_bindings") or {}
     unit = str(product.get("unit") or "UN").strip().upper().lstrip("/")
-    with session.transaction("Aplicar dois precos Limpeza Azul"):
+    with session.transaction("Aplicar preço e variação Limpeza Azul"):
+        _apply_price_variant(session.page, slot, variant)
         primary_unit = session.page.node(str(slot.node_by_role.get(BindingRole.UNIT.value) or ""))
         if primary_unit is not None:
             primary_unit.text = unit
@@ -329,10 +401,12 @@ def bind_product_to_limpeza_blue_slot(
                 node = session.page.node(str(node_id))
                 if node is not None and node.kind is NodeKind.TEXT:
                     node.text = str(value)
+        slot.metadata["limpeza_blue_version"] = max(3, int(slot.metadata.get("limpeza_blue_version") or 1))
         snapshot = slot.metadata.setdefault("product_snapshot", {})
         if isinstance(snapshot, dict):
             snapshot["limpeza_club_price"] = "" if primary is None else str(primary)
             snapshot["limpeza_promotion_price"] = "" if secondary is None else str(secondary)
+            snapshot["limpeza_price_variant"] = variant
         refresh_item_slot_metadata(session.page, slot)
     return True
 
