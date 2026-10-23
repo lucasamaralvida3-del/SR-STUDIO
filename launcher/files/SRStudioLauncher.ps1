@@ -690,7 +690,7 @@ finally {
     if(-not (Test-SrSafeDeltaPath $p) -or -not $seen.Add($p)) { throw ('Unsafe/duplicate deleted path: ' + $p) }
   }
   $url = [string](Get-SrProperty $delta 'url' '')
-  if(-not (Test-SrUrlAllowed $url) -or -not $url.StartsWith('https://')) { throw 'Unsafe delta URL.' }
+  if(-not (Test-SrUrlAllowed $url)) { throw 'Unsafe delta URL.' }
   $deltaHash = ([string](Get-SrProperty $delta 'sha256' '')).ToLowerInvariant()
   $expectedBytes = [int64](Get-SrProperty $delta 'size' 0)
   if($deltaHash -notmatch '^[0-9a-f]{64}
