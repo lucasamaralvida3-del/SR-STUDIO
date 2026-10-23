@@ -475,9 +475,14 @@ ApplicationWindow {
             ToolButton { text: "Fundo automático"; checkable: true; checked: autoRemoveProductBackground; onClicked: autoRemoveProductBackground = checked; ToolTip.text: "withoutBG local no vínculo de produtos; primeiro uso baixa ~1,5 GB"; ToolTip.visible: hovered }
             ToolButton {
                 text: "Remover Fundo"
-                enabled: selectedSlotId !== ""
-                ToolTip.text: "Processar imagem do Smart Slot selecionado com withoutBG"
-                onClicked: sceneBridge.removeSlotBackground(selectedSlotId)
+                enabled: selectedSlotId !== "" || (anchorNode && anchorNode.kind === "image")
+                ToolTip.text: "Processar imagem do Smart Slot ou imagem selecionada com withoutBG"
+                onClicked: {
+                    if (selectedSlotId !== "")
+                        sceneBridge.removeSlotBackground(selectedSlotId)
+                    else if (anchorNode && anchorNode.kind === "image")
+                        sceneBridge.removeBackground(anchorNode.id)
+                }
             }
             ToolButton {
                 text: "Restaurar Auto"
