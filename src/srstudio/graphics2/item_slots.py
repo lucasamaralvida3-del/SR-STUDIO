@@ -116,7 +116,9 @@ def list_item_slot_presets(document=None) -> list[dict[str, Any]]:
             for preset_id, raw in custom.items():
                 if isinstance(raw, dict):
                     presets[str(preset_id)] = copy.deepcopy(raw)
-    return [presets[key] for key in sorted(presets, key=lambda item: (0 if item in _builtins() else 1, item))]
+    # Beta 40: one supported *creation* template, with automatic price variants.
+    # Keep legacy presets in _builtins() for opening already saved documents.
+    return [presets["limpeza-blue-v1"]]
 
 
 def _preset(document, preset_id: str) -> dict[str, Any]:
