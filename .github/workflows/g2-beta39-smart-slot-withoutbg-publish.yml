@@ -1,10 +1,5 @@
 name: Publish G2 Beta 39 Fluid Smart Slot + Delta
 on:
-  push:
-    branches:
-      - release/g2beta39-smart-slot-withoutbg
-    paths:
-      - '.github/workflows/g2-beta39-fluid-delta-publish.yml'
   workflow_dispatch:
 
 permissions:
