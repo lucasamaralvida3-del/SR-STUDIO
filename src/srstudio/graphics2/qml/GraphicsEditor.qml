@@ -956,6 +956,19 @@ ApplicationWindow {
                         ToolButton { text: "↖"; highlighted: !smartSlotEditMode; ToolTip.text: "Seleção"; ToolTip.visible: hovered; onClicked: smartSlotEditMode = false }
                         ToolButton { text: "▧"; highlighted: smartSlotEditMode; ToolTip.text: "Ajustar Smart Slot"; ToolTip.visible: hovered; onClicked: { smartSlotEditMode = !smartSlotEditMode; smartSlotInspectionMode = smartSlotEditMode } }
                         ToolButton { text: "⬡"; ToolTip.text: "Criar Slot Azul"; ToolTip.visible: hovered; onClicked: createBlueSlot() }
+                        ToolButton {
+                            text: "⋯"
+                            ToolTip.text: "Opções do Smart Slot"; ToolTip.visible: hovered
+                            onClicked: studioSlotMenu.popup()
+                            Menu {
+                                id: studioSlotMenu
+                                MenuItem { text: "Remover Fundo"; onTriggered: removeCurrentBackground() }
+                                MenuItem { text: "Restaurar Auto"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"restore_smart_slot_auto","slot_id":selectedSlotId})) }
+                                MenuItem { text: "Excluir Slot"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"delete_smart_slot","slot_id":selectedSlotId})) }
+                                MenuItem { text: "Não-produto"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"mark_smart_slot_non_product","slot_id":selectedSlotId})) }
+                                MenuItem { text: "Fundo automático"; checkable: true; checked: autoRemoveProductBackground; onTriggered: autoRemoveProductBackground = checked }
+                            }
+                        }
                         ToolButton { text: "T"; ToolTip.text: "Texto"; ToolTip.visible: hovered; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
                         ToolButton { text: "▧"; ToolTip.text: "Imagens"; ToolTip.visible: hovered; onClicked: studioSection = 3 }
                         ToolSeparator {}
