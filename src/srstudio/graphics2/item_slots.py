@@ -62,7 +62,10 @@ def _ppt_role(x: float, y: float, w: float, h: float, *, size: float, color: str
     Font fallback is chosen by Qt when Anton is unavailable.
     """
     role = _text_role(x, y, w, h, size=size, weight=weight, align=align)
-    role["style"].update({"font_family": "Anton", "color": color,
+    # The source uses Anton, but that face is not available on standard
+    # Windows installations. Arial is explicitly selected instead of
+    # letting Qt render missing-glyph boxes for every price digit.
+    role["style"].update({"font_family": "Arial", "source_font_family": "Anton", "color": color,
                            "font_size_unit": "pt", "min_font_size": 7,
                            "fit_inside_box": True, "wrap": True})
     return role
