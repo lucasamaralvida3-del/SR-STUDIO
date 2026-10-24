@@ -130,6 +130,22 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 {"slot_id": slot.id, "root_node_id": slot.metadata.get("root_node_id", ""), "preset_id": preset_id},
             )
 
+        if name == "plan_promotion_layout":
+            from .promotion_layouts import plan_promotion
+            try:
+                plan = plan_promotion(
+                    str(command.get("mode") or "auto"),
+                    count=command.get("count"),
+                    logo_reserved=float(command.get("logo_reserved", 0.24)),
+                    variation=int(command.get("variation", 0)),
+                )
+            except (ValueError, AssertionError, TypeError) as exc:
+                return CommandResult(False, False, str(exc))
+            return CommandResult(True, False, "Composição calculada.", {
+                "logo_reserved": plan.logo_reserved,
+                "placements": [item.as_dict() for item in plan.placements],
+            })
+
         if name == "inspect_limpeza_blue_slot":
             slot = self.session.page.slots.get(str(command.get("slot_id") or ""))
             if slot is None:
