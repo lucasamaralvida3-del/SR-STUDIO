@@ -53,6 +53,8 @@ jobs:
           from srstudio.graphics2.multi_item_strip import create_multi_item_strip
           from srstudio.graphics2.qt_renderer import render_png
 
+          from PySide6.QtGui import QGuiApplication
+          app = QGuiApplication.instance() or QGuiApplication([])
           out = Path('reference-previews')
           out.mkdir(exist_ok=True)
           for kind in ('individual', 'multi5', 'multi6'):
