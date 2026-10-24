@@ -20,7 +20,8 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
         raise ValueError("Modo de preços inválido.")
     page = session.page
     width = min(page.width * .94, 1180.0)
-    height = min(page.height * .35, 310.0)
+    # PPT: approximately 4:1 complete strip aspect ratio, not a tall card.
+    height = min(page.height * .31, 315.0, width / 4.0)
     left = (page.width - width) / 2 if x is None else float(x)
     top = page.height * .48 if y is None else float(y)
     root = GraphicsNode(
