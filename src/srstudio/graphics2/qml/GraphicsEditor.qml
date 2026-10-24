@@ -8,7 +8,7 @@ ApplicationWindow {
     id: window
     width: 1760
     height: 1020
-    minimumWidth: 1180
+    minimumWidth: 1430
     minimumHeight: 760
     visible: true
     title: "SR Graphics Engine 2.0"
@@ -1627,8 +1627,34 @@ ApplicationWindow {
                         spacing: 10
                         anchors.margins: 14
 
-                        Label { text: "Propriedades"; font.bold: true; font.pixelSize: 18; color: "#111827" }
-                        Label { id: inspectorName; text: "Nada selecionado"; color: "#0F5BD8"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { text: "Propriedades"; font.bold: true; font.pixelSize: 14; color: "#16213C" }
+                            Item { Layout.fillWidth: true }
+                            Label { text: anchorNode ? ("ID: " + String(anchorNode.id).slice(0, 8)) : "Nenhum item"; font.pixelSize: 9; color: "#8995AC" }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: "#EDF0F5" }
+                        Label { text: "Nome do elemento"; color: "#606C84"; font.pixelSize: 10 }
+                        Label { id: inspectorName; text: "Nada selecionado"; color: "#293957"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; padding: 9; background: Rectangle { color: "#FAFBFE"; radius: 6; border.color: "#DDE4F0" } }
+                        Rectangle {
+                            visible: showProductionGate
+                            Layout.fillWidth: true
+                            implicitHeight: 76
+                            radius: 9
+                            border.color: "#A5D4AF"
+                            color: "#F5FBF6"
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                Label { text: "●  Production Gate"; font.bold: true; color: "#118544" }
+                                Label { text: "Verificação do projeto disponível no SR Studio"; color: "#406D51"; font.pixelSize: 10 }
+                            }
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 1
+                            color: "#E6EAF2"
+                        }
                         Label { text: sceneBridge.status; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
 
