@@ -61,6 +61,28 @@ ApplicationWindow {
     }
 
     FileDialog {
+        id: replaceSelectedImageDialog
+        title: "Substituir imagem selecionada"
+        nameFilters: ["Imagens (*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tif *.tiff)"]
+        onAccepted: {
+            if (anchorNode && anchorNode.kind === "image")
+                sceneBridge.dispatch(JSON.stringify({"name":"replace_image","node_id":anchorNode.id,"source":selectedFile.toString()}))
+        }
+    }
+    FileDialog {
+        id: sourceImportDialog
+        title: "Importar planilha ou apresentação"
+        nameFilters: ["Planilhas e apresentações (*.xlsx *.xls *.csv *.pptx)"]
+        onAccepted: sceneBridge.importSource(selectedFile.toString())
+    }
+    function moveActivePage(step) {
+        var pages = scene.pages || []
+        var pos = pages.findIndex(function(p) { return p.id === scene.active_page_id })
+        var target = pos + step
+        if (pos >= 0 && target >= 0 && target < pages.length)
+            sceneBridge.dispatch(JSON.stringify({"name":"reorder_page","page_id":pages[pos].id,"target_index":target}))
+    }
+    FileDialog {
         id: saveProjectDialog
         title: "Salvar projeto SR Studio"
         fileMode: FileDialog.SaveFile
@@ -505,102 +527,13 @@ ApplicationWindow {
     Shortcut { sequence: "G"; onActivated: showGrid = !showGrid }
 
 
-    // Two-row professional studio header. All activated controls are real
-    // commands; import remains handled by the enclosing SR Studio workflow.
-    header: ToolBar {
-        implicitHeight: 110
-        background: Rectangle { color: "#FFFFFF"; border.color: "#E6EAF4" }
-        RowLayout {
-            anchors.fill: parent
-            spacing: 0
-            Rectangle {
-                Layout.preferredWidth: 230
-                Layout.fillHeight: true
-                color: "#123D9C"
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 22
-                    spacing: 12
-                    Rectangle {
-                        Layout.preferredWidth: 51
-                        Layout.preferredHeight: 51
-                        radius: 10
-                        color: "#2459CB"
-                        border.color: "#719AFA"
-                        Label {
-                            anchors.centerIn: parent
-                            text: "SR"
-                            font.pixelSize: 24
-                            font.bold: true
-                            color: "white"
-                        }
-                    }
-                    Label { text: "SR Studio 5.0"; color: "white"; font.bold: true; font.pixelSize: 16 }
-                }
-            }
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.leftMargin: 23
-                Layout.rightMargin: 24
-                Layout.topMargin: 14
-                Layout.bottomMargin: 10
-                spacing: 5
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label { text: "☰"; color: "#2258DF"; font.pixelSize: 20; Layout.rightMargin: 12 }
-                    Label { text: "Encartes Studio"; color: "#4B5672"; font.pixelSize: 12 }
-                    Item { Layout.fillWidth: true }
-                    ToolButton { text: "♧"; ToolTip.text: "Notificações"; ToolTip.visible: hovered; enabled: false }
-                    ToolButton { text: "?"; ToolTip.text: "Ajuda"; ToolTip.visible: hovered; onClicked: showProductionGate = !showProductionGate }
-                    Label { text: "SR"; font.bold: true; color: "#153E8E"; font.pixelSize: 12 }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 7
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 1
-                        RowLayout {
-                            spacing: 8
-                            Label { text: scene.name || "Novo Encarte"; font.pixelSize: 16; font.bold: true; color: "#111B3B"; elide: Text.ElideRight; Layout.maximumWidth: 380 }
-                            Rectangle {
-                                width: 51; height: 24; radius: 6
-                                color: "#EAF8EF"
-                                Label { anchors.centerIn: parent; text: "✓ Salvo"; color: "#169859"; font.pixelSize: 10; font.bold: true }
-                            }
-                        }
-                        Label { text: "Edição de encartes   •   " + (scene.pages ? scene.pages.length : 0) + " página(s)"; color: "#61708E"; font.pixelSize: 11 }
-                    }
-                    Button {
-                        text: "▦  Importar Planilha"
-                        enabled: false
-                        ToolTip.text: "Importação disponível na janela principal do SR Studio"
-                        ToolTip.visible: hovered
-                    }
-                    Button {
-                        text: "▧  Importar PPTX"
-                        enabled: false
-                        ToolTip.text: "Importação disponível na janela principal do SR Studio"
-                        ToolTip.visible: hovered
-                    }
-                    Button { text: "✓  Validar"; onClicked: showProductionGate = !showProductionGate }
-                    Button { text: "◉  Prévia"; onClicked: { smartSlotEditMode = false; smartSlotInspectionMode = false; showGrid = false; showRulers = false } }
-                    Button {
-                        text: "⇧  Exportar   ▾"
-                        highlighted: true
-                        onClicked: exportMenu.popup()
-                        Menu {
-                            id: exportMenu
-                            MenuItem { text: "PDF"; onTriggered: exportPdfDialog.open() }
-                            MenuItem { text: "PNG"; onTriggered: exportPngDialog.open() }
-                            MenuItem { text: "Salvar projeto"; onTriggered: saveProjectDialog.open() }
-                        }
-                    }
-                }
-            }
-        }
-    }
+
+    // Shortcuts once owned by ProjectActions.qml. Preserve them after
+    // eliminating the floating legacy project toolbar.
+    Shortcut { sequence: StandardKey.Save; onActivated: saveProjectDialog.open() }
+    Shortcut { sequence: StandardKey.Copy; onActivated: sceneBridge.dispatch('{"name":"copy"}') }
+    Shortcut { sequence: StandardKey.Paste; onActivated: sceneBridge.dispatch('{"name":"paste"}') }
+    header: null
 
     ColumnLayout {
         anchors.fill: parent
@@ -610,86 +543,6 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Horizontal
-            Rectangle {
-                SplitView.preferredWidth: 230
-                SplitView.minimumWidth: 204
-                SplitView.maximumWidth: 246
-                color: "#113B98"
-                ColumnLayout {
-                    anchors.fill: parent
-                    anchors.leftMargin: 18
-                    anchors.rightMargin: 18
-                    anchors.topMargin: 16
-                    anchors.bottomMargin: 22
-                    spacing: 8
-                    Repeater {
-                        model: [
-                            {name:"Início",icon:"⌂"}, {name:"Central 5.0",icon:"ϟ"},
-                            {name:"Encartes Studio",icon:"▣"}, {name:"Banco de Produtos",icon:"⬡"},
-                            {name:"Planilhas",icon:"▦"}, {name:"Modelos",icon:"▧"},
-                            {name:"Validação",icon:"♢"}, {name:"Exportação",icon:"⇧"}
-                        ]
-                        delegate: Rectangle {
-                            required property var modelData
-                            required property int index
-                            Layout.fillWidth: true
-                            Layout.preferredHeight: 45
-                            radius: 8
-                            color: studioNavigation === index ? "#2C59C4" : "transparent"
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: 13
-                                spacing: 13
-                                Label { text: modelData.icon; color: "#C7D8FF"; font.pixelSize: 21; Layout.preferredWidth: 22; horizontalAlignment: Text.AlignHCenter }
-                                Label { text: modelData.name; color: "white"; font.pixelSize: 12; font.bold: studioNavigation === index }
-                                Item { Layout.fillWidth: true }
-                            }
-                            MouseArea {
-                                anchors.fill: parent
-                                onClicked: {
-                                    studioNavigation = index
-                                    if (index === 2 || index === 0) studioSection = 0
-                                    else if (index === 3) studioSection = 0
-                                    else if (index === 5) studioSection = 1
-                                    else if (index === 7) exportMenu.popup()
-                                    else if (index === 6) showProductionGate = !showProductionGate
-                                }
-                            }
-                        }
-                    }
-                    Rectangle { Layout.fillWidth: true; Layout.topMargin: 10; height: 1; color: "#3863B3" }
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 46
-                        radius: 7
-                        color: "#1946A3"
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 10
-                            Label { text: "⚙"; color: "white"; font.pixelSize: 19 }
-                            Label { text: "Configurações"; color: "white"; font.pixelSize: 12 }
-                            Item { Layout.fillWidth: true }
-                            Label { text: "›"; color: "white"; font.pixelSize: 20 }
-                        }
-                        MouseArea { anchors.fill: parent; onClicked: showProductionGate = !showProductionGate }
-                    }
-                    Item { Layout.fillHeight: true }
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 137
-                        radius: 9
-                        color: "#224FAC"
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            Label { text: "☆  Novidades no SR Studio 5.0"; color: "white"; font.bold: true; font.pixelSize: 11 }
-                            Label { text: "Mais desempenho, automação e integração para seus encartes."; color: "#D6E3FF"; wrapMode: Text.WordWrap; font.pixelSize: 10; Layout.fillWidth: true }
-                            Button { text: "Ver novidades"; Layout.fillWidth: true; onClicked: showProductionGate = !showProductionGate }
-                        }
-                    }
-                }
-            }
-
             Rectangle {
                 SplitView.preferredWidth: 332
                 SplitView.minimumWidth: 285
@@ -712,7 +565,8 @@ ApplicationWindow {
                                     { icon:"⬡", title:"Produtos" }, { icon:"⬡", title:"Modelos" },
                                     { icon:"♧", title:"Elementos" }, { icon:"▧", title:"Imagens" },
                                     { icon:"T", title:"Texto" }, { icon:"♧", title:"Formas" },
-                                    { icon:"▨", title:"Fundos" }, { icon:"▱", title:"Camadas" }
+                                    { icon:"▨", title:"Fundos" }, { icon:"▱", title:"Camadas" },
+                                    { icon:"☷", title:"Projeto" }
                                 ]
                                 delegate: Rectangle {
                                     required property var modelData
@@ -743,7 +597,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: ["Produtos","Modelos","Elementos","Imagens","Texto","Formas","Fundos","Camadas"][studioSection]
+                                text: ["Produtos","Modelos","Elementos","Imagens","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
                                 color: "#111B38"; font.pixelSize: 15; font.bold: true
                             }
                             Item { Layout.fillWidth: true }
@@ -917,6 +771,29 @@ ApplicationWindow {
                         }
 
                         }
+                        ScrollView {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: studioSection === 8
+                            clip: true
+                            ColumnLayout {
+                                width: 235
+                                spacing: 7
+                                Label { text: "Ações do projeto"; font.bold: true; color: "#263D71" }
+                                Button { text: "+ Slot Azul"; Layout.fillWidth: true; onClicked: createBlueSlot() }
+                                Button { text: "Ajustar Smart Slots"; Layout.fillWidth: true; checkable: true; checked: smartSlotEditMode; onClicked: { smartSlotEditMode = checked; smartSlotInspectionMode = checked } }
+                                Button { text: "Copiar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"copy"}') }
+                                Button { text: "Colar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"paste"}') }
+                                Button { text: "Salvar"; Layout.fillWidth: true; onClicked: saveProjectDialog.open() }
+                                Button { text: "Recuperar"; Layout.fillWidth: true; onClicked: sceneBridge.recoverLatest() }
+                                Button { text: "Importar PPTX / Planilha"; Layout.fillWidth: true; onClicked: sourceImportDialog.open() }
+                                Button { text: "PDF"; Layout.fillWidth: true; onClicked: exportPdfDialog.open() }
+                                Button { text: "PNG"; Layout.fillWidth: true; onClicked: exportPngDialog.open() }
+                                Button { text: "Duplicar página"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}') }
+                                Button { text: "Mover página para esquerda"; Layout.fillWidth: true; onClicked: window.moveActivePage(-1) }
+                                Button { text: "Mover página para direita"; Layout.fillWidth: true; onClicked: window.moveActivePage(1) }
+                            }
+                        }
                         ColumnLayout {
                             Layout.fillHeight: true
                             Layout.fillWidth: true
@@ -955,7 +832,7 @@ ApplicationWindow {
                         spacing: 3
                         ToolButton { text: "↖"; highlighted: !smartSlotEditMode; ToolTip.text: "Seleção"; ToolTip.visible: hovered; onClicked: smartSlotEditMode = false }
                         ToolButton { text: "▧"; highlighted: smartSlotEditMode; ToolTip.text: "Ajustar Smart Slot"; ToolTip.visible: hovered; onClicked: { smartSlotEditMode = !smartSlotEditMode; smartSlotInspectionMode = smartSlotEditMode } }
-                        ToolButton { text: "⬡"; ToolTip.text: "Criar Slot Azul"; ToolTip.visible: hovered; onClicked: createBlueSlot() }
+
                         ToolButton {
                             text: "⋯"
                             ToolTip.text: "Opções do Smart Slot"; ToolTip.visible: hovered
@@ -1650,20 +1527,6 @@ ApplicationWindow {
                         Label { text: "Nome do elemento"; color: "#606C84"; font.pixelSize: 10 }
                         Label { id: inspectorName; text: "Nada selecionado"; color: "#293957"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; padding: 9; background: Rectangle { color: "#FAFBFE"; radius: 6; border.color: "#DDE4F0" } }
                         Rectangle {
-                            visible: showProductionGate
-                            Layout.fillWidth: true
-                            implicitHeight: 76
-                            radius: 9
-                            border.color: "#A5D4AF"
-                            color: "#F5FBF6"
-                            ColumnLayout {
-                                anchors.fill: parent
-                                anchors.margins: 10
-                                Label { text: "●  Production Gate"; font.bold: true; color: "#118544" }
-                                Label { text: "Verificação do projeto disponível no SR Studio"; color: "#406D51"; font.pixelSize: 10 }
-                            }
-                        }
-                        Rectangle {
                             Layout.fillWidth: true
                             height: 1
                             color: "#E6EAF2"
@@ -1671,6 +1534,22 @@ ApplicationWindow {
                         Label { text: sceneBridge.status; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
 
+                        ColumnLayout {
+                            visible: anchorNode && (anchorNode.kind === "image" || anchorNode.kind === "background")
+                            Layout.fillWidth: true
+                            spacing: 7
+                            Label { text: "Imagem selecionada"; font.bold: true; color: "#334155" }
+                            Button { text: "Substituir imagem"; Layout.fillWidth: true; onClicked: replaceSelectedImageDialog.open() }
+                            Button { text: "Remover fundo"; Layout.fillWidth: true; onClicked: removeCurrentBackground() }
+                            RowLayout {
+                                Label { text: "Ajuste"; color: "#475569" }
+                                ComboBox {
+                                    Layout.fillWidth: true
+                                    model: ["contain","cover","fill"]
+                                    onActivated: if (anchorNode) sceneBridge.dispatch(JSON.stringify({"name":"crop","node_id":anchorNode.id,"fit":currentText}))
+                                }
+                            }
+                        }
                         ColumnLayout {
                             visible: anchorNode && anchorNode.kind === "text"
                             Layout.fillWidth: true

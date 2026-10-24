@@ -33,7 +33,8 @@ def test_image_inspector_exposes_crop_focus_zoom_and_flip_controls():
 
 def test_host_loads_image_inspector_as_contextual_qquickitem():
     host = Path(qt_host.__file__).read_text(encoding="utf-8")
-    assert 'qml_dir / "ImageInspector.qml"' in host
+    assert 'qml_dir / "ImageInspector.qml"' not in host
+    assert 'text: "Substituir imagem"' in (Path(qt_host.__file__).with_name("qml") / "GraphicsEditor.qml").read_text(encoding="utf-8")
     assert "QQmlComponent" in host
     assert "setParentItem" in host
 

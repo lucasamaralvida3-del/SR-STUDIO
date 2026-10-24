@@ -1,0 +1,23 @@
+name: G2 Beta43 Deduplicate Studio Controls
+on:
+  push:
+    branches: [fix/g2beta43-remove-legacy-ui-duplicate-controls]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-qml:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QSG_RHI_BACKEND: software
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install Qt and tests
+        run: python -m pip install -e ".[dev,graphics2]"
+      - name: Load QML and validate menu actions
+        run: python -m pytest -q tests/test_graphics2_qml_load.py tests/test_graphics2_beta42_shell_layout.py tests/test_graphics2_beta43_shell_dedup.py tests/test_graphics2_qml_product_drag.py
