@@ -74,6 +74,28 @@ def _builtins() -> dict[str, ItemSlotPreset]:
                 "integer": _text_role(0.20, 0.04, 0.51, 0.8, size=45),
                 "decimal": _text_role(0.70, 0.07, 0.29, 0.48, size=21),
                 "unit": _text_role(0.82, 0.89, 0.16, 0.08, size=12),
+                "secondary_price": _text_role(0.51, 0.30, 0.45, 0.13, size=13),
+                "limit": _text_role(0.52, 0.91, 0.44, 0.075, size=10),
+            },
+        ),
+        "multi-cell-beta44": ItemSlotPreset(
+            id="multi-cell-beta44",
+            name="ITEM DA FAIXA PROMOCIONAL",
+            width=192,
+            height=300,
+            background={"fill": "#FFFFFF", "stroke": "#D6E0EC",
+                        "stroke_width": 1.0, "radius_ratio": 0.0},
+            roles={
+                "name": _text_role(.05, .035, .90, .16, size=12),
+                "image": {"bounds": [.09, .20, .82, .45],
+                          "style": {"fit": "contain"}},
+                "price": {"bounds": [.02, .73, .83, .22],
+                          "background": {"fill": "#265398", "radius_ratio": .04}},
+                "currency": _text_role(.02, .22, .18, .53, size=10),
+                "integer": _text_role(.19, .02, .55, .88, size=30),
+                "decimal": _text_role(.73, .09, .27, .50, size=14),
+                "unit": _text_role(.84, .86, .14, .10, size=9),
+                "secondary_price": _text_role(.20, .65, .72, .075, size=10),
             },
         ),
         "destaque": ItemSlotPreset(
@@ -135,7 +157,7 @@ def list_item_slot_presets(document=None) -> list[dict[str, Any]]:
                     presets[str(preset_id)] = copy.deepcopy(raw)
     # Beta 40: one supported *creation* template, with automatic price variants.
     # Keep legacy presets in _builtins() for opening already saved documents.
-    return [presets["limpeza-blue-v1"], presets["individual-beta44"]]
+    return [presets["limpeza-blue-v1"], presets["multi-cell-beta44"], presets["individual-beta44"]]
 
 
 def _preset(document, preset_id: str) -> dict[str, Any]:
@@ -284,6 +306,23 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
         unit = _make_text(page, root.id, "UNIT ROLE", "UN", unit_rect, dict(unit_spec.get("style") or {}), BindingRole.UNIT)
         unit.metadata["item_slot_role_area"] = "unit"
 
+        # Optional fields are real editable text nodes; they are kept in the
+        # slot binding map so save/load and normal product binding work.
+        optional_nodes: dict[str, GraphicsNode] = {}
+        for key, role, placeholder in (
+            ("secondary_price", BindingRole.RETAIL_PRICE, "R$ 00,00"),
+            ("limit", BindingRole.LIMIT, ""),
+        ):
+            if key not in roles:
+                continue
+            spec = dict(roles[key])
+            bounds = _absolute(root_rect, list(spec.get("bounds") or [0, 0, 1, 1]))
+            node = _make_text(page, root.id, key.upper(), placeholder,
+                              bounds, dict(spec.get("style") or {}), role)
+            node.visible = False
+            node.metadata["item_slot_role_area"] = key
+            optional_nodes[role.value] = node
+
         slot = SmartSlot(
             id=_id("slot"),
             name=str(preset.get("name") or "Item Slot"),
@@ -295,6 +334,7 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 BindingRole.PRICE_REAIS.value: component_nodes["integer"].id,
                 BindingRole.PRICE_CENTS.value: component_nodes["decimal"].id,
                 BindingRole.UNIT.value: unit.id,
+                **{role: node.id for role, node in optional_nodes.items()},
             },
             confidence=1.0,
             metadata={
@@ -313,6 +353,8 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 },
                 "state": "empty",
                 "product_snapshot": {},
+                "price_mode": "auto",
+                "price_variant": "one",
             },
         )
         root.metadata["item_slot_id"] = slot.id
@@ -603,7 +645,32 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
     slot = session.page.slots.get(str(slot_id))
     if not is_manual_item_slot(slot):
         return False
-    session.bind_product(slot.id, product)
+    preset_id = str(slot.metadata.get("preset_id") or "")
+    if preset_id in ("individual-beta44", "multi-cell-beta44"):
+        # Automatic 1/2-price variation shares the price parsing semantics
+        # with the certified Azul slot, but keeps individual item bindings.
+        from .slot_limpeza_blue import _price_variant
+        variant, primary, secondary = _price_variant(product)
+        mode = str(slot.metadata.get("price_mode") or "auto")
+        if mode not in ("auto", "one", "two"):
+            mode = "auto"
+        display_two = variant == "two" if mode == "auto" else mode == "two"
+        payload = copy.deepcopy(product)
+        if primary is not None:
+            payload["price"] = primary
+        payload["retail_price"] = secondary if secondary is not None else ""
+        session.bind_product(slot.id, payload)
+        secondary_node = session.page.node(str(slot.node_by_role.get(BindingRole.RETAIL_PRICE.value) or ""))
+        limit_node = session.page.node(str(slot.node_by_role.get(BindingRole.LIMIT.value) or ""))
+        if secondary_node is not None:
+            secondary_node.visible = display_two
+            if display_two and secondary is None:
+                secondary_node.text = "R$ 00,00"
+        if limit_node is not None:
+            limit_node.visible = bool(limit_node.text)
+        slot.metadata["price_variant"] = "two" if display_two else "one"
+    else:
+        session.bind_product(slot.id, product)
     for node_id in slot.node_by_role.values():
         node = session.page.node(node_id)
         if node is not None and node.binding_role is BindingRole.IMAGE and slot.product_id:
