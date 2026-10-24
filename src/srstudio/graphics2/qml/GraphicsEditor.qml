@@ -1001,30 +1001,30 @@ ApplicationWindow {
                                         width: parent.width; height: 91; color: "#FFFFFF"
                                         radius: 6
                                         // Source PPT: floating product, no fake gray image frame.
-                                        Label { x: 9; y: 28; width: parent.width * .43; height: 52
+                                        Label { x: parent.width * .19; y: 16; width: parent.width * .28; height: 67
                                             text: "PRODUTO"; color: "#105594"
                                             font.bold: true; font.pixelSize: 10
                                             horizontalAlignment: Text.AlignHCenter
                                             verticalAlignment: Text.AlignVCenter
                                         }
-                                        Label { x: parent.width * .52; y: 4; width: parent.width * .45; height: 26
+                                        Label { x: parent.width * .52; y: 42; width: parent.width * .45; height: 19
                                             text: "NOME DO PRODUTO"; color: "#105594"
                                             font.bold: true; font.pixelSize: 9
                                             wrapMode: Text.WordWrap
                                             horizontalAlignment: Text.AlignHCenter
                                         }
                                         Rectangle {
-                                            x: parent.width * .52; y: 35
-                                            width: parent.width * .46; height: 54
-                                            radius: 9; color: "#105594"
-                                            Label { x: 4; y: 4; width: parent.width - 8; height: 15
-                                                text: "PROMOÇÃO"; font.pixelSize: 8; color: "white"
+                                            x: parent.width * .52; y: 64
+                                            width: parent.width * .46; height: 25
+                                            radius: 6; color: "#105594"
+                                            Label { x: 4; y: 1; width: parent.width - 8; height: 9
+                                                text: "PROMOÇÃO"; font.pixelSize: 6; color: "white"
                                                 horizontalAlignment: Text.AlignHCenter
                                             }
                                             Label { anchors.centerIn: parent
-                                                anchors.verticalCenterOffset: 7
+                                                anchors.verticalCenterOffset: 4
                                                 text: "R$  7,21"; color: "white"
-                                                font.bold: true; font.pixelSize: 19
+                                                font.bold: true; font.pixelSize: 12
                                             }
                                         }
                                     }
@@ -1061,12 +1061,12 @@ ApplicationWindow {
                                     }
                                     Rectangle {
                                         id: referencePreviewStrip
-                                        x: 8; y: 34
-                                        width: parent.width - 16; height: 87
+                                        x: 8; y: 46
+                                        width: parent.width - 16; height: 55
                                         color: "#FFFFFF"
                                         Rectangle {
                                             anchors.left: parent.left; anchors.right: parent.right
-                                            anchors.bottom: parent.bottom; height: 28
+                                            anchors.bottom: parent.bottom; height: 14
                                             radius: 9; color: "#105594"
                                         }
                                         Row {
@@ -1085,20 +1085,20 @@ ApplicationWindow {
                                                         color: "#105594"
                                                     }
                                                     Label {
-                                                        x: 3; y: 17; width: parent.width - 6; height: 38
-                                                        text: "◉"; font.pixelSize: 20; color: "#CADBEF"
+                                                        x: 3; y: 14; width: parent.width - 6; height: 27
+                                                        text: "◉"; font.pixelSize: 16; color: "#CADBEF"
                                                         horizontalAlignment: Text.AlignHCenter
                                                         verticalAlignment: Text.AlignVCenter
                                                     }
                                                     Label {
-                                                        x: 1; y: 60; width: parent.width - 2; height: 24
-                                                        text: "R$ 9,99"; font.pixelSize: 9; font.bold: true
+                                                        x: 1; y: 42; width: parent.width - 2; height: 12
+                                                        text: "R$ 9,99"; font.pixelSize: 8; font.bold: true
                                                         color: "white"; horizontalAlignment: Text.AlignHCenter
                                                         verticalAlignment: Text.AlignVCenter
                                                     }
                                                     Rectangle {
                                                         visible: index > 0
-                                                        x: 0; y: 18; width: 1; height: 39
+                                                        x: 0; y: 13; width: 1; height: 28
                                                         color: "#105594"
                                                     }
                                                 }
