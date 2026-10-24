@@ -28,7 +28,7 @@ def test_builtin_presets_create_empty_multinode_item_slots() -> None:
     session = _session()
     # Legacy constructors remain for loading already saved projects, but only
     # Azul is offered for creating new cards.
-    assert {item["id"] for item in list_item_slot_presets(session.document)} == {"limpeza-blue-v1"}
+    assert {item["id"] for item in list_item_slot_presets(session.document)} == {"limpeza-blue-v1", "individual-beta44", "multi-cell-beta44"}
 
     for preset in ("destaque", "simples", "card"):
         slot = create_item_slot(session, preset, x=50, y=70)
