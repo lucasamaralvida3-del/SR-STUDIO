@@ -5,6 +5,7 @@ import json
 import pytest
 
 from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
+from srstudio.graphics2.drop_target import find_drop_target
 from srstudio.graphics2.item_slots import bind_product_to_item_slot, create_item_slot, duplicate_item_slot
 from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsPage
 from srstudio.graphics2.multi_item_strip import create_multi_item_strip
@@ -157,3 +158,34 @@ def test_duplicated_multi_cell_is_detached_from_original_group():
     clone = duplicate_item_slot(session, multi["slot_ids"][0])
     assert "multi_parent_id" not in clone.metadata
     assert clone.metadata["root_node_id"] not in session.page.node(multi["root_node_id"]).children
+
+
+@pytest.mark.parametrize("count", [5, 6])
+def test_drop_product_targets_each_multi_cell_even_in_empty_padding(count):
+    session = make_session()
+    multi = create_multi_item_strip(session, count=count)
+    page = session.page
+    for sid in multi["slot_ids"]:
+        root = page.node(page.slots[sid].metadata["root_node_id"])
+        bounds = root.rect
+        # The entire white card, not just image and text bounds, is targetable.
+        hit = find_drop_target(page, bounds.x + .03 * bounds.width,
+                               bounds.y + .94 * bounds.height)
+        assert hit is not None
+        assert hit.slot_id == sid
+
+
+def test_multi_product_drop_binds_only_selected_cell():
+    session = make_session()
+    multi = create_multi_item_strip(session, count=5)
+    first = session.page.slots[multi["slot_ids"][0]]
+    second = session.page.slots[multi["slot_ids"][1]]
+    rect = session.page.node(first.metadata["root_node_id"]).rect
+    response = ItemSlotCommandRouter(session).dispatch({
+        "name": "drop_product", "x": rect.x + rect.width / 2,
+        "y": rect.y + rect.height / 2,
+        "product": {"id": "SKU-001", "name": "Arroz", "price": "21,99"},
+    })
+    assert response.ok
+    assert first.product_id == "SKU-001"
+    assert second.product_id == ""
