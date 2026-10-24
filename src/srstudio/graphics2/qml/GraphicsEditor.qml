@@ -505,102 +505,9 @@ ApplicationWindow {
     Shortcut { sequence: "G"; onActivated: showGrid = !showGrid }
 
 
-    // Two-row professional studio header. All activated controls are real
-    // commands; import remains handled by the enclosing SR Studio workflow.
-    header: ToolBar {
-        implicitHeight: 110
-        background: Rectangle { color: "#FFFFFF"; border.color: "#E6EAF4" }
-        RowLayout {
-            anchors.fill: parent
-            spacing: 0
-            Rectangle {
-                Layout.preferredWidth: 230
-                Layout.fillHeight: true
-                color: "#123D9C"
-                RowLayout {
-                    anchors.fill: parent
-                    anchors.margins: 22
-                    spacing: 12
-                    Rectangle {
-                        Layout.preferredWidth: 51
-                        Layout.preferredHeight: 51
-                        radius: 10
-                        color: "#2459CB"
-                        border.color: "#719AFA"
-                        Label {
-                            anchors.centerIn: parent
-                            text: "SR"
-                            font.pixelSize: 24
-                            font.bold: true
-                            color: "white"
-                        }
-                    }
-                    Label { text: "SR Studio 5.0"; color: "white"; font.bold: true; font.pixelSize: 16 }
-                }
-            }
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.fillHeight: true
-                Layout.leftMargin: 23
-                Layout.rightMargin: 24
-                Layout.topMargin: 14
-                Layout.bottomMargin: 10
-                spacing: 5
-                RowLayout {
-                    Layout.fillWidth: true
-                    Label { text: "☰"; color: "#2258DF"; font.pixelSize: 20; Layout.rightMargin: 12 }
-                    Label { text: "Encartes Studio"; color: "#4B5672"; font.pixelSize: 12 }
-                    Item { Layout.fillWidth: true }
-                    ToolButton { text: "♧"; ToolTip.text: "Notificações"; ToolTip.visible: hovered; enabled: false }
-                    ToolButton { text: "?"; ToolTip.text: "Ajuda"; ToolTip.visible: hovered; onClicked: showProductionGate = !showProductionGate }
-                    Label { text: "SR"; font.bold: true; color: "#153E8E"; font.pixelSize: 12 }
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 7
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 1
-                        RowLayout {
-                            spacing: 8
-                            Label { text: scene.name || "Novo Encarte"; font.pixelSize: 16; font.bold: true; color: "#111B3B"; elide: Text.ElideRight; Layout.maximumWidth: 380 }
-                            Rectangle {
-                                width: 51; height: 24; radius: 6
-                                color: "#EAF8EF"
-                                Label { anchors.centerIn: parent; text: "✓ Salvo"; color: "#169859"; font.pixelSize: 10; font.bold: true }
-                            }
-                        }
-                        Label { text: "Edição de encartes   •   " + (scene.pages ? scene.pages.length : 0) + " página(s)"; color: "#61708E"; font.pixelSize: 11 }
-                    }
-                    Button {
-                        text: "▦  Importar Planilha"
-                        enabled: false
-                        ToolTip.text: "Importação disponível na janela principal do SR Studio"
-                        ToolTip.visible: hovered
-                    }
-                    Button {
-                        text: "▧  Importar PPTX"
-                        enabled: false
-                        ToolTip.text: "Importação disponível na janela principal do SR Studio"
-                        ToolTip.visible: hovered
-                    }
-                    Button { text: "✓  Validar"; onClicked: showProductionGate = !showProductionGate }
-                    Button { text: "◉  Prévia"; onClicked: { smartSlotEditMode = false; smartSlotInspectionMode = false; showGrid = false; showRulers = false } }
-                    Button {
-                        text: "⇧  Exportar   ▾"
-                        highlighted: true
-                        onClicked: exportMenu.popup()
-                        Menu {
-                            id: exportMenu
-                            MenuItem { text: "PDF"; onTriggered: exportPdfDialog.open() }
-                            MenuItem { text: "PNG"; onTriggered: exportPngDialog.open() }
-                            MenuItem { text: "Salvar projeto"; onTriggered: saveProjectDialog.open() }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    // All project controls live in the new sidebar and canvas toolbar.
+    // Removing the previous 110px header also recovers editing space.
+    header: null
 
     ColumnLayout {
         anchors.fill: parent
@@ -1649,25 +1556,7 @@ ApplicationWindow {
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#EDF0F5" }
                         Label { text: "Nome do elemento"; color: "#606C84"; font.pixelSize: 10 }
                         Label { id: inspectorName; text: "Nada selecionado"; color: "#293957"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; padding: 9; background: Rectangle { color: "#FAFBFE"; radius: 6; border.color: "#DDE4F0" } }
-                        Rectangle {
-                            visible: showProductionGate
-                            Layout.fillWidth: true
-                            implicitHeight: 76
-                            radius: 9
-                            border.color: "#A5D4AF"
-                            color: "#F5FBF6"
-                            ColumnLayout {
-                                anchors.fill: parent
-                                anchors.margins: 10
-                                Label { text: "●  Production Gate"; font.bold: true; color: "#118544" }
-                                Label { text: "Verificação do projeto disponível no SR Studio"; color: "#406D51"; font.pixelSize: 10 }
-                            }
-                        }
-                        Rectangle {
-                            Layout.fillWidth: true
-                            height: 1
-                            color: "#E6EAF2"
-                        }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: "#E6EAF2" }
                         Label { text: sceneBridge.status; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
 
