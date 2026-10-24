@@ -610,6 +610,85 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Horizontal
+            Rectangle {
+                SplitView.preferredWidth: 230
+                SplitView.minimumWidth: 204
+                SplitView.maximumWidth: 246
+                color: "#113B98"
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.leftMargin: 18
+                    anchors.rightMargin: 18
+                    anchors.topMargin: 16
+                    anchors.bottomMargin: 22
+                    spacing: 8
+                    Repeater {
+                        model: [
+                            {name:"Início",icon:"⌂"}, {name:"Central 5.0",icon:"ϟ"},
+                            {name:"Encartes Studio",icon:"▣"}, {name:"Banco de Produtos",icon:"⬡"},
+                            {name:"Planilhas",icon:"▦"}, {name:"Modelos",icon:"▧"},
+                            {name:"Validação",icon:"♢"}, {name:"Exportação",icon:"⇧"}
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 45
+                            radius: 8
+                            color: studioNavigation === index ? "#2C59C4" : "transparent"
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 13
+                                spacing: 13
+                                Label { text: modelData.icon; color: "#C7D8FF"; font.pixelSize: 21; Layout.preferredWidth: 22; horizontalAlignment: Text.AlignHCenter }
+                                Label { text: modelData.name; color: "white"; font.pixelSize: 12; font.bold: studioNavigation === index }
+                                Item { Layout.fillWidth: true }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    studioNavigation = index
+                                    if (index === 2 || index === 0) studioSection = 0
+                                    else if (index === 3) studioSection = 0
+                                    else if (index === 5) studioSection = 1
+                                    else if (index === 7) exportMenu.popup()
+                                    else if (index === 6) showProductionGate = !showProductionGate
+                                }
+                            }
+                        }
+                    }
+                    Rectangle { Layout.fillWidth: true; Layout.topMargin: 10; height: 1; color: "#3863B3" }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 46
+                        radius: 7
+                        color: "#1946A3"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            Label { text: "⚙"; color: "white"; font.pixelSize: 19 }
+                            Label { text: "Configurações"; color: "white"; font.pixelSize: 12 }
+                            Item { Layout.fillWidth: true }
+                            Label { text: "›"; color: "white"; font.pixelSize: 20 }
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: showProductionGate = !showProductionGate }
+                    }
+                    Item { Layout.fillHeight: true }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 137
+                        radius: 9
+                        color: "#224FAC"
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            Label { text: "☆  Novidades no SR Studio 5.0"; color: "white"; font.bold: true; font.pixelSize: 11 }
+                            Label { text: "Mais desempenho, automação e integração para seus encartes."; color: "#D6E3FF"; wrapMode: Text.WordWrap; font.pixelSize: 10; Layout.fillWidth: true }
+                            Button { text: "Ver novidades"; Layout.fillWidth: true; onClicked: showProductionGate = !showProductionGate }
+                        }
+                    }
+                }
+            }
 
             Rectangle {
                 SplitView.preferredWidth: 332
@@ -858,7 +937,7 @@ ApplicationWindow {
                 id: workspace
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
-                color: "#DCE4EF"
+                color: "#F4F7FD"
 
                 Flickable {
                     id: viewport
@@ -1504,8 +1583,8 @@ ApplicationWindow {
             }
 
             Rectangle {
-                SplitView.preferredWidth: 330
-                SplitView.minimumWidth: 275
+                SplitView.preferredWidth: 300
+                SplitView.minimumWidth: 265
                 color: "#FFFFFF"
                 border.color: "#D9E2EF"
 
