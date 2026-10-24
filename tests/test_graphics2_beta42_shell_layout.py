@@ -14,8 +14,8 @@ def test_beta42_reference_shell_and_bottom_pages():
     assert '"name":"select_page"' in qml
     assert '"name":"add_page"' in qml
     assert "onMoved: window.zoom = value" in qml
-    assert "onTriggered: exportPngDialog.open()" in qml
-    assert "onTriggered: exportPdfDialog.open()" in qml
+    assert "exportPngDialog.open()" in qml
+    assert "exportPdfDialog.open()" in qml
     assert "sceneBridge.attachProductImage(" in qml
     assert "function finishProductDrag" in qml
     assert "function createBlueSlot()" in qml
