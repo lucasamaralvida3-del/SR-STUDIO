@@ -1,0 +1,29 @@
+name: G2 Beta42 Reference Layout QML Gate
+on:
+  push:
+    branches: [feature/g2beta42-studio-shell-sidebar-pages-redesign]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-qml-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 20
+    env:
+      QT_QPA_PLATFORM: offscreen
+      QSG_RHI_BACKEND: software
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Setup Qt and tests
+        shell: pwsh
+        run: |
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Load editor and run QML contracts
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_qml_load.py tests/test_graphics2_beta42_shell_layout.py tests/test_graphics2_qml_product_drag.py tests/test_graphics2_product_image_library_beta41.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

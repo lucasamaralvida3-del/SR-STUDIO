@@ -8,7 +8,7 @@ ApplicationWindow {
     id: window
     width: 1760
     height: 1020
-    minimumWidth: 1180
+    minimumWidth: 1430
     minimumHeight: 760
     visible: true
     title: "SR Graphics Engine 2.0"
@@ -16,6 +16,71 @@ ApplicationWindow {
     property var scene: JSON.parse(sceneBridge.sceneJson)
     property var page: activePage()
     property real zoom: 0.72
+    // Beta 42: studio navigation mirrors the supplied SR Studio 5.0 reference.
+    property int studioSection: 0
+    property int studioNavigation: 2
+    property string productQuery: ""
+    property string productFilter: "Todos os produtos"
+    property int visibleProductLimit: 12
+    property bool showProductionGate: false
+    property bool showAdvancedSlotActions: false
+
+    function filteredProducts() {
+        var query = productQuery.toLocaleLowerCase().trim()
+        return products().filter(function(p) {
+            var searchable = (productLabel(p) + " " + String(p.id || p.product_id || "")).toLocaleLowerCase()
+            var hasImage = !!(p.image_path || p.image)
+            return (!query || searchable.indexOf(query) !== -1)
+                && (productFilter === "Todos os produtos"
+                    || (productFilter === "Com imagem" && hasImage)
+                    || (productFilter === "Sem imagem" && !hasImage))
+        }).slice(0, visibleProductLimit)
+    }
+
+    function createBlueSlot() {
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
+            "name": "add_item_slot", "preset_id": "limpeza-blue-v1"
+        })))
+        if (result.ok && result.payload) {
+            selectedSlotId = String(result.payload.slot_id || "")
+            smartSlotEditMode = true
+            smartSlotInspectionMode = true
+        }
+    }
+
+    function selectedPicture() {
+        var selected = selectedNode()
+        return selected && selected.kind === "image" ? selected : null
+    }
+
+    function removeCurrentBackground() {
+        if (selectedSlotId !== "")
+            sceneBridge.removeSlotBackground(selectedSlotId)
+        else if (selectedPicture())
+            sceneBridge.removeBackground(selectedPicture().id)
+    }
+
+    FileDialog {
+        id: saveProjectDialog
+        title: "Salvar projeto SR Studio"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Cena SR Studio (*.srscene)"]
+        onAccepted: sceneBridge.saveSceneAs(selectedFile.toString())
+    }
+    FileDialog {
+        id: exportPdfDialog
+        title: "Exportar encarte em PDF"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["PDF (*.pdf)"]
+        onAccepted: sceneBridge.exportPdf(selectedFile.toString())
+    }
+    FileDialog {
+        id: exportPngDialog
+        title: "Exportar encarte em PNG"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["PNG (*.png)"]
+        onAccepted: sceneBridge.exportPng(selectedFile.toString())
+    }
     property bool showGrid: true
     property bool showRulers: true
     property real gridStep: 50
@@ -439,99 +504,101 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+G"; onActivated: sceneBridge.dispatch('{"name":"ungroup"}') }
     Shortcut { sequence: "G"; onActivated: showGrid = !showGrid }
 
+
+    // Two-row professional studio header. All activated controls are real
+    // commands; import remains handled by the enclosing SR Studio workflow.
     header: ToolBar {
-        implicitHeight: 58
-        background: Rectangle { color: "#FFFFFF"; border.color: "#D9E2EF" }
+        implicitHeight: 110
+        background: Rectangle { color: "#FFFFFF"; border.color: "#E6EAF4" }
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 14
-            anchors.rightMargin: 14
-            spacing: 7
-
-            ColumnLayout {
-                spacing: -1
-                Label { text: "SR GRAPHICS ENGINE 2.0"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 10 }
-                Label { text: scene.name || "Novo Projeto SR"; color: "#111827"; font.bold: true; font.pixelSize: 14 }
+            spacing: 0
+            Rectangle {
+                Layout.preferredWidth: 230
+                Layout.fillHeight: true
+                color: "#123D9C"
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 22
+                    spacing: 12
+                    Rectangle {
+                        Layout.preferredWidth: 51
+                        Layout.preferredHeight: 51
+                        radius: 10
+                        color: "#2459CB"
+                        border.color: "#719AFA"
+                        Label {
+                            anchors.centerIn: parent
+                            text: "SR"
+                            font.pixelSize: 24
+                            font.bold: true
+                            color: "white"
+                        }
+                    }
+                    Label { text: "SR Studio 5.0"; color: "white"; font.bold: true; font.pixelSize: 16 }
+                }
             }
-            ToolSeparator {}
-            ToolButton { text: "↶"; enabled: scene.editor ? scene.editor.can_undo : false; ToolTip.text: "Desfazer"; ToolTip.visible: hovered; onClicked: sceneBridge.undo() }
-            ToolButton { text: "↷"; enabled: scene.editor ? scene.editor.can_redo : false; ToolTip.text: "Refazer"; ToolTip.visible: hovered; onClicked: sceneBridge.redo() }
-            ToolSeparator {}
-            ToolButton { text: "▦"; checkable: true; checked: showGrid; ToolTip.text: "Grid"; ToolTip.visible: hovered; onClicked: showGrid = checked }
-            ToolButton { text: "▤"; checkable: true; checked: showRulers; ToolTip.text: "Réguas"; ToolTip.visible: hovered; onClicked: showRulers = checked }
-            ToolButton { text: "Smart Slots"; checkable: true; checked: smartSlotInspectionMode; ToolTip.text: "Mostrar áreas inteligentes"; ToolTip.visible: hovered; onClicked: smartSlotInspectionMode = checked }
-            ToolButton {
-                text: "+ Slot Azul"
-                ToolTip.text: "Criar o único Smart Slot ativo, com 1 ou 2 preços automáticos"
-                onClicked: {
-                    var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
-                        "name": "add_item_slot", "preset_id": "limpeza-blue-v1"
-                    })))
-                    if (result.ok && result.payload) {
-                        selectedSlotId = String(result.payload.slot_id || "")
-                        smartSlotEditMode = true
-                        smartSlotInspectionMode = true
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.leftMargin: 23
+                Layout.rightMargin: 24
+                Layout.topMargin: 14
+                Layout.bottomMargin: 10
+                spacing: 5
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "☰"; color: "#2258DF"; font.pixelSize: 20; Layout.rightMargin: 12 }
+                    Label { text: "Encartes Studio"; color: "#4B5672"; font.pixelSize: 12 }
+                    Item { Layout.fillWidth: true }
+                    ToolButton { text: "♧"; ToolTip.text: "Notificações"; ToolTip.visible: hovered; enabled: false }
+                    ToolButton { text: "?"; ToolTip.text: "Ajuda"; ToolTip.visible: hovered; onClicked: showProductionGate = !showProductionGate }
+                    Label { text: "SR"; font.bold: true; color: "#153E8E"; font.pixelSize: 12 }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 7
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        RowLayout {
+                            spacing: 8
+                            Label { text: scene.name || "Novo Encarte"; font.pixelSize: 16; font.bold: true; color: "#111B3B"; elide: Text.ElideRight; Layout.maximumWidth: 380 }
+                            Rectangle {
+                                width: 51; height: 24; radius: 6
+                                color: "#EAF8EF"
+                                Label { anchors.centerIn: parent; text: "✓ Salvo"; color: "#169859"; font.pixelSize: 10; font.bold: true }
+                            }
+                        }
+                        Label { text: "Edição de encartes   •   " + (scene.pages ? scene.pages.length : 0) + " página(s)"; color: "#61708E"; font.pixelSize: 11 }
+                    }
+                    Button {
+                        text: "▦  Importar Planilha"
+                        enabled: false
+                        ToolTip.text: "Importação disponível na janela principal do SR Studio"
+                        ToolTip.visible: hovered
+                    }
+                    Button {
+                        text: "▧  Importar PPTX"
+                        enabled: false
+                        ToolTip.text: "Importação disponível na janela principal do SR Studio"
+                        ToolTip.visible: hovered
+                    }
+                    Button { text: "✓  Validar"; onClicked: showProductionGate = !showProductionGate }
+                    Button { text: "◉  Prévia"; onClicked: { smartSlotEditMode = false; smartSlotInspectionMode = false; showGrid = false; showRulers = false } }
+                    Button {
+                        text: "⇧  Exportar   ▾"
+                        highlighted: true
+                        onClicked: exportMenu.popup()
+                        Menu {
+                            id: exportMenu
+                            MenuItem { text: "PDF"; onTriggered: exportPdfDialog.open() }
+                            MenuItem { text: "PNG"; onTriggered: exportPngDialog.open() }
+                            MenuItem { text: "Salvar projeto"; onTriggered: saveProjectDialog.open() }
+                        }
                     }
                 }
             }
-            ToolButton {
-                text: "Ajustar Smart Slot"
-                checkable: true
-                checked: smartSlotEditMode
-                ToolTip.text: "Mover/redimensionar somente a área semântica do slot"
-                ToolTip.visible: hovered
-                onClicked: {
-                    smartSlotEditMode = checked
-                    if (checked) smartSlotInspectionMode = true
-                }
-            }
-            ToolButton { text: "Snap Slot"; visible: smartSlotEditMode; checkable: true; checked: smartSlotSnap; onClicked: smartSlotSnap = checked }
-            ToolButton { text: "Fundo automático"; checkable: true; checked: autoRemoveProductBackground; onClicked: autoRemoveProductBackground = checked; ToolTip.text: "withoutBG local no vínculo de produtos; primeiro uso baixa ~1,5 GB"; ToolTip.visible: hovered }
-            ToolButton {
-                text: "Remover Fundo"
-                enabled: selectedSlotId !== "" || (anchorNode && anchorNode.kind === "image")
-                ToolTip.text: "Processar imagem do Smart Slot ou imagem selecionada com withoutBG"
-                onClicked: {
-                    if (selectedSlotId !== "")
-                        sceneBridge.removeSlotBackground(selectedSlotId)
-                    else if (anchorNode && anchorNode.kind === "image")
-                        sceneBridge.removeBackground(anchorNode.id)
-                }
-            }
-            ToolButton {
-                text: "Restaurar Auto"
-                visible: smartSlotEditMode && selectedSlotId !== ""
-                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"restore_smart_slot_auto","slot_id":selectedSlotId}))
-            }
-            ToolButton {
-                text: "Não-produto"
-                visible: smartSlotEditMode && selectedSlotId !== ""
-                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"mark_smart_slot_non_product","slot_id":selectedSlotId}))
-            }
-            ToolButton {
-                text: "Excluir Slot"
-                visible: smartSlotEditMode && selectedSlotId !== ""
-                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"delete_smart_slot","slot_id":selectedSlotId}))
-            }
-            ToolButton { text: "Agrupar"; onClicked: sceneBridge.dispatch('{"name":"group"}') }
-            ToolButton { text: "Desagrupar"; onClicked: sceneBridge.dispatch('{"name":"ungroup"}') }
-            ToolButton { text: "Frente"; onClicked: sceneBridge.dispatch('{"name":"layer","mode":"front"}') }
-            ToolButton { text: "Fundo"; onClicked: sceneBridge.dispatch('{"name":"layer","mode":"back"}') }
-            ToolButton { text: "Duplicar"; onClicked: sceneBridge.dispatch('{"name":"duplicate"}') }
-            ToolSeparator {}
-            ToolButton { text: "+ Página"; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
-            ToolButton { text: "⧉ Página"; onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}') }
-            Item { Layout.fillWidth: true }
-            Rectangle {
-                implicitWidth: qualityText.implicitWidth + 20
-                implicitHeight: 30
-                radius: 5
-                color: "#FFF8E6"
-                border.color: "#F2D58A"
-                Label { id: qualityText; anchors.centerIn: parent; text: "✓ Engine 2 · ALPHA"; color: "#A16207"; font.bold: true; font.pixelSize: 11 }
-            }
-            Label { text: Math.round(window.zoom * 100) + "%"; color: "#475569"; Layout.preferredWidth: 44; horizontalAlignment: Text.AlignRight }
-            Slider { from: 0.12; to: 3.5; value: window.zoom; Layout.preferredWidth: 155; onMoved: window.zoom = value }
         }
     }
 
@@ -543,36 +610,161 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Horizontal
-
             Rectangle {
-                SplitView.preferredWidth: 310
-                SplitView.minimumWidth: 245
-                color: "#FFFFFF"
-                border.color: "#D9E2EF"
-
+                SplitView.preferredWidth: 230
+                SplitView.minimumWidth: 204
+                SplitView.maximumWidth: 246
+                color: "#113B98"
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: 12
+                    anchors.leftMargin: 18
+                    anchors.rightMargin: 18
+                    anchors.topMargin: 16
+                    anchors.bottomMargin: 22
                     spacing: 8
-
-                    Label { text: "Studio de Encartes"; font.bold: true; font.pixelSize: 18; color: "#111827" }
-                    Label { text: "Arraste um produto até o card ou use o botão +"; color: "#64748B"; font.pixelSize: 11 }
-
-                    TabBar {
-                        id: leftTabs
-                        Layout.fillWidth: true
-                        TabButton { text: "Produtos" }
-                        TabButton { text: "Camadas" }
+                    Repeater {
+                        model: [
+                            {name:"Início",icon:"⌂"}, {name:"Central 5.0",icon:"ϟ"},
+                            {name:"Encartes Studio",icon:"▣"}, {name:"Banco de Produtos",icon:"⬡"},
+                            {name:"Planilhas",icon:"▦"}, {name:"Modelos",icon:"▧"},
+                            {name:"Validação",icon:"♢"}, {name:"Exportação",icon:"⇧"}
+                        ]
+                        delegate: Rectangle {
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 45
+                            radius: 8
+                            color: studioNavigation === index ? "#2C59C4" : "transparent"
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.leftMargin: 13
+                                spacing: 13
+                                Label { text: modelData.icon; color: "#C7D8FF"; font.pixelSize: 21; Layout.preferredWidth: 22; horizontalAlignment: Text.AlignHCenter }
+                                Label { text: modelData.name; color: "white"; font.pixelSize: 12; font.bold: studioNavigation === index }
+                                Item { Layout.fillWidth: true }
+                            }
+                            MouseArea {
+                                anchors.fill: parent
+                                onClicked: {
+                                    studioNavigation = index
+                                    if (index === 2 || index === 0) studioSection = 0
+                                    else if (index === 3) studioSection = 0
+                                    else if (index === 5) studioSection = 1
+                                    else if (index === 7) exportMenu.popup()
+                                    else if (index === 6) showProductionGate = !showProductionGate
+                                }
+                            }
+                        }
                     }
-
-                    StackLayout {
+                    Rectangle { Layout.fillWidth: true; Layout.topMargin: 10; height: 1; color: "#3863B3" }
+                    Rectangle {
                         Layout.fillWidth: true
-                        Layout.fillHeight: true
-                        currentIndex: leftTabs.currentIndex
-
+                        Layout.preferredHeight: 46
+                        radius: 7
+                        color: "#1946A3"
+                        RowLayout {
+                            anchors.fill: parent
+                            anchors.leftMargin: 10
+                            Label { text: "⚙"; color: "white"; font.pixelSize: 19 }
+                            Label { text: "Configurações"; color: "white"; font.pixelSize: 12 }
+                            Item { Layout.fillWidth: true }
+                            Label { text: "›"; color: "white"; font.pixelSize: 20 }
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: showProductionGate = !showProductionGate }
+                    }
+                    Item { Layout.fillHeight: true }
+                    Rectangle {
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: 137
+                        radius: 9
+                        color: "#224FAC"
                         ColumnLayout {
-                            spacing: 8
-                            Label { text: "Destino do produto"; color: "#475569"; font.bold: true; font.pixelSize: 11 }
+                            anchors.fill: parent
+                            anchors.margins: 12
+                            Label { text: "☆  Novidades no SR Studio 5.0"; color: "white"; font.bold: true; font.pixelSize: 11 }
+                            Label { text: "Mais desempenho, automação e integração para seus encartes."; color: "#D6E3FF"; wrapMode: Text.WordWrap; font.pixelSize: 10; Layout.fillWidth: true }
+                            Button { text: "Ver novidades"; Layout.fillWidth: true; onClicked: showProductionGate = !showProductionGate }
+                        }
+                    }
+                }
+            }
+
+            Rectangle {
+                SplitView.preferredWidth: 332
+                SplitView.minimumWidth: 285
+                color: "#FFFFFF"
+                border.color: "#E5EAF4"
+                RowLayout {
+                    anchors.fill: parent
+                    spacing: 0
+                    Rectangle {
+                        Layout.preferredWidth: 67
+                        Layout.fillHeight: true
+                        color: "#FBFCFF"
+                        border.color: "#EEF1F8"
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.topMargin: 11
+                            spacing: 7
+                            Repeater {
+                                model: [
+                                    { icon:"⬡", title:"Produtos" }, { icon:"⬡", title:"Modelos" },
+                                    { icon:"♧", title:"Elementos" }, { icon:"▧", title:"Imagens" },
+                                    { icon:"T", title:"Texto" }, { icon:"♧", title:"Formas" },
+                                    { icon:"▨", title:"Fundos" }, { icon:"▱", title:"Camadas" }
+                                ]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 73
+                                    Layout.leftMargin: 5
+                                    Layout.rightMargin: 5
+                                    radius: 9
+                                    color: studioSection === index ? "#EFF3FF" : "transparent"
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 5
+                                        Label { text: modelData.icon; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#2C4BFA" : "#4C577F"; font.pixelSize: 24 }
+                                        Label { text: modelData.title; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#284DFF" : "#425072"; font.pixelSize: 9; font.bold: studioSection === index }
+                                    }
+                                    MouseArea { anchors.fill: parent; onClicked: studioSection = index }
+                                }
+                            }
+                            Item { Layout.fillHeight: true }
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillHeight: true
+                        Layout.fillWidth: true
+                        Layout.margins: 13
+                        spacing: 11
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                text: ["Produtos","Modelos","Elementos","Imagens","Texto","Formas","Fundos","Camadas"][studioSection]
+                                color: "#111B38"; font.pixelSize: 15; font.bold: true
+                            }
+                            Item { Layout.fillWidth: true }
+                            ToolButton { text: "⌄"; onClicked: studioSection = 0 }
+                        }
+                        ColumnLayout {
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            visible: studioSection === 0 || studioSection === 3
+                            spacing: 11
+                            RowLayout {
+                                Layout.fillWidth: true
+                                TextField { Layout.fillWidth: true; placeholderText: "⌕  Buscar produtos..."; text: productQuery; onTextChanged: productQuery = text; font.pixelSize: 11 }
+                                ToolButton { text: "▽"; onClicked: productFilter = productFilter === "Sem imagem" ? "Todos os produtos" : "Sem imagem" }
+                            }
+                            ComboBox {
+                                Layout.fillWidth: true
+                                model: ["Todos os produtos","Com imagem","Sem imagem"]
+                                onActivated: productFilter = currentText
+                            }
+                            Label { text: "Destino do produto"; font.pixelSize: 10; color: "#79849A" }
                             ComboBox {
                                 id: slotCombo
                                 Layout.fillWidth: true
@@ -581,21 +773,20 @@ ApplicationWindow {
                                 valueRole: "id"
                                 onActivated: selectedSlotId = currentValue
                             }
-                            Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
-                            ListView {
+                                                        ListView {
                                 id: productList
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 clip: true
                                 spacing: 8
-                                model: products()
+                                model: filteredProducts()
                                 ScrollBar.vertical: ScrollBar {}
                                 delegate: Rectangle {
                                     id: productCard
                                     required property var modelData
                                     width: productList.width - 4
-                                    height: 84
-                                    radius: 6
+                                    height: 99
+                                    radius: 9
                                     color: productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF"
                                     border.color: productMouse.dragging ? "#0F5BD8" : "#D9E4F2"
                                     border.width: productMouse.dragging ? 2 : 1
@@ -606,10 +797,10 @@ ApplicationWindow {
                                         anchors.margins: 9
                                         spacing: 9
                                         Rectangle {
-                                            Layout.preferredWidth: 58
-                                            Layout.preferredHeight: 58
+                                            Layout.preferredWidth: 64
+                                            Layout.preferredHeight: 66
                                             radius: 5
-                                            color: "#F8FAFC"
+                                            color: "#FAFBFE"
                                             border.color: "#E5EAF1"
                                             clip: true
                                             Image {
@@ -623,11 +814,11 @@ ApplicationWindow {
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 2
-                                            Label { Layout.fillWidth: true; text: modelData.display_name || modelData.name || modelData.original_name || "Produto"; color: "#111827"; font.bold: true; font.pixelSize: 11; elide: Text.ElideRight }
+                                            Label { Layout.fillWidth: true; text: modelData.display_name || modelData.name || modelData.original_name || "Produto"; color: "#111827"; font.bold: true; font.pixelSize: 12; elide: Text.ElideRight }
                                             Label { text: (modelData.unit || "UN") + (modelData.category ? " · " + modelData.category : ""); color: "#64748B"; font.pixelSize: 10 }
-                                            Label { text: modelData.price ? ("R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 12 }
+                                            Label { text: modelData.price ? ("R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 14 }
                                         }
-                                        ToolButton { text: "+"; enabled: selectedSlotId !== ""; onClicked: bindProduct(modelData) }
+                                        ToolButton { text: "+"; font.pixelSize: 18; enabled: selectedSlotId !== ""; onClicked: bindProduct(modelData) }
                                     }
                                     MouseArea {
                                         id: productMouse
@@ -687,9 +878,20 @@ ApplicationWindow {
                                 }
                                 Label { anchors.centerIn: parent; visible: productList.count === 0; text: "Importe uma planilha para carregar produtos."; width: productList.width - 30; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; color: "#94A3B8" }
                             }
-                        }
 
+                            Button {
+                                Layout.fillWidth: true
+                                text: "Ver mais produtos"
+                                flat: true
+                                onClicked: visibleProductLimit += 24
+                            }
+                        }
                         ColumnLayout {
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            visible: studioSection === 7 || studioSection === 2
+                            spacing: 7
+                                                    ColumnLayout {
                             spacing: 6
                             RowLayout {
                                 Layout.fillWidth: true
@@ -713,6 +915,20 @@ ApplicationWindow {
                                 }
                             }
                         }
+
+                        }
+                        ColumnLayout {
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            visible: studioSection === 1 || studioSection === 4 || studioSection === 5 || studioSection === 6
+                            spacing: 11
+                            Button { Layout.fillWidth: true; visible: studioSection === 1; text: "+ Slot Azul"; onClicked: createBlueSlot() }
+                            Button { Layout.fillWidth: true; visible: studioSection === 4; text: "+ Texto"; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
+                            Button { Layout.fillWidth: true; visible: studioSection === 5; text: "+ Forma"; onClicked: sceneBridge.dispatch('{"name":"add_rect"}') }
+                            CheckBox { visible: studioSection === 6; text: "Mostrar grade"; checked: showGrid; onToggled: showGrid = checked }
+                            CheckBox { visible: studioSection === 6; text: "Mostrar réguas"; checked: showRulers; onToggled: showRulers = checked }
+                            Item { Layout.fillHeight: true }
+                        }
                     }
                 }
             }
@@ -721,11 +937,55 @@ ApplicationWindow {
                 id: workspace
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
-                color: "#DCE4EF"
+                color: "#F4F7FD"
+
+                Rectangle {
+                    height: 49
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    color: "white"
+                    radius: 8
+                    border.color: "#E8EBF4"
+                    z: 20000
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        spacing: 3
+                        ToolButton { text: "↖"; highlighted: !smartSlotEditMode; ToolTip.text: "Seleção"; ToolTip.visible: hovered; onClicked: smartSlotEditMode = false }
+                        ToolButton { text: "▧"; highlighted: smartSlotEditMode; ToolTip.text: "Ajustar Smart Slot"; ToolTip.visible: hovered; onClicked: { smartSlotEditMode = !smartSlotEditMode; smartSlotInspectionMode = smartSlotEditMode } }
+                        ToolButton { text: "⬡"; ToolTip.text: "Criar Slot Azul"; ToolTip.visible: hovered; onClicked: createBlueSlot() }
+                        ToolButton {
+                            text: "⋯"
+                            ToolTip.text: "Opções do Smart Slot"; ToolTip.visible: hovered
+                            onClicked: studioSlotMenu.popup()
+                            Menu {
+                                id: studioSlotMenu
+                                MenuItem { text: "Remover Fundo"; onTriggered: removeCurrentBackground() }
+                                MenuItem { text: "Restaurar Auto"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"restore_smart_slot_auto","slot_id":selectedSlotId})) }
+                                MenuItem { text: "Excluir Slot"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"delete_smart_slot","slot_id":selectedSlotId})) }
+                                MenuItem { text: "Não-produto"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"mark_smart_slot_non_product","slot_id":selectedSlotId})) }
+                                MenuItem { text: "Fundo automático"; checkable: true; checked: autoRemoveProductBackground; onTriggered: autoRemoveProductBackground = checked }
+                            }
+                        }
+                        ToolButton { text: "T"; ToolTip.text: "Texto"; ToolTip.visible: hovered; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
+                        ToolButton { text: "▧"; ToolTip.text: "Imagens"; ToolTip.visible: hovered; onClicked: studioSection = 3 }
+                        ToolSeparator {}
+                        ToolButton { text: "↶"; enabled: !!scene.editor && scene.editor.can_undo; onClicked: sceneBridge.undo() }
+                        ToolButton { text: "↷"; enabled: !!scene.editor && scene.editor.can_redo; onClicked: sceneBridge.redo() }
+                        Item { Layout.fillWidth: true }
+                        ToolButton { text: "−"; onClicked: zoom = Math.max(0.12, zoom - 0.1) }
+                        Label { text: Math.round(zoom * 100) + "%"; color: "#1C2B4D"; font.bold: true; font.pixelSize: 12 }
+                        ToolButton { text: "+"; onClicked: zoom = Math.min(3.5, zoom + 0.1) }
+                        ToolButton { text: "✥"; onClicked: showRulers = !showRulers }
+                    }
+                }
 
                 Flickable {
                     id: viewport
                     anchors.fill: parent
+                    anchors.topMargin: 52
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     contentWidth: Math.max(width, (page ? page.width : 1080) * zoom + 280)
@@ -1367,8 +1627,8 @@ ApplicationWindow {
             }
 
             Rectangle {
-                SplitView.preferredWidth: 330
-                SplitView.minimumWidth: 275
+                SplitView.preferredWidth: 300
+                SplitView.minimumWidth: 265
                 color: "#FFFFFF"
                 border.color: "#D9E2EF"
 
@@ -1380,8 +1640,34 @@ ApplicationWindow {
                         spacing: 10
                         anchors.margins: 14
 
-                        Label { text: "Propriedades"; font.bold: true; font.pixelSize: 18; color: "#111827" }
-                        Label { id: inspectorName; text: "Nada selecionado"; color: "#0F5BD8"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { text: "Propriedades"; font.bold: true; font.pixelSize: 14; color: "#16213C" }
+                            Item { Layout.fillWidth: true }
+                            Label { text: anchorNode ? ("ID: " + String(anchorNode.id).slice(0, 8)) : "Nenhum item"; font.pixelSize: 9; color: "#8995AC" }
+                        }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: "#EDF0F5" }
+                        Label { text: "Nome do elemento"; color: "#606C84"; font.pixelSize: 10 }
+                        Label { id: inspectorName; text: "Nada selecionado"; color: "#293957"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; padding: 9; background: Rectangle { color: "#FAFBFE"; radius: 6; border.color: "#DDE4F0" } }
+                        Rectangle {
+                            visible: showProductionGate
+                            Layout.fillWidth: true
+                            implicitHeight: 76
+                            radius: 9
+                            border.color: "#A5D4AF"
+                            color: "#F5FBF6"
+                            ColumnLayout {
+                                anchors.fill: parent
+                                anchors.margins: 10
+                                Label { text: "●  Production Gate"; font.bold: true; color: "#118544" }
+                                Label { text: "Verificação do projeto disponível no SR Studio"; color: "#406D51"; font.pixelSize: 10 }
+                            }
+                        }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 1
+                            color: "#E6EAF2"
+                        }
                         Label { text: sceneBridge.status; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
 
@@ -1401,37 +1687,97 @@ ApplicationWindow {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 60
+            Layout.preferredHeight: 116
+            radius: 12
             color: "#FFFFFF"
-            border.color: "#D9E2EF"
+            border.color: "#E4E9F4"
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: 7
-                Label { text: "Páginas"; font.bold: true; color: "#334155" }
+                anchors.margins: 13
+                spacing: 12
                 Repeater {
                     model: scene.pages || []
-                    delegate: Button {
+                    delegate: Rectangle {
                         required property var modelData
-                        text: modelData.name || ("Página " + (index + 1))
-                        checked: modelData.id === scene.active_page_id
-                        checkable: true
-                        onClicked: sceneBridge.dispatch(JSON.stringify({"name":"select_page","page_id":modelData.id}))
+                        required property int index
+                        Layout.preferredWidth: 76
+                        Layout.preferredHeight: 92
+                        radius: 8
+                        color: "#FDFEFF"
+                        border.color: modelData.id === scene.active_page_id ? "#365CFF" : "#E2E7F2"
+                        border.width: modelData.id === scene.active_page_id ? 2 : 1
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            spacing: 3
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                color: modelData.background || "#FFFFFF"
+                                border.color: "#DCE3EF"
+                                clip: true
+                                // Miniature representation uses actual document node colors.
+                                Repeater {
+                                    model: Object.values(modelData.nodes || {}).slice(0, 28)
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        visible: modelData.visible !== false
+                                        x: Math.max(0, Number(modelData.transform.x) / Math.max(1, page ? page.width : 1080) * parent.width)
+                                        y: Math.max(0, Number(modelData.transform.y) / Math.max(1, page ? page.height : 1350) * parent.height)
+                                        width: Math.max(1, Number(modelData.transform.width) / Math.max(1, page ? page.width : 1080) * parent.width)
+                                        height: Math.max(1, Number(modelData.transform.height) / Math.max(1, page ? page.height : 1350) * parent.height)
+                                        color: modelData.kind === "image" ? "#E1EAF8" : (modelData.style ? modelData.style.fill || "#EBEFF7" : "#EBEFF7")
+                                    }
+                                }
+                            }
+                            Label {
+                                text: modelData.name || ("Página " + (index + 1))
+                                Layout.alignment: Qt.AlignHCenter
+                                font.pixelSize: 9
+                                color: modelData.id === scene.active_page_id ? "#2954F9" : "#79849D"
+                            }
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"select_page","page_id":modelData.id})) }
                     }
                 }
-                Button { text: "+"; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
-                Item { Layout.fillWidth: true }
-                Label {
-                    Layout.preferredWidth: 360
-                    text: sceneBridge.status || ""
-                    color: "#334155"
-                    font.pixelSize: 10
-                    elide: Text.ElideRight
-                    ToolTip.text: sceneBridge.status || ""
-                    ToolTip.visible: hovered
+                Rectangle {
+                    Layout.preferredWidth: 77
+                    Layout.preferredHeight: 92
+                    radius: 8
+                    color: "#FBFCFF"
+                    border.color: "#CBD7EB"
+                    border.width: 1
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        Label { text: "+"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 25; color: "#425276" }
+                        Label { text: "Adicionar página"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 9; color: "#71809E" }
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
                 }
-                Label { text: productDragActive ? (dragHoverSlotId ? "Solte para aplicar o produto" : "Arraste sobre um card") : ("Snap ✓  ·  Grid " + (showGrid ? "✓" : "—") + "  ·  Réguas " + (showRulers ? "✓" : "—")); color: productDragActive ? (dragHoverSlotId ? "#16A34A" : "#0F5BD8") : "#64748B"; font.bold: productDragActive; font.pixelSize: 10 }
+                Item { Layout.fillWidth: true }
+                ToolButton { text: "▦"; checkable: true; checked: showGrid; onClicked: showGrid = checked; ToolTip.text: "Grade"; ToolTip.visible: hovered }
+                Label {
+                    visible: productDragActive
+                    text: dragHoverSlotId ? "Solte para aplicar o produto" : "Arraste sobre um card"
+                    color: dragHoverSlotId ? "#16A34A" : "#2954F9"
+                    font.pixelSize: 10
+                    font.bold: true
+                }
+                ToolButton { text: "◉"; checkable: true; checked: showRulers; onClicked: showRulers = checked; ToolTip.text: "Réguas"; ToolTip.visible: hovered }
+                Slider {
+                    from: 0.12
+                    to: 3.5
+                    value: window.zoom
+                    Layout.preferredWidth: 120
+                    onMoved: window.zoom = value
+                }
+                Label { text: Math.round(window.zoom * 100) + "%"; Layout.preferredWidth: 44; color: "#17213E"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignRight }
+                ToolButton {
+                    text: "⛶"
+                    ToolTip.text: "Ajustar zoom à página"; ToolTip.visible: hovered
+                    onClicked: if (page) zoom = Math.max(0.12, Math.min(3.5,
+                        Math.min((workspace.width - 180) / page.width, (workspace.height - 140) / page.height)))
+                }
             }
         }
     }
