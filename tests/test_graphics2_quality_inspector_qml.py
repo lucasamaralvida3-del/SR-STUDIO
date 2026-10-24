@@ -62,8 +62,9 @@ def test_quality_inspector_surfaces_blockers_warnings_and_gpu():
 def test_host_does_not_attach_obsolete_overlay_tools():
     source = Path(qt_host.__file__).read_text(encoding="utf-8")
     assert '_attach_context_qml_tool(' in source
-    assert 'qml_dir / "ImageInspector.qml"' in source
-    assert 'qml_dir / "QualityInspector.qml"' in source
+    assert 'qml_dir / "ImageInspector.qml"' not in source
+    assert 'qml_dir / "QualityInspector.qml"' not in source
+    assert "_context_tools = (preview_provider,)" in source
 
 
 def test_quality_inspector_qml_loads_offscreen_when_pyside_is_available():
