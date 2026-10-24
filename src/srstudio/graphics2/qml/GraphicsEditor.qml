@@ -778,7 +778,7 @@ ApplicationWindow {
                             spacing: 6
                             RowLayout {
                                 Layout.fillWidth: true
-                                Label { text: "Elementos"; font.bold: true; color: "#334155" }
+                                Label { text: "Camadas"; font.bold: true; color: "#334155" }
                                 Item { Layout.fillWidth: true }
                                 Label { text: nodes().length; color: "#64748B" }
                             }
@@ -864,12 +864,16 @@ ApplicationWindow {
                                 Button { text: "Mover página para direita"; Layout.fillWidth: true; onClicked: window.moveActivePage(1) }
                             }
                         }
-                        ColumnLayout {
+                        ScrollView {
                             Layout.fillHeight: true
                             Layout.fillWidth: true
-                            visible: studioSection === 1 || studioSection === 4 || studioSection === 5 || studioSection === 6
-                            spacing: 11
-                            // Beta 44: visual preview, not a text-only slot picker.
+                            visible: studioSection === 1
+                            clip: true
+                            ColumnLayout {
+                                width: 235
+                                spacing: 11
+                                // Visual thumbnails stay scrollable on laptop screens.
+
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 175
@@ -1007,6 +1011,13 @@ ApplicationWindow {
                                     }))
                                 }
                             }
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            visible: studioSection === 4 || studioSection === 5 || studioSection === 6
+                            spacing: 11
                             Button { Layout.fillWidth: true; visible: studioSection === 4; text: "+ Texto"; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
                             Button { Layout.fillWidth: true; visible: studioSection === 5; text: "+ Forma"; onClicked: sceneBridge.dispatch('{"name":"add_rect"}') }
                             CheckBox { visible: studioSection === 6; text: "Mostrar grade"; checked: showGrid; onToggled: showGrid = checked }
