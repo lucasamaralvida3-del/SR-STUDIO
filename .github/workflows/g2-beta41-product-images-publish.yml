@@ -1,5 +1,10 @@
 name: Publish G2 Beta 41 Product Image Library + Delta
 on:
+  push:
+    branches:
+      - release/g2beta41-product-images-publish
+    paths:
+      - '.github/workflows/g2-beta41-product-images-publish.yml'
   workflow_dispatch:
 
 permissions:
@@ -38,9 +43,9 @@ jobs:
           set -euo pipefail
           outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq .conclusion)
           test "$outcome" = success
-          qml_outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/40086161392" --jq .conclusion)
+          qml_outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/40086423575" --jq .conclusion)
           test "$qml_outcome" = success
-          echo "VALIDATED_QML_WINDOWS_RUN=40086161392"
+          echo "VALIDATED_QML_WINDOWS_RUN=40086423575"
           gh api -H 'Accept: application/vnd.github.raw+json' "repos/$GITHUB_REPOSITORY/contents/manifests/launcher.json?ref=main" > launcher-live.json
           python - <<'PY'
           import json
