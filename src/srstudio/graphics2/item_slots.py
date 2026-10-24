@@ -59,6 +59,23 @@ def _builtins() -> dict[str, ItemSlotPreset]:
 
     return {
         "limpeza-blue-v1": ItemSlotPreset(**copy.deepcopy(LIMPEZA_PRESET)),
+        "individual-beta44": ItemSlotPreset(
+            id="individual-beta44",
+            name="INDIVIDUAL PROMOCIONAL",
+            width=460,
+            height=320,
+            background={"fill": "#FFFFFF", "stroke": "#D7E1F1", "stroke_width": 1.0, "radius_ratio": 0.015},
+            roles={
+                "image": {"bounds": [0.03, 0.12, 0.48, 0.76], "style": {"fit": "contain"}},
+                "name": _text_role(0.53, 0.05, 0.45, 0.24, size=17, align="left"),
+                "price": {"bounds": [0.50, 0.48, 0.48, 0.41],
+                          "background": {"fill": "#265398", "radius_ratio": 0.07}},
+                "currency": _text_role(0.02, 0.19, 0.19, 0.48, size=15),
+                "integer": _text_role(0.20, 0.04, 0.51, 0.8, size=45),
+                "decimal": _text_role(0.70, 0.07, 0.29, 0.48, size=21),
+                "unit": _text_role(0.82, 0.89, 0.16, 0.08, size=12),
+            },
+        ),
         "destaque": ItemSlotPreset(
             id="destaque",
             name="DESTAQUE",
@@ -118,7 +135,7 @@ def list_item_slot_presets(document=None) -> list[dict[str, Any]]:
                     presets[str(preset_id)] = copy.deepcopy(raw)
     # Beta 40: one supported *creation* template, with automatic price variants.
     # Keep legacy presets in _builtins() for opening already saved documents.
-    return [presets["limpeza-blue-v1"]]
+    return [presets["limpeza-blue-v1"], presets["individual-beta44"]]
 
 
 def _preset(document, preset_id: str) -> dict[str, Any]:
