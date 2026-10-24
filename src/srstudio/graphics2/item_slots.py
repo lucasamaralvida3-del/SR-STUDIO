@@ -85,8 +85,9 @@ def _builtins() -> dict[str, ItemSlotPreset]:
             name="ITEM DA FAIXA PROMOCIONAL",
             width=192,
             height=300,
-            background={"fill": "#FFFFFF", "stroke": "#D6E0EC",
-                        "stroke_width": 1.0, "radius_ratio": 0.0},
+            # Transparent lower area lets the parent strip render one
+            # uninterrupted blue footer across all five/six product cells.
+            background=None,
             roles={
                 "name": _text_role(.05, .035, .90, .16, size=12),
                 "image": {"bounds": [.09, .20, .82, .45],
