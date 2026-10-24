@@ -565,6 +565,13 @@ def duplicate_item_slot(session: GraphicsSession, slot_id: str, *, dx: float = 2
             if node_id in mapping
         }
         clone.metadata["decorative_nodes"] = [mapping[node_id] for node_id in source_slot.metadata.get("decorative_nodes") or [] if node_id in mapping]
+        original_club_label = str(source_slot.metadata.get("club_label_node_id") or "")
+        if original_club_label:
+            clone.metadata["club_label_node_id"] = mapping.get(original_club_label, "")
+        # Duplicating one cell produces a standalone card, not a reference
+        # to the parent strip. The original multi strip stays untouched.
+        for key in ("multi_parent_id", "multi_index", "multi_count"):
+            clone.metadata.pop(key, None)
         # Secondary price and label nodes must belong to the NEW tree.
         extras = source_slot.metadata.get("extra_bindings")
         if isinstance(extras, dict):
