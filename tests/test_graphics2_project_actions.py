@@ -47,7 +47,8 @@ def test_qt_host_runs_file_operations_and_autosave_on_safe_snapshots():
     assert "save_package(snapshot, output, embed_local_assets=True)" in source
     assert "render_pdf(snapshot, output, dpi=600)" in source
     assert "render_png(snapshot, output, page_index=page_index, dpi=300)" in source
-    assert 'qml_dir / "ProjectActions.qml"' not in source\n    assert 'text: "Salvar"' in (Path(qt_host.__file__).with_name("qml") / "GraphicsEditor.qml").read_text(encoding="utf-8")
+    assert 'qml_dir / "ProjectActions.qml"' not in source
+    assert 'text: "Salvar"' in (Path(qt_host.__file__).with_name("qml") / "GraphicsEditor.qml").read_text(encoding="utf-8")
 
 
 def test_autosave_root_is_stable_for_source_and_configurable(tmp_path, monkeypatch):
