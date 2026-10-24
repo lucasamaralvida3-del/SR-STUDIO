@@ -65,7 +65,17 @@ def _ppt_role(x: float, y: float, w: float, h: float, *, size: float, color: str
     # The source uses Anton, but that face is not available on standard
     # Windows installations. Arial is explicitly selected instead of
     # letting Qt render missing-glyph boxes for every price digit.
-    role["style"].update({"font_family": "Impact", "source_font_family": "Anton", "color": color,
+    # Prefer the *exact* PPTX typeface when the machine has it; Windows
+    # includes Impact as a visually close, readable condensed fallback.
+    family = "Impact"
+    try:
+        from PySide6.QtGui import QGuiApplication, QFontDatabase
+        if QGuiApplication.instance() is not None:
+            if "Anton" in QFontDatabase.families():
+                family = "Anton"
+    except (ImportError, RuntimeError):
+        pass
+    role["style"].update({"font_family": family, "source_font_family": "Anton", "color": color,
                            "font_size_unit": "pt", "min_font_size": 7,
                            "fit_inside_box": True, "wrap": True})
     return role
