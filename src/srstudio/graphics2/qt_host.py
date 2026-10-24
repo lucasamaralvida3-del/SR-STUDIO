@@ -251,6 +251,9 @@ def launch_qt_quick_editor(
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
             preview_provider.sync_document(session.document)
+            # Rehydrate after spreadsheet/catalog imports, without serializing
+            # image bytes into the scene or mutating project image ownership.
+            apply_stored_product_links(session.document)
             payload = inject_preview_image_urls(router.payload(), session.document)
             editor = payload.setdefault("editor", {})
             editor["diagnostics"] = build_editor_diagnostics(
