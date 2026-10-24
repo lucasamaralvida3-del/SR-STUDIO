@@ -1,0 +1,78 @@
+name: Diagnosticar Atualização Automática Beta44
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/smoke-beta44-launcher-windows.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta44-launcher-e2e
+  cancel-in-progress: false
+
+jobs:
+  launcher-fresh-install:
+    runs-on: windows-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@v4
+      - name: Simulate clean Beta launcher configuration
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $env:LOCALAPPDATA = Join-Path $env:RUNNER_TEMP 'SRBeta44LauncherE2E'
+          $base='https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/main'
+          $manifest=Invoke-RestMethod -Uri ($base+'/beta/manifest.json?diagnostic='+[DateTimeOffset]::UtcNow.ToUnixTimeSeconds())
+          if($manifest.version -ne '5.0.0-hybrid.g2beta.44') { throw "Public Beta version mismatch: $($manifest.version)" }
+          $dir=Join-Path $env:LOCALAPPDATA 'SRStudio/Config'
+          New-Item -ItemType Directory -Force -Path $dir | Out-Null
+          @{
+            schema=3;channel='beta';auto_update=$true;repair_on_start=$true
+            allow_offline=$false;remote_manifest_base=$base
+            entrypoint='SRStudio5/SR Studio 5.exe'
+            download_timeout_seconds=1200;download_retries=3
+            full_repair_every_days=7;keep_backups=1
+          } | ConvertTo-Json | Set-Content -LiteralPath (Join-Path $dir 'launcher.json') -Encoding UTF8
+          "LOCALAPPDATA=$env:LOCALAPPDATA" | Out-File -FilePath $env:GITHUB_ENV -Append
+      - name: Run actual installed PowerShell launcher without opening GUI
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          & 'launcher/files/SRStudioLauncher.ps1' -NoLaunch
+          if($LASTEXITCODE -ne 0) { throw "Launcher returned $LASTEXITCODE" }
+      - name: Assert version 44 downloaded and executable exists
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          $root=Join-Path $env:LOCALAPPDATA 'SRStudio'
+          $installed=Get-Content -Raw (Join-Path $root 'Config/installed.json') | ConvertFrom-Json
+          if($installed.version -ne '5.0.0-hybrid.g2beta.44') { throw "Installed version mismatch $($installed.version)" }
+          if($installed.channel -ne 'beta') { throw "Wrong channel $($installed.channel)" }
+          $exe=Join-Path $root 'App/SRStudio5/SR Studio 5.exe'
+          $hostexe=Join-Path $root 'App/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe'
+          if(!(Test-Path -LiteralPath $exe -PathType Leaf)) { throw "Missing application executable $exe" }
+          if(!(Test-Path -LiteralPath $hostexe -PathType Leaf)) { throw "Missing host executable $hostexe" }
+          Write-Host 'BETA44_LAUNCHER_AUTO_UPDATE_OK'
+      - name: Publish redacted diagnostics, even on failure
+        if: always()
+        shell: powershell
+        run: |
+          $root=Join-Path $env:LOCALAPPDATA 'SRStudio'
+          New-Item -ItemType Directory -Force -Path 'diagnostics' | Out-Null
+          $logs=Join-Path $root 'Logs/launcher.log'
+          if(Test-Path $logs) {
+            Get-Content $logs -Tail 180 |
+              ForEach-Object { $_ -replace '\\Users\\[^\\]+\\', '\\Users\\[redacted]\\' } |
+              Set-Content 'diagnostics/launcher-summary.txt' -Encoding UTF8
+          }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: beta44-launcher-diagnostics
+          path: diagnostics/
+          if-no-files-found: ignore
+          retention-days: 7
