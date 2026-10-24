@@ -95,7 +95,7 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
     with session.transaction("Finalizar Smart Slot Multi"):
         root.metadata["child_slot_ids"] = child_ids
         root.metadata["reference_pptx"] = "multi slots(1).pptx"
-        root.metadata["reference_fidelity_revision"] = 45
+        root.metadata["reference_fidelity_revision"] = 46
     session.selection = {root.id}
     session.anchor_id = root.id
     return {"root_node_id": root.id, "slot_ids": child_ids,
