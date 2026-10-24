@@ -157,6 +157,7 @@ def test_reference_slots_render_png_offscreen(tmp_path: Path):
         if node:
             node.metadata["bound_image_source"] = str(bottle)
             node.metadata["placeholder"] = False
+            node.visible = True
     out = tmp_path / "beta45-ppt-reference.png"
     active_index = next(i for i, page in enumerate(s.document.pages) if page.id == s.page.id)
     report = render_png(s.document, out, page_index=active_index, dpi=96)
