@@ -212,6 +212,23 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
             created = []
             # Place editable, independently bound slots. Never delete existing art.
             for position in plan.placements:
+                if plan.mode == "eleven" and position.index in (7, 8, 9, 10):
+                    # These four items are already owned by the 5-item group.
+                    continue
+                if plan.mode == "eleven" and position.index == 6:
+                    from .multi_item_strip import create_multi_item_strip
+                    end = plan.placements[10]
+                    x = page.width * position.x
+                    y = page.height * position.y
+                    group_width = page.width * (end.x + end.width - position.x)
+                    group_height = page.height * position.height
+                    multi = create_multi_item_strip(self.session, count=5,
+                                                    x=x, y=y)
+                    self.session.resize_node(
+                        multi["root_node_id"], x=x, y=y,
+                        width=group_width, height=group_height)
+                    created.extend(multi["slot_ids"])
+                    continue
                 target_x = page.width * position.x
                 target_y = page.height * position.y
                 target_w = page.width * position.width
