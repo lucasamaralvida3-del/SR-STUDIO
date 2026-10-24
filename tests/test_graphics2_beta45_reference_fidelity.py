@@ -145,5 +145,16 @@ def test_reference_slots_render_png_offscreen(tmp_path: Path):
     create_item_slot(s, "individual-beta44", x=100, y=120)
     create_multi_item_strip(s, count=5, x=50, y=650)
     out = tmp_path / "beta45-ppt-reference.png"
-    report = render_png(s.document, out, dpi=96)
+    active_index = next(i for i, page in enumerate(s.document.pages) if page.id == s.page.id)
+    report = render_png(s.document, out, page_index=active_index, dpi=96)
     assert report.ok and out.stat().st_size > 1000
+    # A completely white image is NOT a visual test. Sample actual pixels
+    # to prove that the rounded blue ribbon made it into the Qt raster.
+    from PySide6.QtGui import QImage
+    image = QImage(str(out))
+    hits = sum(
+        image.pixelColor(x, y).name().lower() == BLUE
+        for y in range(850, 920, 4)
+        for x in range(70, 1030, 4)
+    )
+    assert hits >= 400, f"Blue ribbon was not painted: {hits} pixels"
