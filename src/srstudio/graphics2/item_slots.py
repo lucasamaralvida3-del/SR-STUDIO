@@ -71,6 +71,25 @@ def _ppt_role(x: float, y: float, w: float, h: float, *, size: float, color: str
     return role
 
 
+def _format_reference_name(value: str, *, max_chars: int = 19) -> str:
+    """Break long catalog descriptions into two source-PPT-like lines.
+
+    Impact/Anton is intentionally condensed but should never produce the
+    single unreadable stretched caption seen in the previous Beta45 preview.
+    The original name is kept in the slot product snapshot for editing.
+    """
+    words = str(value or "").strip().split()
+    if len(" ".join(words)) <= max_chars or len(words) < 2:
+        return " ".join(words)
+    options = [(" ".join(words[:index]), " ".join(words[index:]))
+               for index in range(1, len(words))]
+    front, back = min(options, key=lambda parts: (
+        max(len(parts[0]), len(parts[1])),
+        abs(len(parts[0])-len(parts[1])),
+    ))
+    return front + "\n" + back
+
+
 def _builtins() -> dict[str, ItemSlotPreset]:
     from .slot_limpeza_blue import LIMPEZA_PRESET
 
@@ -88,7 +107,7 @@ def _builtins() -> dict[str, ItemSlotPreset]:
             roles={
                 "image": {"bounds": [.005, .005, .41, .985],
                           "style": {"fit": "contain"}},
-                "name": _ppt_role(.555, .605, .435, .163, size=27,
+                "name": _ppt_role(.555, .535, .435, .155, size=27,
                                   color="#105594", align="center"),
                 "price": {"bounds": [.525, .722, .475, .269],
                           "background": {"fill": "#105594", "stroke_width": 0,
@@ -96,7 +115,7 @@ def _builtins() -> dict[str, ItemSlotPreset]:
                 "currency": _ppt_role(.07, .52, .23, .37, size=39, color="#FFFFFF"),
                 "integer": _ppt_role(.27, .31, .45, .70, size=91, color="#FFFFFF"),
                 "decimal": _ppt_role(.72, .29, .26, .29, size=30, color="#FFFFFF"),
-                "unit": _ppt_role(.81, .69, .17, .23, size=23, color="#FFFFFF"),
+                "unit": _ppt_role(.81, .89, .17, .08, size=20, color="#FFFFFF"),
                 "secondary_price": _ppt_role(.55, .73, .23, .05, size=12,
                                              color="#FFFFFF"),
                 "limit": _ppt_role(.53, .988, .47, .028, size=9, color="#105594"),
@@ -115,9 +134,9 @@ def _builtins() -> dict[str, ItemSlotPreset]:
             height=300,
             background=None,  # the parent owns the continuous blue footer
             roles={
-                "name": _ppt_role(.015, .11, .97, .16, size=16,
+                "name": _ppt_role(.015, .085, .97, .17, size=16,
                                   color="#105594"),
-                "image": {"bounds": [.08, .19, .84, .565],
+                "image": {"bounds": [.08, .28, .84, .48],
                           "style": {"fit": "contain"}},
                 "price": {"bounds": [.01, .805, .98, .19]},
                 "currency": _ppt_role(.035, .27, .20, .54, size=17, color="#FFFFFF"),
@@ -419,7 +438,7 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                     "combined_value": "",
                 },
                 "state": "empty",
-                "reference_fidelity_revision": 45 if source_faithful else 1,
+                "reference_fidelity_revision": 46 if source_faithful else 1,
                 "reference_source": ("individual(1).pptx" if preset_id == "individual-beta44"
                                      else "multi slots(1).pptx") if source_faithful else "",
                 "product_snapshot": {},
@@ -448,7 +467,7 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 layer.z_index = 50 if (layer.binding_role not in (BindingRole.NAME,)) else 20
 
         root.metadata["item_slot_id"] = slot.id
-        root.metadata["reference_fidelity_revision"] = 45 if source_faithful else 1
+        root.metadata["reference_fidelity_revision"] = 46 if source_faithful else 1
         page.slots[slot.id] = slot
 
     session.selection = {root.id}
@@ -767,6 +786,12 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
             payload["price"] = primary
         payload["retail_price"] = secondary if secondary is not None else ""
         session.bind_product(slot.id, payload)
+        name_node = session.page.node(str(slot.node_by_role.get(BindingRole.NAME.value) or ""))
+        if name_node is not None:
+            raw_name = str(payload.get("display_name") or payload.get("name") or
+                           payload.get("original_name") or name_node.text or "")
+            name_node.text = _format_reference_name(
+                raw_name, max_chars=19 if preset_id == "multi-cell-beta44" else 18)
         # The reference text is "UN", never "/UN". Keep the generic
         # GraphicsSession price binding intact for other slot families.
         unit_node = session.page.node(str(slot.node_by_role.get(BindingRole.UNIT.value) or ""))
