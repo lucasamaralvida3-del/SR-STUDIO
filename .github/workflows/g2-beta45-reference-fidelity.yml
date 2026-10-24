@@ -1,0 +1,203 @@
+name: G2 Beta45 PPT Reference Fidelity
+
+on:
+  push:
+    branches:
+      - feature/g2-beta45-reference-fidelity
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'tests/test_graphics2_beta45_reference_fidelity.py'
+      - 'tests/test_graphics2_beta44_multi_slots.py'
+      - '.github/workflows/g2-beta45-reference-fidelity.yml'
+      - '.github/workflows/g2-beta45-candidate-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-visual-contract:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install Qt rendering, application and regression dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile corrected templates
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/graphics2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test source-fidelity geometry and Beta44 regressions
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_item_slots.py tests/test_graphics2_qml_load.py tests/test_graphics2_beta44_promotion_layouts.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Render actual Qt outputs for visual QA
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+        run: |
+          @'
+          from pathlib import Path
+          from srstudio.graphics2.model import GraphicsDocument, GraphicsPage
+          from srstudio.graphics2.operations import GraphicsSession
+          from srstudio.graphics2.item_slots import create_item_slot, bind_product_to_item_slot
+          from srstudio.graphics2.multi_item_strip import create_multi_item_strip
+          from srstudio.graphics2.qt_renderer import render_png
+
+          from PySide6.QtGui import QGuiApplication, QFontInfo, QFont, QFontDatabase
+          app = QGuiApplication.instance() or QGuiApplication([])
+          print("QT_PLATFORM", QGuiApplication.platformName())
+          print("QT_FONT_FAMILIES", [
+              n for n in QFontDatabase.families()
+              if n.lower() in ("arial", "impact", "arial narrow", "anton", "segoe ui")
+          ])
+          for family in ["Arial", "Impact", "Segoe UI", "Anton"]:
+              font = QFont(family)
+              print("FONT_SELECTED", family, QFontInfo(font).family(), QFontInfo(font).exactMatch())
+          out = Path('reference-previews')
+          out.mkdir(exist_ok=True)
+          for kind in ('individual', 'individual_two', 'multi5', 'multi5_two', 'multi6'):
+              doc=GraphicsDocument(name=kind)
+              doc.add_page(GraphicsPage(width=1080, height=1350))
+              session=GraphicsSession(doc)
+              if kind.startswith('individual'):
+                  slot = create_item_slot(session, 'individual-beta44', x=110, y=280)
+                  bind_product_to_item_slot(session, slot.id, {
+                      'id':'test-01','name':'OLEO ABC PET 900ML SOJA',
+                      'price':'7,21',
+                      **({'club_price':'6,39'} if kind.endswith('_two') else {}),
+                  })
+              else:
+                  size = 5 if kind.startswith('multi5') else 6
+                  result = create_multi_item_strip(session, count=size, x=40, y=610)
+                  for index, sid in enumerate(result['slot_ids']):
+                      bind_product_to_item_slot(session, sid, {
+                          'id':f'product-{index}', 'name':(
+                              'SHAMPOO LOVECARE 200ML','AMACIANTE DOWNY 1L',
+                              'DETERGENTE YPE 500ML','LIMP AJAX 1L',
+                              'LIMPA VIDROS AZULIM 500ML','SABAO EM PO 1KG'
+                          )[index], 'price':f'{index+2},89',
+                          **({'club_price':f'{index+1},79'} if kind.endswith('_two') else {})
+                      })
+              if kind.endswith('_two'):
+                  from srstudio.graphics2.model import BindingRole
+                  for slot in session.page.slots.values():
+                      extra = session.page.node(slot.node_by_role[BindingRole.RETAIL_PRICE.value])
+                      promo = session.page.node(slot.metadata['promotion_label_node_id'])
+                      assert extra.visible and not promo.visible, kind
+              # A real local image makes the strict export gate meaningful.
+              from PySide6.QtGui import QImage, QColor
+              bottle_path = (out / f'{kind}-bottle.png').resolve()
+              bottle = QImage(60, 120, QImage.Format_ARGB32)
+              bottle.fill(QColor('#E4BE63'))
+              assert bottle.save(str(bottle_path))
+              from srstudio.graphics2.model import BindingRole
+              for slot in session.page.slots.values():
+                  image_node = session.page.node(slot.node_by_role.get(BindingRole.IMAGE.value, ''))
+                  if image_node:
+                      image_node.metadata['bound_image_source'] = str(bottle_path)
+                      image_node.metadata['placeholder'] = False
+                      image_node.visible = True
+              active_page_index = next(i for i, p in enumerate(doc.pages) if p.id == session.page.id)
+              report=render_png(doc, out/f'{kind}.png', page_index=active_page_index, dpi=96)
+              assert report.ok, kind
+              print('RENDER_WARNINGS', kind, [(w.code, w.message) for w in report.warnings])
+              from PySide6.QtGui import QImage
+              img=QImage(str(out/f'{kind}.png'))
+              if kind.startswith('individual'):
+                  samples = ((x,y) for y in range(660,765,3) for x in range(380,565,3))
+              else:
+                  samples = ((x,y) for y in range(811,854,3) for x in range(45,1045,3))
+              n_blue = sum(img.pixelColor(x,y).name().lower() == '#105594' for x,y in samples)
+              assert n_blue > 100, f'{kind}: blue geometry missing: {n_blue}'
+              palette = {'individual': (240,420), 'individual_two': (240,420),
+                         'multi5': (140,740), 'multi5_two': (140,740), 'multi6': (120,740)}
+              xx, yy = palette[kind]
+              image_color = img.pixelColor(xx,yy).name().lower()
+              print('IMAGE_SAMPLE', kind, xx, yy, image_color)
+              if image_color != '#e4be63':
+                  print('DEBUG_IMAGE_NODES', [(node.name, node.visible,
+                        node.metadata.get('bound_image_source'), node.transform.x,
+                        node.transform.y, node.transform.width, node.transform.height)
+                        for node in session.page.nodes.values() if node.kind.value=='image'])
+              assert image_color == '#e4be63', f'{kind} image not painted at ({xx},{yy}): {image_color}'
+              print(kind, report.output, report.output.stat().st_size)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Render promotion templates with corrected editable slots
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+        run: |
+          @'
+          from pathlib import Path
+          from PySide6.QtGui import QGuiApplication, QImage, QColor
+          from srstudio.graphics2.model import GraphicsDocument, GraphicsPage, BindingRole
+          from srstudio.graphics2.operations import GraphicsSession
+          from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
+          from srstudio.graphics2.item_slots import bind_product_to_item_slot
+          from srstudio.graphics2.qt_renderer import render_png
+
+          app = QGuiApplication.instance() or QGuiApplication([])
+          out = Path('reference-previews')
+          out.mkdir(exist_ok=True)
+          sample = (out/'layout-product.png').resolve()
+          image = QImage(55,100,QImage.Format_ARGB32)
+          image.fill(QColor('#DFC377'))
+          assert image.save(str(sample))
+          for mode, expected_count in [('six',6), ('seven',7), ('eleven',11)]:
+              doc = GraphicsDocument(name=mode)
+              doc.add_page(GraphicsPage(width=1080, height=1350))
+              session = GraphicsSession(doc)
+              result = ItemSlotCommandRouter(session).dispatch({
+                  'name':'apply_promotion_layout','mode':mode,
+                  'logo_reserved':.24,'price_mode':'one'
+              })
+              assert result.ok, result.message
+              assert len(result.payload['slot_ids']) == expected_count
+              for index, sid in enumerate(result.payload['slot_ids']):
+                  bind_product_to_item_slot(session, sid, {
+                      'id':f'{mode}-{index}', 'name':f'PRODUTO {index+1} 500ML',
+                      'price':f'{index+2},99','image_path':str(sample)
+                  })
+              bounds = []
+              for slot in session.page.slots.values():
+                  root = session.page.node(slot.metadata['root_node_id'])
+                  rect = root.rect.normalized()
+                  assert rect.y > 0.24 * session.page.height, (mode,slot.id)
+                  assert rect.right <= session.page.width + 1 and rect.bottom <= session.page.height + 1
+                  if 'multi_parent_id' not in slot.metadata:
+                      bounds.append(rect)
+              for i, a in enumerate(bounds):
+                  for b in bounds[i+1:]:
+                      overlapping = a.x < b.right - 1 and b.x < a.right - 1 and a.y < b.bottom - 1 and b.y < a.bottom - 1
+                      assert not overlapping, f'{mode}: overlapping item roots'
+              index = next(i for i,p in enumerate(doc.pages) if p.id == session.page.id)
+              target = out / f'layout-{mode}.png'
+              report=render_png(doc,target,page_index=index,dpi=96)
+              assert report.ok, (mode,report.warnings)
+              image=QImage(str(target))
+              assert any(image.pixelColor(x,y).name().lower() == '#105594'
+                         for x in range(40,1050,13) for y in range(400,1300,11)), mode
+              print('LAYOUT_RENDER_OK', mode, target.stat().st_size)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: G2-Beta45-PPT-fidelity-previews
+          path: reference-previews/*.png
+          if-no-files-found: ignore
+          retention-days: 14

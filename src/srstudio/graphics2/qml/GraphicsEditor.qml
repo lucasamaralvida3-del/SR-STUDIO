@@ -998,14 +998,34 @@ ApplicationWindow {
                                     anchors.fill: parent; anchors.margins: 10; spacing: 7
                                     Label { text: "Individual"; color: "#284F8F"; font.bold: true }
                                     Rectangle {
-                                        width: parent.width; height: 91; color: "#F7FAFE"
+                                        width: parent.width; height: 91; color: "#FFFFFF"
                                         radius: 6
-                                        Rectangle { x: 8; y: 7; width: parent.width * .49; height: 76; radius: 7; color: "#E7EEF9"
-                                            Label { anchors.centerIn: parent; text: "PRODUTO"; color: "#456AA2"; font.pixelSize: 10 }
+                                        // Source PPT: floating product, no fake gray image frame.
+                                        Label { x: parent.width * .19; y: 16; width: parent.width * .28; height: 67
+                                            text: "PRODUTO"; color: "#105594"
+                                            font.bold: true; font.pixelSize: 10
+                                            horizontalAlignment: Text.AlignHCenter
+                                            verticalAlignment: Text.AlignVCenter
                                         }
-                                        Rectangle { anchors.right: parent.right; anchors.rightMargin: 8; anchors.bottom: parent.bottom
-                                            anchors.bottomMargin: 7; width: parent.width * .43; height: 43; radius: 7; color: "#295599"
-                                            Label { anchors.centerIn: parent; text: "R$ 9,99"; color: "white"; font.bold: true; font.pixelSize: 17 }
+                                        Label { x: parent.width * .52; y: 42; width: parent.width * .45; height: 19
+                                            text: "NOME DO PRODUTO"; color: "#105594"
+                                            font.bold: true; font.pixelSize: 9
+                                            wrapMode: Text.WordWrap
+                                            horizontalAlignment: Text.AlignHCenter
+                                        }
+                                        Rectangle {
+                                            x: parent.width * .52; y: 64
+                                            width: parent.width * .46; height: 25
+                                            radius: 6; color: "#105594"
+                                            Label { x: 4; y: 1; width: parent.width - 8; height: 9
+                                                text: "PROMOÇÃO"; font.pixelSize: 6; color: "white"
+                                                horizontalAlignment: Text.AlignHCenter
+                                            }
+                                            Label { anchors.centerIn: parent
+                                                anchors.verticalCenterOffset: 4
+                                                text: "R$  7,21"; color: "white"
+                                                font.bold: true; font.pixelSize: 12
+                                            }
                                         }
                                     }
                                 }
@@ -1039,31 +1059,47 @@ ApplicationWindow {
                                         text: "Multi Itens — " + modelData + " produtos"
                                         color: "#284F8F"; font.bold: true
                                     }
-                                    Row {
-                                        x: 8; y: 34
-                                        width: parent.width - 16; height: 86
-                                        spacing: 2
-                                        Repeater {
-                                            model: multiPreviewCard.modelData
-                                            delegate: Rectangle {
-                                                width: (parent.width - (multiPreviewCard.modelData - 1) * 2) / multiPreviewCard.modelData
-                                                height: parent.height
-                                                color: "#F7FAFE"
-                                                border.color: "#D7E1F0"
-                                                Rectangle {
-                                                    x: 3; y: 19
-                                                    width: parent.width - 6; height: 35
-                                                    radius: 4; color: "#E0E8F6"
-                                                }
-                                                Rectangle {
-                                                    anchors.left: parent.left; anchors.right: parent.right
-                                                    anchors.bottom: parent.bottom; height: 27
-                                                    color: "#295599"
+                                    Rectangle {
+                                        id: referencePreviewStrip
+                                        x: 8; y: 46
+                                        width: parent.width - 16; height: 55
+                                        color: "#FFFFFF"
+                                        Rectangle {
+                                            anchors.left: parent.left; anchors.right: parent.right
+                                            anchors.bottom: parent.bottom; height: 14
+                                            radius: 9; color: "#105594"
+                                        }
+                                        Row {
+                                            anchors.fill: parent
+                                            spacing: 0
+                                            Repeater {
+                                                model: multiPreviewCard.modelData
+                                                delegate: Item {
+                                                    width: referencePreviewStrip.width / multiPreviewCard.modelData
+                                                    height: referencePreviewStrip.height
                                                     Label {
-                                                        anchors.centerIn: parent
-                                                        text: "9,99"
-                                                        color: "white"; font.bold: true
-                                                        font.pixelSize: 9
+                                                        x: 2; y: 1; width: parent.width - 4; height: 14
+                                                        text: "PRODUTO"
+                                                        font.pixelSize: 6; font.bold: true
+                                                        horizontalAlignment: Text.AlignHCenter
+                                                        color: "#105594"
+                                                    }
+                                                    Label {
+                                                        x: 3; y: 14; width: parent.width - 6; height: 27
+                                                        text: "◉"; font.pixelSize: 16; color: "#CADBEF"
+                                                        horizontalAlignment: Text.AlignHCenter
+                                                        verticalAlignment: Text.AlignVCenter
+                                                    }
+                                                    Label {
+                                                        x: 1; y: 42; width: parent.width - 2; height: 12
+                                                        text: "R$ 9,99"; font.pixelSize: 8; font.bold: true
+                                                        color: "white"; horizontalAlignment: Text.AlignHCenter
+                                                        verticalAlignment: Text.AlignVCenter
+                                                    }
+                                                    Rectangle {
+                                                        visible: index > 0
+                                                        x: 0; y: 13; width: 1; height: 28
+                                                        color: "#105594"
                                                     }
                                                 }
                                             }

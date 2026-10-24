@@ -202,7 +202,7 @@ def test_multi_strip_has_continuous_blue_footer_and_separators(count):
     assert len(footer) == 1
     assert len(separators) == count - 1
     assert footer[0].transform.width == pytest.approx(root.transform.width)
-    assert footer[0].style["fill"] == "#265398"
+    assert footer[0].style["fill"] == "#105594"
     assert footer[0].z_index < 0
     # Per-card white full-height backgrounds must not cover the continuous strip.
     assert not any(node.name == "ItemSlot Background" for node in descendants)
