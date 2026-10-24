@@ -696,7 +696,11 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
             if display_two and secondary is None:
                 secondary_node.text = "R$ 00,00"
         if limit_node is not None:
-            limit_node.visible = bool(limit_node.text)
+            limit_value = str(product.get("cpf_limit") or product.get("limit") or "").strip()
+            unit = str(product.get("unit") or "UN").strip().upper().lstrip("/")
+            if limit_value:
+                limit_node.text = f"LIMITE DE {limit_value} {unit} POR CPF"
+            limit_node.visible = bool(limit_value)
         club_label = session.page.node(str(slot.metadata.get("club_label_node_id") or ""))
         if club_label is not None:
             club_label.visible = display_two and bool(product.get("club_price") or product.get("app_price"))
