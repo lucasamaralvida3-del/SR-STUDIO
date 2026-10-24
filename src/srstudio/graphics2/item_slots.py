@@ -157,7 +157,12 @@ def list_item_slot_presets(document=None) -> list[dict[str, Any]]:
                     presets[str(preset_id)] = copy.deepcopy(raw)
     # Beta 40: one supported *creation* template, with automatic price variants.
     # Keep legacy presets in _builtins() for opening already saved documents.
-    return [presets["limpeza-blue-v1"], presets["multi-cell-beta44"], presets["individual-beta44"]]
+    # Legacy Quinta3 families remain addressable to preserve existing
+    # projects and their supported programmatic creation contracts. The
+    # Beta44 visual picker intentionally displays only its three core styles.
+    visible = ["limpeza-blue-v1", "multi-cell-beta44", "individual-beta44"]
+    historical = [key for key in presets if key.startswith("quinta3-")]
+    return [presets[key] for key in visible + historical]
 
 
 def _preset(document, preset_id: str) -> dict[str, Any]:
