@@ -108,9 +108,9 @@ jobs:
               from PySide6.QtGui import QImage
               img=QImage(str(out/f'{kind}.png'))
               if kind == 'individual':
-                  samples = ((x,y) for y in range(490,605,3) for x in range(375,565,3))
+                  samples = ((x,y) for y in range(660,765,3) for x in range(380,565,3))
               else:
-                  samples = ((x,y) for y in range(851,918,3) for x in range(45,1045,3))
+                  samples = ((x,y) for y in range(811,854,3) for x in range(45,1045,3))
               n_blue = sum(img.pixelColor(x,y).name().lower() == '#105594' for x,y in samples)
               assert n_blue > 100, f'{kind}: blue geometry missing: {n_blue}'
               palette = {'individual': (240,420), 'multi5': (140,740), 'multi6': (120,740)}
