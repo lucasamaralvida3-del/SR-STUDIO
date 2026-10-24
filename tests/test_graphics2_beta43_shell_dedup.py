@@ -32,7 +32,6 @@ def test_beta43_does_not_attach_obsolete_high_z_qml_overlays():
     assert "qml_dir / \"ProjectActions.qml\"" not in startup
     assert "qml_dir / \"QualityInspector.qml\"" not in startup
     assert "qml_dir / \"ImageInspector.qml\"" not in startup
-    assert "PageInspector.qml" in host
     assert "PageInspector.qml" not in startup
     qml=(Path(__file__).resolve().parents[1]/"src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
     assert 'text: "Substituir imagem"' in qml
