@@ -38,6 +38,7 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
             name="Faixa azul contínua",
             transform=Transform(x=left, y=top + height * .73,
                                 width=width, height=height * .27),
+            z_index=-100,
             style={"fill": "#265398", "stroke_width": 0},
             metadata={"multi_item_decoration": True},
         )
@@ -46,6 +47,19 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
     gap = 2.0
     cell_width = (width - gap * (count - 1)) / count
     child_ids: list[str] = []
+    with session.transaction("Adicionar separadores do Multi Itens"):
+        for index in range(1, count):
+            separator = GraphicsNode(
+                kind=NodeKind.RECT,
+                name=f"Divisor {index}",
+                transform=Transform(x=left + index * (cell_width + gap) - gap,
+                                    y=top, width=max(1.0, gap),
+                                    height=height * .72),
+                z_index=-20,
+                style={"fill": "#C7D4E9", "stroke_width": 0},
+                metadata={"multi_item_decoration": True},
+            )
+            page.add_node(separator, parent_id=root.id)
     for index in range(count):
         cell_x = left + index * (cell_width + gap)
         slot = create_item_slot(session, "multi-cell-beta44",
