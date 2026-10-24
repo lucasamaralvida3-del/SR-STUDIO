@@ -61,6 +61,15 @@ ApplicationWindow {
     }
 
     FileDialog {
+        id: replaceSelectedImageDialog
+        title: "Substituir imagem selecionada"
+        nameFilters: ["Imagens (*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tif *.tiff)"]
+        onAccepted: {
+            if (anchorNode && anchorNode.kind === "image")
+                sceneBridge.dispatch(JSON.stringify({"name":"replace_image","node_id":anchorNode.id,"source":selectedFile.toString()}))
+        }
+    }
+    FileDialog {
         id: sourceImportDialog
         title: "Importar planilha ou apresentação"
         nameFilters: ["Planilhas e apresentações (*.xlsx *.xls *.csv *.pptx)"]
@@ -1519,6 +1528,22 @@ ApplicationWindow {
                         Label { text: sceneBridge.status; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
 
+                        ColumnLayout {
+                            visible: anchorNode && (anchorNode.kind === "image" || anchorNode.kind === "background")
+                            Layout.fillWidth: true
+                            spacing: 7
+                            Label { text: "Imagem selecionada"; font.bold: true; color: "#334155" }
+                            Button { text: "Substituir imagem"; Layout.fillWidth: true; onClicked: replaceSelectedImageDialog.open() }
+                            Button { text: "Remover fundo"; Layout.fillWidth: true; onClicked: removeCurrentBackground() }
+                            RowLayout {
+                                Label { text: "Ajuste"; color: "#475569" }
+                                ComboBox {
+                                    Layout.fillWidth: true
+                                    model: ["contain","cover","fill"]
+                                    onActivated: if (anchorNode) sceneBridge.dispatch(JSON.stringify({"name":"crop","node_id":anchorNode.id,"fit":currentText}))
+                                }
+                            }
+                        }
                         ColumnLayout {
                             visible: anchorNode && anchorNode.kind === "text"
                             Layout.fillWidth: true
