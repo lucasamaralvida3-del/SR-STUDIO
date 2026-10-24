@@ -88,6 +88,27 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
 
     def dispatch(self, command: dict[str, Any]) -> CommandResult:
         name = str(command.get("name") or "").strip().lower()
+        if name == "adjust_smart_slot":
+            # The certified Azul implementation remains handled by the base
+            # command router. New manual slots need native group transform.
+            from .model import Rect
+            slot = self.session.page.slots.get(str(command.get("slot_id") or ""))
+            if is_manual_item_slot(slot) and slot.metadata.get("preset_id") in (
+                    "individual-beta44", "multi-cell-beta44"):
+                root_id = str(slot.metadata.get("root_node_id") or "")
+                root = self.session.page.node(root_id)
+                if root is None:
+                    return CommandResult(False, False, "Raiz do slot não encontrada.")
+                try:
+                    target = Rect(float(command["x"]), float(command["y"]),
+                                  max(1.0, float(command["width"])),
+                                  max(1.0, float(command["height"])))
+                except (ValueError, TypeError, KeyError):
+                    return CommandResult(False, False, "Dimensões inválidas.")
+                self.session.resize_node(root_id, x=target.x, y=target.y,
+                                         width=target.width, height=target.height)
+                return CommandResult(True, True, "Smart Slot reposicionado.", {"slot_id": slot.id})
+
         if name == "add_multi_item_slot":
             from .multi_item_strip import create_multi_item_strip
             try:
