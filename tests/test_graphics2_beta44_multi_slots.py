@@ -5,7 +5,7 @@ import json
 import pytest
 
 from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
-from srstudio.graphics2.item_slots import bind_product_to_item_slot, create_item_slot
+from srstudio.graphics2.item_slots import bind_product_to_item_slot, create_item_slot, duplicate_item_slot
 from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsPage
 from srstudio.graphics2.multi_item_strip import create_multi_item_strip
 from srstudio.graphics2.operations import GraphicsSession
@@ -136,3 +136,21 @@ def test_switching_promotion_layout_preserves_existing_page():
     assert len(session.page.slots) == 7
     assert session.page.width == session.document.pages[0].width
     assert session.page.height == session.document.pages[0].height
+
+
+def test_duplicated_individual_relinks_own_club_label():
+    session = make_session()
+    slot = create_item_slot(session, "individual-beta44")
+    clone = duplicate_item_slot(session, slot.id, dx=30, dy=30)
+    original_label = slot.metadata["club_label_node_id"]
+    cloned_label = clone.metadata["club_label_node_id"]
+    assert original_label and cloned_label and original_label != cloned_label
+    assert session.page.node(cloned_label) is not None
+
+
+def test_duplicated_multi_cell_is_detached_from_original_group():
+    session = make_session()
+    multi = create_multi_item_strip(session, count=5)
+    clone = duplicate_item_slot(session, multi["slot_ids"][0])
+    assert "multi_parent_id" not in clone.metadata
+    assert clone.metadata["root_node_id"] not in session.page.node(multi["root_node_id"]).children
