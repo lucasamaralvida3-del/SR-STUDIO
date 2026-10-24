@@ -3,11 +3,11 @@ from pathlib import Path
 
 def test_beta42_reference_shell_and_bottom_pages():
     qml=(Path(__file__).resolve().parents[1]/"src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
-    for label in ("SR Studio 5.0","Encartes Studio","Banco de Produtos",
+    for label in ("Produtos","Projeto",
                   "Produtos","Modelos","Elementos","Imagens","Texto",
                   "Formas","Fundos","Camadas","Buscar produtos",
                   "Todos os produtos","Ver mais produtos","Adicionar página",
-                  "Importar Planilha","Importar PPTX"):
+                  "Importar PPTX / Planilha"):
         assert label in qml, label
     assert 'id: productList' in qml
     assert 'model: filteredProducts()' in qml
