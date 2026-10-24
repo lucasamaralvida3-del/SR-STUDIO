@@ -76,6 +76,8 @@ def _builtins() -> dict[str, ItemSlotPreset]:
                 "unit": _text_role(0.82, 0.89, 0.16, 0.08, size=12),
                 "secondary_price": _text_role(0.51, 0.30, 0.45, 0.13, size=13),
                 "limit": _text_role(0.52, 0.91, 0.44, 0.075, size=10),
+                "club_label": _text_role(0.52, 0.39, 0.44, 0.09, size=11),
+
             },
         ),
         "multi-cell-beta44": ItemSlotPreset(
@@ -302,7 +304,11 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
         for key, placeholder, binding, label in component_defs:
             spec = dict(roles.get(key) or {})
             component_rect = _absolute(price_rect, list(spec.get("bounds") or [0, 0, 1, 1]))
-            node = _make_text(page, price_group.id, f"PRICE {label}", placeholder, component_rect, dict(spec.get("style") or {}), binding)
+            comp_style = dict(spec.get("style") or {})
+            if dict(price_spec.get("background") or {}).get("fill") == "#265398":
+                comp_style.setdefault("color", "#FFFFFF")
+            node = _make_text(page, price_group.id, f"PRICE {label}", placeholder,
+                              component_rect, comp_style, binding)
             node.metadata["item_slot_price_component"] = key
             component_nodes[key] = node
 
@@ -327,6 +333,16 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
             node.visible = False
             node.metadata["item_slot_role_area"] = key
             optional_nodes[role.value] = node
+
+        club_label = None
+        if "club_label" in roles:
+            spec = dict(roles["club_label"])
+            bounds = _absolute(root_rect, list(spec.get("bounds") or [0, 0, 1, 1]))
+            club_label = _make_text(
+                page, root.id, "CLUB LABEL", "NO CLUBE SR",
+                bounds, dict(spec.get("style") or {}))
+            club_label.visible = False
+            club_label.metadata["item_slot_role_area"] = "club_label"
 
         slot = SmartSlot(
             id=_id("slot"),
@@ -360,6 +376,7 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 "product_snapshot": {},
                 "price_mode": "auto",
                 "price_variant": "one",
+                "club_label_node_id": club_label.id if club_label is not None else "",
             },
         )
         root.metadata["item_slot_id"] = slot.id
@@ -673,6 +690,9 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
                 secondary_node.text = "R$ 00,00"
         if limit_node is not None:
             limit_node.visible = bool(limit_node.text)
+        club_label = session.page.node(str(slot.metadata.get("club_label_node_id") or ""))
+        if club_label is not None:
+            club_label.visible = display_two and bool(product.get("club_price") or product.get("app_price"))
         slot.metadata["price_variant"] = "two" if display_two else "one"
     else:
         session.bind_product(slot.id, product)
