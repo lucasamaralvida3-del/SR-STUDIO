@@ -832,6 +832,16 @@ ApplicationWindow {
                                 spacing: 9
                                 Label { text: "Layouts promocionais"; color: "#284F8F"; font.bold: true }
                                 Label { text: "Área superior reservada para logo"; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Label { text: "Logo (%)"; color: "#425072" }
+                                    SpinBox { id: logoReservePercent; from: 15; to: 50; value: 24; editable: true; Layout.fillWidth: true }
+                                }
+                                ComboBox {
+                                    id: layoutPriceMode
+                                    Layout.fillWidth: true
+                                    model: ["Preços automáticos", "Um preço", "Dois preços"]
+                                }
                                 Repeater {
                                     model: [
                                         {"label":"Destaque individual", "mode":"individual"},
@@ -886,7 +896,9 @@ ApplicationWindow {
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: sceneBridge.dispatch(JSON.stringify({
                                                 "name":"apply_promotion_layout",
-                                                "mode":previewLayoutCard.modelData.mode
+                                                "mode":previewLayoutCard.modelData.mode,
+                                                "logo_reserved":logoReservePercent.value / 100,
+                                                "price_mode":["auto","one","two"][layoutPriceMode.currentIndex]
                                             }))
                                         }
                                     }
@@ -900,7 +912,9 @@ ApplicationWindow {
                                         "name":"apply_promotion_layout",
                                         "mode":"auto",
                                         "count":autoLayoutCount.value,
-                                        "variation":window.autoLayoutVariation++
+                                        "variation":window.autoLayoutVariation++,
+                                        "logo_reserved":logoReservePercent.value / 100,
+                                        "price_mode":["auto","one","two"][layoutPriceMode.currentIndex]
                                     }))
                                 }
                             }
