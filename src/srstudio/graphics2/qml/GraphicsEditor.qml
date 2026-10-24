@@ -562,8 +562,8 @@ ApplicationWindow {
                             spacing: 7
                             Repeater {
                                 model: [
-                                    { icon:"⬡", title:"Produtos" }, { icon:"⬡", title:"Modelos" },
-                                    { icon:"♧", title:"Elementos" }, { icon:"▧", title:"Imagens" },
+                                    { icon:"⬡", title:"Produtos" }, { icon:"⬡", title:"Slots" },
+                                    { icon:"♧", title:"Layouts" }, { icon:"▧", title:"Imagens" },
                                     { icon:"T", title:"Texto" }, { icon:"♧", title:"Formas" },
                                     { icon:"▨", title:"Fundos" }, { icon:"▱", title:"Camadas" },
                                     { icon:"☷", title:"Projeto" }
@@ -597,7 +597,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: ["Produtos","Modelos","Elementos","Imagens","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
+                                text: ["Produtos","Slots","Layouts de Promoção","Imagens","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
                                 color: "#111B38"; font.pixelSize: 15; font.bold: true
                             }
                             Item { Layout.fillWidth: true }
