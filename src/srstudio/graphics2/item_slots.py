@@ -54,51 +54,79 @@ def _text_role(x: float, y: float, w: float, h: float, *, size: float, weight: i
     }
 
 
+def _ppt_role(x: float, y: float, w: float, h: float, *, size: float, color: str,
+              align: str = "center", weight: int = 700) -> dict[str, Any]:
+    """An editable Anton-like source text role with generous fit bounds.
+
+    Measured from individual(1).pptx and multi slots(1).pptx.
+    Font fallback is chosen by Qt when Anton is unavailable.
+    """
+    role = _text_role(x, y, w, h, size=size, weight=weight, align=align)
+    role["style"].update({"font_family": "Anton", "color": color,
+                           "font_size_unit": "pt", "min_font_size": 7,
+                           "fit_inside_box": True, "wrap": True})
+    return role
+
+
 def _builtins() -> dict[str, ItemSlotPreset]:
     from .slot_limpeza_blue import LIMPEZA_PRESET
 
     return {
         "limpeza-blue-v1": ItemSlotPreset(**copy.deepcopy(LIMPEZA_PRESET)),
+        # PPT reference: dominant product image, blue uppercase name and
+        # overlapping solid-blue bottom-right price plate (without gray boxes).
+        # Keep Beta44 IDs to migrate saved layouts in place.
         "individual-beta44": ItemSlotPreset(
             id="individual-beta44",
             name="INDIVIDUAL PROMOCIONAL",
             width=460,
-            height=320,
-            background={"fill": "#FFFFFF", "stroke": "#D7E1F1", "stroke_width": 1.0, "radius_ratio": 0.015},
+            height=350,
+            background={"fill": "#FFFFFF", "stroke": "none", "stroke_width": 0},
             roles={
-                "image": {"bounds": [0.03, 0.12, 0.48, 0.76], "style": {"fit": "contain"}},
-                "name": _text_role(0.53, 0.05, 0.45, 0.24, size=17, align="left"),
-                "price": {"bounds": [0.50, 0.48, 0.48, 0.41],
-                          "background": {"fill": "#265398", "radius_ratio": 0.07}},
-                "currency": _text_role(0.02, 0.19, 0.19, 0.48, size=15),
-                "integer": _text_role(0.20, 0.04, 0.51, 0.8, size=45),
-                "decimal": _text_role(0.70, 0.07, 0.29, 0.48, size=21),
-                "unit": _text_role(0.82, 0.89, 0.16, 0.08, size=12),
-                "secondary_price": _text_role(0.51, 0.30, 0.45, 0.13, size=13),
-                "limit": _text_role(0.52, 0.91, 0.44, 0.075, size=10),
-                "club_label": _text_role(0.52, 0.39, 0.44, 0.09, size=11),
-
+                "image": {"bounds": [.03, .06, .54, .86],
+                          "style": {"fit": "contain"}},
+                "name": _ppt_role(.57, .16, .41, .28, size=26,
+                                  color="#105594", align="center"),
+                "price": {"bounds": [.53, .53, .45, .43],
+                          "background": {"fill": "#105594", "stroke_width": 0,
+                                         "radius_ratio": .13}},
+                "currency": _ppt_role(.035, .49, .20, .32, size=29, color="#FFFFFF"),
+                "integer": _ppt_role(.24, .23, .48, .69, size=77, color="#FFFFFF"),
+                "decimal": _ppt_role(.70, .38, .27, .27, size=32, color="#FFFFFF"),
+                "unit": _ppt_role(.84, .825, .13, .115, size=15, color="#FFFFFF"),
+                "secondary_price": _ppt_role(.555, .63, .34, .115, size=12,
+                                             color="#FFFFFF"),
+                "limit": _ppt_role(.56, .955, .42, .038, size=9, color="#105594"),
+                "club_label": _ppt_role(.565, .875, .37, .055, size=10,
+                                        color="#FFFFFF"),
+                "promotion_label": _ppt_role(.615, .545, .32, .092, size=16,
+                                             color="#FFFFFF"),
             },
         ),
+        # One source 5-column strip, reused for 6 columns without changing
+        # aspect, product spacing or blue footer proportion.
         "multi-cell-beta44": ItemSlotPreset(
             id="multi-cell-beta44",
             name="ITEM DA FAIXA PROMOCIONAL",
-            width=192,
+            width=194,
             height=300,
-            # Transparent lower area lets the parent strip render one
-            # uninterrupted blue footer across all five/six product cells.
-            background=None,
+            background=None,  # the parent owns the continuous blue footer
             roles={
-                "name": _text_role(.05, .035, .90, .16, size=12),
-                "image": {"bounds": [.09, .20, .82, .45],
+                "name": _ppt_role(.015, .02, .97, .165, size=16,
+                                  color="#105594"),
+                "image": {"bounds": [.08, .19, .84, .565],
                           "style": {"fit": "contain"}},
-                "price": {"bounds": [.02, .73, .83, .22],
-                          "background": {"fill": "#265398", "radius_ratio": .04}},
-                "currency": _text_role(.02, .22, .18, .53, size=10),
-                "integer": _text_role(.19, .02, .55, .88, size=30),
-                "decimal": _text_role(.73, .09, .27, .50, size=14),
-                "unit": _text_role(.84, .86, .14, .10, size=9),
-                "secondary_price": _text_role(.20, .65, .72, .075, size=10),
+                "price": {"bounds": [.01, .77, .98, .225]},
+                "currency": _ppt_role(.035, .30, .20, .46, size=17, color="#FFFFFF"),
+                "integer": _ppt_role(.245, .055, .47, .85, size=46, color="#FFFFFF"),
+                "decimal": _ppt_role(.695, .18, .29, .33, size=18, color="#FFFFFF"),
+                "unit": _ppt_role(.75, .86, .215, .12, size=11, color="#FFFFFF"),
+                "secondary_price": _ppt_role(.07, .775, .83, .052,
+                                             size=9, color="#FFFFFF"),
+                "club_label": _ppt_role(.12, .94, .76, .05,
+                                        size=8, color="#FFFFFF"),
+                "promotion_label": _ppt_role(.14, .945, .72, .045,
+                                             size=8, color="#FFFFFF"),
             },
         ),
         "destaque": ItemSlotPreset(
@@ -249,14 +277,19 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
 
         image_spec = dict(roles.get("image") or {})
         image_rect = _absolute(root_rect, list(image_spec.get("bounds") or [0.1, 0.2, 0.8, 0.45]))
-        image_backplate = GraphicsNode(
-            kind=NodeKind.RECT,
-            name="IMAGE AREA",
-            transform=Transform(x=image_rect.x, y=image_rect.y, width=image_rect.width, height=image_rect.height),
-            style={"fill": "#F8FAFC", "stroke": "#CBD5E1", "stroke_width": 1.0, "radius_ratio": 0.04},
-            metadata={"manual_item_slot_child": True, "item_slot_image_backplate": True},
-        )
-        _add_node(page, image_backplate, root.id)
+        # Reference art has NO visible gray placeholder frame. It is the
+        # actual product image on white paper, not a UI-style picture input.
+        source_faithful = preset_id in ("individual-beta44", "multi-cell-beta44")
+        image_backplate = None
+        if not source_faithful:
+            image_backplate = GraphicsNode(
+                kind=NodeKind.RECT,
+                name="IMAGE AREA",
+                transform=Transform(x=image_rect.x, y=image_rect.y, width=image_rect.width, height=image_rect.height),
+                style={"fill": "#F8FAFC", "stroke": "#CBD5E1", "stroke_width": 1.0, "radius_ratio": 0.04},
+                metadata={"manual_item_slot_child": True, "item_slot_image_backplate": True},
+            )
+            _add_node(page, image_backplate, root.id)
         image = GraphicsNode(
             kind=NodeKind.IMAGE,
             name="IMAGE ROLE",
@@ -335,6 +368,15 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
             node.metadata["item_slot_role_area"] = key
             optional_nodes[role.value] = node
 
+        promotion_label = None
+        if "promotion_label" in roles:
+            spec = dict(roles["promotion_label"])
+            bounds = _absolute(root_rect, list(spec["bounds"]))
+            promotion_label = _make_text(
+                page, root.id, "PROMOTION LABEL", "PROMOÇÃO" if preset_id == "individual-beta44" else "NA PROMOÇÃO",
+                bounds, dict(spec.get("style") or {}))
+            promotion_label.metadata["item_slot_role_area"] = "promotion_label"
+
         club_label = None
         if "club_label" in roles:
             spec = dict(roles["club_label"])
@@ -365,7 +407,7 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 "preset_id": str(preset.get("id") or preset_id),
                 "root_node_id": root.id,
                 "role_area_nodes": {"image": image.id, "name": name_node.id, "price": price_group.id, "unit": unit.id},
-                "decorative_nodes": [item for item in (background_id, image_backplate.id, price_background_id) if item],
+                "decorative_nodes": [item for item in (background_id, image_backplate.id if image_backplate else "", price_background_id) if item],
                 "price_block": {
                     "currency_node": component_nodes["currency"].id,
                     "integer_node": component_nodes["integer"].id,
@@ -378,6 +420,7 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 "price_mode": "auto",
                 "price_variant": "one",
                 "club_label_node_id": club_label.id if club_label is not None else "",
+                "promotion_label_node_id": promotion_label.id if promotion_label is not None else "",
             },
         )
         root.metadata["item_slot_id"] = slot.id
@@ -569,6 +612,9 @@ def duplicate_item_slot(session: GraphicsSession, slot_id: str, *, dx: float = 2
         original_club_label = str(source_slot.metadata.get("club_label_node_id") or "")
         if original_club_label:
             clone.metadata["club_label_node_id"] = mapping.get(original_club_label, "")
+        old_promotion = str(source_slot.metadata.get("promotion_label_node_id") or "")
+        if old_promotion:
+            clone.metadata["promotion_label_node_id"] = mapping.get(old_promotion, "")
         # Duplicating one cell produces a standalone card, not a reference
         # to the parent strip. The original multi strip stays untouched.
         for key in ("multi_parent_id", "multi_index", "multi_count"):
