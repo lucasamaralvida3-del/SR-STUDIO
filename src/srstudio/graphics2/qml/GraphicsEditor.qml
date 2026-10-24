@@ -19,6 +19,7 @@ ApplicationWindow {
     // Beta 42: studio navigation mirrors the supplied SR Studio 5.0 reference.
     property int studioSection: 0
     property int studioNavigation: 2
+    property int autoLayoutVariation: 0
     property string productQuery: ""
     property string productFilter: "Todos os produtos"
     property int visibleProductLimit: 12
@@ -781,6 +782,47 @@ ApplicationWindow {
                             }
                         }
 
+                        }
+                        ScrollView {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: studioSection === 2
+                            clip: true
+                            ColumnLayout {
+                                width: 235
+                                spacing: 9
+                                Label { text: "Layouts promocionais"; color: "#284F8F"; font.bold: true }
+                                Label { text: "Área superior reservada para logo"; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Repeater {
+                                    model: [
+                                        {"label":"Destaque individual", "mode":"individual"},
+                                        {"label":"11 produtos", "mode":"eleven"},
+                                        {"label":"7 produtos", "mode":"seven"},
+                                        {"label":"6 produtos", "mode":"six"}
+                                    ]
+                                    delegate: Button {
+                                        required property var modelData
+                                        Layout.fillWidth: true
+                                        text: modelData.label
+                                        onClicked: sceneBridge.dispatch(JSON.stringify({
+                                            "name":"apply_promotion_layout",
+                                            "mode":modelData.mode
+                                        }))
+                                    }
+                                }
+                                Label { text: "Auto Layout"; color: "#284F8F"; font.bold: true }
+                                SpinBox { id: autoLayoutCount; from: 1; to: 24; value: 6; editable: true; Layout.fillWidth: true }
+                                Button {
+                                    Layout.fillWidth: true
+                                    text: "Criar Auto Layout"
+                                    onClicked: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"apply_promotion_layout",
+                                        "mode":"auto",
+                                        "count":autoLayoutCount.value,
+                                        "variation":window.autoLayoutVariation++
+                                    }))
+                                }
+                            }
                         }
                         ScrollView {
                             Layout.fillWidth: true
