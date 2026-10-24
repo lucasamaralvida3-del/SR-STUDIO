@@ -88,6 +88,48 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
 
     def dispatch(self, command: dict[str, Any]) -> CommandResult:
         name = str(command.get("name") or "").strip().lower()
+        if name == "add_multi_item_slot":
+            from .multi_item_strip import create_multi_item_strip
+            try:
+                result = create_multi_item_strip(
+                    self.session,
+                    count=int(command.get("count", 6)),
+                    price_mode=str(command.get("price_mode") or "auto"),
+                    x=_optional_number(command.get("x")),
+                    y=_optional_number(command.get("y")),
+                )
+            except (ValueError, TypeError) as exc:
+                return CommandResult(False, False, str(exc))
+            return CommandResult(True, True, "Faixa Multi Itens inserida.", result)
+
+        if name == "set_item_price_mode":
+            from .model import BindingRole
+            mode = str(command.get("mode") or "auto")
+            if mode not in ("auto", "one", "two"):
+                return CommandResult(False, False, "Modo inválido.")
+            root_id = str(command.get("multi_root_id") or "")
+            selected = [str(command.get("slot_id") or "")]
+            if root_id:
+                root = self.session.page.node(root_id)
+                if root is None or not root.metadata.get("multi_slot_beta44"):
+                    return CommandResult(False, False, "Faixa Multi não encontrada.")
+                selected = list(root.metadata.get("child_slot_ids") or [])
+            updated = []
+            for sid in selected:
+                slot = self.session.page.slots.get(sid)
+                if not is_manual_item_slot(slot):
+                    continue
+                if slot.metadata.get("preset_id") not in ("individual-beta44", "multi-cell-beta44"):
+                    continue
+                with self.session.transaction("Alterar quantidade de preços"):
+                    slot.metadata["price_mode"] = mode
+                    second = self.session.page.node(str(slot.node_by_role.get(BindingRole.RETAIL_PRICE.value) or ""))
+                    if second is not None:
+                        second.visible = mode == "two" or (mode == "auto" and slot.metadata.get("price_variant") == "two")
+                        slot.metadata["price_variant"] = "two" if second.visible else "one"
+                updated.append(sid)
+            return CommandResult(bool(updated), bool(updated), "Modo de preços atualizado.", {"slot_ids": updated})
+
         if name == "add_item_slot":
             preset_id = str(command.get("preset_id") or LIMPEZA_BLUE_ID)
             if preset_id not in (LIMPEZA_BLUE_ID, "individual-beta44"):
