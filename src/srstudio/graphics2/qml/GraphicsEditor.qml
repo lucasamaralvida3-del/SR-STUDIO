@@ -612,34 +612,80 @@ ApplicationWindow {
             orientation: Qt.Horizontal
 
             Rectangle {
-                SplitView.preferredWidth: 310
-                SplitView.minimumWidth: 245
+                SplitView.preferredWidth: 332
+                SplitView.minimumWidth: 285
                 color: "#FFFFFF"
-                border.color: "#D9E2EF"
-
-                ColumnLayout {
+                border.color: "#E5EAF4"
+                RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 12
-                    spacing: 8
-
-                    Label { text: "Studio de Encartes"; font.bold: true; font.pixelSize: 18; color: "#111827" }
-                    Label { text: "Arraste um produto até o card ou use o botão +"; color: "#64748B"; font.pixelSize: 11 }
-
-                    TabBar {
-                        id: leftTabs
-                        Layout.fillWidth: true
-                        TabButton { text: "Produtos" }
-                        TabButton { text: "Camadas" }
-                    }
-
-                    StackLayout {
-                        Layout.fillWidth: true
+                    spacing: 0
+                    Rectangle {
+                        Layout.preferredWidth: 67
                         Layout.fillHeight: true
-                        currentIndex: leftTabs.currentIndex
-
+                        color: "#FBFCFF"
+                        border.color: "#EEF1F8"
                         ColumnLayout {
-                            spacing: 8
-                            Label { text: "Destino do produto"; color: "#475569"; font.bold: true; font.pixelSize: 11 }
+                            anchors.fill: parent
+                            anchors.topMargin: 11
+                            spacing: 7
+                            Repeater {
+                                model: [
+                                    { icon:"⬡", title:"Produtos" }, { icon:"⬡", title:"Modelos" },
+                                    { icon:"♧", title:"Elementos" }, { icon:"▧", title:"Imagens" },
+                                    { icon:"T", title:"Texto" }, { icon:"♧", title:"Formas" },
+                                    { icon:"▨", title:"Fundos" }, { icon:"▱", title:"Camadas" }
+                                ]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    required property int index
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 73
+                                    Layout.leftMargin: 5
+                                    Layout.rightMargin: 5
+                                    radius: 9
+                                    color: studioSection === index ? "#EFF3FF" : "transparent"
+                                    ColumnLayout {
+                                        anchors.centerIn: parent
+                                        spacing: 5
+                                        Label { text: modelData.icon; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#2C4BFA" : "#4C577F"; font.pixelSize: 24 }
+                                        Label { text: modelData.title; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#284DFF" : "#425072"; font.pixelSize: 9; font.bold: studioSection === index }
+                                    }
+                                    MouseArea { anchors.fill: parent; onClicked: studioSection = index }
+                                }
+                            }
+                            Item { Layout.fillHeight: true }
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillHeight: true
+                        Layout.fillWidth: true
+                        Layout.margins: 13
+                        spacing: 11
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label {
+                                text: ["Produtos","Modelos","Elementos","Imagens","Texto","Formas","Fundos","Camadas"][studioSection]
+                                color: "#111B38"; font.pixelSize: 15; font.bold: true
+                            }
+                            Item { Layout.fillWidth: true }
+                            ToolButton { text: "⌄"; onClicked: studioSection = 0 }
+                        }
+                        ColumnLayout {
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            visible: studioSection === 0 || studioSection === 3
+                            spacing: 11
+                            RowLayout {
+                                Layout.fillWidth: true
+                                TextField { Layout.fillWidth: true; placeholderText: "⌕  Buscar produtos..."; text: productQuery; onTextChanged: productQuery = text; font.pixelSize: 11 }
+                                ToolButton { text: "▽"; onClicked: productFilter = productFilter === "Sem imagem" ? "Todos os produtos" : "Sem imagem" }
+                            }
+                            ComboBox {
+                                Layout.fillWidth: true
+                                model: ["Todos os produtos","Com imagem","Sem imagem"]
+                                onActivated: productFilter = currentText
+                            }
+                            Label { text: "Destino do produto"; font.pixelSize: 10; color: "#79849A" }
                             ComboBox {
                                 id: slotCombo
                                 Layout.fillWidth: true
@@ -648,21 +694,20 @@ ApplicationWindow {
                                 valueRole: "id"
                                 onActivated: selectedSlotId = currentValue
                             }
-                            Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
-                            ListView {
+                                                        ListView {
                                 id: productList
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
                                 clip: true
                                 spacing: 8
-                                model: products()
+                                model: filteredProducts()
                                 ScrollBar.vertical: ScrollBar {}
                                 delegate: Rectangle {
                                     id: productCard
                                     required property var modelData
                                     width: productList.width - 4
-                                    height: 84
-                                    radius: 6
+                                    height: 99
+                                    radius: 9
                                     color: productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF"
                                     border.color: productMouse.dragging ? "#0F5BD8" : "#D9E4F2"
                                     border.width: productMouse.dragging ? 2 : 1
@@ -673,10 +718,10 @@ ApplicationWindow {
                                         anchors.margins: 9
                                         spacing: 9
                                         Rectangle {
-                                            Layout.preferredWidth: 58
-                                            Layout.preferredHeight: 58
+                                            Layout.preferredWidth: 64
+                                            Layout.preferredHeight: 66
                                             radius: 5
-                                            color: "#F8FAFC"
+                                            color: "#FAFBFE"
                                             border.color: "#E5EAF1"
                                             clip: true
                                             Image {
@@ -690,11 +735,11 @@ ApplicationWindow {
                                         ColumnLayout {
                                             Layout.fillWidth: true
                                             spacing: 2
-                                            Label { Layout.fillWidth: true; text: modelData.display_name || modelData.name || modelData.original_name || "Produto"; color: "#111827"; font.bold: true; font.pixelSize: 11; elide: Text.ElideRight }
+                                            Label { Layout.fillWidth: true; text: modelData.display_name || modelData.name || modelData.original_name || "Produto"; color: "#111827"; font.bold: true; font.pixelSize: 12; elide: Text.ElideRight }
                                             Label { text: (modelData.unit || "UN") + (modelData.category ? " · " + modelData.category : ""); color: "#64748B"; font.pixelSize: 10 }
-                                            Label { text: modelData.price ? ("R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 12 }
+                                            Label { text: modelData.price ? ("R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 14 }
                                         }
-                                        ToolButton { text: "+"; enabled: selectedSlotId !== ""; onClicked: bindProduct(modelData) }
+                                        ToolButton { text: "+"; font.pixelSize: 18; enabled: selectedSlotId !== ""; onClicked: bindProduct(modelData) }
                                     }
                                     MouseArea {
                                         id: productMouse
@@ -754,9 +799,20 @@ ApplicationWindow {
                                 }
                                 Label { anchors.centerIn: parent; visible: productList.count === 0; text: "Importe uma planilha para carregar produtos."; width: productList.width - 30; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; color: "#94A3B8" }
                             }
-                        }
 
+                            Button {
+                                Layout.fillWidth: true
+                                text: "Ver mais produtos"
+                                flat: true
+                                onClicked: visibleProductLimit += 24
+                            }
+                        }
                         ColumnLayout {
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            visible: studioSection === 7 || studioSection === 2
+                            spacing: 7
+                                                    ColumnLayout {
                             spacing: 6
                             RowLayout {
                                 Layout.fillWidth: true
@@ -779,6 +835,20 @@ ApplicationWindow {
                                     onClicked: sceneBridge.selectNodeAdvanced(modelData.id, false, (Qt.application.keyboardModifiers & Qt.ControlModifier) !== 0)
                                 }
                             }
+                        }
+
+                        }
+                        ColumnLayout {
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            visible: studioSection === 1 || studioSection === 4 || studioSection === 5 || studioSection === 6
+                            spacing: 11
+                            Button { Layout.fillWidth: true; visible: studioSection === 1; text: "+ Slot Azul"; onClicked: createBlueSlot() }
+                            Button { Layout.fillWidth: true; visible: studioSection === 4; text: "+ Texto"; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
+                            Button { Layout.fillWidth: true; visible: studioSection === 5; text: "+ Forma"; onClicked: sceneBridge.dispatch('{"name":"add_rect"}') }
+                            CheckBox { visible: studioSection === 6; text: "Mostrar grade"; checked: showGrid; onToggled: showGrid = checked }
+                            CheckBox { visible: studioSection === 6; text: "Mostrar réguas"; checked: showRulers; onToggled: showRulers = checked }
+                            Item { Layout.fillHeight: true }
                         }
                     }
                 }
