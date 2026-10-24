@@ -1717,6 +1717,13 @@ ApplicationWindow {
                 }
                 Item { Layout.fillWidth: true }
                 ToolButton { text: "▦"; checkable: true; checked: showGrid; onClicked: showGrid = checked; ToolTip.text: "Grade"; ToolTip.visible: hovered }
+                Label {
+                    visible: productDragActive
+                    text: dragHoverSlotId ? "Solte para aplicar o produto" : "Arraste sobre um card"
+                    color: dragHoverSlotId ? "#16A34A" : "#2954F9"
+                    font.pixelSize: 10
+                    font.bold: true
+                }
                 ToolButton { text: "◉"; checkable: true; checked: showRulers; onClicked: showRulers = checked; ToolTip.text: "Réguas"; ToolTip.visible: hovered }
                 Slider {
                     from: 0.12
