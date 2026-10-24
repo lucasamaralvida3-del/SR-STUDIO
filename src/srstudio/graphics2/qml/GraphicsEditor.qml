@@ -1538,37 +1538,90 @@ ApplicationWindow {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 60
+            Layout.preferredHeight: 116
+            radius: 12
             color: "#FFFFFF"
-            border.color: "#D9E2EF"
+            border.color: "#E4E9F4"
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                spacing: 7
-                Label { text: "Páginas"; font.bold: true; color: "#334155" }
+                anchors.margins: 13
+                spacing: 12
                 Repeater {
                     model: scene.pages || []
-                    delegate: Button {
+                    delegate: Rectangle {
                         required property var modelData
-                        text: modelData.name || ("Página " + (index + 1))
-                        checked: modelData.id === scene.active_page_id
-                        checkable: true
-                        onClicked: sceneBridge.dispatch(JSON.stringify({"name":"select_page","page_id":modelData.id}))
+                        required property int index
+                        Layout.preferredWidth: 76
+                        Layout.preferredHeight: 92
+                        radius: 8
+                        color: "#FDFEFF"
+                        border.color: modelData.id === scene.active_page_id ? "#365CFF" : "#E2E7F2"
+                        border.width: modelData.id === scene.active_page_id ? 2 : 1
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: 4
+                            spacing: 3
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                color: modelData.background || "#FFFFFF"
+                                border.color: "#DCE3EF"
+                                clip: true
+                                // Miniature representation uses actual document node colors.
+                                Repeater {
+                                    model: Object.values(modelData.nodes || {}).slice(0, 28)
+                                    delegate: Rectangle {
+                                        required property var modelData
+                                        visible: modelData.visible !== false
+                                        x: Math.max(0, Number(modelData.transform.x) / Math.max(1, page ? page.width : 1080) * parent.width)
+                                        y: Math.max(0, Number(modelData.transform.y) / Math.max(1, page ? page.height : 1350) * parent.height)
+                                        width: Math.max(1, Number(modelData.transform.width) / Math.max(1, page ? page.width : 1080) * parent.width)
+                                        height: Math.max(1, Number(modelData.transform.height) / Math.max(1, page ? page.height : 1350) * parent.height)
+                                        color: modelData.kind === "image" ? "#E1EAF8" : (modelData.style ? modelData.style.fill || "#EBEFF7" : "#EBEFF7")
+                                    }
+                                }
+                            }
+                            Label {
+                                text: modelData.name || ("Página " + (index + 1))
+                                Layout.alignment: Qt.AlignHCenter
+                                font.pixelSize: 9
+                                color: modelData.id === scene.active_page_id ? "#2954F9" : "#79849D"
+                            }
+                        }
+                        MouseArea { anchors.fill: parent; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"select_page","page_id":modelData.id})) }
                     }
                 }
-                Button { text: "+"; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
-                Item { Layout.fillWidth: true }
-                Label {
-                    Layout.preferredWidth: 360
-                    text: sceneBridge.status || ""
-                    color: "#334155"
-                    font.pixelSize: 10
-                    elide: Text.ElideRight
-                    ToolTip.text: sceneBridge.status || ""
-                    ToolTip.visible: hovered
+                Rectangle {
+                    Layout.preferredWidth: 77
+                    Layout.preferredHeight: 92
+                    radius: 8
+                    color: "#FBFCFF"
+                    border.color: "#CBD7EB"
+                    border.width: 1
+                    ColumnLayout {
+                        anchors.centerIn: parent
+                        Label { text: "+"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 25; color: "#425276" }
+                        Label { text: "Adicionar página"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 9; color: "#71809E" }
+                    }
+                    MouseArea { anchors.fill: parent; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
                 }
-                Label { text: productDragActive ? (dragHoverSlotId ? "Solte para aplicar o produto" : "Arraste sobre um card") : ("Snap ✓  ·  Grid " + (showGrid ? "✓" : "—") + "  ·  Réguas " + (showRulers ? "✓" : "—")); color: productDragActive ? (dragHoverSlotId ? "#16A34A" : "#0F5BD8") : "#64748B"; font.bold: productDragActive; font.pixelSize: 10 }
+                Item { Layout.fillWidth: true }
+                ToolButton { text: "▦"; checkable: true; checked: showGrid; onClicked: showGrid = checked; ToolTip.text: "Grade"; ToolTip.visible: hovered }
+                ToolButton { text: "◉"; checkable: true; checked: showRulers; onClicked: showRulers = checked; ToolTip.text: "Réguas"; ToolTip.visible: hovered }
+                Slider {
+                    from: 0.12
+                    to: 3.5
+                    value: window.zoom
+                    Layout.preferredWidth: 120
+                    onMoved: window.zoom = value
+                }
+                Label { text: Math.round(window.zoom * 100) + "%"; Layout.preferredWidth: 44; color: "#17213E"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignRight }
+                ToolButton {
+                    text: "⛶"
+                    ToolTip.text: "Ajustar zoom à página"; ToolTip.visible: hovered
+                    onClicked: if (page) zoom = Math.max(0.12, Math.min(3.5,
+                        Math.min((workspace.width - 180) / page.width, (workspace.height - 140) / page.height)))
+                }
             }
         }
     }
