@@ -6,7 +6,7 @@ The header remains empty for an independently placed campaign logo. This is
 a pure geometry planner: no state is changed until the editor applies a plan.
 """
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from math import ceil
 from typing import Literal
 
@@ -23,7 +23,7 @@ class SlotPlacement:
     kind: str
 
     def as_dict(self) -> dict:
-        return vars(self).copy()
+        return asdict(self)
 
 
 @dataclass(frozen=True)
@@ -65,12 +65,12 @@ def plan_promotion(mode: LayoutKind, *, count: int | None = None,
         lower_count = 3 if mode == "six" else 4
         split = top + available * .59
         items.append(SlotPlacement(0, .045, top, .43, split - top - .012, "individual"))
-        items.extend(_row(1, 2, top, (split - top - .024) / 2, left=.492, width=.463))
-        # Second right item occupies the lower half of the upper composition.
-        second = items[2]
-        items[2] = SlotPlacement(second.index, second.x,
-                                 top + (split - top) / 2, second.width,
-                                 (split - top) / 2 - .012, second.kind)
+        # Right column: two full-width cards, stacked, not two narrow
+        # horizontally offset cards that break the supplied reference.
+        right_height = (split - top - .012) / 2
+        items.append(SlotPlacement(1, .492, top, .463, right_height, "individual"))
+        items.append(SlotPlacement(2, .492, top + right_height + .012,
+                                   .463, right_height, "individual"))
         items.extend(_row(3, lower_count, split, bottom - split))
     elif mode == "eleven":
         first = available * .32
