@@ -16,6 +16,71 @@ ApplicationWindow {
     property var scene: JSON.parse(sceneBridge.sceneJson)
     property var page: activePage()
     property real zoom: 0.72
+    // Beta 42: studio navigation mirrors the supplied SR Studio 5.0 reference.
+    property int studioSection: 0
+    property int studioNavigation: 2
+    property string productQuery: ""
+    property string productFilter: "Todos os produtos"
+    property int visibleProductLimit: 12
+    property bool showProductionGate: false
+    property bool showAdvancedSlotActions: false
+
+    function filteredProducts() {
+        var query = productQuery.toLocaleLowerCase().trim()
+        return products().filter(function(p) {
+            var searchable = (productLabel(p) + " " + String(p.id || p.product_id || "")).toLocaleLowerCase()
+            var hasImage = !!(p.image_path || p.image)
+            return (!query || searchable.indexOf(query) !== -1)
+                && (productFilter === "Todos os produtos"
+                    || (productFilter === "Com imagem" && hasImage)
+                    || (productFilter === "Sem imagem" && !hasImage))
+        }).slice(0, visibleProductLimit)
+    }
+
+    function createBlueSlot() {
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
+            "name": "add_item_slot", "preset_id": "limpeza-blue-v1"
+        })))
+        if (result.ok && result.payload) {
+            selectedSlotId = String(result.payload.slot_id || "")
+            smartSlotEditMode = true
+            smartSlotInspectionMode = true
+        }
+    }
+
+    function selectedPicture() {
+        var selected = selectedNode()
+        return selected && selected.kind === "image" ? selected : null
+    }
+
+    function removeCurrentBackground() {
+        if (selectedSlotId !== "")
+            sceneBridge.removeSlotBackground(selectedSlotId)
+        else if (selectedPicture())
+            sceneBridge.removeBackground(selectedPicture().id)
+    }
+
+    FileDialog {
+        id: saveProjectDialog
+        title: "Salvar projeto SR Studio"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Cena SR Studio (*.srscene)"]
+        onAccepted: sceneBridge.saveSceneAs(selectedFile.toString())
+    }
+    FileDialog {
+        id: exportPdfDialog
+        title: "Exportar encarte em PDF"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["PDF (*.pdf)"]
+        onAccepted: sceneBridge.exportPdf(selectedFile.toString())
+    }
+    FileDialog {
+        id: exportPngDialog
+        title: "Exportar encarte em PNG"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["PNG (*.png)"]
+        onAccepted: sceneBridge.exportPng(selectedFile.toString())
+    }
     property bool showGrid: true
     property bool showRulers: true
     property real gridStep: 50
@@ -439,99 +504,101 @@ ApplicationWindow {
     Shortcut { sequence: "Ctrl+Shift+G"; onActivated: sceneBridge.dispatch('{"name":"ungroup"}') }
     Shortcut { sequence: "G"; onActivated: showGrid = !showGrid }
 
+
+    // Two-row professional studio header. All activated controls are real
+    // commands; import remains handled by the enclosing SR Studio workflow.
     header: ToolBar {
-        implicitHeight: 58
-        background: Rectangle { color: "#FFFFFF"; border.color: "#D9E2EF" }
+        implicitHeight: 110
+        background: Rectangle { color: "#FFFFFF"; border.color: "#E6EAF4" }
         RowLayout {
             anchors.fill: parent
-            anchors.leftMargin: 14
-            anchors.rightMargin: 14
-            spacing: 7
-
-            ColumnLayout {
-                spacing: -1
-                Label { text: "SR GRAPHICS ENGINE 2.0"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 10 }
-                Label { text: scene.name || "Novo Projeto SR"; color: "#111827"; font.bold: true; font.pixelSize: 14 }
+            spacing: 0
+            Rectangle {
+                Layout.preferredWidth: 230
+                Layout.fillHeight: true
+                color: "#123D9C"
+                RowLayout {
+                    anchors.fill: parent
+                    anchors.margins: 22
+                    spacing: 12
+                    Rectangle {
+                        Layout.preferredWidth: 51
+                        Layout.preferredHeight: 51
+                        radius: 10
+                        color: "#2459CB"
+                        border.color: "#719AFA"
+                        Label {
+                            anchors.centerIn: parent
+                            text: "SR"
+                            font.pixelSize: 24
+                            font.bold: true
+                            color: "white"
+                        }
+                    }
+                    Label { text: "SR Studio 5.0"; color: "white"; font.bold: true; font.pixelSize: 16 }
+                }
             }
-            ToolSeparator {}
-            ToolButton { text: "↶"; enabled: scene.editor ? scene.editor.can_undo : false; ToolTip.text: "Desfazer"; ToolTip.visible: hovered; onClicked: sceneBridge.undo() }
-            ToolButton { text: "↷"; enabled: scene.editor ? scene.editor.can_redo : false; ToolTip.text: "Refazer"; ToolTip.visible: hovered; onClicked: sceneBridge.redo() }
-            ToolSeparator {}
-            ToolButton { text: "▦"; checkable: true; checked: showGrid; ToolTip.text: "Grid"; ToolTip.visible: hovered; onClicked: showGrid = checked }
-            ToolButton { text: "▤"; checkable: true; checked: showRulers; ToolTip.text: "Réguas"; ToolTip.visible: hovered; onClicked: showRulers = checked }
-            ToolButton { text: "Smart Slots"; checkable: true; checked: smartSlotInspectionMode; ToolTip.text: "Mostrar áreas inteligentes"; ToolTip.visible: hovered; onClicked: smartSlotInspectionMode = checked }
-            ToolButton {
-                text: "+ Slot Azul"
-                ToolTip.text: "Criar o único Smart Slot ativo, com 1 ou 2 preços automáticos"
-                onClicked: {
-                    var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
-                        "name": "add_item_slot", "preset_id": "limpeza-blue-v1"
-                    })))
-                    if (result.ok && result.payload) {
-                        selectedSlotId = String(result.payload.slot_id || "")
-                        smartSlotEditMode = true
-                        smartSlotInspectionMode = true
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Layout.leftMargin: 23
+                Layout.rightMargin: 24
+                Layout.topMargin: 14
+                Layout.bottomMargin: 10
+                spacing: 5
+                RowLayout {
+                    Layout.fillWidth: true
+                    Label { text: "☰"; color: "#2258DF"; font.pixelSize: 20; Layout.rightMargin: 12 }
+                    Label { text: "Encartes Studio"; color: "#4B5672"; font.pixelSize: 12 }
+                    Item { Layout.fillWidth: true }
+                    ToolButton { text: "♧"; ToolTip.text: "Notificações"; ToolTip.visible: hovered; enabled: false }
+                    ToolButton { text: "?"; ToolTip.text: "Ajuda"; ToolTip.visible: hovered; onClicked: showProductionGate = !showProductionGate }
+                    Label { text: "SR"; font.bold: true; color: "#153E8E"; font.pixelSize: 12 }
+                }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 7
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 1
+                        RowLayout {
+                            spacing: 8
+                            Label { text: scene.name || "Novo Encarte"; font.pixelSize: 16; font.bold: true; color: "#111B3B"; elide: Text.ElideRight; Layout.maximumWidth: 380 }
+                            Rectangle {
+                                width: 51; height: 24; radius: 6
+                                color: "#EAF8EF"
+                                Label { anchors.centerIn: parent; text: "✓ Salvo"; color: "#169859"; font.pixelSize: 10; font.bold: true }
+                            }
+                        }
+                        Label { text: "Edição de encartes   •   " + (scene.pages ? scene.pages.length : 0) + " página(s)"; color: "#61708E"; font.pixelSize: 11 }
+                    }
+                    Button {
+                        text: "▦  Importar Planilha"
+                        enabled: false
+                        ToolTip.text: "Importação disponível na janela principal do SR Studio"
+                        ToolTip.visible: hovered
+                    }
+                    Button {
+                        text: "▧  Importar PPTX"
+                        enabled: false
+                        ToolTip.text: "Importação disponível na janela principal do SR Studio"
+                        ToolTip.visible: hovered
+                    }
+                    Button { text: "✓  Validar"; onClicked: showProductionGate = !showProductionGate }
+                    Button { text: "◉  Prévia"; onClicked: { smartSlotEditMode = false; smartSlotInspectionMode = false; showGrid = false; showRulers = false } }
+                    Button {
+                        text: "⇧  Exportar   ▾"
+                        highlighted: true
+                        onClicked: exportMenu.popup()
+                        Menu {
+                            id: exportMenu
+                            MenuItem { text: "PDF"; onTriggered: exportPdfDialog.open() }
+                            MenuItem { text: "PNG"; onTriggered: exportPngDialog.open() }
+                            MenuItem { text: "Salvar projeto"; onTriggered: saveProjectDialog.open() }
+                        }
                     }
                 }
             }
-            ToolButton {
-                text: "Ajustar Smart Slot"
-                checkable: true
-                checked: smartSlotEditMode
-                ToolTip.text: "Mover/redimensionar somente a área semântica do slot"
-                ToolTip.visible: hovered
-                onClicked: {
-                    smartSlotEditMode = checked
-                    if (checked) smartSlotInspectionMode = true
-                }
-            }
-            ToolButton { text: "Snap Slot"; visible: smartSlotEditMode; checkable: true; checked: smartSlotSnap; onClicked: smartSlotSnap = checked }
-            ToolButton { text: "Fundo automático"; checkable: true; checked: autoRemoveProductBackground; onClicked: autoRemoveProductBackground = checked; ToolTip.text: "withoutBG local no vínculo de produtos; primeiro uso baixa ~1,5 GB"; ToolTip.visible: hovered }
-            ToolButton {
-                text: "Remover Fundo"
-                enabled: selectedSlotId !== "" || (anchorNode && anchorNode.kind === "image")
-                ToolTip.text: "Processar imagem do Smart Slot ou imagem selecionada com withoutBG"
-                onClicked: {
-                    if (selectedSlotId !== "")
-                        sceneBridge.removeSlotBackground(selectedSlotId)
-                    else if (anchorNode && anchorNode.kind === "image")
-                        sceneBridge.removeBackground(anchorNode.id)
-                }
-            }
-            ToolButton {
-                text: "Restaurar Auto"
-                visible: smartSlotEditMode && selectedSlotId !== ""
-                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"restore_smart_slot_auto","slot_id":selectedSlotId}))
-            }
-            ToolButton {
-                text: "Não-produto"
-                visible: smartSlotEditMode && selectedSlotId !== ""
-                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"mark_smart_slot_non_product","slot_id":selectedSlotId}))
-            }
-            ToolButton {
-                text: "Excluir Slot"
-                visible: smartSlotEditMode && selectedSlotId !== ""
-                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"delete_smart_slot","slot_id":selectedSlotId}))
-            }
-            ToolButton { text: "Agrupar"; onClicked: sceneBridge.dispatch('{"name":"group"}') }
-            ToolButton { text: "Desagrupar"; onClicked: sceneBridge.dispatch('{"name":"ungroup"}') }
-            ToolButton { text: "Frente"; onClicked: sceneBridge.dispatch('{"name":"layer","mode":"front"}') }
-            ToolButton { text: "Fundo"; onClicked: sceneBridge.dispatch('{"name":"layer","mode":"back"}') }
-            ToolButton { text: "Duplicar"; onClicked: sceneBridge.dispatch('{"name":"duplicate"}') }
-            ToolSeparator {}
-            ToolButton { text: "+ Página"; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
-            ToolButton { text: "⧉ Página"; onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}') }
-            Item { Layout.fillWidth: true }
-            Rectangle {
-                implicitWidth: qualityText.implicitWidth + 20
-                implicitHeight: 30
-                radius: 5
-                color: "#FFF8E6"
-                border.color: "#F2D58A"
-                Label { id: qualityText; anchors.centerIn: parent; text: "✓ Engine 2 · ALPHA"; color: "#A16207"; font.bold: true; font.pixelSize: 11 }
-            }
-            Label { text: Math.round(window.zoom * 100) + "%"; color: "#475569"; Layout.preferredWidth: 44; horizontalAlignment: Text.AlignRight }
-            Slider { from: 0.12; to: 3.5; value: window.zoom; Layout.preferredWidth: 155; onMoved: window.zoom = value }
         }
     }
 
