@@ -119,3 +119,20 @@ def test_eleven_item_promotion_reuses_multi_strip_in_bottom_row():
     assert len(groups) == 1
     assert groups[0].metadata["multi_count"] == 5
     assert len(groups[0].metadata["child_slot_ids"]) == 5
+
+
+def test_switching_promotion_layout_preserves_existing_page():
+    session = make_session()
+    router = ItemSlotCommandRouter(session)
+    initial = router.dispatch({"name": "apply_promotion_layout", "mode": "six"})
+    assert initial.ok
+    original_page_id = session.page.id
+    original_slot_ids = set(initial.payload["slot_ids"])
+    next_layout = router.dispatch({"name": "apply_promotion_layout", "mode": "seven"})
+    assert next_layout.ok
+    assert len(session.document.pages) == 2
+    assert session.page.id != original_page_id
+    assert set(session.document.pages[0].slots) == original_slot_ids
+    assert len(session.page.slots) == 7
+    assert session.page.width == session.document.pages[0].width
+    assert session.page.height == session.document.pages[0].height
