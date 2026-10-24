@@ -1,5 +1,10 @@
 name: Publish G2 Beta 42 Reference Layout + Delta
 on:
+  push:
+    branches:
+      - release/g2beta42-layout-complete-gated
+    paths:
+      - '.github/workflows/g2-beta42-reference-layout-publish.yml'
   workflow_dispatch:
 
 permissions:
@@ -36,7 +41,15 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq .conclusion)
+          for attempt in $(seq 1 100); do
+            outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$SOURCE_RUN_ID" --jq .conclusion)
+            if [ "$outcome" = success ]; then break; fi
+            if [ "$outcome" = failure ] || [ "$outcome" = cancelled ]; then
+              echo "Candidate build failed: $outcome" >&2; exit 1
+            fi
+            if [ "$attempt" = 100 ]; then echo "Candidate build timed out" >&2; exit 1; fi
+            sleep 15
+          done
           test "$outcome" = success
           qml_outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/40089084480" --jq .conclusion)
           test "$qml_outcome" = success
