@@ -416,6 +416,9 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                     "combined_value": "",
                 },
                 "state": "empty",
+                "reference_fidelity_revision": 45 if source_faithful else 1,
+                "reference_source": ("individual(1).pptx" if preset_id == "individual-beta44"
+                                     else "multi slots(1).pptx") if source_faithful else "",
                 "product_snapshot": {},
                 "price_mode": "auto",
                 "price_variant": "one",
