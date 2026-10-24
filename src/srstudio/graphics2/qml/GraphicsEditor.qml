@@ -1026,6 +1026,7 @@ ApplicationWindow {
                             Repeater {
                                 model: [5, 6]
                                 delegate: Rectangle {
+                                    id: multiPreviewCard
                                     required property var modelData
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: 130
@@ -1043,9 +1044,9 @@ ApplicationWindow {
                                         width: parent.width - 16; height: 86
                                         spacing: 2
                                         Repeater {
-                                            model: parent.parent.modelData
+                                            model: multiPreviewCard.modelData
                                             delegate: Rectangle {
-                                                width: (parent.width - (parent.parent.modelData - 1) * 2) / parent.parent.modelData
+                                                width: (parent.width - (multiPreviewCard.modelData - 1) * 2) / multiPreviewCard.modelData
                                                 height: parent.height
                                                 color: "#F7FAFE"
                                                 border.color: "#D7E1F0"
