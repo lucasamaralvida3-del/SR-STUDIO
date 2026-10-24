@@ -91,6 +91,7 @@ jobs:
               active_page_index = next(i for i, p in enumerate(doc.pages) if p.id == session.page.id)
               report=render_png(doc, out/f'{kind}.png', page_index=active_page_index, dpi=96)
               assert report.ok, kind
+              print('RENDER_WARNINGS', kind, [(w.code, w.message) for w in report.warnings])
               from PySide6.QtGui import QImage
               img=QImage(str(out/f'{kind}.png'))
               if kind == 'individual':
@@ -99,6 +100,16 @@ jobs:
                   samples = ((x,y) for y in range(851,918,3) for x in range(45,1045,3))
               n_blue = sum(img.pixelColor(x,y).name().lower() == '#105594' for x,y in samples)
               assert n_blue > 100, f'{kind}: blue geometry missing: {n_blue}'
+              palette = {'individual': (240,420), 'multi5': (140,740), 'multi6': (120,740)}
+              xx, yy = palette[kind]
+              image_color = img.pixelColor(xx,yy).name().lower()
+              print('IMAGE_SAMPLE', kind, xx, yy, image_color)
+              if image_color != '#e4be63':
+                  print('DEBUG_IMAGE_NODES', [(node.name, node.visible,
+                        node.metadata.get('bound_image_source'), node.transform.x,
+                        node.transform.y, node.transform.width, node.transform.height)
+                        for node in session.page.nodes.values() if node.kind.value=='image'])
+              assert image_color == '#e4be63', f'{kind} image not painted at ({xx},{yy}): {image_color}'
               print(kind, report.output, report.output.stat().st_size)
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
