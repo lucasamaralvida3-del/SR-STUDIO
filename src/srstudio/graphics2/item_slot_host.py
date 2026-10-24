@@ -130,6 +130,50 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 {"slot_id": slot.id, "root_node_id": slot.metadata.get("root_node_id", ""), "preset_id": preset_id},
             )
 
+        if name == "apply_promotion_layout":
+            from .promotion_layouts import plan_promotion
+            from .model import Transform
+            try:
+                plan = plan_promotion(
+                    str(command.get("mode") or "auto"),
+                    count=command.get("count"),
+                    logo_reserved=float(command.get("logo_reserved", 0.24)),
+                    variation=int(command.get("variation", 0)),
+                )
+            except (ValueError, AssertionError, TypeError) as exc:
+                return CommandResult(False, False, str(exc))
+            page = self.session.page
+            created = []
+            # Place editable, independently bound slots. Never delete existing art.
+            for position in plan.placements:
+                target_x = page.width * position.x
+                target_y = page.height * position.y
+                target_w = page.width * position.width
+                target_h = page.height * position.height
+                slot = create_item_slot(self.session, "individual-beta44",
+                                        x=target_x, y=target_y)
+                root_id = str(slot.metadata.get("root_node_id") or "")
+                root = page.node(root_id)
+                original = root.transform
+                sx = target_w / max(1.0, original.width)
+                sy = target_h / max(1.0, original.height)
+                with self.session.transaction("Dimensionar slot promocional"):
+                    for node_id in [root_id] + list(page.descendants(root_id)):
+                        node = page.node(node_id)
+                        if node is None:
+                            continue
+                        t = node.transform
+                        node.transform = Transform(
+                            x=target_x + (t.x - original.x) * sx,
+                            y=target_y + (t.y - original.y) * sy,
+                            width=max(1.0, t.width * sx),
+                            height=max(1.0, t.height * sy),
+                        )
+                created.append(slot.id)
+            return CommandResult(True, True, "Layout promocional inserido.", {
+                "slot_ids": created, "logo_reserved": plan.logo_reserved
+            })
+
         if name == "plan_promotion_layout":
             from .promotion_layouts import plan_promotion
             try:
