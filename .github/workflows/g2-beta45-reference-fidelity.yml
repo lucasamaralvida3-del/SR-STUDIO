@@ -9,6 +9,7 @@ on:
       - 'tests/test_graphics2_beta45_reference_fidelity.py'
       - 'tests/test_graphics2_beta44_multi_slots.py'
       - '.github/workflows/g2-beta45-reference-fidelity.yml'
+      - '.github/workflows/g2-beta45-candidate-windows.yml'
   workflow_dispatch:
 
 permissions:
