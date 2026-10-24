@@ -74,6 +74,28 @@ ApplicationWindow {
         }
     }
 
+    function promotionPreviewSlots(mode) {
+        if (mode === "individual")
+            return [{x:.20,y:.31,w:.60,h:.63}]
+        if (mode === "six" || mode === "seven") {
+            var out = [{x:.04,y:.29,w:.43,h:.40},
+                       {x:.49,y:.29,w:.46,h:.19},
+                       {x:.49,y:.50,w:.46,h:.19}]
+            var n = mode === "six" ? 3 : 4
+            for (var i = 0; i < n; i++)
+                out.push({x:.04 + i*(.91/n),y:.72,w:.91/n-.008,h:.24})
+            return out
+        }
+        var cards = []
+        for (var row = 0; row < 3; row++) {
+            var columns = row === 2 ? 5 : 3
+            for (var col = 0; col < columns; col++)
+                cards.push({x:.04+col*(.92/columns),y:.29+row*.225,
+                           w:.92/columns-.008,h:.215})
+        }
+        return cards
+    }
+
     function selectedPicture() {
         var selected = selectedNode()
         return selected && selected.kind === "image" ? selected : null
@@ -817,14 +839,56 @@ ApplicationWindow {
                                         {"label":"7 produtos", "mode":"seven"},
                                         {"label":"6 produtos", "mode":"six"}
                                     ]
-                                    delegate: Button {
+                                    delegate: Rectangle {
+                                        id: previewLayoutCard
                                         required property var modelData
                                         Layout.fillWidth: true
-                                        text: modelData.label
-                                        onClicked: sceneBridge.dispatch(JSON.stringify({
-                                            "name":"apply_promotion_layout",
-                                            "mode":modelData.mode
-                                        }))
+                                        Layout.preferredHeight: 153
+                                        color: "#FFFFFF"
+                                        border.color: "#CFD9EA"
+                                        radius: 9
+                                        Label {
+                                            x: 8; y: 5
+                                            font.bold: true
+                                            color: "#284F8F"
+                                            text: previewLayoutCard.modelData.label
+                                        }
+                                        Rectangle {
+                                            id: previewPoster
+                                            x: 38; y: 29; width: parent.width - 76; height: 119
+                                            color: "#F8FAFC"
+                                            border.color: "#DFE7F2"
+                                            Rectangle {
+                                                x: 0; y: 0; width: parent.width; height: parent.height*.26
+                                                color: "#EAF0F9"
+                                                Label { anchors.centerIn: parent; text: "ÁREA DA LOGO"; font.pixelSize: 8; color: "#64748B" }
+                                            }
+                                            Repeater {
+                                                model: window.promotionPreviewSlots(previewLayoutCard.modelData.mode)
+                                                delegate: Rectangle {
+                                                    required property var modelData
+                                                    x: modelData.x * previewPoster.width
+                                                    y: modelData.y * previewPoster.height
+                                                    width: modelData.w * previewPoster.width
+                                                    height: modelData.h * previewPoster.height
+                                                    color: "#FFFFFF"; border.color: "#CAD7E8"
+                                                    Rectangle {
+                                                        anchors.left: parent.left; anchors.right: parent.right
+                                                        anchors.bottom: parent.bottom
+                                                        height: parent.height*.28
+                                                        color: "#295599"
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        MouseArea {
+                                            anchors.fill: parent
+                                            cursorShape: Qt.PointingHandCursor
+                                            onClicked: sceneBridge.dispatch(JSON.stringify({
+                                                "name":"apply_promotion_layout",
+                                                "mode":previewLayoutCard.modelData.mode
+                                            }))
+                                        }
                                     }
                                 }
                                 Label { text: "Auto Layout"; color: "#284F8F"; font.bold: true }
