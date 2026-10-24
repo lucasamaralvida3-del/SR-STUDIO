@@ -144,6 +144,11 @@ def test_reference_slots_render_png_offscreen(tmp_path: Path):
     s = session()
     create_item_slot(s, "individual-beta44", x=100, y=120)
     create_multi_item_strip(s, count=5, x=50, y=650)
+    # Qt needs a GUI application before font resolution; without one the
+    # rasterizer draws missing-glyph squares despite correct text nodes.
+    from PySide6.QtGui import QGuiApplication
+    app = QGuiApplication.instance() or QGuiApplication([])
+    assert app is not None
     # The production exporter correctly rejects product images without a
     # real local source. Bind a deterministic tiny local fixture so this test
     # validates VISUAL GEOMETRY instead of failing the missing-assets gate.
