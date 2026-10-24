@@ -41,6 +41,14 @@ class DropTarget:
 def smart_slot_bounds(page: GraphicsPage, slot: SmartSlot) -> Rect | None:
     """Retorna a área semântica/interativa efetiva de um Smart Slot."""
 
+    # User-created Beta44 ItemSlots have a canonical root transform,
+    # including blank image/price padding. Select the entire cell instead
+    # of only the small union of populated role nodes.
+    if slot.metadata.get("manual_item_slot"):
+        root = page.node(str(slot.metadata.get("root_node_id") or ""))
+        if root is not None and root.transform.width > 0 and root.transform.height > 0:
+            return root.rect.normalized()
+
     candidates: list[object] = []
     if str(slot.metadata.get("adjustment_source") or "") == "manual":
         candidates.append(slot.metadata.get("user_adjusted_bounds"))
