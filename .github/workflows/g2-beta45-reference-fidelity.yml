@@ -44,6 +44,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Render actual Qt outputs for visual QA
         shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
         run: |
           @'
           from pathlib import Path
@@ -53,8 +55,16 @@ jobs:
           from srstudio.graphics2.multi_item_strip import create_multi_item_strip
           from srstudio.graphics2.qt_renderer import render_png
 
-          from PySide6.QtGui import QGuiApplication
+          from PySide6.QtGui import QGuiApplication, QFontInfo, QFont, QFontDatabase
           app = QGuiApplication.instance() or QGuiApplication([])
+          print("QT_PLATFORM", QGuiApplication.platformName())
+          print("QT_FONT_FAMILIES", [
+              n for n in QFontDatabase.families()
+              if n.lower() in ("arial", "impact", "arial narrow", "anton", "segoe ui")
+          ])
+          for family in ["Arial", "Impact", "Segoe UI", "Anton"]:
+              font = QFont(family)
+              print("FONT_SELECTED", family, QFontInfo(font).family(), QFontInfo(font).exactMatch())
           out = Path('reference-previews')
           out.mkdir(exist_ok=True)
           for kind in ('individual', 'multi5', 'multi6'):
