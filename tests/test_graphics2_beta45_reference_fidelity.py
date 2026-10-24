@@ -30,6 +30,28 @@ def get_decor(page, root_id, name):
     return found[0]
 
 
+def test_original_reference_aspect_ratios_and_promo_label_clearance():
+    s = session()
+    slot = create_item_slot(s, "individual-beta44", x=100, y=200)
+    root = s.page.node(slot.metadata["root_node_id"])
+    # PowerPoint active source area is 0.652 slide-width by 0.557
+    # slide-height. The source slide has a 0.8004 width/height ratio.
+    reference_aspect = (.652 * .800395) / .557
+    actual_aspect = root.rect.width / root.rect.height
+    assert abs(actual_aspect - reference_aspect) < .05
+
+    promo = s.page.node(slot.metadata["promotion_label_node_id"])
+    whole = s.page.node(slot.node_by_role[BindingRole.PRICE_REAIS.value])
+    # The promotion line must stay completely above the large integer.
+    assert promo.rect.bottom < whole.rect.y
+    assert whole.rect.bottom <= root.rect.bottom + .1
+
+    for count in (5, 6):
+        multi = create_multi_item_strip(s, count=count)
+        group = s.page.node(multi["root_node_id"])
+        assert 3.9 <= group.rect.width / group.rect.height <= 4.1
+
+
 def test_individual_is_reference_art_not_gray_ui_card():
     s = session()
     slot = create_item_slot(s, "individual-beta44", x=150, y=180)
