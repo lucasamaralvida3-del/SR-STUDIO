@@ -90,8 +90,8 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         name = str(command.get("name") or "").strip().lower()
         if name == "add_item_slot":
             preset_id = str(command.get("preset_id") or LIMPEZA_BLUE_ID)
-            if preset_id != LIMPEZA_BLUE_ID:
-                return CommandResult(False, False, "Modelo descontinuado. Use Limpeza Azul (1 ou 2 preços).")
+            if preset_id not in (LIMPEZA_BLUE_ID, "individual-beta44"):
+                return CommandResult(False, False, "Modelo de criação indisponível.")
             if preset_id == LIMPEZA_BLUE_ID:
                 slot = create_limpeza_blue_slot(
                     self.session,
