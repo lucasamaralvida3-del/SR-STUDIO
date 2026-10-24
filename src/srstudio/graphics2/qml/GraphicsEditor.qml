@@ -527,6 +527,12 @@ ApplicationWindow {
     Shortcut { sequence: "G"; onActivated: showGrid = !showGrid }
 
 
+
+    // Shortcuts once owned by ProjectActions.qml. Preserve them after
+    // eliminating the floating legacy project toolbar.
+    Shortcut { sequence: StandardKey.Save; onActivated: saveProjectDialog.open() }
+    Shortcut { sequence: StandardKey.Copy; onActivated: sceneBridge.dispatch('{"name":"copy"}') }
+    Shortcut { sequence: StandardKey.Paste; onActivated: sceneBridge.dispatch('{"name":"paste"}') }
     header: null
 
     ColumnLayout {
