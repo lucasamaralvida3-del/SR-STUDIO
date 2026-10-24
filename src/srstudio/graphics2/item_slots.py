@@ -94,12 +94,12 @@ def _builtins() -> dict[str, ItemSlotPreset]:
                 "integer": _ppt_role(.24, .23, .48, .69, size=77, color="#FFFFFF"),
                 "decimal": _ppt_role(.70, .38, .27, .27, size=32, color="#FFFFFF"),
                 "unit": _ppt_role(.84, .825, .13, .115, size=15, color="#FFFFFF"),
-                "secondary_price": _ppt_role(.555, .63, .34, .115, size=12,
+                "secondary_price": _ppt_role(.56, .55, .23, .065, size=12,
                                              color="#FFFFFF"),
-                "limit": _ppt_role(.56, .955, .42, .038, size=9, color="#105594"),
-                "club_label": _ppt_role(.565, .875, .37, .055, size=10,
+                "limit": _ppt_role(.55, .965, .43, .03, size=9, color="#105594"),
+                "club_label": _ppt_role(.79, .553, .17, .06, size=10,
                                         color="#FFFFFF"),
-                "promotion_label": _ppt_role(.615, .545, .32, .092, size=16,
+                "promotion_label": _ppt_role(.61, .552, .34, .065, size=16,
                                              color="#FFFFFF"),
             },
         ),
@@ -116,16 +116,16 @@ def _builtins() -> dict[str, ItemSlotPreset]:
                                   color="#105594"),
                 "image": {"bounds": [.08, .19, .84, .565],
                           "style": {"fit": "contain"}},
-                "price": {"bounds": [.01, .77, .98, .225]},
-                "currency": _ppt_role(.035, .30, .20, .46, size=17, color="#FFFFFF"),
-                "integer": _ppt_role(.245, .055, .47, .85, size=46, color="#FFFFFF"),
-                "decimal": _ppt_role(.695, .18, .29, .33, size=18, color="#FFFFFF"),
-                "unit": _ppt_role(.75, .86, .215, .12, size=11, color="#FFFFFF"),
-                "secondary_price": _ppt_role(.07, .775, .83, .052,
+                "price": {"bounds": [.01, .805, .98, .19]},
+                "currency": _ppt_role(.035, .27, .20, .54, size=17, color="#FFFFFF"),
+                "integer": _ppt_role(.245, .045, .47, .90, size=46, color="#FFFFFF"),
+                "decimal": _ppt_role(.695, .17, .29, .33, size=18, color="#FFFFFF"),
+                "unit": _ppt_role(.75, .944, .215, .052, size=11, color="#FFFFFF"),
+                "secondary_price": _ppt_role(.05, .768, .48, .035,
                                              size=9, color="#FFFFFF"),
-                "club_label": _ppt_role(.12, .94, .76, .05,
+                "club_label": _ppt_role(.55, .768, .43, .035,
                                         size=8, color="#FFFFFF"),
-                "promotion_label": _ppt_role(.14, .945, .72, .045,
+                "promotion_label": _ppt_role(.20, .767, .60, .035,
                                              size=8, color="#FFFFFF"),
             },
         ),
@@ -423,7 +423,26 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 "promotion_label_node_id": promotion_label.id if promotion_label is not None else "",
             },
         )
+        # The scene painter sorts ALL nodes by z_index globally. Without
+        # explicit layers, UUID ordering made white backgrounds cover prices
+        # and text appear behind a random card.
+        for node_id in page.descendants(root.id):
+            layer = page.node(node_id)
+            if layer is None:
+                continue
+            if layer.metadata.get("item_slot_background"):
+                layer.z_index = -70
+            elif layer.metadata.get("item_slot_image_backplate"):
+                layer.z_index = -40
+            elif layer.metadata.get("item_slot_price_background"):
+                layer.z_index = 30
+            elif layer.kind is NodeKind.IMAGE:
+                layer.z_index = 10
+            elif layer.kind is NodeKind.TEXT:
+                layer.z_index = 50 if (layer.binding_role not in (BindingRole.NAME,)) else 20
+
         root.metadata["item_slot_id"] = slot.id
+        root.metadata["reference_fidelity_revision"] = 45 if source_faithful else 1
         page.slots[slot.id] = slot
 
     session.selection = {root.id}
@@ -751,6 +770,9 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
         club_label = session.page.node(str(slot.metadata.get("club_label_node_id") or ""))
         if club_label is not None:
             club_label.visible = display_two and bool(product.get("club_price") or product.get("app_price"))
+        promotional_label = session.page.node(str(slot.metadata.get("promotion_label_node_id") or ""))
+        if promotional_label is not None:
+            promotional_label.visible = not display_two
         slot.metadata["price_variant"] = "two" if display_two else "one"
     else:
         session.bind_product(slot.id, product)
