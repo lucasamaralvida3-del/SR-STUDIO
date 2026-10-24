@@ -76,8 +76,17 @@ jobs:
                               'LIMPA VIDROS AZULIM 500ML','SABAO EM PO 1KG'
                           )[index], 'price':f'{index+2},89'
                       })
-              report=render_png(doc, out/f'{kind}.png', dpi=96)
+              active_page_index = next(i for i, p in enumerate(doc.pages) if p.id == session.page.id)
+              report=render_png(doc, out/f'{kind}.png', page_index=active_page_index, dpi=96)
               assert report.ok, kind
+              from PySide6.QtGui import QImage
+              img=QImage(str(out/f'{kind}.png'))
+              if kind == 'individual':
+                  samples = ((x,y) for y in range(490,605,3) for x in range(375,565,3))
+              else:
+                  samples = ((x,y) for y in range(851,918,3) for x in range(45,1045,3))
+              n_blue = sum(img.pixelColor(x,y).name().lower() == '#105594' for x,y in samples)
+              assert n_blue > 100, f'{kind}: blue geometry missing: {n_blue}'
               print(kind, report.output, report.output.stat().st_size)
           '@ | python -
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
