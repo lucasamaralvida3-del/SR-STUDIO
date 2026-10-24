@@ -48,6 +48,17 @@ ApplicationWindow {
         }
     }
 
+    function createIndividualSlot() {
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
+            "name": "add_item_slot", "preset_id": "individual-beta44"
+        })))
+        if (result.ok && result.payload) {
+            selectedSlotId = String(result.payload.slot_id || "")
+            smartSlotEditMode = true
+            smartSlotInspectionMode = true
+        }
+    }
+
     function selectedPicture() {
         var selected = selectedNode()
         return selected && selected.kind === "image" ? selected : null
@@ -836,6 +847,28 @@ ApplicationWindow {
                                     cursorShape: Qt.PointingHandCursor
                                     onClicked: createBlueSlot()
                                 }
+                            }
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 138
+                                visible: studioSection === 1
+                                color: "#FFFFFF"; border.color: "#CFD9EA"; radius: 10
+                                Column {
+                                    anchors.fill: parent; anchors.margins: 10; spacing: 7
+                                    Label { text: "Individual"; color: "#284F8F"; font.bold: true }
+                                    Rectangle {
+                                        width: parent.width; height: 91; color: "#F7FAFE"
+                                        radius: 6
+                                        Rectangle { x: 8; y: 7; width: parent.width * .49; height: 76; radius: 7; color: "#E7EEF9"
+                                            Label { anchors.centerIn: parent; text: "PRODUTO"; color: "#456AA2"; font.pixelSize: 10 }
+                                        }
+                                        Rectangle { anchors.right: parent.right; anchors.rightMargin: 8; anchors.bottom: parent.bottom
+                                            anchors.bottomMargin: 7; width: parent.width * .43; height: 43; radius: 7; color: "#295599"
+                                            Label { anchors.centerIn: parent; text: "R$ 9,99"; color: "white"; font.bold: true; font.pixelSize: 17 }
+                                        }
+                                    }
+                                }
+                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: createIndividualSlot() }
                             }
                             Button { Layout.fillWidth: true; visible: studioSection === 4; text: "+ Texto"; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
                             Button { Layout.fillWidth: true; visible: studioSection === 5; text: "+ Forma"; onClicked: sceneBridge.dispatch('{"name":"add_rect"}') }
