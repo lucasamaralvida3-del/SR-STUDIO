@@ -1,0 +1,212 @@
+name: G2 Beta44 Windows Candidate
+
+on:
+  push:
+    branches:
+      - feature/g2-beta44-slots-promotion-layouts
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'src/srstudio/app/**'
+      - 'tests/test_graphics2_beta44_*.py'
+      - '.github/workflows/g2-beta44-candidate-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta44-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile G2
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/graphics2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate Beta44 and existing Azul contracts
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m pytest -q tests/test_graphics2_beta44_promotion_layouts.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_beta42_shell_layout.py tests/test_graphics2_item_slots.py tests/test_graphics2_slot_limpeza_blue.py tests/test_graphics2_quinta3_studio_manual_build.py tests/test_graphics2_qml_load.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prove Qt Quick runtime
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "from srstudio.graphics2.qt_host import qt_quick_available; assert qt_quick_available()"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  package:
+    needs: validate
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install packager
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2-build,background-removal]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package SR Studio 5 shell
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "EXE ausente" }
+      - name: Package Graphics2 child host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
+          Copy-Item "dist/graphics2-host/SRGraphicsEngine2Host/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Qt host ausente" }
+      - name: Validate runtime and SHA-256
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; from srstudio.graphics2.host_runtime import validate_runtime_host; r=validate_runtime_host(Path('dist/SR Studio 5/Graphics2Host').resolve(), full=True); assert r.ok, r"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path "release" | Out-Null
+          $file = "release/SR_STUDIO_G2_BETA_44_CANDIDATE_WIN64.zip"
+          Compress-Archive -Path "dist/SR Studio 5/*" -DestinationPath $file -Force
+          $digest = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+          "commit=$env:GITHUB_SHA" | Out-File "release/beta44-provenance.txt" -Encoding utf8
+          "sha256=$digest" | Out-File "release/beta44-checksum.txt" -Encoding ascii
+          Write-Host "BETA44_CANDIDATE_SHA256=$digest"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR-Studio-G2-Beta44-Windows-Candidate
+          path: |
+            release/SR_STUDIO_G2_BETA_44_CANDIDATE_WIN64.zip
+            release/beta44-checksum.txt
+            release/beta44-provenance.txt
+          if-no-files-found: error
+          retention-days: 30
+
+
+  publish:
+    # This runs only after the tested, packaged Windows artifact exists.
+    # Stable branches and existing releases are never modified.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/g2-beta44-slots-promotion-layouts'
+    needs: [validate, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Wait for matching GitHub CI gates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          import time
+
+          sha = os.environ["GITHUB_SHA"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          required = {
+              "SR Studio 5 Quality",
+              "SR Graphics Engine 2 CI",
+              "SR Graphics Engine 2 Host Build",
+              "G2 Alpha 43 Validation",
+          }
+          for attempt in range(72):
+              data = json.loads(subprocess.check_output(
+                  ["gh", "api", f"repos/{repo}/actions/runs?head_sha={sha}&per_page=100"],
+                  text=True,
+              ))
+              runs = {
+                  row["name"]: row for row in data.get("workflow_runs", [])
+                  if row.get("head_sha") == sha and row.get("name") in required
+              }
+              finished = {name: row.get("conclusion") for name, row in runs.items()
+                          if row.get("status") == "completed"}
+              bad = {name: status for name, status in finished.items()
+                     if status != "success"}
+              if bad:
+                  sys.exit(f"CI gate failed: {bad}")
+              if all(finished.get(name) == "success" for name in required):
+                  print("All four matching CI gates passed for", sha)
+                  break
+              print("Pending CI:", sorted(required - set(finished)), "attempt", attempt + 1)
+              time.sleep(15)
+          else:
+              sys.exit("CI gates timed out: Beta44 release withheld.")
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: SR-Studio-G2-Beta44-Windows-Candidate
+          path: release
+      - name: Verify archive provenance and SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Archive contents:"
+          ls -lh release
+          expected_commit="$(sed -n 's/^commit=//p' release/beta44-provenance.txt | tr -d '\r\n')"
+          test "$expected_commit" = "$GITHUB_SHA"
+          expected_checksum="$(sed -n 's/^sha256=//p' release/beta44-checksum.txt | tr -d '\r\n')"
+          actual_checksum="$(sha256sum release/SR_STUDIO_G2_BETA_44_CANDIDATE_WIN64.zip | cut -d' ' -f1)"
+          test -n "$expected_checksum"
+          test "$expected_checksum" = "$actual_checksum"
+          cp release/SR_STUDIO_G2_BETA_44_CANDIDATE_WIN64.zip release/SR_STUDIO_G2_BETA_44_PROFESSIONAL_WIN64.zip
+          echo "$actual_checksum  SR_STUDIO_G2_BETA_44_PROFESSIONAL_WIN64.zip" > release/SR_STUDIO_G2_BETA_44_SHA256.txt
+      - name: Publish isolated prerelease Beta44
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view g2-beta-44 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Beta44 release already exists: no duplicate upload."
+            exit 0
+          fi
+          cat > /tmp/beta44-notes.md <<'EOF'
+          # SR Studio G2 Beta 44 — Smart Slots e Layouts de Promoção
+          
+          - Aba **Slots** com miniaturas visuais e inserção do Slot Azul existente, novo Individual e Multi Itens de 5 ou 6 produtos.
+          - Cada item pode receber imagem, descrição, unidade e um ou dois preços.
+          - Aba **Layouts de Promoção**: 1 destaque, 6 itens, 7 itens e 11 itens.
+          - **Auto Layout**: quantidades de 1 a 24 com área reservada à logo de 15% a 50% da página.
+          - Faixa Multi Itens com divisórias e base azul contínua. Layout de 11 itens utiliza cinco células Multi Itens na faixa inferior.
+          - Edição, arrastar produtos, salvamento e duplicação preservados.
+          
+          Pré-lançamento Windows. Validado com os testes Beta44, Qt Quick, host Windows e quatro verificações CI no commit exato do pacote. O canal Stable não foi alterado.
+          EOF
+          gh release create g2-beta-44 \
+            release/SR_STUDIO_G2_BETA_44_PROFESSIONAL_WIN64.zip \
+            release/SR_STUDIO_G2_BETA_44_SHA256.txt \
+            release/beta44-provenance.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "SR Studio G2 Beta 44 — Slots e Layouts de Promoção" \
+            --notes-file /tmp/beta44-notes.md \
+            --prerelease \
+            --latest=false

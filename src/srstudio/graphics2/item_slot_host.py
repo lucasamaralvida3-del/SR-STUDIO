@@ -66,6 +66,9 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         # was wasteful and revived models removed from the creation UI.
         # Migrate older Limpeza slots once, not for every repaint or selection.
         if not getattr(self, "_limpeza_migrated", False):
+            # Preserve certified historical families for existing documents
+            # and API clients; the new Qt picker displays only Beta44 styles.
+            install_quinta3_family_presets(self.session.document)
             refresh_all_item_slots(self.session.document)
             self._limpeza_migrated = True
         payload = super().payload()
@@ -88,10 +91,73 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
 
     def dispatch(self, command: dict[str, Any]) -> CommandResult:
         name = str(command.get("name") or "").strip().lower()
+        if name == "adjust_smart_slot":
+            # The certified Azul implementation remains handled by the base
+            # command router. New manual slots need native group transform.
+            from .model import Rect
+            slot = self.session.page.slots.get(str(command.get("slot_id") or ""))
+            if is_manual_item_slot(slot) and slot.metadata.get("preset_id") in (
+                    "individual-beta44", "multi-cell-beta44"):
+                root_id = str(slot.metadata.get("root_node_id") or "")
+                root = self.session.page.node(root_id)
+                if root is None:
+                    return CommandResult(False, False, "Raiz do slot não encontrada.")
+                try:
+                    target = Rect(float(command["x"]), float(command["y"]),
+                                  max(1.0, float(command["width"])),
+                                  max(1.0, float(command["height"])))
+                except (ValueError, TypeError, KeyError):
+                    return CommandResult(False, False, "Dimensões inválidas.")
+                self.session.resize_node(root_id, x=target.x, y=target.y,
+                                         width=target.width, height=target.height)
+                return CommandResult(True, True, "Smart Slot reposicionado.", {"slot_id": slot.id})
+
+        if name == "add_multi_item_slot":
+            from .multi_item_strip import create_multi_item_strip
+            try:
+                result = create_multi_item_strip(
+                    self.session,
+                    count=int(command.get("count", 6)),
+                    price_mode=str(command.get("price_mode") or "auto"),
+                    x=_optional_number(command.get("x")),
+                    y=_optional_number(command.get("y")),
+                )
+            except (ValueError, TypeError) as exc:
+                return CommandResult(False, False, str(exc))
+            return CommandResult(True, True, "Faixa Multi Itens inserida.", result)
+
+        if name == "set_item_price_mode":
+            from .model import BindingRole
+            mode = str(command.get("mode") or "auto")
+            if mode not in ("auto", "one", "two"):
+                return CommandResult(False, False, "Modo inválido.")
+            root_id = str(command.get("multi_root_id") or "")
+            selected = [str(command.get("slot_id") or "")]
+            if root_id:
+                root = self.session.page.node(root_id)
+                if root is None or not root.metadata.get("multi_slot_beta44"):
+                    return CommandResult(False, False, "Faixa Multi não encontrada.")
+                selected = list(root.metadata.get("child_slot_ids") or [])
+            updated = []
+            for sid in selected:
+                slot = self.session.page.slots.get(sid)
+                if not is_manual_item_slot(slot):
+                    continue
+                if slot.metadata.get("preset_id") not in ("individual-beta44", "multi-cell-beta44"):
+                    continue
+                with self.session.transaction("Alterar quantidade de preços"):
+                    slot.metadata["price_mode"] = mode
+                    second = self.session.page.node(str(slot.node_by_role.get(BindingRole.RETAIL_PRICE.value) or ""))
+                    if second is not None:
+                        second.visible = mode == "two" or (mode == "auto" and slot.metadata.get("price_variant") == "two")
+                        slot.metadata["price_variant"] = "two" if second.visible else "one"
+                updated.append(sid)
+            return CommandResult(bool(updated), bool(updated), "Modo de preços atualizado.", {"slot_ids": updated})
+
         if name == "add_item_slot":
             preset_id = str(command.get("preset_id") or LIMPEZA_BLUE_ID)
-            if preset_id != LIMPEZA_BLUE_ID:
-                return CommandResult(False, False, "Modelo descontinuado. Use Limpeza Azul (1 ou 2 preços).")
+            if preset_id not in (LIMPEZA_BLUE_ID, "individual-beta44", "multi-cell-beta44", *QUINTA3_FAMILY_PRESETS):
+                return CommandResult(False, False, "Modelo de criação indisponível.")
             if preset_id == LIMPEZA_BLUE_ID:
                 slot = create_limpeza_blue_slot(
                     self.session,
@@ -129,6 +195,101 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 f"Slot de Item adicionado · {slot.name}",
                 {"slot_id": slot.id, "root_node_id": slot.metadata.get("root_node_id", ""), "preset_id": preset_id},
             )
+
+        if name == "apply_promotion_layout":
+            from .promotion_layouts import plan_promotion
+            from .model import Transform
+            try:
+                plan = plan_promotion(
+                    str(command.get("mode") or "auto"),
+                    count=command.get("count"),
+                    logo_reserved=float(command.get("logo_reserved", 0.24)),
+                    variation=int(command.get("variation", 0)),
+                )
+            except (ValueError, AssertionError, TypeError) as exc:
+                return CommandResult(False, False, str(exc))
+            price_mode = str(command.get("price_mode") or "auto")
+            if price_mode not in ("auto", "one", "two"):
+                return CommandResult(False, False, "Modo de preços inválido.")
+            # Multiple template insertions must not obscure existing
+            # product cards. Preserve the old page and create a fresh page
+            # with the same dimensions when any Smart Slots already exist.
+            if self.session.page.slots:
+                previous = self.session.page
+                previous_width, previous_height = previous.width, previous.height
+                previous_background = previous.background
+                self.session.add_page(name="Layout promocional")
+                with self.session.transaction("Preservar formato da página"):
+                    self.session.page.width = previous_width
+                    self.session.page.height = previous_height
+                    self.session.page.background = previous_background
+            page = self.session.page
+            created = []
+            # Each template is inserted as editable Smart Slots.
+            for position in plan.placements:
+                if plan.mode == "eleven" and position.index in (7, 8, 9, 10):
+                    # These four items are already owned by the 5-item group.
+                    continue
+                if plan.mode == "eleven" and position.index == 6:
+                    from .multi_item_strip import create_multi_item_strip
+                    end = plan.placements[10]
+                    x = page.width * position.x
+                    y = page.height * position.y
+                    group_width = page.width * (end.x + end.width - position.x)
+                    group_height = page.height * position.height
+                    multi = create_multi_item_strip(self.session, count=5,
+                                                    price_mode=price_mode,
+                                                    x=x, y=y)
+                    self.session.resize_node(
+                        multi["root_node_id"], x=x, y=y,
+                        width=group_width, height=group_height)
+                    created.extend(multi["slot_ids"])
+                    continue
+                target_x = page.width * position.x
+                target_y = page.height * position.y
+                target_w = page.width * position.width
+                target_h = page.height * position.height
+                slot = create_item_slot(self.session, "individual-beta44",
+                                        x=target_x, y=target_y)
+                slot.metadata["price_mode"] = price_mode
+                root_id = str(slot.metadata.get("root_node_id") or "")
+                root = page.node(root_id)
+                original = root.transform
+                sx = target_w / max(1.0, original.width)
+                sy = target_h / max(1.0, original.height)
+                with self.session.transaction("Dimensionar slot promocional"):
+                    for node_id in [root_id] + list(page.descendants(root_id)):
+                        node = page.node(node_id)
+                        if node is None:
+                            continue
+                        t = node.transform
+                        node.transform = Transform(
+                            x=target_x + (t.x - original.x) * sx,
+                            y=target_y + (t.y - original.y) * sy,
+                            width=max(1.0, t.width * sx),
+                            height=max(1.0, t.height * sy),
+                        )
+                created.append(slot.id)
+            return CommandResult(True, True, "Layout promocional inserido.", {
+                "slot_ids": created, "logo_reserved": plan.logo_reserved,
+                "page_id": page.id
+            })
+
+        if name == "plan_promotion_layout":
+            from .promotion_layouts import plan_promotion
+            try:
+                plan = plan_promotion(
+                    str(command.get("mode") or "auto"),
+                    count=command.get("count"),
+                    logo_reserved=float(command.get("logo_reserved", 0.24)),
+                    variation=int(command.get("variation", 0)),
+                )
+            except (ValueError, AssertionError, TypeError) as exc:
+                return CommandResult(False, False, str(exc))
+            return CommandResult(True, False, "Composição calculada.", {
+                "logo_reserved": plan.logo_reserved,
+                "placements": [item.as_dict() for item in plan.placements],
+            })
 
         if name == "inspect_limpeza_blue_slot":
             slot = self.session.page.slots.get(str(command.get("slot_id") or ""))

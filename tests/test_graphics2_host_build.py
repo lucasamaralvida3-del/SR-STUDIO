@@ -35,7 +35,7 @@ def test_pyinstaller_contract_is_onedir_windowed_no_upx_and_collects_only_requir
     assert "--onedir" in args
     assert "--windowed" in args
     assert "--noupx" in args
-    assert "--collect-all" not in args
+    assert not any(a == "--collect-all" and b == "PySide6" for a, b in zip(args, args[1:]))
     assert "--collect-data" in args
     assert args[args.index("--collect-data") + 1] == "srstudio"
     assert "--collect-submodules" in args

@@ -4,7 +4,7 @@ from pathlib import Path
 def test_beta42_reference_shell_and_bottom_pages():
     qml=(Path(__file__).resolve().parents[1]/"src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
     for label in ("Produtos","Projeto",
-                  "Produtos","Modelos","Elementos","Imagens","Texto",
+                  "Produtos","Slots","Layouts de Promoção","Imagens","Texto",
                   "Formas","Fundos","Camadas","Buscar produtos",
                   "Todos os produtos","Ver mais produtos","Adicionar página",
                   "Importar PPTX / Planilha"):
