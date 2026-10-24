@@ -767,6 +767,11 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
             payload["price"] = primary
         payload["retail_price"] = secondary if secondary is not None else ""
         session.bind_product(slot.id, payload)
+        # The reference text is "UN", never "/UN". Keep the generic
+        # GraphicsSession price binding intact for other slot families.
+        unit_node = session.page.node(str(slot.node_by_role.get(BindingRole.UNIT.value) or ""))
+        if unit_node is not None:
+            unit_node.text = str(product.get("unit") or "UN").upper().strip().lstrip("/")
         secondary_node = session.page.node(str(slot.node_by_role.get(BindingRole.RETAIL_PRICE.value) or ""))
         limit_node = session.page.node(str(slot.node_by_role.get(BindingRole.LIMIT.value) or ""))
         if secondary_node is not None:
