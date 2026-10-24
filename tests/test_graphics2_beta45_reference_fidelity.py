@@ -44,12 +44,35 @@ def test_original_reference_aspect_ratios_and_promo_label_clearance():
     whole = s.page.node(slot.node_by_role[BindingRole.PRICE_REAIS.value])
     # The promotion line must stay completely above the large integer.
     assert promo.rect.bottom < whole.rect.y
+    name = s.page.node(slot.node_by_role[BindingRole.NAME.value])
+    price_root = s.page.node(slot.metadata["role_area_nodes"]["price"])
+    assert name.rect.bottom < price_root.rect.y
     assert whole.rect.bottom <= root.rect.bottom + .1
 
     for count in (5, 6):
         multi = create_multi_item_strip(s, count=count)
         group = s.page.node(multi["root_node_id"])
         assert 3.9 <= group.rect.width / group.rect.height <= 4.1
+
+
+def test_multi_caption_wraps_without_intersecting_product_image():
+    s = session()
+    multi = create_multi_item_strip(s, count=5)
+    first = multi["slot_ids"][0]
+    last = multi["slot_ids"][-1]
+    assert bind_product_to_item_slot(s, first, {
+        "id": "ABC", "name": "SHAMPOO LOVECARE 200ML", "price": "21,03"
+    })
+    assert bind_product_to_item_slot(s, last, {
+        "id": "DEF", "name": "LIMPA VIDROS AZULIM 500ML", "price": "3,69"
+    })
+    for sid in (first, last):
+        slot = s.page.slots[sid]
+        name = s.page.node(slot.node_by_role[BindingRole.NAME.value])
+        image = s.page.node(slot.node_by_role[BindingRole.IMAGE.value])
+        assert "\n" in name.text, name.text
+        assert name.rect.bottom < image.rect.y
+        assert s.page.node(slot.node_by_role[BindingRole.UNIT.value]).text == "UN"
 
 
 def test_individual_is_reference_art_not_gray_ui_card():
