@@ -76,6 +76,18 @@ jobs:
                               'LIMPA VIDROS AZULIM 500ML','SABAO EM PO 1KG'
                           )[index], 'price':f'{index+2},89'
                       })
+              # A real local image makes the strict export gate meaningful.
+              from PySide6.QtGui import QImage, QColor
+              bottle_path = (out / f'{kind}-bottle.png').resolve()
+              bottle = QImage(60, 120, QImage.Format_ARGB32)
+              bottle.fill(QColor('#E4BE63'))
+              assert bottle.save(str(bottle_path))
+              from srstudio.graphics2.model import BindingRole
+              for slot in session.page.slots.values():
+                  image_node = session.page.node(slot.node_by_role.get(BindingRole.IMAGE.value, ''))
+                  if image_node:
+                      image_node.metadata['bound_image_source'] = str(bottle_path)
+                      image_node.metadata['placeholder'] = False
               active_page_index = next(i for i, p in enumerate(doc.pages) if p.id == session.page.id)
               report=render_png(doc, out/f'{kind}.png', page_index=active_page_index, dpi=96)
               assert report.ok, kind
