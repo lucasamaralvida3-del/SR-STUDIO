@@ -60,6 +60,20 @@ ApplicationWindow {
         }
     }
 
+    function createMultiSlot(count) {
+        var modes = ["auto", "one", "two"]
+        var mode = modes[slotPriceMode.currentIndex] || "auto"
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
+            "name": "add_multi_item_slot", "count": count, "price_mode": mode
+        })))
+        if (result.ok && result.payload) {
+            var created = result.payload.slot_ids || []
+            selectedSlotId = created.length ? String(created[0]) : ""
+            smartSlotEditMode = true
+            smartSlotInspectionMode = true
+        }
+    }
+
     function selectedPicture() {
         var selected = selectedNode()
         return selected && selected.kind === "image" ? selected : null
@@ -234,10 +248,13 @@ ApplicationWindow {
     }
 
     function slots() {
-        // Only the certified Azul slot can be offered to edit/new projects.
-        // Historical slots remain in saved documents for backwards compatibility.
+        // Beta 44: the Blue slot is unchanged; include only the two
+        // explicit new manual presets, never revive retired legacy presets.
         return page ? Object.values(page.slots || {}).filter(function(slot) {
-            return slot.metadata && slot.metadata.limpeza_blue_profile === "limpeza-blue-v1"
+            var meta = slot.metadata || {}
+            return meta.limpeza_blue_profile === "limpeza-blue-v1"
+                || meta.preset_id === "individual-beta44"
+                || meta.preset_id === "multi-cell-beta44"
         }) : []
     }
 
@@ -911,6 +928,84 @@ ApplicationWindow {
                                     }
                                 }
                                 MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: createIndividualSlot() }
+                            }
+                            Label {
+                                visible: studioSection === 1
+                                text: "Preços dos novos slots"
+                                color: "#284F8F"; font.bold: true
+                            }
+                            ComboBox {
+                                id: slotPriceMode
+                                visible: studioSection === 1
+                                Layout.fillWidth: true
+                                model: ["Automático", "1 preço", "2 preços"]
+                                currentIndex: 0
+                            }
+                            Repeater {
+                                model: [5, 6]
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: 130
+                                    visible: studioSection === 1
+                                    color: "#FFFFFF"
+                                    border.color: "#CFD9EA"
+                                    radius: 10
+                                    Label {
+                                        x: 10; y: 7
+                                        text: "Multi Itens — " + modelData + " produtos"
+                                        color: "#284F8F"; font.bold: true
+                                    }
+                                    Row {
+                                        x: 8; y: 34
+                                        width: parent.width - 16; height: 86
+                                        spacing: 2
+                                        Repeater {
+                                            model: parent.parent.modelData
+                                            delegate: Rectangle {
+                                                width: (parent.width - (parent.parent.modelData - 1) * 2) / parent.parent.modelData
+                                                height: parent.height
+                                                color: "#F7FAFE"
+                                                border.color: "#D7E1F0"
+                                                Rectangle {
+                                                    x: 3; y: 19
+                                                    width: parent.width - 6; height: 35
+                                                    radius: 4; color: "#E0E8F6"
+                                                }
+                                                Rectangle {
+                                                    anchors.left: parent.left; anchors.right: parent.right
+                                                    anchors.bottom: parent.bottom; height: 27
+                                                    color: "#295599"
+                                                    Label {
+                                                        anchors.centerIn: parent
+                                                        text: "9,99"
+                                                        color: "white"; font.bold: true
+                                                        font.pixelSize: 9
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: createMultiSlot(Number(parent.modelData))
+                                    }
+                                }
+                            }
+                            Button {
+                                visible: studioSection === 1
+                                Layout.fillWidth: true
+                                text: "Aplicar modo de preço ao slot selecionado"
+                                enabled: selectedSlotId !== ""
+                                onClicked: {
+                                    var modes = ["auto", "one", "two"]
+                                    sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_item_price_mode",
+                                        "slot_id":selectedSlotId,
+                                        "mode":modes[slotPriceMode.currentIndex]
+                                    }))
+                                }
                             }
                             Button { Layout.fillWidth: true; visible: studioSection === 4; text: "+ Texto"; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
                             Button { Layout.fillWidth: true; visible: studioSection === 5; text: "+ Forma"; onClicked: sceneBridge.dispatch('{"name":"add_rect"}') }
