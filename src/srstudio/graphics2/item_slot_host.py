@@ -208,6 +208,9 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 )
             except (ValueError, AssertionError, TypeError) as exc:
                 return CommandResult(False, False, str(exc))
+            price_mode = str(command.get("price_mode") or "auto")
+            if price_mode not in ("auto", "one", "two"):
+                return CommandResult(False, False, "Modo de preços inválido.")
             page = self.session.page
             created = []
             # Place editable, independently bound slots. Never delete existing art.
@@ -223,6 +226,7 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                     group_width = page.width * (end.x + end.width - position.x)
                     group_height = page.height * position.height
                     multi = create_multi_item_strip(self.session, count=5,
+                                                    price_mode=price_mode,
                                                     x=x, y=y)
                     self.session.resize_node(
                         multi["root_node_id"], x=x, y=y,
@@ -235,6 +239,7 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 target_h = page.height * position.height
                 slot = create_item_slot(self.session, "individual-beta44",
                                         x=target_x, y=target_y)
+                slot.metadata["price_mode"] = price_mode
                 root_id = str(slot.metadata.get("root_node_id") or "")
                 root = page.node(root_id)
                 original = root.transform
