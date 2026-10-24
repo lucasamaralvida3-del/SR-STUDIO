@@ -571,6 +571,36 @@ def launch_qt_quick_editor(
             self.statusChanged.emit()
 
         @Slot(str)
+        def importSource(self, raw_source: str) -> None:
+            """Import a new source document through the existing graphics import service."""
+            from PySide6.QtCore import QUrl
+            path = _qml_file_path(raw_source, "", QUrl)
+            if path is None or not path.is_file():
+                self._status = "Arquivo de importação não encontrado."
+                self.statusChanged.emit()
+                return
+            if path.suffix.lower() not in {".xlsx", ".xls", ".csv", ".pptx"}:
+                self._status = "Selecione uma planilha ou PPTX compatível."
+                self.statusChanged.emit()
+                return
+            try:
+                from .import_bridge import GraphicsImportService
+                imported = GraphicsImportService().import_file(path, project_name=path.stem)
+                session.document = imported.document
+                apply_stored_product_links(session.document)
+                session.history.clear()
+                session.clear_selection()
+                context.document = session.document
+                context.source = path
+                self._reset_autosave_manager(path)
+                self._status = f"Importado: {path.name}"
+                self.statusChanged.emit()
+                self.sceneChanged.emit()
+            except Exception as exc:
+                self._status = f"Erro ao importar: {type(exc).__name__}: {exc}"
+                self.statusChanged.emit()
+
+        @Slot(str)
         def saveSceneAs(self, raw_target: str) -> None:
             target = _qml_file_path(raw_target, ".srscene", QUrl)
             if target is None:
