@@ -67,18 +67,19 @@ jobs:
               print("FONT_SELECTED", family, QFontInfo(font).family(), QFontInfo(font).exactMatch())
           out = Path('reference-previews')
           out.mkdir(exist_ok=True)
-          for kind in ('individual', 'multi5', 'multi6'):
+          for kind in ('individual', 'individual_two', 'multi5', 'multi5_two', 'multi6'):
               doc=GraphicsDocument(name=kind)
               doc.add_page(GraphicsPage(width=1080, height=1350))
               session=GraphicsSession(doc)
-              if kind == 'individual':
+              if kind.startswith('individual'):
                   slot = create_item_slot(session, 'individual-beta44', x=110, y=280)
                   bind_product_to_item_slot(session, slot.id, {
                       'id':'test-01','name':'OLEO ABC PET 900ML SOJA',
                       'price':'7,21',
+                      **({'club_price':'6,39'} if kind.endswith('_two') else {}),
                   })
               else:
-                  size = 5 if kind == 'multi5' else 6
+                  size = 5 if kind.startswith('multi5') else 6
                   result = create_multi_item_strip(session, count=size, x=40, y=610)
                   for index, sid in enumerate(result['slot_ids']):
                       bind_product_to_item_slot(session, sid, {
@@ -86,8 +87,15 @@ jobs:
                               'SHAMPOO LOVECARE 200ML','AMACIANTE DOWNY 1L',
                               'DETERGENTE YPE 500ML','LIMP AJAX 1L',
                               'LIMPA VIDROS AZULIM 500ML','SABAO EM PO 1KG'
-                          )[index], 'price':f'{index+2},89'
+                          )[index], 'price':f'{index+2},89',
+                          **({'club_price':f'{index+1},79'} if kind.endswith('_two') else {})
                       })
+              if kind.endswith('_two'):
+                  from srstudio.graphics2.model import BindingRole
+                  for slot in session.page.slots.values():
+                      extra = session.page.node(slot.node_by_role[BindingRole.RETAIL_PRICE.value])
+                      promo = session.page.node(slot.metadata['promotion_label_node_id'])
+                      assert extra.visible and not promo.visible, kind
               # A real local image makes the strict export gate meaningful.
               from PySide6.QtGui import QImage, QColor
               bottle_path = (out / f'{kind}-bottle.png').resolve()
@@ -107,13 +115,14 @@ jobs:
               print('RENDER_WARNINGS', kind, [(w.code, w.message) for w in report.warnings])
               from PySide6.QtGui import QImage
               img=QImage(str(out/f'{kind}.png'))
-              if kind == 'individual':
+              if kind.startswith('individual'):
                   samples = ((x,y) for y in range(660,765,3) for x in range(380,565,3))
               else:
                   samples = ((x,y) for y in range(811,854,3) for x in range(45,1045,3))
               n_blue = sum(img.pixelColor(x,y).name().lower() == '#105594' for x,y in samples)
               assert n_blue > 100, f'{kind}: blue geometry missing: {n_blue}'
-              palette = {'individual': (240,420), 'multi5': (140,740), 'multi6': (120,740)}
+              palette = {'individual': (240,420), 'individual_two': (240,420),
+                         'multi5': (140,740), 'multi5_two': (140,740), 'multi6': (120,740)}
               xx, yy = palette[kind]
               image_color = img.pixelColor(xx,yy).name().lower()
               print('IMAGE_SAMPLE', kind, xx, yy, image_color)
