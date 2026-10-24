@@ -151,6 +151,13 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                     if second is not None:
                         second.visible = mode == "two" or (mode == "auto" and slot.metadata.get("price_variant") == "two")
                         slot.metadata["price_variant"] = "two" if second.visible else "one"
+                        promotion = self.session.page.node(str(slot.metadata.get("promotion_label_node_id") or ""))
+                        if promotion is not None:
+                            promotion.visible = not second.visible
+                        club = self.session.page.node(str(slot.metadata.get("club_label_node_id") or ""))
+                        if club is not None:
+                            snapshot = slot.metadata.get("product_snapshot") or {}
+                            club.visible = bool(second.visible and (snapshot.get("club_price") or snapshot.get("app_price")))
                 updated.append(sid)
             return CommandResult(bool(updated), bool(updated), "Modo de preços atualizado.", {"slot_ids": updated})
 
