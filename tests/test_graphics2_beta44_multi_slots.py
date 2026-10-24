@@ -189,3 +189,20 @@ def test_multi_product_drop_binds_only_selected_cell():
     assert response.ok
     assert first.product_id == "SKU-001"
     assert second.product_id == ""
+
+
+@pytest.mark.parametrize("count", [5, 6])
+def test_multi_strip_has_continuous_blue_footer_and_separators(count):
+    session = make_session()
+    multi = create_multi_item_strip(session, count=count)
+    root = session.page.node(multi["root_node_id"])
+    descendants = [session.page.node(nid) for nid in session.page.descendants(root.id)]
+    footer = [node for node in descendants if node.name == "Faixa azul contínua"]
+    separators = [node for node in descendants if node.name.startswith("Divisor ")]
+    assert len(footer) == 1
+    assert len(separators) == count - 1
+    assert footer[0].transform.width == pytest.approx(root.transform.width)
+    assert footer[0].style["fill"] == "#265398"
+    assert footer[0].z_index < 0
+    # Per-card white full-height backgrounds must not cover the continuous strip.
+    assert not any(node.name == "ItemSlot Background" for node in descendants)
