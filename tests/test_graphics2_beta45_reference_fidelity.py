@@ -110,6 +110,7 @@ def test_promotion_modes_never_show_promo_and_club_label_together():
         "club_price": "6,39",
     })
     assert extra.visible and club.visible and not promo.visible
+    assert p.node(a.node_by_role[BindingRole.UNIT.value]).text == "UN"
     assert bind_product_to_item_slot(s, a.id, {
         "id": "item", "name": "OLEO ABC PET 900ML SOJA", "price": "7,21",
     })
