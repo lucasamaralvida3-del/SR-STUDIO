@@ -213,6 +213,8 @@ def launch_qt_quick_editor(
     session = GraphicsSession(context.document)
     router = GraphicsCommandRouter(session)
     gate = context.gate or inspect_production_gate(session.document, require_visual_fidelity=False)
+    from .product_image_library import apply_stored_product_links
+    apply_stored_product_links(session.document)
     preview_provider = create_live_scene_image_provider()
 
     class SceneBridge(QObject):
@@ -221,6 +223,7 @@ def launch_qt_quick_editor(
         fileJobDone = Signal(bool, str, str, str)
         autosaveDone = Signal(bool, str, str)
         backgroundRemovalDone = Signal(bool, str, str, str)
+        productImageDone = Signal(bool, str, str, str)
 
         def __init__(self) -> None:
             super().__init__()
@@ -242,6 +245,7 @@ def launch_qt_quick_editor(
             self.fileJobDone.connect(self._finish_file_job)
             self.autosaveDone.connect(self._finish_autosave)
             self.backgroundRemovalDone.connect(self._finish_background_removal)
+            self.productImageDone.connect(self._finish_product_image)
             self._bg_running = False
 
         @Property(str, notify=sceneChanged)
@@ -365,6 +369,7 @@ def launch_qt_quick_editor(
                     extract_assets_to=self._autosave_manager.root / "recovered-assets" / point.document_id,
                 )
                 session.document = recovered
+                apply_stored_product_links(session.document)
                 session.history.clear()
                 session.clear_selection()
                 context.document = recovered
@@ -467,6 +472,39 @@ def launch_qt_quick_editor(
             self.statusChanged.emit()
             self.sceneChanged.emit()
             return result_raw
+
+        @Slot(str, str, str)
+        def attachProductImage(self, product_id: str, name: str, source: str) -> None:
+            if not product_id.strip():
+                self._status = "Produto sem código; imagem não vinculada."
+                self.statusChanged.emit()
+                return
+            self._status = "Salvando imagem do produto na biblioteca..."
+            self.statusChanged.emit()
+
+            def worker():
+                try:
+                    from .product_image_library import store_product_image
+                    entry = store_product_image(product_id, name, source)
+                    self.productImageDone.emit(True, product_id, json.dumps(entry), "")
+                except Exception as exc:
+                    self.productImageDone.emit(False, product_id, "", f"{type(exc).__name__}: {exc}")
+
+            threading.Thread(target=worker, name="sr-product-image-library", daemon=True).start()
+
+        def _finish_product_image(self, ok: bool, product_id: str, payload: str, error: str) -> None:
+            if ok:
+                from .product_image_library import attach_image_to_document
+                entry = json.loads(payload)
+                if attach_image_to_document(session.document, product_id, entry):
+                    self._status = "Imagem vinculada ao produto e salva na biblioteca."
+                    self._schedule_autosave()
+                    self.sceneChanged.emit()
+                else:
+                    self._status = "Imagem salva pelo código; o produto não está no catálogo atual."
+            else:
+                self._status = "Não foi possível vincular a imagem: " + error
+            self.statusChanged.emit()
 
         @Slot(str)
         def removeSlotBackground(self, slot_id: str) -> None:
