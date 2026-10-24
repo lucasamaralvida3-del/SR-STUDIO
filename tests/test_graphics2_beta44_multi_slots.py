@@ -77,6 +77,7 @@ def test_single_promotional_slot_supports_two_prices_and_optional_limit():
     page = session.page
     assert page.node(slot.node_by_role[BindingRole.RETAIL_PRICE.value]).visible
     assert page.node(slot.node_by_role[BindingRole.LIMIT.value]).visible
+    assert page.node(slot.node_by_role[BindingRole.LIMIT.value]).text == "LIMITE DE 20 UN POR CPF"
 
 
 @pytest.mark.parametrize("mode,count", [("individual",1), ("six",6),("seven",7),("eleven",11),("auto",5)])
