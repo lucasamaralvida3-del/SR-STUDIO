@@ -105,3 +105,17 @@ def test_router_multi_command_and_payload_contract():
     ))
     assert result["ok"]
     assert len(result["payload"]["slot_ids"]) == 6
+
+
+def test_eleven_item_promotion_reuses_multi_strip_in_bottom_row():
+    session = make_session()
+    result = ItemSlotCommandRouter(session).dispatch({
+        "name": "apply_promotion_layout", "mode": "eleven"
+    })
+    assert result.ok
+    assert len(result.payload["slot_ids"]) == 11
+    groups = [node for node in session.page.nodes.values()
+              if node.metadata.get("multi_slot_beta44")]
+    assert len(groups) == 1
+    assert groups[0].metadata["multi_count"] == 5
+    assert len(groups[0].metadata["child_slot_ids"]) == 5
