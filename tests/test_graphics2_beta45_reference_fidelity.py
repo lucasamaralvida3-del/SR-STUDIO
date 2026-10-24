@@ -144,6 +144,19 @@ def test_reference_slots_render_png_offscreen(tmp_path: Path):
     s = session()
     create_item_slot(s, "individual-beta44", x=100, y=120)
     create_multi_item_strip(s, count=5, x=50, y=650)
+    # The production exporter correctly rejects product images without a
+    # real local source. Bind a deterministic tiny local fixture so this test
+    # validates VISUAL GEOMETRY instead of failing the missing-assets gate.
+    from PySide6.QtGui import QImage, QColor
+    bottle = tmp_path / "reference-bottle.png"
+    fixture = QImage(40, 70, QImage.Format_ARGB32)
+    fixture.fill(QColor("#DDCD60"))
+    assert fixture.save(str(bottle))
+    for slot in s.page.slots.values():
+        node = s.page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
+        if node:
+            node.metadata["bound_image_source"] = str(bottle)
+            node.metadata["placeholder"] = False
     out = tmp_path / "beta45-ppt-reference.png"
     active_index = next(i for i, page in enumerate(s.document.pages) if page.id == s.page.id)
     report = render_png(s.document, out, page_index=active_index, dpi=96)
