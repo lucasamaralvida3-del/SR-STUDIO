@@ -1,5 +1,10 @@
 name: Publish G2 Beta 43 Overlay-Free Studio + Delta
 on:
+  push:
+    branches:
+      - release/g2beta43-no-overlay-windows-publish
+    paths:
+      - '.github/workflows/g2-beta43-no-overlays-publish.yml'
   workflow_dispatch:
 
 permissions:
