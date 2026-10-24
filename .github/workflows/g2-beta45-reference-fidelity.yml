@@ -88,6 +88,7 @@ jobs:
                   if image_node:
                       image_node.metadata['bound_image_source'] = str(bottle_path)
                       image_node.metadata['placeholder'] = False
+                      image_node.visible = True
               active_page_index = next(i for i, p in enumerate(doc.pages) if p.id == session.page.id)
               report=render_png(doc, out/f'{kind}.png', page_index=active_page_index, dpi=96)
               assert report.ok, kind
