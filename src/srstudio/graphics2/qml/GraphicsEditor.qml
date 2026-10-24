@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Window
+import QtQuick.Dialogs
 
 ApplicationWindow {
     id: window
@@ -19,6 +20,14 @@ ApplicationWindow {
     property bool showRulers: true
     property real gridStep: 50
     property string selectedSlotId: ""
+    property string pendingImageProductId: ""
+    property string pendingImageProductName: ""
+    FileDialog {
+        id: productImageDialog
+        title: "Adicionar imagem ao produto"
+        nameFilters: ["Imagens (*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tif *.tiff)"]
+        onAccepted: sceneBridge.attachProductImage(window.pendingImageProductId, window.pendingImageProductName, selectedFile.toString())
+    }
     property string hoveredSlotId: ""
     property bool smartSlotInspectionMode: false
     property bool smartSlotEditMode: false
@@ -390,22 +399,10 @@ ApplicationWindow {
         anchorNode = node
         if (!node) {
             inspectorName.text = "Nada selecionado"
-            xField.text = ""
-            yField.text = ""
-            wField.text = ""
-            hField.text = ""
-            rotationField.text = ""
-            opacityField.value = 1
             textEditor.text = ""
             return
         }
         inspectorName.text = node.name || node.kind || "Elemento"
-        xField.text = Number(node.transform.x).toFixed(2)
-        yField.text = Number(node.transform.y).toFixed(2)
-        wField.text = Number(node.transform.width).toFixed(2)
-        hField.text = Number(node.transform.height).toFixed(2)
-        rotationField.text = Number(node.transform.rotation || 0).toFixed(2)
-        opacityField.value = Number(node.opacity === undefined ? 1 : node.opacity)
         textEditor.text = node.kind === "text" ? (node.text || "") : ""
     }
 
@@ -636,12 +633,16 @@ ApplicationWindow {
                                         id: productMouse
                                         anchors.fill: parent
                                         hoverEnabled: true
-                                        acceptedButtons: Qt.LeftButton
+                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                                         preventStealing: dragging
                                         property real pressX: 0
                                         property real pressY: 0
                                         property bool dragging: false
                                         onPressed: {
+                                            if (mouse.button === Qt.RightButton) {
+                                                productActions.popup()
+                                                return
+                                            }
                                             pressX = mouse.x
                                             pressY = mouse.y
                                             dragging = false
@@ -670,6 +671,18 @@ ApplicationWindow {
                                             cancelProductDrag()
                                         }
                                         onDoubleClicked: if (selectedSlotId) bindProduct(productCard.productData)
+                                    Menu {
+                                        id: productActions
+                                        MenuItem {
+                                            text: "Adicionar imagem"
+                                            onTriggered: {
+                                                var p = productCard.productData
+                                                window.pendingImageProductId = String(p.id || p.product_id || "")
+                                                window.pendingImageProductName = productLabel(p)
+                                                productImageDialog.open()
+                                            }
+                                        }
+                                    }
                                     }
                                 }
                                 Label { anchors.centerIn: parent; visible: productList.count === 0; text: "Importe uma planilha para carregar produtos."; width: productList.width - 30; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; color: "#94A3B8" }
@@ -1372,36 +1385,6 @@ ApplicationWindow {
                         Label { text: sceneBridge.status; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
 
-                        GridLayout {
-                            columns: 2
-                            columnSpacing: 8
-                            rowSpacing: 7
-                            Layout.fillWidth: true
-                            Label { text: "X"; color: "#64748B" }
-                            TextField { id: xField; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                            Label { text: "Y"; color: "#64748B" }
-                            TextField { id: yField; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                            Label { text: "Largura"; color: "#64748B" }
-                            TextField { id: wField; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                            Label { text: "Altura"; color: "#64748B" }
-                            TextField { id: hField; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                            Label { text: "Rotação"; color: "#64748B" }
-                            TextField { id: rotationField; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                        }
-                        Button {
-                            text: "Aplicar geometria"
-                            Layout.fillWidth: true
-                            enabled: !!anchorNode
-                            onClicked: {
-                                if (!anchorNode) return
-                                sceneBridge.dispatch(JSON.stringify({"name":"resize","node_id":anchorNode.id,"x":Number(xField.text),"y":Number(yField.text),"width":Number(wField.text),"height":Number(hField.text)}))
-                                sceneBridge.dispatch(JSON.stringify({"name":"rotate","angle":Number(rotationField.text)}))
-                            }
-                        }
-
-                        Label { text: "Opacidade"; color: "#475569"; font.bold: true }
-                        Slider { id: opacityField; from: 0; to: 1; stepSize: 0.01; value: 1; Layout.fillWidth: true; onMoved: if (anchorNode) sceneBridge.dispatch(JSON.stringify({"name":"opacity","value":value})) }
-
                         ColumnLayout {
                             visible: anchorNode && anchorNode.kind === "text"
                             Layout.fillWidth: true
@@ -1411,39 +1394,6 @@ ApplicationWindow {
                         }
 
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
-                        Label { text: "Organizar"; color: "#475569"; font.bold: true }
-                        GridLayout {
-                            columns: 3
-                            Layout.fillWidth: true
-                            Button { text: "Esq."; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"align","mode":"left"}') }
-                            Button { text: "Centro"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"align","mode":"center"}') }
-                            Button { text: "Dir."; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"align","mode":"right"}') }
-                            Button { text: "Topo"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"align","mode":"top"}') }
-                            Button { text: "Meio"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"align","mode":"middle"}') }
-                            Button { text: "Base"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"align","mode":"bottom"}') }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Button { text: "Distribuir H"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"distribute","axis":"horizontal"}') }
-                            Button { text: "Distribuir V"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"distribute","axis":"vertical"}') }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Button { text: "Bloquear"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"lock","value":true}') }
-                            Button { text: "Desbloquear"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"lock","value":false}') }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Button { text: "Ocultar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"hide","value":true}') }
-                            Button { text: "Mostrar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"hide","value":false}') }
-                        }
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Button { text: "▲ Frente"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"layer","mode":"front"}') }
-                            Button { text: "▼ Fundo"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"layer","mode":"back"}') }
-                        }
-                        Item { Layout.preferredHeight: 8 }
-                        Label { text: "Qt Quick / RHI · preview com fontes, spacing, custGeom e GPU"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 10; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                     }
                 }
             }
