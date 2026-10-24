@@ -2,135 +2,31 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio",
   "channel": "beta",
-  "version": "5.0.0-hybrid.g2beta.43",
+  "version": "5.0.0-hybrid.g2beta.44",
   "product_version": "5.0.0",
-  "release_label": "G2 Beta 43 - Interface sem paineis sobrepostos",
-  "published_at": "2026-10-24T13:03:45.050750+00:00",
+  "release_label": "G2 Beta 44 - Smart Slots e layouts promocionais",
+  "published_at": "2026-10-24T15:04:46.144167+00:00",
   "min_launcher": "4.0.1-hybrid.base2.6",
   "min_launcher_version": "4.0.1-hybrid.base2.6",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-43/SR_STUDIO_G2_BETA_43_NO_OVERLAYS_PROFESSIONAL.zip",
-    "sha256": "2136b22aaf25479aae19ef2d516829ff27031ac964c168fc2186e5c2096f09ed",
-    "size": 377396542,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-44/SR_STUDIO_G2_BETA_44_LAUNCHER_BUNDLE.zip",
+    "sha256": "523af1e01acf614ce75fc4959ab2aef0c5acd6681d497233b42e911a08544544",
+    "size": 395621788,
     "member_prefix": "files/"
   },
-  "delta": {
-    "format": "SRSTUDIO_DELTA_FILES_1",
-    "from_version": "5.0.0-hybrid.g2beta.42",
-    "target_version": "5.0.0-hybrid.g2beta.43",
-    "member_prefix": "files/",
-    "sha256": "75a2542af9d2465fa55f3318e07e12cf4786f9d9e36677199e6363ce2bf806bb",
-    "size": 32066837,
-    "files": [
-      {
-        "path": "SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe",
-        "sha256": "4753f3c8ba183b21d415533b23c90f34d15b9d57f77100bc42a2aa0abb84ccc3",
-        "size": 16098872
-      },
-      {
-        "path": "SRStudio5/Graphics2Host/_internal/base_library.zip",
-        "sha256": "da8dd57108fa624b11d6f21dbd407f4fda7be533a2489cf7b021abef0c9f468f",
-        "size": 1443565
-      },
-      {
-        "path": "SRStudio5/Graphics2Host/_internal/httpx2-2.16.0.dist-info/RECORD",
-        "sha256": "0d3188f1cd9bcb2ec4e34e3502433947100e2d1bb91ef75c80291aa5657565aa",
-        "size": 4667
-      },
-      {
-        "path": "SRStudio5/Graphics2Host/_internal/numpy-2.4.6.dist-info/RECORD",
-        "sha256": "cde37dd9a35204ee980532c03b1eb8c2064345c9d0d9848d7df6ce37229d0077",
-        "size": 129259
-      },
-      {
-        "path": "SRStudio5/Graphics2Host/_internal/onnxruntime-1.31.0.dist-info/RECORD",
-        "sha256": "3e01b3fd4313c159d370ae22d81113af7a0211909418291ef5ab8fa47451684e",
-        "size": 60746
-      },
-      {
-        "path": "SRStudio5/Graphics2Host/_internal/srstudio/graphics2/qml/GraphicsEditor.qml",
-        "sha256": "496254229e394a858d46297dbdf8b48bf1ea1e1b8175a1c0dcff8cb131c930e4",
-        "size": 101288
-      },
-      {
-        "path": "SRStudio5/Graphics2Host/_internal/tqdm-4.70.1.dist-info/RECORD",
-        "sha256": "b2a364c2a1c3e510d3f8b7f7f8691e770e742cd4c65472c8d41a0ef72872f7ee",
-        "size": 4551
-      },
-      {
-        "path": "SRStudio5/Graphics2Host/_internal/withoutbg-1.3.0.dist-info/RECORD",
-        "sha256": "f2a7893fef58db1179698695f9e133e8453e4a357cb8eddfd9ce5631dc93ff0c",
-        "size": 1876
-      },
-      {
-        "path": "SRStudio5/Graphics2Host/graphics2-host-runtime.json",
-        "sha256": "d8c39cb92c10c3f939bede1397bcd4dfeebc3987f2b30989dce6f188f47936c3",
-        "size": 719468
-      },
-      {
-        "path": "SRStudio5/SR Studio 5.exe",
-        "sha256": "08faaae0d440226fb4b1d81cac326808ba8d9d3523cc502e7450efa4d27e55c3",
-        "size": 15334314
-      },
-      {
-        "path": "SRStudio5/_internal/base_library.zip",
-        "sha256": "facc275dab9a2af39a41fa9f3560bce8cb611e56c8c4e33af836dd8f7cce34be",
-        "size": 1443565
-      },
-      {
-        "path": "SRStudio5/_internal/httpx2-2.16.0.dist-info/RECORD",
-        "sha256": "0d3188f1cd9bcb2ec4e34e3502433947100e2d1bb91ef75c80291aa5657565aa",
-        "size": 4667
-      },
-      {
-        "path": "SRStudio5/_internal/numpy-2.4.6.dist-info/RECORD",
-        "sha256": "cde37dd9a35204ee980532c03b1eb8c2064345c9d0d9848d7df6ce37229d0077",
-        "size": 129259
-      },
-      {
-        "path": "SRStudio5/_internal/pypdfium2-5.14.0.dist-info/RECORD",
-        "sha256": "01bd5996c6d74f41164305cf5110feab79d33a4a82fd6a648a84965e25f4ec9c",
-        "size": 9523
-      },
-      {
-        "path": "SRStudio5/_internal/tqdm-4.70.1.dist-info/RECORD",
-        "sha256": "b2a364c2a1c3e510d3f8b7f7f8691e770e742cd4c65472c8d41a0ef72872f7ee",
-        "size": 4551
-      },
-      {
-        "path": "VERSAO.txt",
-        "sha256": "9b6eb4b72c1f9608ef3d8ece14c444cb6091edd5e4a64056d1a471e7acca15a7",
-        "size": 23
-      },
-      {
-        "path": "version.json",
-        "sha256": "e38a83f72781e736db4e255b75096a970c4798fe4d15633c4d5a70612a84c214",
-        "size": 414
-      }
-    ],
-    "delete": [],
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-43/SR_STUDIO_G2_BETA_43_DELTA_FROM_42.zip"
-  },
-  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-43/SR_STUDIO_G2_BETA_43_NO_OVERLAYS_PROFESSIONAL.zip",
-  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-43/SR_STUDIO_G2_BETA_43_NO_OVERLAYS_PROFESSIONAL.zip",
-  "sha256": "2136b22aaf25479aae19ef2d516829ff27031ac964c168fc2186e5c2096f09ed",
-  "size": 377396542,
+  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-44/SR_STUDIO_G2_BETA_44_LAUNCHER_BUNDLE.zip",
+  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/g2-beta-44/SR_STUDIO_G2_BETA_44_LAUNCHER_BUNDLE.zip",
+  "sha256": "523af1e01acf614ce75fc4959ab2aef0c5acd6681d497233b42e911a08544544",
+  "size": 395621788,
   "member_prefix": "files/",
-  "previous_version": "5.0.0-hybrid.g2beta.42",
-  "entrypoint": "SR_Studio_Gerador.py",
+  "previous_version": "5.0.0-hybrid.g2beta.43",
+  "entrypoint": "SRStudio5/SR Studio 5.exe",
   "graphics2_test": true,
   "graphics2_primary": true,
   "launcher_path_safe": true,
-  "poster_quantity": true,
-  "source_commit": "53c8ba009b2799a40a8622204a1d193ac6406c4f",
-  "workflow_run": "40096021165",
+  "source_commit": "d95d005d347147daed3e83281f6b620ade61f591",
   "public_asset_verified": true,
-  "public_asset_verified_via": [
-    "curl",
-    "wget"
-  ],
-  "limpeza_blue_single_slot": true,
-  "notes": "G2 Beta 43: contorno sincronizado, 1 ou 2 preços automáticos, sem novos slots antigos e withoutBG acessível.",
-  "tag": "g2-beta-43",
-  "asset": "SR_STUDIO_G2_BETA_43_NO_OVERLAYS_PROFESSIONAL.zip"
+  "tag": "g2-beta-44",
+  "asset": "SR_STUDIO_G2_BETA_44_LAUNCHER_BUNDLE.zip",
+  "notes": "Beta 44: Multi Itens 5/6, Individual 1/2 preços, layouts 1/6/7/11 e Auto Layout. ZIP reempacotado para o launcher; instalador Stable preservado."
 }
