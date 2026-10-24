@@ -939,9 +939,40 @@ ApplicationWindow {
                 SplitView.fillHeight: true
                 color: "#F4F7FD"
 
+                Rectangle {
+                    height: 49
+                    anchors.left: parent.left
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    color: "white"
+                    radius: 8
+                    border.color: "#E8EBF4"
+                    z: 20000
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 10
+                        anchors.rightMargin: 10
+                        spacing: 3
+                        ToolButton { text: "↖"; highlighted: !smartSlotEditMode; ToolTip.text: "Seleção"; ToolTip.visible: hovered; onClicked: smartSlotEditMode = false }
+                        ToolButton { text: "▧"; highlighted: smartSlotEditMode; ToolTip.text: "Ajustar Smart Slot"; ToolTip.visible: hovered; onClicked: { smartSlotEditMode = !smartSlotEditMode; smartSlotInspectionMode = smartSlotEditMode } }
+                        ToolButton { text: "⬡"; ToolTip.text: "Criar Slot Azul"; ToolTip.visible: hovered; onClicked: createBlueSlot() }
+                        ToolButton { text: "T"; ToolTip.text: "Texto"; ToolTip.visible: hovered; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
+                        ToolButton { text: "▧"; ToolTip.text: "Imagens"; ToolTip.visible: hovered; onClicked: studioSection = 3 }
+                        ToolSeparator {}
+                        ToolButton { text: "↶"; enabled: !!scene.editor && scene.editor.can_undo; onClicked: sceneBridge.undo() }
+                        ToolButton { text: "↷"; enabled: !!scene.editor && scene.editor.can_redo; onClicked: sceneBridge.redo() }
+                        Item { Layout.fillWidth: true }
+                        ToolButton { text: "−"; onClicked: zoom = Math.max(0.12, zoom - 0.1) }
+                        Label { text: Math.round(zoom * 100) + "%"; color: "#1C2B4D"; font.bold: true; font.pixelSize: 12 }
+                        ToolButton { text: "+"; onClicked: zoom = Math.min(3.5, zoom + 0.1) }
+                        ToolButton { text: "✥"; onClicked: showRulers = !showRulers }
+                    }
+                }
+
                 Flickable {
                     id: viewport
                     anchors.fill: parent
+                    anchors.topMargin: 52
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     contentWidth: Math.max(width, (page ? page.width : 1080) * zoom + 280)
