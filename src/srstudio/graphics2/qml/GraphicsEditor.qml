@@ -743,7 +743,7 @@ ApplicationWindow {
                         ColumnLayout {
                             Layout.fillHeight: true
                             Layout.fillWidth: true
-                            visible: studioSection === 7 || studioSection === 2
+                            visible: studioSection === 7
                             spacing: 7
                                                     ColumnLayout {
                             spacing: 6
@@ -799,7 +799,44 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             visible: studioSection === 1 || studioSection === 4 || studioSection === 5 || studioSection === 6
                             spacing: 11
-                            Button { Layout.fillWidth: true; visible: studioSection === 1; text: "+ Slot Azul"; onClicked: createBlueSlot() }
+                            // Beta 44: visual preview, not a text-only slot picker.
+                            Rectangle {
+                                Layout.fillWidth: true
+                                Layout.preferredHeight: 175
+                                visible: studioSection === 1
+                                color: "#FFFFFF"
+                                border.color: "#CFD9EA"
+                                radius: 10
+                                Column {
+                                    anchors.fill: parent
+                                    anchors.margins: 12
+                                    spacing: 7
+                                    Label { text: "Slot Azul"; font.bold: true; color: "#284F8F" }
+                                    Rectangle {
+                                        width: parent.width
+                                        height: 102
+                                        color: "#F8FAFC"
+                                        radius: 6
+                                        Rectangle {
+                                            x: 8; y: 13; width: parent.width * 0.43; height: 60
+                                            radius: 10; color: "#E5EDF8"; border.color: "#295599"; border.width: 3
+                                            Label { anchors.centerIn: parent; text: "PRODUTO"; color: "#295599"; font.pixelSize: 10; font.bold: true }
+                                        }
+                                        Rectangle {
+                                            anchors.right: parent.right; anchors.bottom: parent.bottom
+                                            anchors.rightMargin: 7; anchors.bottomMargin: 7
+                                            width: parent.width * 0.53; height: 55
+                                            color: "#295599"; radius: 9
+                                            Label { anchors.centerIn: parent; text: "R$  9,99"; color: "white"; font.pixelSize: 19; font.bold: true }
+                                        }
+                                    }
+                                }
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: createBlueSlot()
+                                }
+                            }
                             Button { Layout.fillWidth: true; visible: studioSection === 4; text: "+ Texto"; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
                             Button { Layout.fillWidth: true; visible: studioSection === 5; text: "+ Forma"; onClicked: sceneBridge.dispatch('{"name":"add_rect"}') }
                             CheckBox { visible: studioSection === 6; text: "Mostrar grade"; checked: showGrid; onToggled: showGrid = checked }
