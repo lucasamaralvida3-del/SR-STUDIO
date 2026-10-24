@@ -1,0 +1,90 @@
+name: G2 Beta45 PPT Reference Fidelity
+
+on:
+  push:
+    branches:
+      - feature/g2-beta45-reference-fidelity
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'tests/test_graphics2_beta45_reference_fidelity.py'
+      - 'tests/test_graphics2_beta44_multi_slots.py'
+      - '.github/workflows/g2-beta45-reference-fidelity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-visual-contract:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install Qt rendering, application and regression dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile corrected templates
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/graphics2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test source-fidelity geometry and Beta44 regressions
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_item_slots.py tests/test_graphics2_qml_load.py tests/test_graphics2_beta44_promotion_layouts.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Render actual Qt outputs for visual QA
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from srstudio.graphics2.model import GraphicsDocument, GraphicsPage
+          from srstudio.graphics2.operations import GraphicsSession
+          from srstudio.graphics2.item_slots import create_item_slot, bind_product_to_item_slot
+          from srstudio.graphics2.multi_item_strip import create_multi_item_strip
+          from srstudio.graphics2.qt_renderer import render_png
+
+          out = Path('reference-previews')
+          out.mkdir(exist_ok=True)
+          for kind in ('individual', 'multi5', 'multi6'):
+              doc=GraphicsDocument(name=kind)
+              doc.add_page(GraphicsPage(width=1080, height=1350))
+              session=GraphicsSession(doc)
+              if kind == 'individual':
+                  slot = create_item_slot(session, 'individual-beta44', x=110, y=280)
+                  bind_product_to_item_slot(session, slot.id, {
+                      'id':'test-01','name':'OLEO ABC PET 900ML SOJA',
+                      'price':'7,21',
+                  })
+              else:
+                  size = 5 if kind == 'multi5' else 6
+                  result = create_multi_item_strip(session, count=size, x=40, y=610)
+                  for index, sid in enumerate(result['slot_ids']):
+                      bind_product_to_item_slot(session, sid, {
+                          'id':f'product-{index}', 'name':(
+                              'SHAMPOO LOVECARE 200ML','AMACIANTE DOWNY 1L',
+                              'DETERGENTE YPE 500ML','LIMP AJAX 1L',
+                              'LIMPA VIDROS AZULIM 500ML','SABAO EM PO 1KG'
+                          )[index], 'price':f'{index+2},89'
+                      })
+              report=render_png(doc, out/f'{kind}.png', dpi=96)
+              assert report.ok, kind
+              print(kind, report.output, report.output.stat().st_size)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: G2-Beta45-PPT-fidelity-previews
+          path: reference-previews/*.png
+          if-no-files-found: ignore
+          retention-days: 14
