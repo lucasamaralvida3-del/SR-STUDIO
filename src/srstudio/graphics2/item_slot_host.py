@@ -153,7 +153,7 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
 
         if name == "add_item_slot":
             preset_id = str(command.get("preset_id") or LIMPEZA_BLUE_ID)
-            if preset_id not in (LIMPEZA_BLUE_ID, "individual-beta44"):
+            if preset_id not in (LIMPEZA_BLUE_ID, "individual-beta44", "multi-cell-beta44", *QUINTA3_FAMILY_PRESETS):
                 return CommandResult(False, False, "Modelo de criação indisponível.")
             if preset_id == LIMPEZA_BLUE_ID:
                 slot = create_limpeza_blue_slot(
