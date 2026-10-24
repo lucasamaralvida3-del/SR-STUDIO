@@ -211,9 +211,21 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
             price_mode = str(command.get("price_mode") or "auto")
             if price_mode not in ("auto", "one", "two"):
                 return CommandResult(False, False, "Modo de preços inválido.")
+            # Multiple template insertions must not obscure existing
+            # product cards. Preserve the old page and create a fresh page
+            # with the same dimensions when any Smart Slots already exist.
+            if self.session.page.slots:
+                previous = self.session.page
+                previous_width, previous_height = previous.width, previous.height
+                previous_background = previous.background
+                self.session.add_page(name="Layout promocional")
+                with self.session.transaction("Preservar formato da página"):
+                    self.session.page.width = previous_width
+                    self.session.page.height = previous_height
+                    self.session.page.background = previous_background
             page = self.session.page
             created = []
-            # Place editable, independently bound slots. Never delete existing art.
+            # Each template is inserted as editable Smart Slots.
             for position in plan.placements:
                 if plan.mode == "eleven" and position.index in (7, 8, 9, 10):
                     # These four items are already owned by the 5-item group.
@@ -259,7 +271,8 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                         )
                 created.append(slot.id)
             return CommandResult(True, True, "Layout promocional inserido.", {
-                "slot_ids": created, "logo_reserved": plan.logo_reserved
+                "slot_ids": created, "logo_reserved": plan.logo_reserved,
+                "page_id": page.id
             })
 
         if name == "plan_promotion_layout":
