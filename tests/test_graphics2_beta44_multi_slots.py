@@ -127,15 +127,17 @@ def test_switching_promotion_layout_preserves_existing_page():
     initial = router.dispatch({"name": "apply_promotion_layout", "mode": "six"})
     assert initial.ok
     original_page_id = session.page.id
+    original_page = session.page
     original_slot_ids = set(initial.payload["slot_ids"])
+    page_count = len(session.document.pages)
     next_layout = router.dispatch({"name": "apply_promotion_layout", "mode": "seven"})
     assert next_layout.ok
-    assert len(session.document.pages) == 2
+    assert len(session.document.pages) == page_count + 1
     assert session.page.id != original_page_id
-    assert set(session.document.pages[0].slots) == original_slot_ids
+    assert set(original_page.slots) == original_slot_ids
     assert len(session.page.slots) == 7
-    assert session.page.width == session.document.pages[0].width
-    assert session.page.height == session.document.pages[0].height
+    assert session.page.width == original_page.width
+    assert session.page.height == original_page.height
 
 
 def test_duplicated_individual_relinks_own_club_label():
