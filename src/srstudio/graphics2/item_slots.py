@@ -535,11 +535,17 @@ def refresh_all_item_slots(document) -> None:
     # Upgrade legacy Limpeza V1 once on load without creating extra slots.
     # Version 2 is idempotent; later payload refreshes are effectively O(1).
     from .slot_limpeza_blue import upgrade_limpeza_blue_slot
+    from .reference_fidelity import migrate_reference_slot, migrate_multi_parent
+    presets = _builtins()
 
     for page in document.pages:
+        for node in list(page.nodes.values()):
+            if node.metadata.get("multi_slot_beta44"):
+                migrate_multi_parent(page, node.id)
         for slot in page.slots.values():
             if slot.metadata.get("limpeza_blue_profile"):
                 upgrade_limpeza_blue_slot(page, slot)
+            migrate_reference_slot(page, slot, presets)
             refresh_item_slot_metadata(page, slot)
 
 
