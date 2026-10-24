@@ -16,8 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
-      SOURCE_SHA: 8ef2a75b815166f41cc69abb0e03b3d6136b3a69
-      SOURCE_RUN_ID: '40095740157'
+      SOURCE_SHA: ffa0b88b4bbe230fc6cc6e8f0538d7bfd9c3b36b
+      SOURCE_RUN_ID: '40095827642'
       CANDIDATE_ARTIFACT: SR-Studio-G2-Beta43-No-Overlays-Windows-x64
       BETA_VERSION: 5.0.0-hybrid.g2beta.43
       BETA_TAG: g2-beta-43
@@ -46,9 +46,9 @@ jobs:
             sleep 15
           done
           test "$outcome" = success
-          qml_outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/40095740186" --jq .conclusion)
+          qml_outcome=$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/40095827672" --jq .conclusion)
           test "$qml_outcome" = success
-          echo "VALIDATED_QML_WINDOWS_RUN=40095740186"
+          echo "VALIDATED_QML_WINDOWS_RUN=40095827672"
           gh api -H 'Accept: application/vnd.github.raw+json' "repos/$GITHUB_REPOSITORY/contents/manifests/launcher.json?ref=main" > launcher-live.json
           python - <<'PY'
           import json
@@ -281,7 +281,7 @@ jobs:
                   assert 'files/SRStudio5/Graphics2Host/SRGraphicsEngine2Host.exe' in names
                   meta = json.loads(z.read('files/version.json'))
                   assert meta['version'] == '5.0.0-hybrid.g2beta.43'
-                  assert meta['source_commit'] == '8ef2a75b815166f41cc69abb0e03b3d6136b3a69'
+                  assert meta['source_commit'] == 'ffa0b88b4bbe230fc6cc6e8f0538d7bfd9c3b36b'
           PY
           delta_url="https://github.com/$GITHUB_REPOSITORY/releases/download/$BETA_TAG/$BETA_DELTA_NAME"
           curl --fail --location --retry 3 --connect-timeout 30 -o public-delta-curl.zip "$delta_url"
