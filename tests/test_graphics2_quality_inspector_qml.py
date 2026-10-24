@@ -59,7 +59,7 @@ def test_quality_inspector_surfaces_blockers_warnings_and_gpu():
     assert "graphics_api_requested" in source
 
 
-def test_host_attaches_both_contextual_qml_tools():
+def test_host_does_not_attach_obsolete_overlay_tools():
     source = Path(qt_host.__file__).read_text(encoding="utf-8")
     assert '_attach_context_qml_tool(' in source
     assert 'qml_dir / "ImageInspector.qml"' in source
