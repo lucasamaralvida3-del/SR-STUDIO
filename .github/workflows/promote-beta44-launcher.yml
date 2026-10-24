@@ -1,0 +1,102 @@
+name: Promover G2 Beta 44 para Atualização Automática
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/promote-beta44-launcher.yml'
+      - 'tools/promote_g2_beta44_launcher.py'
+      - 'tools/test_promote_g2_beta44_launcher.py'
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: g2-beta44-launcher-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Test launcher archive compatibility
+        run: python -m unittest discover -s tools -p test_promote_g2_beta44_launcher.py -v
+
+      - name: Verify Beta44 release and all certified workflow gates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          for run_id in 40104011161 40104011138 40104011126 40104011099 40104009328; do
+            state="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq .conclusion)"
+            commit="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id" --jq .head_sha)"
+            test "$state" = "success"
+            test "$commit" = "d95d005d347147daed3e83281f6b620ade61f591"
+          done
+          tag_commit="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/g2-beta-44" --jq .target_commitish)"
+          test "$tag_commit" = "d95d005d347147daed3e83281f6b620ade61f591"
+          echo 'Beta44 source release and five workflows verified.'
+
+      - name: Download already validated Beta44 Windows package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          mkdir -p promotion
+          gh release download g2-beta-44 --repo "$GITHUB_REPOSITORY" --dir promotion \
+            -p SR_STUDIO_G2_BETA_44_PROFESSIONAL_WIN64.zip \
+            -p SR_STUDIO_G2_BETA_44_SHA256.txt \
+            -p beta44-provenance.txt
+          (cd promotion && sha256sum -c SR_STUDIO_G2_BETA_44_SHA256.txt)
+          grep -F 'd95d005d347147daed3e83281f6b620ade61f591' promotion/beta44-provenance.txt
+
+      - name: Build compatible full-update ZIP with files/SRStudio5
+        run: |
+          set -euo pipefail
+          python tools/promote_g2_beta44_launcher.py \
+            --input promotion/SR_STUDIO_G2_BETA_44_PROFESSIONAL_WIN64.zip \
+            --bundle-output promotion/SR_STUDIO_G2_BETA_44_LAUNCHER_BUNDLE.zip \
+            --existing-manifest beta/manifest.json \
+            --manifest-output promotion/beta-manifest.json
+
+      - name: Upload launcher-compatible ZIP without modifying original release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          asset=SR_STUDIO_G2_BETA_44_LAUNCHER_BUNDLE.zip
+          gh release upload g2-beta-44 "promotion/$asset" --repo "$GITHUB_REPOSITORY" --clobber
+          local_size="$(stat -c%s "promotion/$asset")"
+          online_size="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/g2-beta-44" \
+            --jq '.assets[] | select(.name == "SR_STUDIO_G2_BETA_44_LAUNCHER_BUNDLE.zip") | .size')"
+          test "$online_size" = "$local_size"
+          test "$online_size" -gt 100000000
+          curl -fsSIL --retry 5 --retry-delay 3 \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/g2-beta-44/$asset" >/dev/null
+          echo 'Beta44 launcher asset publicly accessible and size verified.'
+
+      - name: Publish manifest to live Beta channel after upload verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          live_version="$(gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" \
+            --jq '.content' | base64 -d | python -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+          test "$live_version" = "5.0.0-hybrid.g2beta.43"
+          expected_sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" --jq .sha)"
+          encoded="$(base64 -w0 promotion/beta-manifest.json)"
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json" \
+            -f message='Promover G2 Beta44 validada ao canal Beta do launcher' \
+            -f branch=main \
+            -f sha="$expected_sha" \
+            -f content="$encoded" >/dev/null
+          current_version="$(gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" \
+            --jq .content | base64 -d | python -c 'import json,sys; print(json.load(sys.stdin)["version"])')"
+          test "$current_version" = "5.0.0-hybrid.g2beta.44"
+          echo 'Live Beta manifest promoted to 44. Stable channel untouched.'
