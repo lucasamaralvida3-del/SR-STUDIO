@@ -1,35 +1,533 @@
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 38
-                        radius: 7
-                        color: "#1946A3"
-                        RowLayout {
-                            anchors.fill: parent
-                            anchors.leftMargin: 10
-                            Label { text: "⚙"; color: "white"; font.pixelSize: 19 }
-                            Label { text: "Configurações"; color: "white"; font.pixelSize: 12 }
-                            Item { Layout.fillWidth: true }
-                            Label { text: "›"; color: "white"; font.pixelSize: 20 }
-                        }
-                        MouseArea { anchors.fill: parent; onClicked: showProductionGate = !showProductionGate }
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import QtQuick.Window
+import QtQuick.Dialogs
+
+ApplicationWindow {
+    id: window
+    width: 1760
+    height: 1020
+    minimumWidth: 1430
+    minimumHeight: 760
+    visible: true
+    title: "SR Graphics Engine 2.0"
+
+    property var scene: JSON.parse(sceneBridge.sceneJson)
+    property var page: activePage()
+    property real zoom: 0.72
+    // Beta 42: studio navigation mirrors the supplied SR Studio 5.0 reference.
+    property int studioSection: 0
+    property int studioNavigation: 2
+    property string productQuery: ""
+    property string productFilter: "Todos os produtos"
+    property int visibleProductLimit: 12
+    property bool showProductionGate: false
+    property bool showAdvancedSlotActions: false
+
+    function filteredProducts() {
+        var query = productQuery.toLocaleLowerCase().trim()
+        return products().filter(function(p) {
+            var searchable = (productLabel(p) + " " + String(p.id || p.product_id || "")).toLocaleLowerCase()
+            var hasImage = !!(p.image_path || p.image)
+            return (!query || searchable.indexOf(query) !== -1)
+                && (productFilter === "Todos os produtos"
+                    || (productFilter === "Com imagem" && hasImage)
+                    || (productFilter === "Sem imagem" && !hasImage))
+        }).slice(0, visibleProductLimit)
+    }
+
+    function createBlueSlot() {
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
+            "name": "add_item_slot", "preset_id": "limpeza-blue-v1"
+        })))
+        if (result.ok && result.payload) {
+            selectedSlotId = String(result.payload.slot_id || "")
+            smartSlotEditMode = true
+            smartSlotInspectionMode = true
+        }
+    }
+
+    function selectedPicture() {
+        var selected = selectedNode()
+        return selected && selected.kind === "image" ? selected : null
+    }
+
+    function removeCurrentBackground() {
+        if (selectedSlotId !== "")
+            sceneBridge.removeSlotBackground(selectedSlotId)
+        else if (selectedPicture())
+            sceneBridge.removeBackground(selectedPicture().id)
+    }
+
+    FileDialog {
+        id: sourceImportDialog
+        title: "Importar planilha ou apresentação"
+        nameFilters: ["Planilhas e apresentações (*.xlsx *.xls *.csv *.pptx)"]
+        onAccepted: sceneBridge.importSource(selectedFile.toString())
+    }
+    function moveActivePage(step) {
+        var pages = scene.pages || []
+        var pos = pages.findIndex(function(p) { return p.id === scene.active_page_id })
+        var target = pos + step
+        if (pos >= 0 && target >= 0 && target < pages.length)
+            sceneBridge.dispatch(JSON.stringify({"name":"reorder_page","page_id":pages[pos].id,"to_index":target}))
+    }
+    FileDialog {
+        id: saveProjectDialog
+        title: "Salvar projeto SR Studio"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["Cena SR Studio (*.srscene)"]
+        onAccepted: sceneBridge.saveSceneAs(selectedFile.toString())
+    }
+    FileDialog {
+        id: exportPdfDialog
+        title: "Exportar encarte em PDF"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["PDF (*.pdf)"]
+        onAccepted: sceneBridge.exportPdf(selectedFile.toString())
+    }
+    FileDialog {
+        id: exportPngDialog
+        title: "Exportar encarte em PNG"
+        fileMode: FileDialog.SaveFile
+        nameFilters: ["PNG (*.png)"]
+        onAccepted: sceneBridge.exportPng(selectedFile.toString())
+    }
+    property bool showGrid: true
+    property bool showRulers: true
+    property real gridStep: 50
+    property string selectedSlotId: ""
+    property string pendingImageProductId: ""
+    property string pendingImageProductName: ""
+    FileDialog {
+        id: productImageDialog
+        title: "Adicionar imagem ao produto"
+        nameFilters: ["Imagens (*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tif *.tiff)"]
+        onAccepted: sceneBridge.attachProductImage(window.pendingImageProductId, window.pendingImageProductName, selectedFile.toString())
+    }
+    property string hoveredSlotId: ""
+    property bool smartSlotInspectionMode: false
+    property bool smartSlotEditMode: false
+    property bool smartSlotSnap: true
+    property bool autoRemoveProductBackground: true
+    property real smartSlotLastCommitMs: 0
+    property int smartSlotPreviewEvents: 0
+    property int smartSlotPreviewUpdates: 0
+    property string smartSlotInteractionKind: ""
+    // One temporary GPU-side transform for the active slot: no Python command,
+    // undo snapshot, full-scene JSON or image rebinding on mouse move.
+    property var activeSlotPreview: null
+    property var activeSlotPreviewMembers: ({})
+    property var activeSlotBaseBounds: null
+
+    function previewMemberIds(slot) {
+        var ids = ({})
+        if (!slot || !page)
+            return ids
+        var roots = []
+        var rootId = slot.metadata ? String(slot.metadata.root_node_id || "") : ""
+        if (rootId && page.nodes[rootId])
+            roots.push(rootId)
+        var roleMap = slot.node_by_role || {}
+        for (var role in roleMap) {
+            var nodeId = String(roleMap[role] || "")
+            if (nodeId && page.nodes[nodeId])
+                roots.push(nodeId)
+        }
+        var meta = slot.metadata || ({})
+        var others = [].concat(meta.decorative_nodes || [], meta.limpeza_blue_nodes || [], meta.source_node_ids || [])
+        var areas = meta.role_area_nodes || ({})
+        for (var area in areas)
+            others.push(String(areas[area]))
+        for (var oi = 0; oi < others.length; ++oi)
+            roots.push(String(others[oi]))
+        var extras = meta.extra_bindings || ({})
+        for (var key in extras)
+            for (var ei = 0; ei < extras[key].length; ++ei)
+                roots.push(String(extras[key][ei]))
+        // Traverse children only once on press, never for each mouse event.
+        var pending = roots.slice()
+        while (pending.length) {
+            var id = pending.pop()
+            if (ids[id] || !page.nodes[id])
+                continue
+            ids[id] = true
+            var children = page.nodes[id].children || []
+            for (var ci = 0; ci < children.length; ++ci)
+                pending.push(String(children[ci]))
+        }
+        // For highly detailed imported cards, transforming every vector path
+        // and rerasterizing it on each pointer event is prohibitively slow.
+        // Use an outline-only transient preview; artwork moves on mouse release.
+        if ((slot.metadata && slot.metadata.limpeza_blue_profile) || Object.keys(ids).length > 24)
+            return ({})
+        return ids
+    }
+
+    function liveSlotNodeRect(node) {
+        // Fast bailout BEFORE reading activeSlotPreview: ordinary artwork must
+        // not acquire a dependency on each mouse movement, or the entire scene
+        // rerenders continuously (especially imported PPTX with many nodes).
+        if (!activeSlotPreviewMembers[node.id])
+            return node.transform
+        var preview = activeSlotPreview
+        var base = activeSlotBaseBounds
+        if (!preview || !base)
+            return node.transform
+        var t = node.transform
+        var sx = preview.width / Math.max(1, base.width)
+        var sy = preview.height / Math.max(1, base.height)
+        return {
+            "x": preview.x + (Number(t.x) - base.x) * sx,
+            "y": preview.y + (Number(t.y) - base.y) * sy,
+            "width": Math.max(1, Number(t.width) * sx),
+            "height": Math.max(1, Number(t.height) * sy)
+        }
+    }
+
+
+    function clearSlotPreview() {
+        activeSlotPreview = null
+        activeSlotBaseBounds = null
+        activeSlotPreviewMembers = ({})
+    }
+    property var anchorNode: selectedNode()
+    property var draggedProduct: null
+    property bool productDragActive: false
+    property real productDragX: 0
+    property real productDragY: 0
+    property string dragHoverSlotId: ""
+
+    function activePage() {
+        if (!scene.pages || !scene.pages.length)
+            return null
+        for (var i = 0; i < scene.pages.length; ++i)
+            if (scene.pages[i].id === scene.active_page_id)
+                return scene.pages[i]
+        return scene.pages[0]
+    }
+
+    function nodes() {
+        return page ? Object.values(page.nodes || {}) : []
+    }
+
+    function slots() {
+        // Only the certified Azul slot can be offered to edit/new projects.
+        // Historical slots remain in saved documents for backwards compatibility.
+        return page ? Object.values(page.slots || {}).filter(function(slot) {
+            return slot.metadata && slot.metadata.limpeza_blue_profile === "limpeza-blue-v1"
+        }) : []
+    }
+
+    function products() {
+        return scene.editor && scene.editor.products ? scene.editor.products : []
+    }
+
+    function selectedIds() {
+        return scene.editor && scene.editor.selection ? scene.editor.selection : []
+    }
+
+    function selectedNode() {
+        if (!page || !scene.editor)
+            return null
+        var id = scene.editor.anchor_id || ""
+        if (id && page.nodes[id])
+            return page.nodes[id]
+        var selected = selectedIds()
+        return selected.length && page.nodes[selected[0]] ? page.nodes[selected[0]] : null
+    }
+
+    function isSelected(node) {
+        return selectedIds().indexOf(node.id) >= 0
+    }
+
+    function effectiveVisible(node) {
+        if (!node || node.visible === false)
+            return false
+        var parentId = node.parent_id || ""
+        var guard = 0
+        while (parentId && page && page.nodes[parentId] && guard++ < 128) {
+            if (page.nodes[parentId].visible === false)
+                return false
+            parentId = page.nodes[parentId].parent_id || ""
+        }
+        return true
+    }
+
+    function effectiveLocked(node) {
+        if (!node)
+            return true
+        if (node.locked)
+            return true
+        var parentId = node.parent_id || ""
+        var guard = 0
+        while (parentId && page && page.nodes[parentId] && guard++ < 128) {
+            if (page.nodes[parentId].locked)
+                return true
+            parentId = page.nodes[parentId].parent_id || ""
+        }
+        return false
+    }
+
+    function effectiveOpacity(node) {
+        if (!node)
+            return 0
+        var value = Number(node.opacity === undefined ? 1 : node.opacity)
+        var parentId = node.parent_id || ""
+        var guard = 0
+        while (parentId && page && page.nodes[parentId] && guard++ < 128) {
+            value *= Number(page.nodes[parentId].opacity === undefined ? 1 : page.nodes[parentId].opacity)
+            parentId = page.nodes[parentId].parent_id || ""
+        }
+        return Math.max(0, Math.min(1, value))
+    }
+
+    function localSource(value) {
+        var text = String(value || "")
+        if (!text)
+            return ""
+        if (/^[A-Za-z]:[\\/]/.test(text))
+            return "file:///" + text.replace(/\\/g, "/")
+        return text
+    }
+
+    function imageSource(node) {
+        if (!node)
+            return ""
+        var metadata = node.metadata || {}
+        var assetSource = ""
+        if (node.asset_id && scene.assets && scene.assets[node.asset_id])
+            assetSource = scene.assets[node.asset_id].source || ""
+        return localSource(metadata.bound_image_source || metadata.source_url || assetSource)
+    }
+
+    function textInset(style, key) {
+        var insets = style && style.text_insets ? style.text_insets : {}
+        return Math.max(0, Number(insets[key] || 0)) * zoom
+    }
+
+    function textLineHeightMode(style) {
+        if (style && Number(style.line_spacing_px || 0) > 0)
+            return Text.FixedHeight
+        return Text.ProportionalHeight
+    }
+
+    function textLineHeight(style) {
+        if (!style)
+            return 1.0
+        var fixed = Number(style.line_spacing_px || 0)
+        if (fixed > 0)
+            return Math.max(1, fixed * zoom)
+        var proportional = Number(style.line_spacing_percent || 0)
+        if (proportional > 10)
+            proportional = proportional / 100.0
+        return proportional > 0 ? proportional : 1.0
+    }
+
+    function hasCustomPath(node) {
+        return !!(node && node.metadata && node.metadata.custom_path && node.metadata.custom_path.paths && node.metadata.custom_path.paths.length)
+    }
+
+    function slotBounds(slot) {
+        if (!page || !slot)
+            return {"x": 0, "y": 0, "width": 0, "height": 0}
+        // The previous bounding box came from old role metadata and could be
+        // hundreds of pixels away from the visible card after move/resize.
+        // Always anchor manual Azul slots to the ACTUAL scene root.
+        var rootId = slot.metadata ? String(slot.metadata.root_node_id || "") : ""
+        var root = rootId && page.nodes ? page.nodes[rootId] : null
+        if (root && root.transform) {
+            var t = root.transform
+            return {"x": Number(t.x), "y": Number(t.y),
+                    "width": Number(t.width), "height": Number(t.height)}
+        }
+        var effective = slot.metadata ? slot.metadata.effective_bounds : null
+        if (effective) {
+            var ew = Math.max(0, Number(effective.width || 0))
+            var eh = Math.max(0, Number(effective.height || 0))
+            if (ew > 0 && eh > 0)
+                return {"x": Number(effective.x || 0), "y": Number(effective.y || 0), "width": ew, "height": eh}
+        }
+        var cardId = slot.metadata ? String(slot.metadata.semantic_product_card_id || "") : ""
+        var blocks = page.metadata && page.metadata.semantic_blocks ? page.metadata.semantic_blocks : {}
+        if (cardId && blocks[cardId] && blocks[cardId].bounds) {
+            var semantic = blocks[cardId].bounds
+            var sw = Math.max(0, Number(semantic.width || 0))
+            var sh = Math.max(0, Number(semantic.height || 0))
+            if (sw > 0 && sh > 0)
+                return {"x": Number(semantic.x || 0), "y": Number(semantic.y || 0), "width": sw, "height": sh}
+        }
+        var ids = Object.values(slot.node_by_role || {})
+        var minX = 1e18, minY = 1e18, maxX = -1e18, maxY = -1e18
+        for (var i = 0; i < ids.length; ++i) {
+            var node = page.nodes[ids[i]]
+            if (!node)
+                continue
+            var t = node.transform
+            minX = Math.min(minX, Number(t.x))
+            minY = Math.min(minY, Number(t.y))
+            maxX = Math.max(maxX, Number(t.x) + Number(t.width))
+            maxY = Math.max(maxY, Number(t.y) + Number(t.height))
+        }
+        if (minX === 1e18)
+            return {"x": 0, "y": 0, "width": 0, "height": 0}
+        return {"x": minX, "y": minY, "width": Math.max(1, maxX - minX), "height": Math.max(1, maxY - minY)}
+    }
+
+    function productLabel(product) {
+        if (!product)
+            return "Produto"
+        return String(product.display_name || product.name || product.original_name || "Produto")
+    }
+
+    function slotAtDocumentPoint(x, y) {
+        var available = slots()
+        var winner = null
+        var winnerArea = 1e30
+        for (var i = 0; i < available.length; ++i) {
+            var bounds = slotBounds(available[i])
+            if (x < bounds.x || y < bounds.y || x > bounds.x + bounds.width || y > bounds.y + bounds.height)
+                continue
+            var area = Math.max(1, bounds.width * bounds.height)
+            if (area < winnerArea) {
+                winner = available[i]
+                winnerArea = area
+            }
+        }
+        return winner
+    }
+
+    function beginProductDrag(sourceItem, mouseX, mouseY, product) {
+        draggedProduct = product
+        productDragActive = true
+        updateProductDrag(sourceItem, mouseX, mouseY, product)
+    }
+
+    function updateProductDrag(sourceItem, mouseX, mouseY, product) {
+        if (!sourceItem || !product)
+            return
+        draggedProduct = product
+        var globalPoint = sourceItem.mapToItem(window.contentItem, mouseX, mouseY)
+        productDragX = globalPoint.x
+        productDragY = globalPoint.y
+        if (!page || !sheet) {
+            dragHoverSlotId = ""
+            return
+        }
+        var sheetPoint = sourceItem.mapToItem(sheet, mouseX, mouseY)
+        if (sheetPoint.x < 0 || sheetPoint.y < 0 || sheetPoint.x > sheet.width || sheetPoint.y > sheet.height) {
+            dragHoverSlotId = ""
+            return
+        }
+        var target = slotAtDocumentPoint(sheetPoint.x / zoom, sheetPoint.y / zoom)
+        dragHoverSlotId = target ? target.id : ""
+    }
+
+    function finishProductDrag(sourceItem, mouseX, mouseY, product) {
+        if (!sourceItem || !product || !page || !sheet) {
+            cancelProductDrag()
+            return
+        }
+        var point = sourceItem.mapToItem(sheet, mouseX, mouseY)
+        if (point.x >= 0 && point.y >= 0 && point.x <= sheet.width && point.y <= sheet.height) {
+            var productId = String(product.id || product.product_id || "")
+            if (productId) {
+                var resultRaw = sceneBridge.dispatch(JSON.stringify({
+                    "name": "drop_product",
+                    "product_id": productId,
+                    "x": point.x / zoom,
+                    "y": point.y / zoom,
+                    "magnet_distance": 12 / Math.max(zoom, 0.01)
+                }))
+                try {
+                    var result = JSON.parse(resultRaw)
+                    if (result.ok && result.payload && result.payload.drop_target) {
+                        selectedSlotId = String(result.payload.drop_target.slot_id || selectedSlotId)
+                        if (autoRemoveProductBackground && selectedSlotId)
+                            sceneBridge.removeSlotBackground(selectedSlotId)
                     }
-                    Item { Layout.fillHeight: true }
-                    Rectangle {
-                        Layout.fillWidth: true
-                        Layout.preferredHeight: 137
-                        radius: 9
-                        color: "#224FAC"
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: 12
-                            Label { text: "☆  Novidades no SR Studio 5.0"; color: "white"; font.bold: true; font.pixelSize: 11 }
-                            Label { text: "Mais desempenho, automação e integração para seus encartes."; color: "#D6E3FF"; wrapMode: Text.WordWrap; font.pixelSize: 10; Layout.fillWidth: true }
-                            Button { text: "Ver novidades"; Layout.fillWidth: true; onClicked: showProductionGate = !showProductionGate }
-                        }
-                    }
+                } catch (error) {
+                    console.warn("SR drag-and-drop: resposta inválida", error)
                 }
             }
+        }
+        cancelProductDrag()
+    }
 
+    function cancelProductDrag() {
+        productDragActive = false
+        draggedProduct = null
+        dragHoverSlotId = ""
+    }
+
+    function bindProduct(product) {
+        if (!selectedSlotId) {
+            sceneBridge.dispatch(JSON.stringify({"name": "clear_selection"}))
+            return
+        }
+        var chosenSlot = selectedSlotId
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({"name": "bind_product", "slot_id": chosenSlot, "product_id": product.id})))
+        if (result.ok && autoRemoveProductBackground)
+            sceneBridge.removeSlotBackground(chosenSlot)
+    }
+
+    function syncInspector() {
+        var node = selectedNode()
+        anchorNode = node
+        if (!node) {
+            inspectorName.text = "Nada selecionado"
+            textEditor.text = ""
+            return
+        }
+        inspectorName.text = node.name || node.kind || "Elemento"
+        textEditor.text = node.kind === "text" ? (node.text || "") : ""
+    }
+
+    function refreshScene() {
+        scene = JSON.parse(sceneBridge.sceneJson)
+        page = activePage()
+        var availableSlots = slots()
+        var stillExists = false
+        for (var i = 0; i < availableSlots.length; ++i)
+            if (availableSlots[i].id === selectedSlotId)
+                stillExists = true
+        if (!stillExists)
+            selectedSlotId = ""
+        hoveredSlotId = ""
+        dragHoverSlotId = ""
+        Qt.callLater(syncInspector)
+    }
+
+    Connections {
+        target: sceneBridge
+        function onSceneChanged() { window.refreshScene() }
+    }
+
+    Component.onCompleted: {
+        refreshScene()
+        syncInspector()
+    }
+
+    Shortcut { sequence: StandardKey.Undo; onActivated: sceneBridge.undo() }
+    Shortcut { sequence: StandardKey.Redo; onActivated: sceneBridge.redo() }
+    Shortcut { sequence: StandardKey.Delete; onActivated: sceneBridge.dispatch('{"name":"delete"}') }
+    Shortcut { sequence: "Ctrl+D"; onActivated: sceneBridge.dispatch('{"name":"duplicate"}') }
+    Shortcut { sequence: "Ctrl+G"; onActivated: sceneBridge.dispatch('{"name":"group"}') }
+    Shortcut { sequence: "Ctrl+Shift+G"; onActivated: sceneBridge.dispatch('{"name":"ungroup"}') }
+    Shortcut { sequence: "G"; onActivated: showGrid = !showGrid }
+
+
+    header: null
+
+    ColumnLayout {
+        anchors.fill: parent
+        spacing: 0
+
+        SplitView {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            orientation: Qt.Horizontal
             Rectangle {
                 SplitView.preferredWidth: 332
                 SplitView.minimumWidth: 285
@@ -52,7 +550,8 @@
                                     { icon:"⬡", title:"Produtos" }, { icon:"⬡", title:"Modelos" },
                                     { icon:"♧", title:"Elementos" }, { icon:"▧", title:"Imagens" },
                                     { icon:"T", title:"Texto" }, { icon:"♧", title:"Formas" },
-                                    { icon:"▨", title:"Fundos" }, { icon:"▱", title:"Camadas" }
+                                    { icon:"▨", title:"Fundos" }, { icon:"▱", title:"Camadas" },
+                                    { icon:"☷", title:"Projeto" }
                                 ]
                                 delegate: Rectangle {
                                     required property var modelData
@@ -83,7 +582,7 @@
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: ["Produtos","Modelos","Elementos","Imagens","Texto","Formas","Fundos","Camadas"][studioSection]
+                                text: ["Produtos","Modelos","Elementos","Imagens","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
                                 color: "#111B38"; font.pixelSize: 15; font.bold: true
                             }
                             Item { Layout.fillWidth: true }
@@ -257,6 +756,29 @@
                         }
 
                         }
+                        ScrollView {
+                            Layout.fillWidth: true
+                            Layout.fillHeight: true
+                            visible: studioSection === 8
+                            clip: true
+                            ColumnLayout {
+                                width: 235
+                                spacing: 7
+                                Label { text: "Ações do projeto"; font.bold: true; color: "#263D71" }
+                                Button { text: "+ Slot Azul"; Layout.fillWidth: true; onClicked: createBlueSlot() }
+                                Button { text: "Ajustar Smart Slots"; Layout.fillWidth: true; checkable: true; checked: smartSlotEditMode; onClicked: { smartSlotEditMode = checked; smartSlotInspectionMode = checked } }
+                                Button { text: "Copiar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"copy"}') }
+                                Button { text: "Colar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"paste"}') }
+                                Button { text: "Salvar"; Layout.fillWidth: true; onClicked: saveProjectDialog.open() }
+                                Button { text: "Recuperar"; Layout.fillWidth: true; onClicked: sceneBridge.recoverLatest() }
+                                Button { text: "Importar PPTX / Planilha"; Layout.fillWidth: true; onClicked: sourceImportDialog.open() }
+                                Button { text: "PDF"; Layout.fillWidth: true; onClicked: exportPdfDialog.open() }
+                                Button { text: "PNG"; Layout.fillWidth: true; onClicked: exportPngDialog.open() }
+                                Button { text: "Duplicar página"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}') }
+                                Button { text: "Mover página para esquerda"; Layout.fillWidth: true; onClicked: window.moveActivePage(-1) }
+                                Button { text: "Mover página para direita"; Layout.fillWidth: true; onClicked: window.moveActivePage(1) }
+                            }
+                        }
                         ColumnLayout {
                             Layout.fillHeight: true
                             Layout.fillWidth: true
@@ -295,7 +817,7 @@
                         spacing: 3
                         ToolButton { text: "↖"; highlighted: !smartSlotEditMode; ToolTip.text: "Seleção"; ToolTip.visible: hovered; onClicked: smartSlotEditMode = false }
                         ToolButton { text: "▧"; highlighted: smartSlotEditMode; ToolTip.text: "Ajustar Smart Slot"; ToolTip.visible: hovered; onClicked: { smartSlotEditMode = !smartSlotEditMode; smartSlotInspectionMode = smartSlotEditMode } }
-                        ToolButton { text: "⬡"; ToolTip.text: "Criar Slot Azul"; ToolTip.visible: hovered; onClicked: createBlueSlot() }
+
                         ToolButton {
                             text: "⋯"
                             ToolTip.text: "Opções do Smart Slot"; ToolTip.visible: hovered
@@ -989,7 +1511,11 @@
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#EDF0F5" }
                         Label { text: "Nome do elemento"; color: "#606C84"; font.pixelSize: 10 }
                         Label { id: inspectorName; text: "Nada selecionado"; color: "#293957"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; padding: 9; background: Rectangle { color: "#FAFBFE"; radius: 6; border.color: "#DDE4F0" } }
-                        Rectangle { Layout.fillWidth: true; height: 1; color: "#E6EAF2" }
+                        Rectangle {
+                            Layout.fillWidth: true
+                            height: 1
+                            color: "#E6EAF2"
+                        }
                         Label { text: sceneBridge.status; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
 
