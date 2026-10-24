@@ -71,7 +71,7 @@ ApplicationWindow {
         var pos = pages.findIndex(function(p) { return p.id === scene.active_page_id })
         var target = pos + step
         if (pos >= 0 && target >= 0 && target < pages.length)
-            sceneBridge.dispatch(JSON.stringify({"name":"reorder_page","page_id":pages[pos].id,"to_index":target}))
+            sceneBridge.dispatch(JSON.stringify({"name":"reorder_page","page_id":pages[pos].id,"target_index":target}))
     }
     FileDialog {
         id: saveProjectDialog
