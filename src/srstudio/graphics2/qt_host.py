@@ -662,42 +662,13 @@ def launch_qt_quick_editor(
         raise RuntimeError("Falha ao carregar a interface Qt Quick do SR Graphics Engine 2.")
 
     root_window = roots[0]
-    image_component, image_inspector = _attach_context_qml_tool(
-        engine,
-        root_window,
-        qml_dir / "ImageInspector.qml",
-        QQmlComponent=QQmlComponent,
-        QQuickItem=QQuickItem,
-        QQuickWindow=QQuickWindow,
-        QUrl=QUrl,
-    )
-    quality_component, quality_inspector = _attach_context_qml_tool(
-        engine,
-        root_window,
-        qml_dir / "QualityInspector.qml",
-        QQmlComponent=QQmlComponent,
-        QQuickItem=QQuickItem,
-        QQuickWindow=QQuickWindow,
-        QUrl=QUrl,
-    )
-    actions_component, project_actions = _attach_context_qml_tool(
-        engine,
-        root_window,
-        qml_dir / "ProjectActions.qml",
-        QQmlComponent=QQmlComponent,
-        QQuickItem=QQuickItem,
-        QQuickWindow=QQuickWindow,
-        QUrl=QUrl,
-    )
-    _context_tools = (
-        preview_provider,
-        image_component,
-        image_inspector,
-        quality_component,
-        quality_inspector,
-        actions_component,
-        project_actions,
-    )
+    # All editing controls now live in GraphicsEditor.qml. Attaching these
+    # legacy QQuickItems to the window's contentItem previously painted over
+    # the studio header, canvas and right properties at z=897000..900000.
+    # Do not re-create ProjectActions, QualityInspector or ImageInspector.
+    # PageInspector (the obsolete "Ordem das páginas" float) is intentionally
+    # not installed either. The host still computes quality data for diagnostics.
+    _context_tools = (preview_provider,)
 
     app.aboutToQuit.connect(bridge.flushAutosave)
     app.processEvents()
