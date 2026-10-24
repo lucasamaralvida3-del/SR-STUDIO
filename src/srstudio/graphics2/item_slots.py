@@ -115,7 +115,7 @@ def _builtins() -> dict[str, ItemSlotPreset]:
             height=300,
             background=None,  # the parent owns the continuous blue footer
             roles={
-                "name": _ppt_role(.015, .02, .97, .165, size=16,
+                "name": _ppt_role(.015, .11, .97, .16, size=16,
                                   color="#105594"),
                 "image": {"bounds": [.08, .19, .84, .565],
                           "style": {"fit": "contain"}},
