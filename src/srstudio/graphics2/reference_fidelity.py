@@ -35,7 +35,7 @@ def migrate_reference_slot(page, slot, presets) -> bool:
     preset_id = str(slot.metadata.get("preset_id") or "")
     if preset_id not in ("individual-beta44", "multi-cell-beta44"):
         return False
-    if int(slot.metadata.get("reference_fidelity_revision") or 0) >= 45:
+    if int(slot.metadata.get("reference_fidelity_revision") or 0) >= 46:
         return False
     root = page.node(str(slot.metadata.get("root_node_id") or ""))
     if root is None:
@@ -119,8 +119,16 @@ def migrate_reference_slot(page, slot, presets) -> bool:
         elif node.kind is NodeKind.TEXT:
             node.z_index = 20 if node.binding_role == BindingRole.NAME else 50
 
-    root.metadata["reference_fidelity_revision"] = 45
-    slot.metadata["reference_fidelity_revision"] = 45
+    # Reflow old Beta44 product names without changing the saved SKU or
+    # user-specified manual paragraph breaks.
+    name_node = page.node(str(slot.node_by_role.get(BindingRole.NAME.value) or ""))
+    if name_node is not None and name_node.text and "\n" not in name_node.text:
+        from .item_slots import _format_reference_name
+        name_node.text = _format_reference_name(
+            name_node.text, max_chars=19 if preset_id == "multi-cell-beta44" else 18)
+
+    root.metadata["reference_fidelity_revision"] = 46
+    slot.metadata["reference_fidelity_revision"] = 46
     return True
 
 
@@ -129,7 +137,7 @@ def migrate_multi_parent(page, parent_id: str) -> bool:
     root = page.node(parent_id)
     if root is None or not root.metadata.get("multi_slot_beta44"):
         return False
-    if int(root.metadata.get("reference_fidelity_revision") or 0) >= 45:
+    if int(root.metadata.get("reference_fidelity_revision") or 0) >= 46:
         return False
     rect = root.rect.normalized()
     count = int(root.metadata.get("multi_count") or 5)
@@ -172,5 +180,5 @@ def migrate_multi_parent(page, parent_id: str) -> bool:
         sep.style = {"fill": BLUE, "stroke_width": 0}
         sep.z_index = 8
     root.metadata["reference_pptx"] = "multi slots(1).pptx"
-    root.metadata["reference_fidelity_revision"] = 45
+    root.metadata["reference_fidelity_revision"] = 46
     return True
