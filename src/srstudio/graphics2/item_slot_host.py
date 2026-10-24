@@ -66,6 +66,9 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         # was wasteful and revived models removed from the creation UI.
         # Migrate older Limpeza slots once, not for every repaint or selection.
         if not getattr(self, "_limpeza_migrated", False):
+            # Preserve certified historical families for existing documents
+            # and API clients; the new Qt picker displays only Beta44 styles.
+            install_quinta3_family_presets(self.session.document)
             refresh_all_item_slots(self.session.document)
             self._limpeza_migrated = True
         payload = super().payload()
