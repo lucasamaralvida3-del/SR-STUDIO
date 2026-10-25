@@ -315,6 +315,12 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 if not isinstance(product, dict):
                     return CommandResult(False, False, "Produto não encontrado.")
 
+                # The old SR ImageLibrary has a separate approved-image index.
+                # Resolve it only for products missing a usable picture; the
+                # user's explicit G2 image always takes precedence.
+                from .legacy_image_bank_bridge import complete_product_image
+                product = complete_product_image(product)
+
                 if slot.metadata.get("limpeza_blue_profile") == LIMPEZA_BLUE_ID:
                     changed = bind_product_to_limpeza_blue_slot(self.session, slot_id, product)
                 elif slot.metadata.get("quinta3_family"):
