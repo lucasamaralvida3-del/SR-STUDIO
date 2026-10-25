@@ -35,6 +35,17 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
         raise ValueError("Modo de preços inválido.")
     page = session.page
     old_slots = dict(page.slots)
+    # Never silently leave a filled product behind when the requested
+    # composition has fewer positions. Reject BEFORE any move, creation or
+    # mutation, preserving the exact page and its undo history.
+    populated = [slot for slot in old_slots.values() if slot.product_id]
+    capacity = len(plan.placements)
+    if reuse_existing and len(populated) > capacity:
+        raise ValueError(
+            f"Layout comporta {capacity} produtos, mas a página possui "
+            f"{len(populated)} Smart Slots preenchidos. "
+            "Use um layout com mais posições ou organize os produtos antes."
+        )
     # Avoid using a Multi cell as a free-standing single: it belongs to the
     # parent's continuous ribbon, not to an individual price card.
     singles = [
@@ -52,6 +63,10 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
         and page.node(str(s.metadata.get("root_node_id") or "")) is not None
     ] if reuse_existing else []
     singles.extend(blue)
+    # Prefer the user's populated product cards, not placeholder cards that
+    # happen to have been created earlier. Stable sort preserves manual order
+    # among filled products and among empty slots alike.
+    singles.sort(key=lambda slot: not bool(slot.product_id))
 
     multi5 = None
     if reuse_existing and plan.mode == "eleven":
