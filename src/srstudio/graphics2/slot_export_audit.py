@@ -52,13 +52,10 @@ def inspect_smart_slot_flyer(document, *, page_ids: set[str] | None = None) -> l
                     "Dois Smart Slots do layout estão sobrepostos.", page.id, root.id))
 
         for slot in page.slots.values():
-            if not slot.product_id or not slot.metadata.get("manual_item_slot"):
-                # Manual slots use metadata.source; older saved documents
-                # must still be checked with the canonical preset identifier.
-                if not slot.product_id or slot.metadata.get("preset_id") not in (
-                    "individual-beta44", "multi-cell-beta44", "limpeza-blue-v1",
-                ):
-                    continue
+            if (not slot.product_id or slot.metadata.get("preset_id") not in (
+                "individual-beta44", "multi-cell-beta44", "limpeza-blue-v1",
+            )):
+                continue
             root = page.node(str(slot.metadata.get("root_node_id") or ""))
             if root is None or not _shown(page, root):
                 continue
@@ -69,10 +66,9 @@ def inspect_smart_slot_flyer(document, *, page_ids: set[str] | None = None) -> l
                     "Produto vinculado sem imagem visível.", page.id,
                     image.id if image else root.id))
             else:
-                source = (image.metadata.get("bound_image_source") or
-                          document.assets.get(image.asset_id).source
-                          if image.asset_id in document.assets else
-                          image.metadata.get("bound_image_source"))
+                source = image.metadata.get("bound_image_source")
+                if not source and image.asset_id in document.assets:
+                    source = document.assets[image.asset_id].source
                 if not source or (not str(source).startswith(("http:", "https:"))
                                   and not Path(str(source)).is_file()):
                     issues.append(PreflightIssue(
@@ -90,11 +86,45 @@ def inspect_smart_slot_flyer(document, *, page_ids: set[str] | None = None) -> l
                     issues.append(PreflightIssue(
                         "warning", "SLOT_NAME_PRICE_OVERLAP",
                         "Descrição do produto invade a área do preço.", page.id, name.id))
-            for role in (BindingRole.PRICE_REAIS, BindingRole.PRICE_CENTS):
+            for role in (BindingRole.NAME, BindingRole.PRICE_REAIS, BindingRole.PRICE_CENTS):
                 value = page.node(str(slot.node_by_role.get(role.value) or ""))
                 if value is None or not value.text.strip():
                     issues.append(PreflightIssue(
-                        "warning", "SLOT_PRICE_EMPTY",
-                        "Produto vinculado sem valor de preço completo.", page.id,
+                        "warning", "SLOT_PRICE_EMPTY" if role != BindingRole.NAME else "SLOT_NAME_EMPTY",
+                        "Produto vinculado sem descrição ou preço completo.", page.id,
                         value.id if value is not None else root.id))
+                elif _text_exceeds_minimum_fit(value):
+                    issues.append(PreflightIssue(
+                        "warning", "SLOT_TEXT_CLIPPED",
+                        "Texto do produto pode ser cortado mesmo na fonte mínima.", page.id,
+                        value.id))
     return issues
+
+
+def _text_exceeds_minimum_fit(node) -> bool:
+    """Measure using Qt only when a GUI font database is available.
+
+    Prevents false alarms based on character count; no rendering or
+    modification is performed. Imported/custom nodes are not touched.
+    """
+    try:
+        from PySide6.QtCore import QRectF, Qt
+        from PySide6.QtGui import QFont, QFontMetricsF, QGuiApplication
+    except ImportError:
+        return False
+    if QGuiApplication.instance() is None:
+        return False
+    style = node.style
+    if not style.get("fit_inside_box"):
+        return False
+    bounds = node.rect.normalized()
+    if min(bounds.width, bounds.height) <= 0:
+        return True
+    font = QFont(str(style.get("font_family") or "Segoe UI"))
+    font.setPixelSize(max(3, round(float(style.get("min_font_size") or 4))))
+    flags = Qt.AlignHCenter | Qt.AlignVCenter
+    if not style.get("nowrap"):
+        flags |= Qt.TextWordWrap
+    extent = QFontMetricsF(font).boundingRect(
+        QRectF(0, 0, bounds.width, bounds.height), flags, str(node.text))
+    return extent.width() > bounds.width + 1 or extent.height() > bounds.height + 1
