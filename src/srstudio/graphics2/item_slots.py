@@ -861,6 +861,8 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
     slot = session.page.slots.get(str(slot_id))
     if not is_manual_item_slot(slot):
         return False
+    prior_product_id = slot.product_id
+    incoming_id = str(product.get("id") or product.get("product_id") or "")
     preset_id = str(slot.metadata.get("preset_id") or "")
     if preset_id in ("individual-beta44", "multi-cell-beta44"):
         # Automatic 1/2-price variation shares the price parsing semantics
@@ -902,9 +904,18 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
             limit_node.visible = bool(limit_value)
     else:
         session.bind_product(slot.id, product)
-    for node_id in slot.node_by_role.values():
-        node = session.page.node(node_id)
-        if node is not None and node.binding_role is BindingRole.IMAGE and slot.product_id:
-            node.metadata["placeholder"] = False
+    # When replacing SKU A with SKU B, never keep SKU A's image if SKU B
+    # has no picture. Same-SKU price-only updates intentionally keep the image.
+    image_node = session.page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
+    if image_node is not None:
+        has_new_source = bool(product.get("image_path") or product.get("image") or product.get("image_asset_id"))
+        if prior_product_id and prior_product_id != incoming_id and not has_new_source:
+            image_node.asset_id = ""
+            image_node.metadata.pop("bound_image_source", None)
+            image_node.visible = False
+        has_image = bool(image_node.asset_id or image_node.metadata.get("bound_image_source"))
+        image_node.metadata["placeholder"] = not has_image
+        if has_image:
+            image_node.visible = True
     refresh_item_slot_metadata(session.page, slot)
     return True
