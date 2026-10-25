@@ -10,6 +10,7 @@ on:
       - 'tests/test_graphics2_beta46_recovery_resize.py'
       - 'tests/test_graphics2_beta46_real_slot_layouts.py'
       - 'tests/test_graphics2_beta46_flyer_quality.py'
+      - 'tests/test_graphics2_beta46_legacy_image_bank.py'
       - '.github/workflows/g2-beta46-price-integrity.yml'
   workflow_dispatch:
 
@@ -42,5 +43,5 @@ jobs:
       - name: Price switching, undo/redo and historic slot regressions
         shell: pwsh
         run: |
-          python -m pytest -q tests/test_graphics2_beta46_flyer_quality.py tests/test_graphics2_beta46_real_slot_layouts.py tests/test_graphics2_beta46_recovery_resize.py tests/test_graphics2_beta46_price_integrity.py tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_item_slots.py tests/test_graphics2_qml_load.py
+          python -m pytest -q tests/test_graphics2_beta46_legacy_image_bank.py tests/test_graphics2_beta46_flyer_quality.py tests/test_graphics2_beta46_real_slot_layouts.py tests/test_graphics2_beta46_recovery_resize.py tests/test_graphics2_beta46_price_integrity.py tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_item_slots.py tests/test_graphics2_qml_load.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
