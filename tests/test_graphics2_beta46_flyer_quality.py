@@ -42,6 +42,26 @@ def test_complete_layout_is_exactly_one_undo_redo_step(mode, count):
     assert session.document.to_dict() == after
 
 
+def test_complex_layout_captures_history_only_once_not_per_slot(monkeypatch):
+    session = make_session()
+    router = ItemSlotCommandRouter(session)
+    captures = []
+    capture_original = session.history.capture
+
+    def counted_capture(document):
+        captures.append(1)
+        return capture_original(document)
+
+    monkeypatch.setattr(session.history, "capture", counted_capture)
+    response = router.dispatch({"name":"apply_promotion_layout", "mode":"eleven"})
+    assert response.ok
+    assert len(response.payload["slot_ids"]) == 11
+    # One before and one after, regardless of the number of slot/price
+    # operations needed to assemble the design.
+    assert len(captures) == 2
+    assert session.history.can_undo
+
+
 def test_nested_failure_rolls_back_whole_document_without_history_leak():
     session = make_session()
     before = session.document.to_dict()
