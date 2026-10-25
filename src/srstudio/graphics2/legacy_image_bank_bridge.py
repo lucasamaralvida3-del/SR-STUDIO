@@ -128,7 +128,6 @@ def approved_legacy_image(product: dict[str, Any], *, root: Path | None = None) 
         asset for asset in assets
         if _name(asset.product_name or asset.product_key) in names
         or _name(asset.product_key) in names
-        or any(_name(alias) in names for alias in asset.aliases)
     ]
     return select(candidates, "exact_name")
 
