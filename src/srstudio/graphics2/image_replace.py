@@ -115,6 +115,17 @@ def replace_image_source(session: GraphicsSession, node_id: str, raw_source: str
         node.asset_id = asset.id
         node.metadata["bound_image_source"] = canonical
         node.metadata["manual_image_override"] = True
+        # Product slots are not arbitrary canvas images. A new product
+        # package should be centered/contained rather than stretched or
+        # unexpectedly cropped by the previous product's framing.
+        if node.metadata.get("manual_item_slot_child") and node.binding_role is not None and node.binding_role.value == "image":
+            node.style["fit"] = "contain"
+            node.style.pop("crop", None)
+            node.style.pop("fill_rect", None)
+            node.style["zoom"] = 1.0
+            node.style["focus_x"] = 0.5
+            node.style["focus_y"] = 0.5
+            node.metadata["placeholder"] = False
         node.visible = True
 
     return ImageReplacement(
