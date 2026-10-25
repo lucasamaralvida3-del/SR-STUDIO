@@ -144,6 +144,77 @@ def test_auto_layout_positions_preexisting_multi_strip_without_creating_cards(co
                for i, sid in enumerate(multi["slot_ids"]))
 
 
+def test_existing_filled_product_is_selected_before_older_empty_slot():
+    session = make_session()
+    empty = create_item_slot(session, "individual-beta44")
+    filled = create_item_slot(session, "individual-beta44")
+    assert bind_product_to_item_slot(session, filled.id, {
+        "id": "FILLED", "name": "Cafe 500 g", "price": "21,90"
+    })
+    result = ItemSlotCommandRouter(session).dispatch({
+        "name": "apply_promotion_layout", "mode": "individual",
+        "reuse_existing": True,
+    })
+    assert result.ok
+    assert result.payload["slot_ids"] == [filled.id]
+    assert result.payload["reused_slot_ids"] == [filled.id]
+    assert empty.id in result.payload["unused_slot_ids"]
+    assert session.page.slots[filled.id].product_id == "FILLED"
+
+
+def test_insufficient_layout_capacity_rejected_without_moving_or_losing_products():
+    session = make_session()
+    router = ItemSlotCommandRouter(session)
+    first = router.dispatch({
+        "name": "apply_promotion_layout", "mode": "seven",
+        "reuse_existing": True,
+    })
+    assert first.ok
+    for i, sid in enumerate(first.payload["slot_ids"]):
+        bind_product_to_item_slot(session, sid, {
+            "id": f"PRODUCT-{i}", "name": f"Item {i}", "price": "12,59",
+        })
+    original = session.document.to_dict()
+    result = router.dispatch({
+        "name": "apply_promotion_layout", "mode": "six",
+        "reuse_existing": True,
+    })
+    assert not result.ok
+    assert "7 Smart Slots preenchidos" in result.message
+    assert session.document.to_dict() == original
+
+
+def test_contents_remain_editable_and_text_fit_contract_survives_shrinking():
+    session = make_session()
+    slot = create_item_slot(session, "individual-beta44")
+    assert bind_product_to_item_slot(session, slot.id, {
+        "id": "LONG",
+        "name": "CAFE TORRADO MOIDO EXTRAFORTE EMBALAGEM ECONOMICA 500G",
+        "price": "1299,99", "unit": "UN",
+    })
+    page = session.page
+    roles = (BindingRole.NAME, BindingRole.PRICE_REAIS,
+             BindingRole.PRICE_CENTS, BindingRole.CURRENCY, BindingRole.UNIT)
+    original_content = {role.value: page.node(slot.node_by_role[role.value]).text
+                        for role in roles}
+    root_id = slot.metadata["root_node_id"]
+    root = page.node(root_id)
+    initial = root.rect.normalized()
+    session.resize_node(
+        root_id, x=75, y=350,
+        width=initial.width * .38,
+        height=initial.height * .38,
+    )
+    for role in roles:
+        node = page.node(slot.node_by_role[role.value])
+        assert node.text == original_content[role.value]
+        assert node.style["fit_inside_box"] is True
+        assert node.style["min_font_size"] >= 7
+        assert node.rect.width > 0 and node.rect.height > 0
+    assert session.undo()
+    assert page.slots[slot.id].product_id == "LONG"
+
+
 def test_second_layout_application_does_not_duplicate_images_or_slot_ids():
     session = make_session()
     router = ItemSlotCommandRouter(session)
