@@ -247,6 +247,21 @@ def launch_qt_quick_editor(
             self.backgroundRemovalDone.connect(self._finish_background_removal)
             self.productImageDone.connect(self._finish_product_image)
             self._bg_running = False
+            self._slot_previews_json: str | None = None
+
+        @Property(str, constant=True)
+        def slotPreviewsJson(self) -> str:
+            # Build preview files once, using the exact runtime scene
+            # constructors and production QPainter renderer. No separately
+            # drawn/decorated QML mini-cards can drift from actual slots.
+            if self._slot_previews_json is None:
+                try:
+                    from .slot_preview import build_slot_preview_catalog
+                    self._slot_previews_json = json.dumps(build_slot_preview_catalog())
+                except Exception as exc:
+                    self._slot_previews_json = "{}"
+                    self._status = f"Prévias dos Smart Slots: {type(exc).__name__}: {exc}"
+            return self._slot_previews_json
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
