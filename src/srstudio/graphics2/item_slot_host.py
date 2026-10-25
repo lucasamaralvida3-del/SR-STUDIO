@@ -193,11 +193,12 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                     logo_reserved=float(command.get("logo_reserved", 0.24)),
                     variation=int(command.get("variation", 0)),
                 )
-                result = apply_slot_composition(
-                    self.session, plan,
-                    price_mode=str(command.get("price_mode") or "auto"),
-                    reuse_existing=bool(command.get("reuse_existing", True)),
-                )
+                with self.session.transaction("Organizar layout com Smart Slots"):
+                    result = apply_slot_composition(
+                        self.session, plan,
+                        price_mode=str(command.get("price_mode") or "auto"),
+                        reuse_existing=bool(command.get("reuse_existing", True)),
+                    )
             except (ValueError, AssertionError, TypeError) as exc:
                 return CommandResult(False, False, str(exc))
             return CommandResult(
