@@ -220,6 +220,64 @@ def test_filled_multi_cannot_be_silently_split_by_incompatible_layout():
     assert session.document.to_dict() == original
 
 
+def test_reorganizing_slots_changes_positions_not_visual_preset_styles():
+    session = make_session()
+    individual = create_item_slot(session, "individual-beta44")
+    bind_product_to_item_slot(session, individual.id, {
+        "id": "A1", "name": "CAFÉ TRADICIONAL 500 G", "price": "19,90"
+    })
+    root_id = individual.metadata["root_node_id"]
+    page = session.page
+    import copy
+    child_styles = {
+        node_id: copy.deepcopy(page.node(node_id).style)
+        for node_id in [root_id, *page.descendants(root_id)]
+    }
+    result = ItemSlotCommandRouter(session).dispatch({
+        "name": "apply_promotion_layout", "mode": "six", "reuse_existing": True
+    })
+    assert result.ok
+    assert individual.id in result.payload["reused_slot_ids"]
+    for node_id, expected_style in child_styles.items():
+        assert page.node(node_id).style == expected_style
+    assert page.slots[individual.id].product_id == "A1"
+
+
+def test_auto_layout_24_products_does_not_drop_ids_or_leave_logo_region():
+    session = make_session()
+    original = []
+    for index in range(24):
+        slot = create_item_slot(session, "individual-beta44")
+        bind_product_to_item_slot(session, slot.id, {
+            "id": f"SKU-{index:02d}",
+            "name": f"PRODUTO DE MERCEARIA TIPO {index + 1} 500 GRAMAS",
+            "price": f"{index + 2},99",
+        })
+        original.append(slot.id)
+    result = ItemSlotCommandRouter(session).dispatch({
+        "name": "apply_promotion_layout", "mode": "auto",
+        "count": 24, "logo_reserved": .3,
+        "reuse_existing": True,
+    })
+    assert result.ok
+    assert set(result.payload["reused_slot_ids"]) == set(original)
+    assert not result.payload["created_slot_ids"]
+    assert session.page.metadata["promotion_composition"]["slot_ids"] == result.payload["slot_ids"]
+    rectangles = []
+    for slot_id in result.payload["slot_ids"]:
+        slot = session.page.slots[slot_id]
+        assert slot.product_id in {f"SKU-{i:02d}" for i in range(24)}
+        root = session.page.node(slot.metadata["root_node_id"]).rect.normalized()
+        assert root.y >= .3 * session.page.height
+        assert root.right <= session.page.width + .01
+        assert root.bottom <= session.page.height + .01
+        rectangles.append(root)
+    for index, a in enumerate(rectangles):
+        for b in rectangles[index+1:]:
+            assert not (a.x < b.right-.01 and b.x < a.right-.01
+                        and a.y < b.bottom-.01 and b.y < a.bottom-.01)
+
+
 def test_contents_remain_editable_and_text_fit_contract_survives_shrinking():
     session = make_session()
     slot = create_item_slot(session, "individual-beta44")
