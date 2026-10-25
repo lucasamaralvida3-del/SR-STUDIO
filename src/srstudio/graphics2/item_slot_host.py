@@ -27,6 +27,7 @@ from .item_slots import (
     refresh_all_item_slots,
     save_item_slot_as_preset,
     set_item_slot_role_bounds,
+    set_reference_price_mode,
 )
 from .slot_corpus_bindings import bind_product_to_quinta3_slot
 from .slot_limpeza_blue import (
@@ -127,10 +128,9 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
             return CommandResult(True, True, "Faixa Multi Itens inserida.", result)
 
         if name == "set_item_price_mode":
-            from .model import BindingRole
             mode = str(command.get("mode") or "auto")
             if mode not in ("auto", "one", "two"):
-                return CommandResult(False, False, "Modo inválido.")
+                return CommandResult(False, False, "Modo de preços inválido.")
             root_id = str(command.get("multi_root_id") or "")
             selected = [str(command.get("slot_id") or "")]
             if root_id:
@@ -138,27 +138,7 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 if root is None or not root.metadata.get("multi_slot_beta44"):
                     return CommandResult(False, False, "Faixa Multi não encontrada.")
                 selected = list(root.metadata.get("child_slot_ids") or [])
-            updated = []
-            for sid in selected:
-                slot = self.session.page.slots.get(sid)
-                if not is_manual_item_slot(slot):
-                    continue
-                if slot.metadata.get("preset_id") not in ("individual-beta44", "multi-cell-beta44"):
-                    continue
-                with self.session.transaction("Alterar quantidade de preços"):
-                    slot.metadata["price_mode"] = mode
-                    second = self.session.page.node(str(slot.node_by_role.get(BindingRole.RETAIL_PRICE.value) or ""))
-                    if second is not None:
-                        second.visible = mode == "two" or (mode == "auto" and slot.metadata.get("price_variant") == "two")
-                        slot.metadata["price_variant"] = "two" if second.visible else "one"
-                        promotion = self.session.page.node(str(slot.metadata.get("promotion_label_node_id") or ""))
-                        if promotion is not None:
-                            promotion.visible = not second.visible
-                        club = self.session.page.node(str(slot.metadata.get("club_label_node_id") or ""))
-                        if club is not None:
-                            snapshot = slot.metadata.get("product_snapshot") or {}
-                            club.visible = bool(second.visible and (snapshot.get("club_price") or snapshot.get("app_price")))
-                updated.append(sid)
+            updated = set_reference_price_mode(self.session, selected, mode)
             return CommandResult(bool(updated), bool(updated), "Modo de preços atualizado.", {"slot_ids": updated})
 
         if name == "add_item_slot":
