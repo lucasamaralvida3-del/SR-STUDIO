@@ -68,6 +68,40 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
     # among filled products and among empty slots alike.
     singles.sort(key=lambda slot: not bool(slot.product_id))
 
+    # A populated Multi is a SINGLE reusable visual component. We must
+    # never separate its children into fake independent cards or leave their
+    # products under a new composition. Reject incompatible maps up front.
+    filled_multi_roots = {
+        str(slot.metadata.get("multi_parent_id"))
+        for slot in populated if slot.metadata.get("multi_parent_id")
+    }
+    if reuse_existing and filled_multi_roots:
+        compatible_eleven = (
+            plan.mode == "eleven"
+            and len(filled_multi_roots) == 1
+            and all(
+                page.node(root_id) is not None
+                and int(page.node(root_id).metadata.get("multi_count") or 0) == 5
+                for root_id in filled_multi_roots
+            )
+        )
+        compatible_auto = (
+            plan.mode == "auto"
+            and len(filled_multi_roots) == 1
+            and not singles
+            and all(
+                page.node(root_id) is not None
+                and int(page.node(root_id).metadata.get("multi_count") or 0) == capacity
+                for root_id in filled_multi_roots
+            )
+        )
+        if not (compatible_eleven or compatible_auto):
+            raise ValueError(
+                "Esta página possui uma faixa Multi preenchida. "
+                "Use um layout compatível com a faixa existente; os "
+                "produtos não serão substituídos nem separados."
+            )
+
     multi5 = None
     if reuse_existing and plan.mode == "eleven":
         for node in page.nodes.values():
@@ -156,8 +190,24 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
         arranged.append(slot.id)
         root_ids.append(root_id)
 
-    # Record source-of-truth layout map, not additional layout art nodes.
+    # Hide only unassigned EMPTY manual slots so they cannot overlap the
+    # selected composition. Keep their IDs and nodes for subsequent layouts.
+    # Unrelated artwork and non-manual imported objects remain untouched.
+    unused = [sid for sid in old_slots if sid not in arranged]
     with session.transaction("Guardar posicionamento dos Smart Slots"):
+        for root_id in root_ids:
+            root = page.node(root_id)
+            if root is not None:
+                root.visible = True
+        for sid in unused:
+            slot = page.slots.get(sid)
+            if not is_manual_item_slot(slot) or slot.product_id:
+                continue
+            other_root = str(slot.metadata.get("multi_parent_id") or
+                             slot.metadata.get("root_node_id") or "")
+            root = page.node(other_root)
+            if root is not None and other_root not in root_ids:
+                root.visible = False
         page.metadata["promotion_composition"] = {
             "mode": plan.mode,
             "logo_reserved": plan.logo_reserved,
@@ -165,6 +215,5 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
             "root_node_ids": list(root_ids),
             "component_source": "canonical-smart-slots",
         }
-    unused = [sid for sid in old_slots if sid not in arranged]
     return CompositionResult(tuple(arranged), tuple(reused),
                              tuple(created), tuple(root_ids), tuple(unused))
