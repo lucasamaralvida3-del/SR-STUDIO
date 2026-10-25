@@ -416,6 +416,12 @@ def launch_qt_quick_editor(
             self._busy = True
             labels = {"save": "Salvando projeto", "pdf": "Exportando PDF", "png": "Exportando PNG"}
             self._status = f"{labels.get(kind, 'Processando')} · {target.name}..."
+            if kind in ("pdf", "png"):
+                from .slot_export_audit import inspect_smart_slot_flyer
+                scope = ({snapshot.active_page_id} if kind == "png" else None)
+                warnings = inspect_smart_slot_flyer(snapshot, page_ids=scope)
+                if warnings:
+                    self._status += f" · {len(warnings)} aviso(s) detectados antes da exportação"
             self.statusChanged.emit()
 
             def worker() -> None:
