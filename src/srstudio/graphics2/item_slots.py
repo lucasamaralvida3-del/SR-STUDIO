@@ -953,6 +953,15 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
     image_node = session.page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
     if image_node is not None:
         has_new_source = bool(product.get("image_path") or product.get("image") or product.get("image_asset_id"))
+        if has_new_source and image_node.metadata.get("manual_item_slot_child"):
+            # New catalog photo: fit inside its existing product rectangle
+            # without changing the artwork, title or price transforms.
+            image_node.style["fit"] = "contain"
+            image_node.style.pop("crop", None)
+            image_node.style.pop("fill_rect", None)
+            image_node.style["zoom"] = 1.0
+            image_node.style["focus_x"] = 0.5
+            image_node.style["focus_y"] = 0.5
         if prior_product_id == incoming_id and not has_new_source:
             # A price-only update must not erase a product's image in older
             # host implementations that rebuild node metadata during bind.
