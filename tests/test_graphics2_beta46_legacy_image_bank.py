@@ -17,7 +17,13 @@ from srstudio.graphics2.legacy_image_bank_bridge import (
 from srstudio.graphics2.model import GraphicsDocument, GraphicsPage, BindingRole
 from srstudio.graphics2.operations import GraphicsSession
 from srstudio.images.library import ImageLibrary
-from tools.recover_historical_product_images_beta46 import recover_standalone_images
+from runpy import run_path
+
+# The release recovery CLI lives under tools/ rather than the installed
+# Python package. Resolve its exact file on both Windows and Ubuntu.
+recover_standalone_images = run_path(
+    str(Path(__file__).resolve().parents[1] / "tools" / "recover_historical_product_images_beta46.py")
+)["recover_standalone_images"]
 
 
 def picture(path: Path, color: str) -> Path:
