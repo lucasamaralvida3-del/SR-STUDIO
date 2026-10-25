@@ -166,3 +166,15 @@ def test_preview_catalog_uses_runtime_rendered_real_slot_and_layout_pngs(tmp_pat
     for key in ("layout-six", "layout-seven", "layout-eleven"):
         preview = QImage(QUrl(catalog[key]).toLocalFile())
         assert preview.height() > preview.width()
+    # The previews are not static QML illustrations. Selecting two prices
+    # must result in visibly different pixels rendered by the real slot.
+    for key in ("individual", "multi5", "multi6"):
+        one = QImage(QUrl(catalog[key]).toLocalFile())
+        two = QImage(QUrl(catalog[key + "-two"]).toLocalFile())
+        assert one.size() == two.size()
+        assert any(
+            one.pixel(x, y) != two.pixel(x, y)
+            for y in range(0, one.height(), 2)
+            for x in range(0, one.width(), 2)
+        ), f"Two-price preview {key} did not change the actual visual component"
+
