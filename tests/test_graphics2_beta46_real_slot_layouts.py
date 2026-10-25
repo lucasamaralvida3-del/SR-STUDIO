@@ -119,6 +119,31 @@ def test_eleven_filled_individual_cards_all_reused_without_new_multi():
     ]
 
 
+@pytest.mark.parametrize("count", [5, 6])
+def test_auto_layout_positions_preexisting_multi_strip_without_creating_cards(count):
+    session = make_session()
+    multi = create_multi_item_strip(session, count=count, x=27, y=125)
+    for index, sid in enumerate(multi["slot_ids"]):
+        bind_product_to_item_slot(session, sid, {
+            "id": f"MULTI-{index}", "name": f"Produto {index}", "price": "14,99"
+        })
+    roots_before = set(session.page.nodes)
+    result = ItemSlotCommandRouter(session).dispatch({
+        "name": "apply_promotion_layout", "mode": "auto",
+        "count": count, "reuse_existing": True, "logo_reserved": .3,
+    })
+    assert result.ok
+    assert result.payload["created_slot_ids"] == []
+    assert result.payload["reused_slot_ids"] == multi["slot_ids"]
+    assert result.payload["root_node_ids"] == [multi["root_node_id"]]
+    assert set(session.page.nodes) == roots_before
+    group = session.page.node(multi["root_node_id"])
+    assert group.rect.y >= session.page.height * .3
+    assert group.rect.width / group.rect.height == pytest.approx(4, abs=.03)
+    assert all(session.page.slots[sid].product_id == f"MULTI-{i}"
+               for i, sid in enumerate(multi["slot_ids"]))
+
+
 def test_second_layout_application_does_not_duplicate_images_or_slot_ids():
     session = make_session()
     router = ItemSlotCommandRouter(session)
