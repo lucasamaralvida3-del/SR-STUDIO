@@ -945,7 +945,12 @@ ApplicationWindow {
                                         id: realSlotThumbnail
                                         x: 8; y: 29
                                         width: parent.width - 16; height: parent.height - 35
-                                        source: window.slotPreviewCatalog[canonicalSlotPreviewCard.modelData.key] || ""
+                                        source: window.slotPreviewCatalog[
+                                            canonicalSlotPreviewCard.modelData.key
+                                            + ((slotPriceMode.currentIndex === 2
+                                                && canonicalSlotPreviewCard.modelData.key !== "blue")
+                                                ? "-two" : "")
+                                        ] || ""
                                         fillMode: Image.PreserveAspectFit
                                         asynchronous: true
                                         cache: false
