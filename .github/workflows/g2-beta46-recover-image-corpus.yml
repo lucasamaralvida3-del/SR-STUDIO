@@ -6,6 +6,7 @@ on:
       - feature/g2-beta46-editor-reliability
     paths:
       - tools/recover_historical_product_images_beta46.py
+      - tools/install_historical_review_bank_beta46.py
       - src/srstudio/graphics2/legacy_image_bank_bridge.py
       - tests/test_graphics2_beta46_legacy_image_bank.py
       - .github/workflows/g2-beta46-recover-image-corpus.yml
@@ -61,6 +62,21 @@ jobs:
           assert report['image_bank']['accepted'] == 0, report
           assert report['image_bank']['pending'] > 0, report
           print('REVIEW_ONLY_IMAGE_BANK_READY',report)
+          PY
+      - name: Verify portable offline import and zero implicit approvals
+        run: |
+          python tools/install_historical_review_bank_beta46.py \
+            --source /tmp/sr-legacy-images/for-review \
+            --destination /tmp/sr-legacy-images/portable-user-install
+          python - <<'PY'
+          from srstudio.images.library import ImageLibrary
+          from pathlib import Path
+          library=ImageLibrary(Path('/tmp/sr-legacy-images/portable-user-install'))
+          results=library.all()
+          assert len(results)==138, len(results)
+          assert all(a.review_status == 'pending' for a in results)
+          assert all(Path(a.path).is_file() for a in results)
+          print('PORTABLE_LEGACY_BANK_PASS',len(results),'files; 0 approved')
           PY
       - name: Archive review database and its candidate photographs
         uses: actions/upload-artifact@v4
