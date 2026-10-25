@@ -164,6 +164,22 @@ def test_export_audit_detects_missing_product_photo_and_name_price_collision():
     }
 
 
+def test_export_audit_uses_real_qt_font_metrics_when_gui_is_active(monkeypatch):
+    pytest.importorskip("PySide6")
+    monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+    from PySide6.QtGui import QGuiApplication
+    app = QGuiApplication.instance() or QGuiApplication([])
+    session = make_session()
+    slot = create_item_slot(session, "individual-beta44")
+    bind_product_to_item_slot(session, slot.id, {
+        "id":"T", "name":"PRODUTO COM DESCRIÇÃO MUITO EXTENSA 900ML",
+        "price":"1299,99",
+    })
+    issues = inspect_smart_slot_flyer(session.document)
+    assert all(item.severity == "warning" for item in issues)
+    assert session.page.slots[slot.id].product_id == "T"
+
+
 def test_export_audit_reports_out_of_page_and_does_not_change_document():
     session = make_session()
     response = ItemSlotCommandRouter(session).dispatch({
