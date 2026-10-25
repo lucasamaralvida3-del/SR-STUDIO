@@ -62,6 +62,37 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
                     multi5 = node
                     break
 
+    # Auto Layout should likewise REPOSITION an existing complete Multi5/
+    # Multi6 instead of drawing 5/6 replacement cards over its products.
+    if (reuse_existing and plan.mode == "auto" and not singles
+            and len(plan.placements) in (5, 6)):
+        expected = len(plan.placements)
+        for root in page.nodes.values():
+            if (root.metadata.get("multi_slot_beta44")
+                    and int(root.metadata.get("multi_count") or 0) == expected):
+                ids = list(root.metadata.get("child_slot_ids") or [])
+                if len(ids) != expected or not all(sid in page.slots for sid in ids):
+                    continue
+                target_w = page.width * .91
+                available_top = page.height * (plan.logo_reserved + .025)
+                available_h = page.height * .975 - available_top
+                target_h = min(target_w / 4, available_h)
+                target_x = page.width * .045
+                target_y = available_top + max(0, available_h - target_h) / 2
+                session.resize_node(root.id, x=target_x, y=target_y,
+                                    width=target_w, height=target_h)
+                set_reference_price_mode(session, ids, price_mode)
+                with session.transaction("Auto Layout com faixa Multi existente"):
+                    page.metadata["promotion_composition"] = {
+                        "mode": plan.mode,
+                        "logo_reserved": plan.logo_reserved,
+                        "slot_ids": ids,
+                        "root_node_ids": [root.id],
+                        "component_source": "canonical-smart-slots",
+                    }
+                return CompositionResult(tuple(ids), tuple(ids), (), (root.id,),
+                                         tuple(sid for sid in old_slots if sid not in ids))
+
     # If the page already contains eleven actual individual Smart Slots,
     # do not introduce an artificial new Multi strip and abandon five
     # products. In that case the bottom five positions use the existing
