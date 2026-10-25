@@ -30,7 +30,7 @@ jobs:
       - name: Install image metadata and test dependencies
         run: |
           python -m pip install -U pip
-          python -m pip install pillow pytest
+          python -m pip install -e ".[dev]"
       - name: Validate conservative matching and secure ZIP importer
         run: |
           python -m pytest -q tests/test_graphics2_beta46_legacy_image_bank.py
