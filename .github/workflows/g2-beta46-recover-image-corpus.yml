@@ -1,0 +1,71 @@
+name: Beta46 Recover Historical Product Images (Review Only)
+
+on:
+  push:
+    branches:
+      - feature/g2-beta46-editor-reliability
+    paths:
+      - tools/recover_historical_product_images_beta46.py
+      - src/srstudio/graphics2/legacy_image_bank_bridge.py
+      - tests/test_graphics2_beta46_legacy_image_bank.py
+      - .github/workflows/g2-beta46-recover-image-corpus.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  recover-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PYTHONPATH: src:.
+      EXPECTED_SHA256: 9c2f12d23aa827fa88124dcf82468daed42a05fb44df6ab8109e0b487dc384ff
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install image metadata and test dependencies
+        run: |
+          python -m pip install -U pip
+          python -m pip install pillow pytest
+      - name: Validate conservative matching and secure ZIP importer
+        run: |
+          python -m pytest -q tests/test_graphics2_beta46_legacy_image_bank.py
+      - name: Download pinned historical release and audit metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/sr-legacy-images
+          gh release download image-db-corpus-v1 -R "${{ github.repository }}" -p standalone-images.zip -D /tmp/sr-legacy-images --clobber
+          curl --fail --location --retry 3 \
+            "https://raw.githubusercontent.com/lucasamaralvida3-del/SR-STUDIO/g2/parallel-image-database/docs/parallel/phase3-evidence/phase3b-final-rerun/standalone-manifest.json" \
+            -o /tmp/sr-legacy-images/verified-manifest.json
+          printf '%s  %s\n' "$EXPECTED_SHA256" /tmp/sr-legacy-images/standalone-images.zip | sha256sum --check
+      - name: Restore images into an isolated review-only library
+        run: |
+          python tools/recover_historical_product_images_beta46.py \
+            --archive /tmp/sr-legacy-images/standalone-images.zip \
+            --manifest /tmp/sr-legacy-images/verified-manifest.json \
+            --destination /tmp/sr-legacy-images/for-review \
+            --sha256 "$EXPECTED_SHA256"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          report=json.loads(Path('/tmp/sr-legacy-images/for-review/recovery-report.json').read_text())
+          assert report['record_count'] == 160, report
+          assert report['rejected_decorative_or_invalid'] == 7, report
+          assert report['accepted_automatically'] == 0, report
+          assert report['image_bank']['accepted'] == 0, report
+          assert report['image_bank']['pending'] > 0, report
+          print('REVIEW_ONLY_IMAGE_BANK_READY',report)
+          PY
+      - name: Archive review database and its candidate photographs
+        uses: actions/upload-artifact@v4
+        with:
+          name: beta46-legacy-image-bank-review-only
+          path: /tmp/sr-legacy-images/for-review/
+          retention-days: 14
+          if-no-files-found: error
