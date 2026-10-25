@@ -7,8 +7,9 @@ cropped/full rendering of a scene made from the same editable components that
 the user inserts. The launcher never needs PPTX files for these previews.
 """
 
+from hashlib import sha256
 from pathlib import Path
-from tempfile import mkdtemp
+from tempfile import gettempdir
 
 
 PREVIEW_TYPES = ("blue", "individual", "individual-two", "multi5", "multi5-two",
@@ -72,12 +73,35 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
     if QGuiApplication.instance() is None:
         raise RuntimeError("Qt previews need QGuiApplication")
 
-    root = Path(directory) if directory is not None else Path(mkdtemp(prefix="sr-g2-slot-previews-"))
+    # The same eleven heavy Qt renderings used to run on every launch.
+    # Cache by the actual renderer/preset source and font availability so
+    # changed slots invalidate naturally, with no stale fake thumbnails.
+    if directory is None:
+        from PySide6.QtGui import QFontDatabase
+        sources = ("slot_preview.py", "item_slots.py", "slot_limpeza_blue.py",
+                   "multi_item_strip.py", "promotion_composition.py",
+                   "promotion_layouts.py", "qt_renderer.py")
+        digest = sha256()
+        for name in sources:
+            digest.update((Path(__file__).with_name(name)).read_bytes())
+        digest.update(str("Anton" in QFontDatabase.families()).encode("ascii"))
+        root = Path(gettempdir()) / ("sr-g2-real-slot-preview-" + digest.hexdigest()[:16])
+    else:
+        root = Path(directory)
     root.mkdir(parents=True, exist_ok=True)
-    sample = _sample_image(root / "example-product.png")
     output: dict[str, str] = {}
+    for kind in PREVIEW_TYPES:
+        cached = root / (kind + ".png")
+        if cached.is_file() and cached.stat().st_size > 256:
+            if not QImage(str(cached)).isNull():
+                output[kind] = QUrl.fromLocalFile(str(cached.resolve())).toString()
+    if len(output) == len(PREVIEW_TYPES):
+        return output
+    sample = _sample_image(root / "example-product.png")
 
     for kind in PREVIEW_TYPES:
+        if kind in output:
+            continue
         doc = GraphicsDocument(name="Preview " + kind)
         session = GraphicsSession(doc)
         page = session.page
