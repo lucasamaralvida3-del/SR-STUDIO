@@ -1,0 +1,118 @@
+from __future__ import annotations
+
+"""Promotion templates are positioning maps, never separate visual presets.
+
+Every placed element is a canonical editable ItemSlot (individual or the real
+Multi-5 parent). Existing product slots are reused before any new blank slot
+is created. The layout does not modify product bindings or project assets.
+"""
+
+from dataclasses import dataclass
+
+from .item_slots import create_item_slot, is_manual_item_slot, set_reference_price_mode
+from .multi_item_strip import create_multi_item_strip
+from .promotion_layouts import PromotionPlan
+from .model import Rect
+
+
+@dataclass(frozen=True)
+class CompositionResult:
+    slot_ids: tuple[str, ...]
+    reused_slot_ids: tuple[str, ...]
+    created_slot_ids: tuple[str, ...]
+    root_node_ids: tuple[str, ...]
+    unused_slot_ids: tuple[str, ...]
+
+
+def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "auto",
+                           reuse_existing: bool = True) -> CompositionResult:
+    """Position real Smart Slots while retaining existing products.
+
+    The 11-product layout uses exactly six independent canonical individual
+    slots + a real reusable Multi-5 for the last five items.
+    """
+    if price_mode not in ("auto", "one", "two"):
+        raise ValueError("Modo de preços inválido.")
+    page = session.page
+    old_slots = dict(page.slots)
+    # Avoid using a Multi cell as a free-standing single: it belongs to the
+    # parent's continuous ribbon, not to an individual price card.
+    singles = [
+        s for s in old_slots.values()
+        if is_manual_item_slot(s)
+        and s.metadata.get("preset_id") == "individual-beta44"
+        and not s.metadata.get("multi_parent_id")
+        and page.node(str(s.metadata.get("root_node_id") or "")) is not None
+    ] if reuse_existing else []
+    # Certified Azul is also a real Smart Slot, but has its own distinct
+    # protected layout. Reuse it only if the user already placed it.
+    blue = [
+        s for s in old_slots.values()
+        if s.metadata.get("limpeza_blue_profile") == "limpeza-blue-v1"
+        and page.node(str(s.metadata.get("root_node_id") or "")) is not None
+    ] if reuse_existing else []
+    singles.extend(blue)
+
+    multi5 = None
+    if reuse_existing and plan.mode == "eleven":
+        for node in page.nodes.values():
+            if node.metadata.get("multi_slot_beta44") and int(node.metadata.get("multi_count") or 0) == 5:
+                ids = list(node.metadata.get("child_slot_ids") or [])
+                if len(ids) == 5 and all(sid in page.slots for sid in ids):
+                    multi5 = node
+                    break
+
+    arranged: list[str] = []
+    reused: list[str] = []
+    created: list[str] = []
+    root_ids: list[str] = []
+    # Arrange only assigned cards; unrelated elements (logo, text, saved
+    # artworks, and unselected extra slots) are never deleted or re-created.
+    for position in plan.placements:
+        if plan.mode == "eleven" and position.index in (7, 8, 9, 10):
+            continue
+        x, y, w, h = (page.width * position.x, page.height * position.y,
+                      page.width * position.width, page.height * position.height)
+        if plan.mode == "eleven" and position.index == 6:
+            end = plan.placements[10]
+            w = page.width * (end.x + end.width - position.x)
+            if multi5 is None:
+                data = create_multi_item_strip(session, count=5, price_mode=price_mode, x=x, y=y)
+                multi_root_id = data["root_node_id"]
+                ids = list(data["slot_ids"])
+                created.extend(ids)
+            else:
+                multi_root_id = multi5.id
+                ids = list(multi5.metadata.get("child_slot_ids") or [])
+                reused.extend(ids)
+            session.resize_node(multi_root_id, x=x, y=y, width=w, height=h)
+            set_reference_price_mode(session, ids, price_mode)
+            arranged.extend(ids)
+            root_ids.append(multi_root_id)
+            continue
+
+        if singles:
+            slot = singles.pop(0)
+            reused.append(slot.id)
+        else:
+            slot = create_item_slot(session, "individual-beta44", x=x, y=y)
+            created.append(slot.id)
+        root_id = str(slot.metadata["root_node_id"])
+        session.resize_node(root_id, x=x, y=y, width=w, height=h)
+        if slot.metadata.get("preset_id") == "individual-beta44":
+            set_reference_price_mode(session, [slot.id], price_mode)
+        arranged.append(slot.id)
+        root_ids.append(root_id)
+
+    # Record source-of-truth layout map, not additional layout art nodes.
+    with session.transaction("Guardar posicionamento dos Smart Slots"):
+        page.metadata["promotion_composition"] = {
+            "mode": plan.mode,
+            "logo_reserved": plan.logo_reserved,
+            "slot_ids": list(arranged),
+            "root_node_ids": list(root_ids),
+            "component_source": "canonical-smart-slots",
+        }
+    unused = [sid for sid in old_slots if sid not in arranged]
+    return CompositionResult(tuple(arranged), tuple(reused),
+                             tuple(created), tuple(root_ids), tuple(unused))
