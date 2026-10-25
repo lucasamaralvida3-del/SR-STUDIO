@@ -87,6 +87,32 @@ def test_replace_product_photo_centers_without_touching_price_or_position(tmp_pa
     assert session.page.node(slot.node_by_role[BindingRole.IMAGE.value]).style["fit"] == "contain"
 
 
+def test_new_catalog_product_resets_only_image_crop_without_changing_price(tmp_path: Path):
+    session = make_session()
+    slot = create_item_slot(session, "individual-beta44")
+    image = session.page.node(slot.node_by_role[BindingRole.IMAGE.value])
+    image.style.update({"fit":"cover", "zoom":2.8, "crop":{"l":.3}})
+    prior = image.rect.normalized()
+    sample = tmp_path / "packaging.png"
+    sample.write_bytes(PNG_1PX)
+    bind_product_to_item_slot(session, slot.id, {
+        "id":"SKU-ONE", "name":"CAFE 500 G", "price":"14,99",
+        "image_path":str(sample)
+    })
+    assert image.style["fit"] == "contain"
+    assert image.style["zoom"] == 1
+    assert "crop" not in image.style
+    assert image.rect == prior
+    amount = session.page.node(slot.node_by_role[BindingRole.PRICE_REAIS.value])
+    assert amount.text == "14"
+    # Price-only updates of the same product retain the clean picture.
+    bind_product_to_item_slot(session, slot.id, {
+        "id":"SKU-ONE", "name":"CAFE 500 G", "price":"12,99"
+    })
+    assert amount.text == "12"
+    assert image.visible and image.style["fit"] == "contain"
+
+
 def test_generic_image_replacement_keeps_user_crop(tmp_path: Path):
     session = make_session()
     node = session.add_node(GraphicsNode(
