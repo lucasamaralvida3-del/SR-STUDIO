@@ -11,8 +11,9 @@ from pathlib import Path
 from tempfile import mkdtemp
 
 
-PREVIEW_TYPES = ("blue", "individual", "multi5", "multi6",
-                 "layout-individual", "layout-six", "layout-seven", "layout-eleven")
+PREVIEW_TYPES = ("blue", "individual", "individual-two", "multi5", "multi5-two",
+                 "multi6", "multi6-two", "layout-individual", "layout-six",
+                 "layout-seven", "layout-eleven")
 
 
 def _sample_product(path: Path, index: int) -> dict:
@@ -81,26 +82,36 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
         session = GraphicsSession(doc)
         page = session.page
         # Keep every preview self-contained and free from the real document.
-        if kind in ("blue", "individual"):
+        two_prices = kind.endswith("-two")
+        def product(index):
+            item = _sample_product(sample, index)
+            if two_prices:
+                item["club_price"] = f"{index + 5},99"
+            return item
+        if kind in ("blue", "individual", "individual-two"):
             if kind == "blue":
                 slot = create_limpeza_blue_slot(session, x=0, y=0)
-                bind_product_to_limpeza_blue_slot(session, slot.id, _sample_product(sample, 0))
+                bind_product_to_limpeza_blue_slot(session, slot.id, product(0))
             else:
                 slot = create_item_slot(session, "individual-beta44", x=0, y=0)
-                bind_product_to_item_slot(session, slot.id, _sample_product(sample, 0))
+                slot.metadata["price_mode"] = "two" if two_prices else "one"
+                bind_product_to_item_slot(session, slot.id, product(0))
             rendered_root = page.node(slot.metadata["root_node_id"])
         elif kind.startswith("multi"):
-            count = int(kind[-1])
-            result = create_multi_item_strip(session, count=count, x=0, y=0)
+            count = int(kind[5])
+            result = create_multi_item_strip(
+                session, count=count, x=0, y=0,
+                price_mode="two" if two_prices else "one",
+            )
             for index, sid in enumerate(result["slot_ids"]):
-                bind_product_to_item_slot(session, sid, _sample_product(sample, index))
+                bind_product_to_item_slot(session, sid, product(index))
             rendered_root = page.node(result["root_node_id"])
         else:
             mode = kind.split("-", 1)[1]
             result = apply_slot_composition(session, plan_promotion(mode),
                                              reuse_existing=False)
             for index, sid in enumerate(result.slot_ids):
-                bind_product_to_item_slot(session, sid, _sample_product(sample, index))
+                bind_product_to_item_slot(session, sid, product(index))
             rendered_root = None
 
         full = root / ("render-" + kind + ".png")
