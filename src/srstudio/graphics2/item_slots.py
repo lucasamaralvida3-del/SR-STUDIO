@@ -552,12 +552,7 @@ def refresh_item_slot_metadata(page, slot: SmartSlot) -> None:
     integer = page.node(str(price.get("integer_node") or ""))
     decimal = page.node(str(price.get("decimal_node") or ""))
     if slot.product_id and integer is not None and decimal is not None:
-        raw_decimal = str(decimal.text or "").strip().replace(",", ".")
-        try:
-            price["combined_value"] = f"{int(str(integer.text).strip())}{float(raw_decimal):.2f}"[0:0]
-        except (TypeError, ValueError):
-            price["combined_value"] = ""
-        # Compose without locale ambiguity while preserving the split text nodes.
+        # Compose without locale ambiguity while preserving split text nodes.
         whole = str(integer.text or "").strip()
         cents = str(decimal.text or "").strip().lstrip(",.")
         price["combined_value"] = f"{whole}.{cents}" if whole and cents else ""
@@ -609,7 +604,10 @@ def set_item_slot_role_bounds(
 def _reset_clone_content(page, slot: SmartSlot) -> None:
     slot.product_id = ""
     slot.metadata["product_snapshot"] = {}
+    slot.metadata["original_product_snapshot"] = {}
     slot.metadata["state"] = "empty"
+    slot.metadata["price_mode"] = "auto"
+    slot.metadata["price_variant"] = "one"
     placeholders = {
         BindingRole.NAME.value: "NOME DO PRODUTO",
         BindingRole.CURRENCY.value: "R$",
@@ -625,6 +623,10 @@ def _reset_clone_content(page, slot: SmartSlot) -> None:
             node.asset_id = ""
             node.metadata.pop("bound_image_source", None)
             node.metadata["placeholder"] = True
+            node.visible = False
+        elif role in (BindingRole.RETAIL_PRICE.value, BindingRole.LIMIT.value):
+            node.text = ""
+            node.visible = False
         elif role in placeholders and node.kind is NodeKind.TEXT:
             node.text = placeholders[role]
     # Product-free duplicates must not retain secondary promotion amounts.
@@ -641,6 +643,11 @@ def _reset_clone_content(page, slot: SmartSlot) -> None:
                 node = page.node(str(node_id))
                 if node is not None and node.kind is NodeKind.TEXT:
                     node.text = value
+    for key, visible in (("club_label_node_id", False),
+                         ("promotion_label_node_id", True)):
+        node = page.node(str(slot.metadata.get(key) or ""))
+        if node is not None:
+            node.visible = visible
     refresh_item_slot_metadata(page, slot)
 
 
@@ -777,6 +784,79 @@ def save_item_slot_as_preset(session: GraphicsSession, slot_id: str, name: str) 
     return preset
 
 
+def _original_reference_product(slot: SmartSlot) -> dict[str, Any]:
+    """Recover retail/club inputs even from older Beta45 saved documents.
+
+    Previous versions replaced product_snapshot['price'] with the club price,
+    which made 2->1->auto toggles irreversible without this recovery.
+    """
+    original = slot.metadata.get("original_product_snapshot")
+    if isinstance(original, dict) and original:
+        return copy.deepcopy(original)
+    saved = slot.metadata.get("product_snapshot") or {}
+    product = copy.deepcopy(saved) if isinstance(saved, dict) else {}
+    retail = product.get("retail_price")
+    if retail not in (None, ""):
+        product["price"] = retail
+    return product
+
+
+def _reference_price_state(product: dict[str, Any], mode: str) -> tuple[bool, object | None, object | None]:
+    from .slot_limpeza_blue import _price_variant
+    variant, promotional, retail = _price_variant(product)
+    two = mode == "two" or (mode == "auto" and variant == "two")
+    normal = product.get("price")
+    primary = promotional if two else (normal if normal not in (None, "") else promotional)
+    return two, primary, retail if two else None
+
+
+def _apply_reference_price_state(page, slot: SmartSlot, source: dict[str, Any], mode: str) -> None:
+    """Update only pricing nodes; do not replace product identity or image."""
+    from .operations import _role_value
+
+    two, primary, retail = _reference_price_state(source, mode)
+    combined = {"price": primary, "retail_price": retail}
+    for role in (BindingRole.PRICE_REAIS, BindingRole.PRICE_CENTS, BindingRole.CURRENCY):
+        node = page.node(str(slot.node_by_role.get(role.value) or ""))
+        if node is not None:
+            node.text = _role_value(role, combined)
+    secondary = page.node(str(slot.node_by_role.get(BindingRole.RETAIL_PRICE.value) or ""))
+    if secondary is not None:
+        secondary.text = _role_value(BindingRole.RETAIL_PRICE, combined) if retail is not None else ("R$ 00,00" if two else "")
+        secondary.visible = two
+    promo = page.node(str(slot.metadata.get("promotion_label_node_id") or ""))
+    if promo is not None:
+        promo.visible = not two
+    club = page.node(str(slot.metadata.get("club_label_node_id") or ""))
+    if club is not None:
+        club.visible = bool(two and (source.get("club_price") or source.get("app_price")))
+    slot.metadata["price_variant"] = "two" if two else "one"
+    snapshot = slot.metadata.get("product_snapshot")
+    if isinstance(snapshot, dict):
+        snapshot["price"] = primary
+        snapshot["retail_price"] = retail if retail is not None else ""
+
+
+def set_reference_price_mode(session: GraphicsSession, slot_ids: list[str], mode: str) -> list[str]:
+    """Single undoable operation for a whole Multi strip or one card."""
+    if mode not in ("auto", "one", "two"):
+        raise ValueError("Modo de preços inválido")
+    valid = []
+    for sid in dict.fromkeys(slot_ids):
+        slot = session.page.slots.get(str(sid))
+        if is_manual_item_slot(slot) and slot.metadata.get("preset_id") in ("individual-beta44", "multi-cell-beta44"):
+            valid.append(slot)
+    if not valid:
+        return []
+    with session.transaction("Alterar modo de preço"):
+        for slot in valid:
+            slot.metadata["price_mode"] = mode
+            source = _original_reference_product(slot) if slot.product_id else {}
+            _apply_reference_price_state(session.page, slot, source, mode)
+            refresh_item_slot_metadata(session.page, slot)
+    return [slot.id for slot in valid]
+
+
 def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: dict[str, Any]) -> bool:
     slot = session.page.slots.get(str(slot_id))
     if not is_manual_item_slot(slot):
@@ -792,10 +872,16 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
             mode = "auto"
         display_two = variant == "two" if mode == "auto" else mode == "two"
         payload = copy.deepcopy(product)
-        if primary is not None:
-            payload["price"] = primary
-        payload["retail_price"] = secondary if secondary is not None else ""
+        # A forced single price must show the normal retail price. Preserve
+        # the untouched source record so switching modes never loses it.
+        selected = primary if display_two else (
+            product.get("price") if product.get("price") not in (None, "") else primary
+        )
+        if selected is not None:
+            payload["price"] = selected
+        payload["retail_price"] = secondary if display_two and secondary is not None else ""
         session.bind_product(slot.id, payload)
+        slot.metadata["original_product_snapshot"] = copy.deepcopy(product)
         name_node = session.page.node(str(slot.node_by_role.get(BindingRole.NAME.value) or ""))
         if name_node is not None:
             raw_name = str(payload.get("display_name") or payload.get("name") or
@@ -807,25 +893,13 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
         unit_node = session.page.node(str(slot.node_by_role.get(BindingRole.UNIT.value) or ""))
         if unit_node is not None:
             unit_node.text = str(product.get("unit") or "UN").upper().strip().lstrip("/")
-        secondary_node = session.page.node(str(slot.node_by_role.get(BindingRole.RETAIL_PRICE.value) or ""))
+        _apply_reference_price_state(session.page, slot, product, mode)
         limit_node = session.page.node(str(slot.node_by_role.get(BindingRole.LIMIT.value) or ""))
-        if secondary_node is not None:
-            secondary_node.visible = display_two
-            if display_two and secondary is None:
-                secondary_node.text = "R$ 00,00"
         if limit_node is not None:
             limit_value = str(product.get("cpf_limit") or product.get("limit") or "").strip()
             unit = str(product.get("unit") or "UN").strip().upper().lstrip("/")
-            if limit_value:
-                limit_node.text = f"LIMITE DE {limit_value} {unit} POR CPF"
+            limit_node.text = f"LIMITE DE {limit_value} {unit} POR CPF" if limit_value else ""
             limit_node.visible = bool(limit_value)
-        club_label = session.page.node(str(slot.metadata.get("club_label_node_id") or ""))
-        if club_label is not None:
-            club_label.visible = display_two and bool(product.get("club_price") or product.get("app_price"))
-        promotional_label = session.page.node(str(slot.metadata.get("promotion_label_node_id") or ""))
-        if promotional_label is not None:
-            promotional_label.visible = not display_two
-        slot.metadata["price_variant"] = "two" if display_two else "one"
     else:
         session.bind_product(slot.id, product)
     for node_id in slot.node_by_role.values():
