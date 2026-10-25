@@ -184,6 +184,42 @@ def test_insufficient_layout_capacity_rejected_without_moving_or_losing_products
     assert session.document.to_dict() == original
 
 
+def test_empty_unused_slot_is_hidden_not_deleted_and_can_be_reused_later():
+    session = make_session()
+    first = create_item_slot(session, "individual-beta44")
+    second = create_item_slot(session, "individual-beta44")
+    router = ItemSlotCommandRouter(session)
+    small = router.dispatch({"name": "apply_promotion_layout",
+                             "mode": "individual", "reuse_existing": True})
+    assert small.ok, small.message
+    assert len(session.page.slots) == 2
+    assert session.page.node(first.metadata["root_node_id"]).visible
+    assert not session.page.node(second.metadata["root_node_id"]).visible
+    large = router.dispatch({"name": "apply_promotion_layout",
+                             "mode": "six", "reuse_existing": True})
+    assert large.ok
+    assert second.id in large.payload["reused_slot_ids"]
+    assert session.page.node(second.metadata["root_node_id"]).visible
+    assert len(session.page.slots) == 6
+
+
+def test_filled_multi_cannot_be_silently_split_by_incompatible_layout():
+    session = make_session()
+    multi = create_multi_item_strip(session, count=5)
+    for i, sid in enumerate(multi["slot_ids"]):
+        bind_product_to_item_slot(session, sid, {
+            "id": f"SKU-{i}", "name": f"Produto {i}", "price": "7,99"
+        })
+    original = session.document.to_dict()
+    result = ItemSlotCommandRouter(session).dispatch({
+        "name": "apply_promotion_layout",
+        "mode": "six", "reuse_existing": True,
+    })
+    assert not result.ok
+    assert "faixa Multi preenchida" in result.message
+    assert session.document.to_dict() == original
+
+
 def test_contents_remain_editable_and_text_fit_contract_survives_shrinking():
     session = make_session()
     slot = create_item_slot(session, "individual-beta44")
