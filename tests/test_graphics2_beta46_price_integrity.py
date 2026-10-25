@@ -133,3 +133,42 @@ def test_restore_after_save_and_reopen_preserves_retail_mode():
     set_reference_price_mode(reopened, [slot.id], "auto")
     assert read(reopened, slot.id)[0] == "24"
     assert reopened.page.slots[slot.id].product_id == "R"
+
+
+@pytest.mark.parametrize("preset", ["individual-beta44", "multi-cell-beta44"])
+def test_replacing_product_does_not_reuse_previous_sku_picture(preset):
+    session = make_session()
+    slot = create_item_slot(session, preset)
+    bind_product_to_item_slot(session, slot.id, {
+        "id": "OLD", "name": "Produto antigo", "price": "8,99",
+        "image_path": "old-sku-photo.png",
+    })
+    image = session.page.node(slot.node_by_role[BindingRole.IMAGE.value])
+    assert image.metadata["bound_image_source"] == "old-sku-photo.png"
+    assert image.visible
+
+    # Price-only edit of the SAME product keeps its picture.
+    bind_product_to_item_slot(session, slot.id, {
+        "id": "OLD", "name": "Produto antigo", "price": "9,99"
+    })
+    assert image.metadata["bound_image_source"] == "old-sku-photo.png"
+    assert image.visible
+
+    # Switching to another SKU with no image must not show old SKU's photo.
+    bind_product_to_item_slot(session, slot.id, {
+        "id": "NEW", "name": "Produto novo", "price": "6,99"
+    })
+    assert "bound_image_source" not in image.metadata
+    assert image.asset_id == ""
+    assert image.metadata["placeholder"]
+    assert not image.visible
+    assert session.page.slots[slot.id].product_id == "NEW"
+
+    # A later product-image update restores the new SKU's picture.
+    bind_product_to_item_slot(session, slot.id, {
+        "id": "NEW", "name": "Produto novo", "price": "6,99",
+        "image_path": "new-sku-photo.png",
+    })
+    assert image.visible
+    assert image.metadata["bound_image_source"] == "new-sku-photo.png"
+    assert not image.metadata["placeholder"]
