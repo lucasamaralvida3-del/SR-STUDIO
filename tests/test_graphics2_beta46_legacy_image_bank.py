@@ -84,6 +84,24 @@ def test_review_images_never_used_and_ambiguity_is_not_guessed(tmp_path, monkeyp
     assert approved_legacy_image({"id":"220"})["image_bank_asset_id"] == two.id
 
 
+def test_historical_aliases_without_explicit_review_cannot_trigger_autolink(tmp_path, monkeypatch):
+    root = tmp_path / "bank"
+    monkeypatch.setenv("SR_STUDIO_IMAGE_LIBRARY_ROOT", str(root))
+    bank = ImageLibrary(root)
+    bank.import_image(
+        picture(tmp_path / "approved.png", "green"),
+        product_key="SUCO MARCA A 1L",
+        product_name="SUCO MARCA A 1L",
+        aliases=("SUCO MARCA B 1L",),
+        kind="product",
+        review_status="accepted",
+        source_kind="historic-review"
+    )
+    assert approved_legacy_image({"name": "SUCO MARCA A 1L"}) is not None
+    # Aliases in the old corpus can be machine-produced cross-SKU guesses.
+    assert approved_legacy_image({"name": "SUCO MARCA B 1L"}) is None
+
+
 def test_manual_and_catalog_picture_take_precedence_over_legacy(tmp_path, monkeypatch):
     bank_dir = tmp_path / "official"
     monkeypatch.setenv("SR_STUDIO_IMAGE_LIBRARY_ROOT", str(bank_dir))
