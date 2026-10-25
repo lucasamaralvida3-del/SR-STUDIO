@@ -62,6 +62,12 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
                     multi5 = node
                     break
 
+    # If the page already contains eleven actual individual Smart Slots,
+    # do not introduce an artificial new Multi strip and abandon five
+    # products. In that case the bottom five positions use the existing
+    # individual components. A real Multi-5 is preferred if already present.
+    use_multi5 = plan.mode == "eleven" and (multi5 is not None or len(singles) <= 6)
+
     arranged: list[str] = []
     reused: list[str] = []
     created: list[str] = []
@@ -69,11 +75,11 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
     # Arrange only assigned cards; unrelated elements (logo, text, saved
     # artworks, and unselected extra slots) are never deleted or re-created.
     for position in plan.placements:
-        if plan.mode == "eleven" and position.index in (7, 8, 9, 10):
+        if use_multi5 and position.index in (7, 8, 9, 10):
             continue
         x, y, w, h = (page.width * position.x, page.height * position.y,
                       page.width * position.width, page.height * position.height)
-        if plan.mode == "eleven" and position.index == 6:
+        if use_multi5 and position.index == 6:
             end = plan.placements[10]
             w = page.width * (end.x + end.width - position.x)
             if multi5 is None:
