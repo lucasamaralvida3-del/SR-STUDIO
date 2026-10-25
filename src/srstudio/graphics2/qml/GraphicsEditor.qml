@@ -74,28 +74,6 @@ ApplicationWindow {
         }
     }
 
-    function promotionPreviewSlots(mode) {
-        if (mode === "individual")
-            return [{x:.20,y:.31,w:.60,h:.63}]
-        if (mode === "six" || mode === "seven") {
-            var out = [{x:.04,y:.29,w:.43,h:.40},
-                       {x:.49,y:.29,w:.46,h:.19},
-                       {x:.49,y:.50,w:.46,h:.19}]
-            var n = mode === "six" ? 3 : 4
-            for (var i = 0; i < n; i++)
-                out.push({x:.04 + i*(.91/n),y:.72,w:.91/n-.008,h:.24})
-            return out
-        }
-        var cards = []
-        for (var row = 0; row < 3; row++) {
-            var columns = row === 2 ? 5 : 3
-            for (var col = 0; col < columns; col++)
-                cards.push({x:.04+col*(.92/columns),y:.29+row*.225,
-                           w:.92/columns-.008,h:.215})
-        }
-        return cards
-    }
-
     function selectedPicture() {
         var selected = selectedNode()
         return selected && selected.kind === "image" ? selected : null
@@ -154,6 +132,10 @@ ApplicationWindow {
     property bool showGrid: true
     property bool showRulers: true
     property real gridStep: 50
+    // Bitmap miniatures rendered by the SAME Python/Qt slot constructors
+    // used on the scene canvas; no placeholder QML designs.
+    property var slotPreviewCatalog: sceneBridge && sceneBridge.slotPreviewsJson
+                                     ? JSON.parse(sceneBridge.slotPreviewsJson) : ({})
     property string selectedSlotId: ""
     property string pendingImageProductId: ""
     property string pendingImageProductName: ""
@@ -831,7 +813,7 @@ ApplicationWindow {
                                 width: 235
                                 spacing: 9
                                 Label { text: "Layouts promocionais"; color: "#284F8F"; font.bold: true }
-                                Label { text: "Área superior reservada para logo"; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Label { text: "Organiza Smart Slots reais da página, sem apagar produtos."; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Label { text: "Logo (%)"; color: "#425072" }
@@ -868,34 +850,21 @@ ApplicationWindow {
                                             x: 38; y: 29; width: parent.width - 76; height: 119
                                             color: "#F8FAFC"
                                             border.color: "#DFE7F2"
-                                            Rectangle {
-                                                x: 0; y: 0; width: parent.width; height: parent.height*.26
-                                                color: "#EAF0F9"
-                                                Label { anchors.centerIn: parent; text: "ÁREA DA LOGO"; font.pixelSize: 8; color: "#64748B" }
-                                            }
-                                            Repeater {
-                                                model: window.promotionPreviewSlots(previewLayoutCard.modelData.mode)
-                                                delegate: Rectangle {
-                                                    required property var modelData
-                                                    x: modelData.x * previewPoster.width
-                                                    y: modelData.y * previewPoster.height
-                                                    width: modelData.w * previewPoster.width
-                                                    height: modelData.h * previewPoster.height
-                                                    color: "#FFFFFF"; border.color: "#CAD7E8"
-                                                    Rectangle {
-                                                        anchors.left: parent.left; anchors.right: parent.right
-                                                        anchors.bottom: parent.bottom
-                                                        height: parent.height*.28
-                                                        color: "#295599"
-                                                    }
-                                                }
+
+                                            Image {
+                                                anchors.fill: parent
+                                                source: window.slotPreviewCatalog["layout-" + previewLayoutCard.modelData.mode] || ""
+                                                fillMode: Image.PreserveAspectFit
+                                                asynchronous: true
+                                                cache: false
+                                                smooth: true
                                             }
                                         }
                                         MouseArea {
                                             anchors.fill: parent
                                             cursorShape: Qt.PointingHandCursor
                                             onClicked: sceneBridge.dispatch(JSON.stringify({
-                                                "name":"apply_promotion_layout",
+                                                "name":"apply_promotion_layout", "reuse_existing":true,
                                                 "mode":previewLayoutCard.modelData.mode,
                                                 "logo_reserved":logoReservePercent.value / 100,
                                                 "price_mode":["auto","one","two"][layoutPriceMode.currentIndex]
@@ -909,7 +878,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: "Criar Auto Layout"
                                     onClicked: sceneBridge.dispatch(JSON.stringify({
-                                        "name":"apply_promotion_layout",
+                                        "name":"apply_promotion_layout", "reuse_existing":true,
                                         "mode":"auto",
                                         "count":autoLayoutCount.value,
                                         "variation":window.autoLayoutVariation++,
@@ -952,84 +921,57 @@ ApplicationWindow {
                                 spacing: 11
                                 // Visual thumbnails stay scrollable on laptop screens.
 
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 175
-                                visible: studioSection === 1
-                                color: "#FFFFFF"
-                                border.color: "#CFD9EA"
-                                radius: 10
-                                Column {
-                                    anchors.fill: parent
-                                    anchors.margins: 12
-                                    spacing: 7
-                                    Label { text: "Slot Azul"; font.bold: true; color: "#284F8F" }
-                                    Rectangle {
-                                        width: parent.width
-                                        height: 102
-                                        color: "#F8FAFC"
-                                        radius: 6
-                                        Rectangle {
-                                            x: 8; y: 13; width: parent.width * 0.43; height: 60
-                                            radius: 10; color: "#E5EDF8"; border.color: "#295599"; border.width: 3
-                                            Label { anchors.centerIn: parent; text: "PRODUTO"; color: "#295599"; font.pixelSize: 10; font.bold: true }
-                                        }
-                                        Rectangle {
-                                            anchors.right: parent.right; anchors.bottom: parent.bottom
-                                            anchors.rightMargin: 7; anchors.bottomMargin: 7
-                                            width: parent.width * 0.53; height: 55
-                                            color: "#295599"; radius: 9
-                                            Label { anchors.centerIn: parent; text: "R$  9,99"; color: "white"; font.pixelSize: 19; font.bold: true }
+                            Repeater {
+                                model: [
+                                    {"key":"blue", "label":"Slot Azul", "count":0},
+                                    {"key":"individual", "label":"Smart Slot Individual", "count":0},
+                                    {"key":"multi5", "label":"Multi Itens — 5 produtos", "count":5},
+                                    {"key":"multi6", "label":"Multi Itens — 6 produtos", "count":6}
+                                ]
+                                delegate: Rectangle {
+                                    id: canonicalSlotPreviewCard
+                                    required property var modelData
+                                    Layout.fillWidth: true
+                                    Layout.preferredHeight: modelData.key === "individual" ? 177 : 130
+                                    color: "#FFFFFF"
+                                    border.color: "#CFD9EA"
+                                    radius: 10
+                                    Label {
+                                        x: 10; y: 6; width: parent.width - 20; height: 22
+                                        text: canonicalSlotPreviewCard.modelData.label
+                                        font.bold: true; color: "#284F8F"
+                                    }
+                                    Image {
+                                        id: realSlotThumbnail
+                                        x: 8; y: 29
+                                        width: parent.width - 16; height: parent.height - 35
+                                        source: window.slotPreviewCatalog[canonicalSlotPreviewCard.modelData.key] || ""
+                                        fillMode: Image.PreserveAspectFit
+                                        asynchronous: true
+                                        cache: false
+                                        smooth: true
+                                    }
+                                    Label {
+                                        anchors.centerIn: realSlotThumbnail
+                                        visible: realSlotThumbnail.status === Image.Error ||
+                                                 realSlotThumbnail.source.toString() === ""
+                                        text: "Prévia não disponível"
+                                        font.pixelSize: 11; color: "#64748B"
+                                    }
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            var count = canonicalSlotPreviewCard.modelData.count
+                                            if (canonicalSlotPreviewCard.modelData.key === "blue")
+                                                window.createBlueSlot()
+                                            else if (canonicalSlotPreviewCard.modelData.key === "individual")
+                                                window.createIndividualSlot()
+                                            else
+                                                window.createMultiSlot(count)
                                         }
                                     }
                                 }
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: createBlueSlot()
-                                }
-                            }
-                            Rectangle {
-                                Layout.fillWidth: true
-                                Layout.preferredHeight: 138
-                                visible: studioSection === 1
-                                color: "#FFFFFF"; border.color: "#CFD9EA"; radius: 10
-                                Column {
-                                    anchors.fill: parent; anchors.margins: 10; spacing: 7
-                                    Label { text: "Individual"; color: "#284F8F"; font.bold: true }
-                                    Rectangle {
-                                        width: parent.width; height: 91; color: "#FFFFFF"
-                                        radius: 6
-                                        // Source PPT: floating product, no fake gray image frame.
-                                        Label { x: parent.width * .19; y: 16; width: parent.width * .28; height: 67
-                                            text: "PRODUTO"; color: "#105594"
-                                            font.bold: true; font.pixelSize: 10
-                                            horizontalAlignment: Text.AlignHCenter
-                                            verticalAlignment: Text.AlignVCenter
-                                        }
-                                        Label { x: parent.width * .52; y: 42; width: parent.width * .45; height: 19
-                                            text: "NOME DO PRODUTO"; color: "#105594"
-                                            font.bold: true; font.pixelSize: 9
-                                            wrapMode: Text.WordWrap
-                                            horizontalAlignment: Text.AlignHCenter
-                                        }
-                                        Rectangle {
-                                            x: parent.width * .52; y: 64
-                                            width: parent.width * .46; height: 25
-                                            radius: 6; color: "#105594"
-                                            Label { x: 4; y: 1; width: parent.width - 8; height: 9
-                                                text: "PROMOÇÃO"; font.pixelSize: 6; color: "white"
-                                                horizontalAlignment: Text.AlignHCenter
-                                            }
-                                            Label { anchors.centerIn: parent
-                                                anchors.verticalCenterOffset: 4
-                                                text: "R$  7,21"; color: "white"
-                                                font.bold: true; font.pixelSize: 12
-                                            }
-                                        }
-                                    }
-                                }
-                                MouseArea { anchors.fill: parent; cursorShape: Qt.PointingHandCursor; onClicked: createIndividualSlot() }
                             }
                             Label {
                                 visible: studioSection === 1
