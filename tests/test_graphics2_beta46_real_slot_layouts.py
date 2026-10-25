@@ -95,6 +95,30 @@ def test_eleven_item_layout_reuses_the_actual_multi5_parent_with_saved_products(
         assert session.page.slots[sid].product_id == f"BOTTOM-{index}"
 
 
+def test_eleven_filled_individual_cards_all_reused_without_new_multi():
+    session = make_session()
+    originals = []
+    for index in range(11):
+        slot = create_item_slot(session, "individual-beta44")
+        assert bind_product_to_item_slot(session, slot.id, {
+            "id": f"SKU-{index}", "name": f"Produto {index}", "price": "14,99",
+        })
+        originals.append(slot.id)
+    old_page = session.page.id
+    result = ItemSlotCommandRouter(session).dispatch({
+        "name": "apply_promotion_layout", "mode": "eleven", "reuse_existing": True
+    })
+    assert result.ok
+    assert result.payload["created_slot_ids"] == []
+    assert set(result.payload["reused_slot_ids"]) == set(originals)
+    assert session.page.id == old_page
+    assert len(session.page.slots) == 11
+    assert not any(node.metadata.get("multi_slot_beta44") for node in session.page.nodes.values())
+    assert [session.page.slots[sid].product_id for sid in originals] == [
+        f"SKU-{index}" for index in range(11)
+    ]
+
+
 def test_second_layout_application_does_not_duplicate_images_or_slot_ids():
     session = make_session()
     router = ItemSlotCommandRouter(session)
