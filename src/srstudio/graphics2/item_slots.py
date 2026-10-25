@@ -9,10 +9,13 @@ persistence paths can be reused without changing renderer semantics.
 """
 
 from dataclasses import dataclass
+from hashlib import sha256
+from pathlib import Path
 from typing import Any
 import copy
+import mimetypes
 
-from .model import BindingRole, GraphicsNode, NodeKind, Rect, SmartSlot, Transform, _id
+from .model import AssetRef, BindingRole, GraphicsNode, NodeKind, Rect, SmartSlot, Transform, _id
 from .operations import GraphicsSession, _price_parts
 
 ITEM_SLOT_SOURCE = "manual-item-slot"
@@ -784,6 +787,44 @@ def save_item_slot_as_preset(session: GraphicsSession, slot_id: str, name: str) 
     return preset
 
 
+def _embed_local_product_image(document, product: dict[str, Any]) -> dict[str, Any]:
+    """Register a real local image as a portable SR Scene asset.
+
+    The regular display binding stores bound_image_source on a node, but
+    save_package embeds only document.assets. Without this registration a
+    flyer could autosave successfully yet reopen without product pictures.
+    """
+    payload = copy.deepcopy(product)
+    source_text = str(product.get("image_path") or product.get("image") or "").strip()
+    if not source_text:
+        return payload
+    candidate = Path(source_text).expanduser()
+    try:
+        if not candidate.is_file():
+            return payload
+        raw = candidate.read_bytes()
+        source = str(candidate.resolve())
+    except (OSError, ValueError):
+        return payload
+    digest = sha256(raw).hexdigest()
+    existing = next((
+        asset for asset in document.assets.values()
+        if asset.sha256 == digest and asset.source and Path(asset.source).is_file()
+    ), None)
+    if existing is not None:
+        payload["image_asset_id"] = existing.id
+        return payload
+    asset = AssetRef(
+        kind="image",
+        source=source,
+        mime=mimetypes.guess_type(source)[0] or "application/octet-stream",
+        sha256=digest,
+    )
+    document.add_asset(asset)
+    payload["image_asset_id"] = asset.id
+    return payload
+
+
 def _original_reference_product(slot: SmartSlot) -> dict[str, Any]:
     """Recover retail/club inputs even from older Beta45 saved documents.
 
@@ -876,7 +917,7 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
         if mode not in ("auto", "one", "two"):
             mode = "auto"
         display_two = variant == "two" if mode == "auto" else mode == "two"
-        payload = copy.deepcopy(product)
+        payload = _embed_local_product_image(session.document, product)
         # A forced single price must show the normal retail price. Preserve
         # the untouched source record so switching modes never loses it.
         selected = primary if display_two else (
