@@ -863,6 +863,9 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
         return False
     prior_product_id = slot.product_id
     incoming_id = str(product.get("id") or product.get("product_id") or "")
+    old_picture = session.page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
+    previous_image_source = str(old_picture.metadata.get("bound_image_source") or "") if old_picture is not None else ""
+    previous_image_asset = str(old_picture.asset_id or "") if old_picture is not None else ""
     preset_id = str(slot.metadata.get("preset_id") or "")
     if preset_id in ("individual-beta44", "multi-cell-beta44"):
         # Automatic 1/2-price variation shares the price parsing semantics
@@ -909,6 +912,13 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
     image_node = session.page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
     if image_node is not None:
         has_new_source = bool(product.get("image_path") or product.get("image") or product.get("image_asset_id"))
+        if prior_product_id == incoming_id and not has_new_source:
+            # A price-only update must not erase a product's image in older
+            # host implementations that rebuild node metadata during bind.
+            if previous_image_source:
+                image_node.metadata["bound_image_source"] = previous_image_source
+            if previous_image_asset:
+                image_node.asset_id = previous_image_asset
         if prior_product_id and prior_product_id != incoming_id and not has_new_source:
             image_node.asset_id = ""
             image_node.metadata.pop("bound_image_source", None)
