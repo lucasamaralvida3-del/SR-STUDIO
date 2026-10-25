@@ -214,7 +214,9 @@ def launch_qt_quick_editor(
     router = GraphicsCommandRouter(session)
     gate = context.gate or inspect_production_gate(session.document, require_visual_fidelity=False)
     from .product_image_library import apply_stored_product_links
+    from .legacy_image_bank_bridge import hydrate_legacy_bank
     apply_stored_product_links(session.document)
+    hydrate_legacy_bank(session.document)
     preview_provider = create_live_scene_image_provider()
 
     class SceneBridge(QObject):
@@ -269,6 +271,7 @@ def launch_qt_quick_editor(
             # Rehydrate after spreadsheet/catalog imports, without serializing
             # image bytes into the scene or mutating project image ownership.
             apply_stored_product_links(session.document)
+            hydrate_legacy_bank(session.document)
             payload = inject_preview_image_urls(router.payload(), session.document)
             editor = payload.setdefault("editor", {})
             editor["diagnostics"] = build_editor_diagnostics(
@@ -388,6 +391,7 @@ def launch_qt_quick_editor(
                 )
                 session.document = recovered
                 apply_stored_product_links(session.document)
+                hydrate_legacy_bank(session.document)
                 session.history.clear()
                 session.clear_selection()
                 context.document = recovered
@@ -609,6 +613,7 @@ def launch_qt_quick_editor(
                 imported = GraphicsImportService().import_file(path, project_name=path.stem)
                 session.document = imported.document
                 apply_stored_product_links(session.document)
+                hydrate_legacy_bank(session.document)
                 session.history.clear()
                 session.clear_selection()
                 context.document = session.document
