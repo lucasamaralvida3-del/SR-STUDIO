@@ -637,9 +637,12 @@ def launch_qt_quick_editor(
 
             def task(snapshot: GraphicsDocument, output: Path) -> str:
                 from .qt_renderer import render_pdf
+                from .slot_export_audit import inspect_smart_slot_flyer
 
+                issues = inspect_smart_slot_flyer(snapshot)
                 report = render_pdf(snapshot, output, dpi=600)
-                warning = f" · {len(report.warnings)} aviso(s)" if report.warnings else ""
+                counts = len(issues) + len(report.warnings)
+                warning = f" · {counts} aviso(s) de conteúdo/render" if counts else ""
                 return f"PDF exportado · {report.pages} página(s){warning}"
 
             self._start_file_job("pdf", target, task)
@@ -657,9 +660,13 @@ def launch_qt_quick_editor(
 
             def task(snapshot: GraphicsDocument, output: Path) -> str:
                 from .qt_renderer import render_png
+                from .slot_export_audit import inspect_smart_slot_flyer
 
+                issues = inspect_smart_slot_flyer(
+                    snapshot, page_ids={snapshot.pages[page_index].id})
                 report = render_png(snapshot, output, page_index=page_index, dpi=300)
-                warning = f" · {len(report.warnings)} aviso(s)" if report.warnings else ""
+                counts = len(issues) + len(report.warnings)
+                warning = f" · {counts} aviso(s) de conteúdo/render" if counts else ""
                 return f"PNG exportado · {report.width}×{report.height}px{warning}"
 
             self._start_file_job("png", target, task)
