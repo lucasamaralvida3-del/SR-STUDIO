@@ -1335,7 +1335,9 @@ ApplicationWindow {
                                         wrapMode: modelData.style.nowrap ? Text.NoWrap : Text.WordWrap
                                         maximumLineCount: 2147483647
                                         fontSizeMode: fitTextInside ? Text.Fit : Text.FixedSize
-                                        minimumPixelSize: Math.max(1, 4 * zoom)
+                                        // Respect the existing slot typography contract at every zoom.
+                                        // The PNG/PDF renderer already uses min_font_size.
+                                        minimumPixelSize: Math.max(1, Number(modelData.style.min_font_size || 4) * zoom)
                                         elide: fitTextInside ? Text.ElideNone : (modelData.style.nowrap ? Text.ElideNone : Text.ElideRight)
                                         lineHeightMode: textLineHeightMode(modelData.style)
                                         lineHeight: textLineHeight(modelData.style)
