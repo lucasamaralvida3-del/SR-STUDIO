@@ -82,8 +82,18 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
                    "multi_item_strip.py", "promotion_composition.py",
                    "promotion_layouts.py", "qt_renderer.py")
         digest = sha256()
+        import sys
         for name in sources:
-            digest.update((Path(__file__).with_name(name)).read_bytes())
+            try:
+                digest.update((Path(__file__).with_name(name)).read_bytes())
+            except OSError:
+                # Frozen PyInstaller executables do not expose the .py files.
+                # Their executable changes on release; include its timestamp
+                # and the preview builder's bytecode for cache invalidation.
+                exe = Path(sys.executable)
+                digest.update(str(exe.stat().st_mtime_ns).encode("ascii"))
+                digest.update(build_slot_preview_catalog.__code__.co_code)
+                break
         digest.update(str("Anton" in QFontDatabase.families()).encode("ascii"))
         root = Path(gettempdir()) / ("sr-g2-real-slot-preview-" + digest.hexdigest()[:16])
     else:
