@@ -24,6 +24,9 @@ from runpy import run_path
 recover_standalone_images = run_path(
     str(Path(__file__).resolve().parents[1] / "tools" / "recover_historical_product_images_beta46.py")
 )["recover_standalone_images"]
+install_review_bank = run_path(
+    str(Path(__file__).resolve().parents[1] / "tools" / "install_historical_review_bank_beta46.py")
+)["install_review_bank"]
 
 
 def picture(path: Path, color: str) -> Path:
@@ -159,6 +162,43 @@ def test_zip_recovery_filters_art_and_keeps_candidates_pending(tmp_path):
     twice=recover_standalone_images(archive,manifest,dest)
     assert twice["imported"]==0 and twice["duplicates"]==2
     assert len(ImageLibrary(dest).all())==2
+
+
+def test_review_artifact_installs_portably_without_auto_approvals(tmp_path):
+    from srstudio.graphics2.legacy_image_bank_bridge import approved_legacy_image
+    archive=tmp_path/"single.zip"
+    buffer=io.BytesIO()
+    Image.new("RGB",(42,54),"blue").save(buffer,format="PNG")
+    data=buffer.getvalue()
+    with zipfile.ZipFile(archive,"w") as z:
+        z.writestr("legacy.png",data)
+    sha=hashlib.sha256(archive.read_bytes()).hexdigest()
+    manifest=tmp_path/"manifest.json"
+    manifest.write_text(json.dumps({
+        "release_tag":"image-db-corpus-v1",
+        "asset":{"name":"standalone-images.zip","sha256":sha},
+        "images":[{"filename":"legacy.png",
+                   "sha256":hashlib.sha256(data).hexdigest(),
+                   "classification":"candidate","valid":True,
+                   "provenance":{"zip_member":"legacy.png"}}]
+    }),encoding="utf-8")
+    stage=tmp_path/"github-runner"
+    recover_standalone_images(archive,manifest,stage)
+    target=tmp_path/"user-computer"
+    first=install_review_bank(stage,target)
+    assert first["installed_pending"] == 1
+    assert first["auto_approved"] == 0
+    second=install_review_bank(stage,target)
+    assert second["already_present"] == 1 and second["installed_pending"] == 0
+    saved=ImageLibrary(target).all()
+    assert len(saved)==1
+    assert Path(saved[0].path).is_file()
+    assert str(target) in saved[0].path
+    assert approved_legacy_image({"name":"legacy"},root=target) is None
+    # Editing the source after recovery must abort the install.
+    (stage/"assets"/Path(saved[0].path).name).write_bytes(b"BAD")
+    with pytest.raises(ValueError,match="Integridade"):
+        install_review_bank(stage,tmp_path/"another")
 
 
 def test_recovery_rejects_zip_modification_before_writing(tmp_path):
