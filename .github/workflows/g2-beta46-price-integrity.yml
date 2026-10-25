@@ -1,0 +1,43 @@
+name: G2 Beta46 Price Integrity
+
+on:
+  push:
+    branches:
+      - feature/g2-beta46-editor-reliability
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'tests/test_graphics2_beta46_price_integrity.py'
+      - '.github/workflows/g2-beta46-price-integrity.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-price-integrity:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install SR Studio and regression tools
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Python syntax check
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/graphics2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Price switching, undo/redo and historic slot regressions
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_beta46_price_integrity.py tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_item_slots.py tests/test_graphics2_qml_load.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
