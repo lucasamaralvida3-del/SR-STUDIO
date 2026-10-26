@@ -511,6 +511,9 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
     session.selection = {root.id}
     session.anchor_id = root.id
     refresh_item_slot_metadata(page, slot)
+    if preset_id in ("individual-beta44", "multi-cell-beta44"):
+        from .campaign_tools import apply_default_slot_theme
+        apply_default_slot_theme(session, [slot.id])
     return slot
 
 
@@ -913,6 +916,17 @@ def _apply_reference_price_state(page, slot: SmartSlot, source: dict[str, Any], 
     from .two_price_reference import apply_two_price_layout
     apply_two_price_layout(page, slot, two)
     slot.metadata["price_variant"] = "two" if two else "one"
+    # Preserve the chosen palette when switching one/two prices.
+    if slot.metadata.get("color_theme") == "terca-verde":
+        from .campaign_tools import GREEN, BLUE
+        for nid in page.descendants(str(slot.metadata.get("root_node_id") or "")):
+            deco = page.node(nid)
+            if deco is not None:
+                for key in ("fill", "stroke", "color"):
+                    val = deco.style.get(key)
+                    if isinstance(val, str) and val.upper() == BLUE:
+                        deco.style[key] = GREEN
+
     snapshot = slot.metadata.get("product_snapshot")
     if isinstance(snapshot, dict):
         snapshot["price"] = primary

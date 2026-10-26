@@ -42,7 +42,7 @@ TWO_PRICE_GEOMETRY = {
         "badge": (.572, .538, .338, .194),
         "promo_label": (.578, .548, .322, .051),
         "secondary_price": (.583, .612, .314, .101),
-        "club_label": (.562, .846, .420, .065),
+        "club_label": (.750, .700, .240, .160),
         "main_price": (.010, .715, .980, .280),
         # Disjoint money boxes: reais, cents, full NO CLUBE SR and unit.
         "currency": (.055, .290, .160, .440),
@@ -204,13 +204,15 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
                 node.style["single_line"] = True
                 node.style["min_font_size"] = 3
                 node.style["align"] = "center"
-                node.transform.rotation = 0
+                # Reference Multi: horizontal glyphs rotated as ONE vertical
+                # label on the right edge, not stacked letters.
+                node.transform.rotation = 90 if preset_id == "multi-cell-beta44" else 0
             # Fonts and target bounds are source-measured: prevent a split
             # NO CLUBE / SR and keep all legends within their own box.
             if preset_id == "multi-cell-beta44":
                 node.style["font_size"] = {
                     "promo_label": 7.3, "secondary_price": 10.0,
-                    "club_label": 8.7,
+                    "club_label": 8.0,
                 }[key]
             elif key == "secondary_price":
                 node.style["font_size"] = 12.4

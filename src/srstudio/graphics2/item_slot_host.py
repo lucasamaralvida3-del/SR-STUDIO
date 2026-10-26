@@ -92,6 +92,37 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
 
     def dispatch(self, command: dict[str, Any]) -> CommandResult:
         name = str(command.get("name") or "").strip().lower()
+        if name in {"set_slot_theme", "set_campaign_date", "set_campaign_art"}:
+            from .campaign_tools import apply_slot_theme, set_campaign_date, apply_campaign_art
+            try:
+                if name == "set_slot_theme":
+                    selected = str(command.get("slot_id") or "")
+                    group_id = str(command.get("multi_root_id") or "")
+                    ids = [selected] if selected else []
+                    group = self.session.page.node(group_id) if group_id else None
+                    if group and group.metadata.get("multi_slot_beta44"):
+                        ids = list(group.metadata.get("child_slot_ids") or [])
+                    entire = bool(command.get("entire_page", False))
+                    count = apply_slot_theme(self.session, str(command.get("theme") or "azul"),
+                                             ids, entire_page=entire)
+                    return CommandResult(True, bool(count or entire),
+                        f"Cores aplicadas em {count} Smart Slot(s).", {"count": count})
+                if name == "set_campaign_date":
+                    date_text = set_campaign_date(
+                        self.session, mode=str(command.get("mode") or "auto"),
+                        value=command.get("value"))
+                    return CommandResult(True, True,
+                        "Data da promoção: " + (date_text or "sem data única na planilha."),
+                        {"date": date_text})
+                from .qt_host import _qml_file_path
+                from PySide6.QtCore import QUrl
+                path = _qml_file_path(str(command.get("path") or ""), "", QUrl)
+                node_id = apply_campaign_art(self.session, str(command.get("kind") or ""), path)
+                return CommandResult(True, True, "Arte da Terça Verde aplicada.",
+                                     {"node_id": node_id})
+            except (ValueError, OSError, TypeError) as exc:
+                return CommandResult(False, False, str(exc))
+
         if name == "adjust_smart_slot":
             # The certified Azul implementation remains handled by the base
             # command router. New manual slots need native group transform.
