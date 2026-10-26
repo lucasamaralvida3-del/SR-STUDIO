@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, date, timedelta
 from hashlib import sha256
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 import mimetypes
 import re
 import unicodedata
@@ -16,7 +17,17 @@ from .model import AssetRef, GraphicsNode, NodeKind, Transform
 
 BLUE = "#105594"
 GREEN = "#075D08"
-THEMES = {"azul": BLUE, "terca-verde": GREEN}
+COFFEE = "#78441F"
+MEAT = "#851B22"
+BARBECUE = "#B32D18"
+# Keep campaigns and color variants separate from Smart Slot families.
+CAMPAIGNS = {
+    "terca-verde": {"label": "Terça Verde", "theme": GREEN},
+    "quarta-cafe": {"label": "Quarta Café com Pão", "theme": COFFEE},
+    "quinta-file": {"label": "Quinta Filé", "theme": MEAT},
+    "churrasco": {"label": "Churrasco e Açougue", "theme": BARBECUE},
+}
+THEMES = {"azul": BLUE, **{key: item["theme"] for key, item in CAMPAIGNS.items()}}
 
 
 def _canonical_key(value):
@@ -61,7 +72,16 @@ def detect_sheet_date(document):
 
 
 def _asset_for_file(document, path):
-    source = Path(path).expanduser().resolve()
+    raw = str(path)
+    # Qt FileDialog emits file:///C:/... on Windows, not a native Path.
+    if raw.startswith("file:"):
+        url = urlsplit(raw)
+        if url.scheme != "file" or url.netloc not in ("", "localhost"):
+            raise ValueError("A imagem deve ser um arquivo local.")
+        raw = unquote(url.path)
+        if re.match(r"^/[A-Za-z]:/", raw):
+            raw = raw[1:]
+    source = Path(raw).expanduser().resolve()
     if not source.is_file() or source.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
         raise ValueError("Selecione um arquivo JPG, PNG ou WebP existente.")
     digest = sha256(source.read_bytes()).hexdigest()
@@ -75,10 +95,13 @@ def _asset_for_file(document, path):
     return asset.id
 
 
-def apply_campaign_art(session, kind, path):
+def apply_campaign_art(session, kind, path, *, campaign_id=None):
     if kind not in ("background", "seal"):
         raise ValueError("Elemento da campanha não reconhecido.")
     page = session.page
+    campaign_id = str(campaign_id or page.metadata.get("campaign_id") or "terca-verde")
+    if campaign_id not in CAMPAIGNS:
+        raise ValueError("Campanha não reconhecida.")
     asset_id = _asset_for_file(session.document, path)
     key = "campaign_" + kind + "_node"
     with session.transaction("Aplicar arte promocional " + kind):
@@ -94,16 +117,18 @@ def apply_campaign_art(session, kind, path):
                 style, z = {"fit": "contain"}, 95
             node = GraphicsNode(
                 kind=NodeKind.IMAGE,
-                name="Terça Verde · " + ("Fundo" if kind == "background" else "Selo"),
+                name=CAMPAIGNS[campaign_id]["label"] + " · " + ("Fundo" if kind == "background" else "Selo"),
                 transform=Transform(x=rect[0], y=rect[1], width=rect[2], height=rect[3]),
                 z_index=z, style=style,
-                metadata={"campaign_art": kind, "campaign_id": "terca-verde"},
+                metadata={"campaign_art": kind, "campaign_id": campaign_id},
             )
             page.add_node(node)
             page.metadata[key] = node.id
         node.asset_id = asset_id
         node.visible = True
-        page.metadata["campaign_id"] = "terca-verde"
+        node.name = CAMPAIGNS[campaign_id]["label"] + " · " + ("Fundo" if kind == "background" else "Selo")
+        node.metadata["campaign_id"] = campaign_id
+        page.metadata["campaign_id"] = campaign_id
         if kind == "background":
             update_campaign_date(session.document, page)
     return node.id
@@ -132,10 +157,11 @@ def update_campaign_date(document, page, *, mode=None, manual_date=None):
                    "font_weight": 700, "color": "#FFFFFF", "align": "center",
                    "v_align": "center", "fit_inside_box": True,
                    "single_line": True, "nowrap": True, "min_font_size": 9},
-            metadata={"campaign_id": "terca-verde", "campaign_date": True})
+            metadata={"campaign_id": str(page.metadata.get("campaign_id") or "terca-verde"), "campaign_date": True})
         page.add_node(node)
         page.metadata[key] = node.id
     node.text = displayed
+    node.metadata["campaign_id"] = str(page.metadata.get("campaign_id") or "terca-verde")
     page.metadata["campaign_date_display"] = displayed
     return displayed
 
@@ -156,7 +182,7 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
     else:
         raise ValueError("Escolha Azul, Terça Verde ou uma cor hexadecimal #RRGGBB.")
     page = session.page
-    palette = {BLUE.upper(), GREEN.upper()}
+    palette = {value.upper() for value in THEMES.values()}
     for existing in page.slots.values():
         previous = str(existing.metadata.get("color_hex") or "").upper()
         if re.fullmatch(r"#[0-9A-F]{6}", previous):
