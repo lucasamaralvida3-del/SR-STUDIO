@@ -71,9 +71,9 @@ def detect_sheet_date(document):
     return next(iter(distinct)) if len(distinct) == 1 else ""
 
 
-def _asset_for_file(document, path):
+def local_campaign_path(path):
+    """Normalize native paths and file:// URLs emitted by Qt FileDialog."""
     raw = str(path)
-    # Qt FileDialog emits file:///C:/... on Windows, not a native Path.
     if raw.startswith("file:"):
         url = urlsplit(raw)
         if url.scheme != "file" or url.netloc not in ("", "localhost"):
@@ -81,7 +81,11 @@ def _asset_for_file(document, path):
         raw = unquote(url.path)
         if re.match(r"^/[A-Za-z]:/", raw):
             raw = raw[1:]
-    source = Path(raw).expanduser().resolve()
+    return Path(raw).expanduser().resolve()
+
+
+def _asset_for_file(document, path):
+    source = local_campaign_path(path)
     if not source.is_file() or source.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
         raise ValueError("Selecione um arquivo JPG, PNG ou WebP existente.")
     digest = sha256(source.read_bytes()).hexdigest()
