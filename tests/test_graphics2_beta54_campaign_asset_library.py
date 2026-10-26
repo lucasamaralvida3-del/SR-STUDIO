@@ -67,14 +67,15 @@ def test_import_command_exposes_assets_for_qml_without_scene_product_changes(tmp
     make_pack(archive)
     monkeypatch.setenv("SRSTUDIO_CAMPAIGN_ASSETS_DIR", str(tmp_path / "installed"))
     router = GraphicsCommandRouter(GraphicsSession(GraphicsDocument()))
-    assert router.payload()["editor"]["campaign_assets"] == []
+    bundled = router.payload()["editor"]["campaign_assets"]
+    assert len([entry for entry in bundled if entry.get("source") == "builtin"]) == 12
     result = router.dispatch({"name": "import_campaign_pack", "path": archive.as_uri()})
     assert result.ok, result.message
     assert not result.changed  # user library installation is not a document mutation
     catalog = router.payload()["editor"]["campaign_assets"]
-    assert len(catalog) == 2
+    assert len(catalog) == len(bundled) + 2
     assert not router.session.page.slots
-    chosen = next(item for item in catalog if item["kind"] == "background")
+    chosen = next(item for item in catalog if item["kind"] == "background" and item["source"] == "user")
     applied = router.dispatch({
         "name": "set_campaign_art",
         "kind": "background", "campaign_id": "quarta-cafe",
