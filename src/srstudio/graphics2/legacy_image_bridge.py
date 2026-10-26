@@ -17,8 +17,7 @@ def legacy_image_library_root() -> Path:
     if override:
         return Path(override).expanduser()
     # Matches SRStudioProfessional._attach_project(): data_dir / "images".
-    from srstudio.app.workspace import app_data_dir
-    return Path(app_data_dir()) / "images"
+    return Path.home() / ".srstudio5" / "images"
 
 
 def _canonical(text: object) -> str:
