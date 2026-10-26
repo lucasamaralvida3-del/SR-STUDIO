@@ -120,7 +120,7 @@ def _builtins() -> dict[str, ItemSlotPreset]:
             roles={
                 "image": {"bounds": [.005, .005, .41, .985],
                           "style": {"fit": "contain"}},
-                "name": _ppt_role(.555, .600, .435, .155, size=19,
+                "name": _ppt_role(.555, .570, .435, .140, size=19,
                                   color="#105594", align="center"),
                 "price": {"bounds": [.525, .722, .475, .269],
                           "background": {"fill": "#105594", "stroke_width": 0,
