@@ -3,13 +3,11 @@ name: G2 Beta47 Windows Candidate
 on:
   push:
     branches:
-      - feature/g2-beta47-editor-reliability
+      - fix/g2-beta47-pptx-slot-fidelity
     paths:
       - 'src/srstudio/graphics2/**'
       - 'src/srstudio/app/**'
       - 'tests/test_graphics2_beta47_*.py'
-      - 'src/srstudio/graphics2/promotion_composition.py'
-      - '.github/workflows/g2-beta47-visual-windows.yml'
       - 'tools/promote_g2_beta47_launcher.py'
       - 'tools/test_promote_g2_beta47_launcher.py'
       - '.github/workflows/g2-beta47-candidate-windows.yml'
@@ -121,7 +119,7 @@ jobs:
   publish:
     # This runs only after the tested, packaged Windows artifact exists.
     # Stable branches and existing releases are never modified.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/g2-beta47-editor-reliability'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/g2-beta47-pptx-slot-fidelity'
     needs: [validate, package]
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -221,7 +219,7 @@ jobs:
             release/beta47-provenance.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "SR Studio G2 Beta 46 — Slots fiéis aos PPTX" \
+            --title "SR Studio G2 Beta 47 — Referência PPTX e Smart Slots" \
             --notes-file /tmp/beta47-notes.md \
             --prerelease \
             --latest=false
@@ -295,7 +293,7 @@ jobs:
           if test "$version" = "5.0.0-hybrid.g2beta.47"; then
             echo "Beta47 already active"; exit 0
           fi
-          test "$version" = "5.0.0-hybrid.g2beta.45"
+          test "$version" = "5.0.0-hybrid.g2beta.46"
           sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" --jq .sha)"
           encoded="$(base64 -w0 promotion/manifest-new.json)"
           gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json" \
