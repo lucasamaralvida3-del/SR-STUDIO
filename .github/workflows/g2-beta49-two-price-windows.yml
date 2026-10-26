@@ -10,6 +10,9 @@ on:
       - 'tests/test_graphics2_beta45_reference_fidelity.py'
       - 'tests/test_graphics2_beta46_price_integrity.py'
       - '.github/workflows/g2-beta49-two-price-windows.yml'
+      - '.github/workflows/g2-beta49-candidate-windows.yml'
+      - 'tools/promote_g2_beta49_launcher.py'
+      - 'tools/test_promote_g2_beta49_launcher.py'
   workflow_dispatch:
 
 permissions:
