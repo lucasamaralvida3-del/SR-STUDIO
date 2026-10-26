@@ -190,24 +190,24 @@ def migrate_multi_parent(page, parent_id: str) -> bool:
         paper = GraphicsNode(
             kind=NodeKind.RECT, name="Fundo branco da faixa",
             transform=Transform(x=rect.x, y=rect.y, width=rect.width,
-                                height=rect.height * .748),
+                                height=rect.height * .70),
             z_index=-110,
             style={"fill": WHITE, "stroke_width": 0},
             metadata={"multi_item_decoration": True})
         page.add_node(paper, parent_id=root.id)
     else:
-        _set_bounds(paper, Rect(rect.x, rect.y, rect.width, rect.height * .748))
+        _set_bounds(paper, Rect(rect.x, rect.y, rect.width, rect.height * .70))
         paper.z_index = -110
         paper.style = {"fill": WHITE, "stroke_width": 0}
     if footer is not None:
-        _set_bounds(footer, Rect(rect.x, rect.y + rect.height * .748,
-                                 rect.width, rect.height * .252))
+        _set_bounds(footer, Rect(rect.x, rect.y + rect.height * .70,
+                                 rect.width, rect.height * .30))
         footer.style = {"fill": BLUE, "stroke_width": 0, "radius_ratio": .29}
         footer.z_index = -100
     for index, sep in enumerate(sorted(separators, key=lambda n: n.name), start=1):
         _set_bounds(sep, Rect(rect.x + index * rect.width / count - 1.2,
-                              rect.y + rect.height * .267,
-                              2.4, rect.height * .40))
+                              rect.y + rect.height * .14,
+                              2.4, rect.height * .47))
         sep.style = {"fill": BLUE, "stroke_width": 0}
         sep.z_index = 8
     root.metadata["reference_pptx"] = "multi slots(2).pptx"
