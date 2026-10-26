@@ -11,7 +11,7 @@ import pytest
 
 from srstudio.graphics2.item_slots import (
     bind_product_to_item_slot, create_item_slot, duplicate_item_slot,
-    set_reference_price_mode, upgrade_item_slot_presets,
+    set_reference_price_mode, refresh_all_item_slots,
 )
 from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsPage
 from srstudio.graphics2.operations import GraphicsSession
@@ -114,7 +114,7 @@ def test_old_saved_two_price_is_upgraded_without_losing_product_or_slot():
         slot.metadata.pop("two_price_reference_revision", None)
         slot.metadata["reference_fidelity_revision"] = 47
     restored = GraphicsDocument.from_dict(s.document.to_dict())
-    upgrade_item_slot_presets(restored)
+    refresh_all_item_slots(restored)
     saved = restored.active_page.slots[identity]
     badge = restored.active_page.node(saved.metadata["two_price_badge_node_id"])
     assert badge.visible
@@ -122,7 +122,7 @@ def test_old_saved_two_price_is_upgraded_without_losing_product_or_slot():
     assert saved.metadata["original_product_snapshot"] == original_price
     assert saved.metadata["two_price_reference_revision"] == 49
     before = len(restored.active_page.nodes)
-    upgrade_item_slot_presets(restored)
+    refresh_all_item_slots(restored)
     assert len(restored.active_page.nodes) == before
 
 
