@@ -40,6 +40,8 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Render canonical slots and layouts with real Qt export
         shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
         run: |
           @'
           from pathlib import Path
