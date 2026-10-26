@@ -148,11 +148,19 @@ def set_campaign_date(session, *, mode="auto", value=None):
 
 def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
     """Recolor existing art only; never replace slots or their products."""
-    if theme not in THEMES:
-        raise ValueError("Cor promocional desconhecida.")
+    theme = str(theme).strip().lower()
+    if theme in THEMES:
+        target = THEMES[theme]
+    elif re.fullmatch(r"#[0-9a-f]{6}", theme):
+        target = theme.upper()
+    else:
+        raise ValueError("Escolha Azul, Terça Verde ou uma cor hexadecimal #RRGGBB.")
     page = session.page
     palette = {BLUE.upper(), GREEN.upper()}
-    target = THEMES[theme]
+    for existing in page.slots.values():
+        previous = str(existing.metadata.get("color_hex") or "").upper()
+        if re.fullmatch(r"#[0-9A-F]{6}", previous):
+            palette.add(previous)
     slots = []
     for slot in page.slots.values():
         if not slot.metadata.get("manual_item_slot"):
@@ -165,6 +173,7 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
         recolored = set()
         for slot in slots:
             slot.metadata["color_theme"] = theme
+            slot.metadata["color_hex"] = target
             root_id = str(slot.metadata.get("root_node_id") or "")
             for nid in page.descendants(root_id):
                 node = page.node(nid)

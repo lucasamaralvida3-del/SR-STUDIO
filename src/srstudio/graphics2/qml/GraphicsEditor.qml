@@ -175,6 +175,22 @@ ApplicationWindow {
         onAccepted: sceneBridge.attachProductImage(window.pendingImageProductId, window.pendingImageProductName, selectedFile.toString())
     }
     FileDialog {
+        id: campaignBackgroundDialog
+        title: "Fundo Terça Verde sem data fixa"
+        nameFilters: ["Imagens (*.jpg *.jpeg *.png *.webp)"]
+        onAccepted: sceneBridge.dispatch(JSON.stringify({
+            "name":"set_campaign_art", "kind":"background", "path":selectedFile.toString()
+        }))
+    }
+    FileDialog {
+        id: campaignSealDialog
+        title: "Selo Terça Verde sem fundo"
+        nameFilters: ["Selos (*.png *.webp *.jpg *.jpeg)"]
+        onAccepted: sceneBridge.dispatch(JSON.stringify({
+            "name":"set_campaign_art", "kind":"seal", "path":selectedFile.toString()
+        }))
+    }
+    FileDialog {
         id: historicalReviewZipDialog
         title: "Importar acervo histórico para revisão"
         nameFilters: ["Banco histórico ZIP (*.zip)"]
@@ -1038,6 +1054,7 @@ ApplicationWindow {
                                     model: [
                                         {"label":"Destaque individual", "mode":"individual"},
                                         {"label":"11 produtos", "mode":"eleven"},
+                                        {"label":"9 produtos · Terça Verde", "mode":"nine"},
                                         {"label":"7 produtos", "mode":"seven"},
                                         {"label":"6 produtos", "mode":"six"}
                                     ]
@@ -1081,6 +1098,14 @@ ApplicationWindow {
                                             }))
                                         }
                                     }
+                                }
+                                Label { text: "Tema para os layouts"; color: "#284F8F"; font.bold: true }
+                                Label { text: "O layout reutiliza os Smart Slots reais, sem criar novas famílias."; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Button {
+                                    Layout.fillWidth: true; text: "Verde Terça Verde · página inteira"
+                                    onClicked: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_slot_theme", "theme":"terca-verde", "entire_page":true
+                                    }))
                                 }
                                 Label { text: "Auto Layout"; color: "#284F8F"; font.bold: true }
                                 SpinBox { id: autoLayoutCount; from: 1; to: 24; value: 6; editable: true; Layout.fillWidth: true }
@@ -1200,73 +1225,35 @@ ApplicationWindow {
                                 model: ["Automático", "1 preço", "2 preços"]
                                 currentIndex: 0
                             }
-                            Repeater {
-                                model: [5, 6]
-                                delegate: Rectangle {
-                                    id: multiPreviewCard
-                                    required property var modelData
-                                    Layout.fillWidth: true
-                                    Layout.preferredHeight: 130
-                                    visible: studioSection === 1
-                                    color: "#FFFFFF"
-                                    border.color: "#CFD9EA"
-                                    radius: 10
-                                    Label {
-                                        x: 10; y: 7
-                                        text: "Multi Itens — " + modelData + " produtos"
-                                        color: "#284F8F"; font.bold: true
-                                    }
-                                    Rectangle {
-                                        id: referencePreviewStrip
-                                        x: 8; y: 46
-                                        width: parent.width - 16; height: 55
-                                        color: "#FFFFFF"
-                                        Rectangle {
-                                            anchors.left: parent.left; anchors.right: parent.right
-                                            anchors.bottom: parent.bottom; height: 14
-                                            radius: 9; color: "#105594"
-                                        }
-                                        Row {
-                                            anchors.fill: parent
-                                            spacing: 0
-                                            Repeater {
-                                                model: multiPreviewCard.modelData
-                                                delegate: Item {
-                                                    width: referencePreviewStrip.width / multiPreviewCard.modelData
-                                                    height: referencePreviewStrip.height
-                                                    Label {
-                                                        x: 2; y: 1; width: parent.width - 4; height: 14
-                                                        text: "PRODUTO"
-                                                        font.pixelSize: 6; font.bold: true
-                                                        horizontalAlignment: Text.AlignHCenter
-                                                        color: "#105594"
-                                                    }
-                                                    Label {
-                                                        x: 3; y: 14; width: parent.width - 6; height: 27
-                                                        text: "◉"; font.pixelSize: 16; color: "#CADBEF"
-                                                        horizontalAlignment: Text.AlignHCenter
-                                                        verticalAlignment: Text.AlignVCenter
-                                                    }
-                                                    Label {
-                                                        x: 1; y: 42; width: parent.width - 2; height: 12
-                                                        text: "R$ 9,99"; font.pixelSize: 8; font.bold: true
-                                                        color: "white"; horizontalAlignment: Text.AlignHCenter
-                                                        verticalAlignment: Text.AlignVCenter
-                                                    }
-                                                    Rectangle {
-                                                        visible: index > 0
-                                                        x: 0; y: 13; width: 1; height: 28
-                                                        color: "#105594"
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: createMultiSlot(Number(parent.modelData))
-                                    }
+                            Label { visible: studioSection === 1; text: "Cores e Estilos"; color: "#284F8F"; font.bold: true }
+                            ComboBox {
+                                id: slotThemeChoice
+                                visible: studioSection === 1; Layout.fillWidth: true
+                                model: ["Azul SR", "Verde Terça Verde", "Personalizada"]
+                            }
+                            TextField {
+                                id: slotCustomColor
+                                visible: studioSection === 1 && slotThemeChoice.currentIndex === 2
+                                Layout.fillWidth: true; text: "#075D08"; placeholderText: "#RRGGBB"
+                            }
+                            RowLayout {
+                                visible: studioSection === 1; Layout.fillWidth: true
+                                Button {
+                                    Layout.fillWidth: true; text: "Selecionado"
+                                    enabled: selectedSlotId !== ""
+                                    onClicked: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_slot_theme", "slot_id":selectedSlotId,
+                                        "theme":slotThemeChoice.currentIndex === 2 ? slotCustomColor.text :
+                                            (slotThemeChoice.currentIndex === 1 ? "terca-verde" : "azul")
+                                    }))
+                                }
+                                Button {
+                                    Layout.fillWidth: true; text: "Página inteira"
+                                    onClicked: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_slot_theme", "entire_page":true,
+                                        "theme":slotThemeChoice.currentIndex === 2 ? slotCustomColor.text :
+                                            (slotThemeChoice.currentIndex === 1 ? "terca-verde" : "azul")
+                                    }))
                                 }
                             }
                             Button {
@@ -1286,15 +1273,67 @@ ApplicationWindow {
                             }
                         }
                         ColumnLayout {
-                            Layout.fillHeight: true
-                            Layout.fillWidth: true
-                            visible: studioSection === 4 || studioSection === 5 || studioSection === 6
-                            spacing: 11
+                            Layout.fillHeight: true; Layout.fillWidth: true
+                            visible: studioSection === 4 || studioSection === 5; spacing: 11
                             Button { Layout.fillWidth: true; visible: studioSection === 4; text: "+ Texto"; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
                             Button { Layout.fillWidth: true; visible: studioSection === 5; text: "+ Forma"; onClicked: sceneBridge.dispatch('{"name":"add_rect"}') }
-                            CheckBox { visible: studioSection === 6; text: "Mostrar grade"; checked: showGrid; onToggled: showGrid = checked }
-                            CheckBox { visible: studioSection === 6; text: "Mostrar réguas"; checked: showRulers; onToggled: showRulers = checked }
                             Item { Layout.fillHeight: true }
+                        }
+                        ScrollView {
+                            Layout.fillHeight: true; Layout.fillWidth: true
+                            visible: studioSection === 6; clip: true
+                            ColumnLayout {
+                                width: 235; spacing: 12
+                                Label { text: "Fundos Promocionais"; color: "#284F8F"; font.bold: true }
+                                Label {
+                                    text: "Terça Verde · use o novo fundo sem data fixa."
+                                    Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#64748B"
+                                }
+                                Button {
+                                    Layout.fillWidth: true; text: "Selecionar fundo Terça Verde"
+                                    onClicked: campaignBackgroundDialog.open()
+                                }
+                                Label { text: "Selos Promocionais"; color: "#284F8F"; font.bold: true }
+                                Label {
+                                    text: "Inserção no topo à direita, preservando a logo do SR."
+                                    Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#64748B"
+                                }
+                                Button {
+                                    Layout.fillWidth: true; text: "Selecionar selo Terça Verde"
+                                    onClicked: campaignSealDialog.open()
+                                }
+                                Rectangle { Layout.fillWidth: true; height: 1; color: "#E5EAF4" }
+                                Label { text: "Data da Promoção"; color: "#284F8F"; font.bold: true }
+                                ComboBox {
+                                    id: campaignDateMode
+                                    Layout.fillWidth: true
+                                    model: ["Automática · planilha", "Manual"]
+                                }
+                                Label {
+                                    text: "Uma data única e válida na planilha é necessária para preenchimento automático."
+                                    Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#64748B"
+                                }
+                                TextField {
+                                    id: campaignManualDate
+                                    Layout.fillWidth: true; placeholderText: "DD/MM/AAAA"
+                                    visible: campaignDateMode.currentIndex === 1
+                                    inputMask: "99/99/9999"
+                                }
+                                Button {
+                                    Layout.fillWidth: true; text: "Aplicar data"
+                                    onClicked: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_campaign_date",
+                                        "mode":campaignDateMode.currentIndex === 0 ? "auto" : "manual",
+                                        "value":campaignDateMode.currentIndex === 0 ? null : campaignManualDate.text
+                                    }))
+                                }
+                                Label {
+                                    text: "Exibida: " + String((page && page.metadata && page.metadata.campaign_date_display) || "não definida")
+                                    Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#425072"
+                                }
+                                CheckBox { text: "Mostrar grade"; checked: showGrid; onToggled: showGrid = checked }
+                                CheckBox { text: "Mostrar réguas"; checked: showRulers; onToggled: showRulers = checked }
+                            }
                         }
                     }
                 }

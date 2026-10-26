@@ -76,6 +76,7 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         editor = payload.setdefault("editor", {})
         editor["item_slot_presets"] = list_item_slot_presets(self.session.document)
         editor["item_slots"] = list_item_slots(self.session.document)
+        editor["campaign"] = dict(self.session.page.metadata)
         return payload
 
     def dispatch_json(self, raw: str, *, include_scene_payload: bool = True) -> str:
@@ -99,6 +100,9 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                     selected = str(command.get("slot_id") or "")
                     group_id = str(command.get("multi_root_id") or "")
                     ids = [selected] if selected else []
+                    chosen = self.session.page.slots.get(selected)
+                    if chosen and chosen.metadata.get("multi_parent_id") and not group_id:
+                        group_id = str(chosen.metadata["multi_parent_id"])
                     group = self.session.page.node(group_id) if group_id else None
                     if group and group.metadata.get("multi_slot_beta44"):
                         ids = list(group.metadata.get("child_slot_ids") or [])
