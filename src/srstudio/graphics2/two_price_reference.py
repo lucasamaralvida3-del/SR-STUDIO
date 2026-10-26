@@ -13,7 +13,7 @@ extra artwork when mode='two'.
 
 from .model import BindingRole, GraphicsNode, NodeKind, Rect, Transform
 
-PPTX_TWO_PRICE_REVISION = 49
+PPTX_TWO_PRICE_REVISION = 50
 BLUE = "#105594"
 
 # Main price plate, smaller overlapping price badge, and editable labels.
@@ -21,21 +21,29 @@ BLUE = "#105594"
 # Multi sample: cell spacing 5.61cm, y=26.95..32.84cm, 5 products.
 TWO_PRICE_GEOMETRY = {
     "individual-beta44": {
-        "badge": (.540, .896, .145, .094),
-        "promo_label": (.542, .899, .140, .032),
-        "secondary_price": (.542, .929, .140, .056),
-        "club_label": (.720, .933, .230, .045),
+        # Slightly larger than Beta49 while remaining inside the plate.
+        "badge": (.529, .879, .167, .110),
+        "promo_label": (.539, .887, .148, .035),
+        "secondary_price": (.536, .922, .152, .061),
+        "club_label": (.720, .931, .230, .048),
         "main_price": (.610, .715, .390, .260),
+        "name_panel": (.620, .575, .380, .411),
+        "name": (.634, .588, .352, .145),
         "image": (.015, .015, .76, .970),
         "unit": (.898, .846, .075, .085),
     },
     "multi-cell-beta44": {
-        "badge": (.465, .524, .375, .220),
-        "promo_label": (.465, .554, .365, .045),
-        "secondary_price": (.475, .611, .350, .105),
-        "club_label": (.460, .818, .460, .116),
+        # The PPTX mini-badges are narrower and further right in each cell.
+        "badge": (.572, .538, .338, .194),
+        "promo_label": (.578, .548, .322, .051),
+        "secondary_price": (.583, .612, .314, .101),
+        "club_label": (.590, .850, .340, .055),
         "main_price": (.010, .715, .980, .280),
-        "unit": (.760, .865, .185, .105),
+        # Two-price main digits stop before NO CLUBE SR.
+        "currency": (.052, .200, .148, .420),
+        "integer": (.203, .037, .335, .807),
+        "decimal": (.548, .122, .150, .335),
+        "unit": (.770, .911, .159, .072),
     },
 }
 
@@ -78,8 +86,41 @@ def _ensure_badge(page, slot):
         slot.metadata["two_price_badge_node_id"] = badge.id
     _position(badge, _absolute(root.rect.normalized(),
                                TWO_PRICE_GEOMETRY[slot.metadata["preset_id"]]["badge"]))
+    badge.style["radius_ratio"] = .24
     badge.z_index = 38
     return badge
+
+
+def ensure_individual_name_panel(page, slot, *, two_prices=False):
+    """Create the source-white name background between image and editable title.
+
+    Beta49 already has saved slots: never duplicate the panel when reopening
+    them. It is decorative, so neither SKU nor image data is altered.
+    """
+    if str(slot.metadata.get("preset_id") or "") != "individual-beta44":
+        return None
+    root = page.node(str(slot.metadata.get("root_node_id") or ""))
+    if root is None:
+        return None
+    panel = page.node(str(slot.metadata.get("name_backdrop_node_id") or ""))
+    if panel is None:
+        panel = GraphicsNode(
+            kind=NodeKind.RECT,
+            name="PPTX INDIVIDUAL · WHITE NAME BACKGROUND",
+            z_index=15, transform=Transform(),
+            style={"fill": "#FFFFFF", "stroke": "none", "stroke_width": 0,
+                   "radius_ratio": .09},
+            metadata={"manual_item_slot_child": True,
+                      "item_slot_name_backdrop": True},
+        )
+        page.add_node(panel, parent_id=root.id)
+        slot.metadata["name_backdrop_node_id"] = panel.id
+    bounds = (TWO_PRICE_GEOMETRY["individual-beta44"]["name_panel"]
+              if two_prices else (.552, .563, .448, .415))
+    _position(panel, _absolute(root.rect.normalized(), bounds))
+    panel.z_index = 15
+    panel.visible = True
+    return panel
 
 
 def apply_two_price_layout(page, slot, enabled: bool) -> bool:
@@ -92,6 +133,15 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
     if root is None:
         return False
     root_rect = root.rect.normalized()
+    if preset_id == "individual-beta44":
+        ensure_individual_name_panel(page, slot, two_prices=enabled)
+        name_node = page.node(str(slot.node_by_role.get(BindingRole.NAME.value) or ""))
+        if name_node is not None:
+            from .item_slots import _builtins
+            base_name = _builtins()[preset_id].roles["name"]["bounds"]
+            name_bounds = geometry["name"] if enabled else (.578, .572, .407, .145)
+            _position(name_node, _absolute(root_rect, name_bounds))
+            name_node.z_index = 20
     badge = _ensure_badge(page, slot)
     if badge is not None:
         badge.visible = enabled
@@ -118,9 +168,9 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
 
     if enabled:
         for node, key, z, min_size in (
-            (promo, "promo_label", 82, 6.5),
-            (secondary, "secondary_price", 83, 8.5),
-            (club, "club_label", 84, 7.0),
+            (promo, "promo_label", 82, 3.5),
+            (secondary, "secondary_price", 83, 5.5),
+            (club, "club_label", 84, 3.5),
         ):
             if node is None:
                 continue
@@ -130,6 +180,17 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
             node.style["fill"] = "#FFFFFF"
             node.style["fit_inside_box"] = True
             node.style["min_font_size"] = min_size
+            node.style["nowrap"] = True
+            node.style["wrap"] = False
+            # Fonts and target bounds are source-measured: prevent a split
+            # NO CLUBE / SR and keep all legends within their own box.
+            if preset_id == "multi-cell-beta44":
+                node.style["font_size"] = {
+                    "promo_label": 7.0, "secondary_price": 9.2,
+                    "club_label": 7.1,
+                }[key]
+            elif key == "secondary_price":
+                node.style["font_size"] = 13.0
         if promo is not None:
             promo.text = "NA PROMOÇÃO"
             promo.visible = True
@@ -166,7 +227,8 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
                       (BindingRole.PRICE_CENTS, "decimal")):
         node = page.node(str(slot.node_by_role.get(role.value) or ""))
         if node is not None:
-            _position(node, _absolute(price_rect, roles[key]["bounds"]))
+            spec = geometry[key] if enabled and key in geometry else roles[key]["bounds"]
+            _position(node, _absolute(price_rect, spec))
     for node_id in slot.metadata.get("decorative_nodes") or []:
         node = page.node(str(node_id))
         if node is not None and node.metadata.get("item_slot_price_background"):

@@ -1747,6 +1747,9 @@ ApplicationWindow {
                                     }
                                     Label {
                                         x: 4; y: 4
+                                        // Continuous per-cell badges obscured source names
+                                        // on every Multi when edit mode was enabled.
+                                        visible: isSelectedSlot || isHoveredSlot || isDropTarget
                                         text: isDropTarget ? "SOLTAR PRODUTO AQUI" : ((modelData.metadata && modelData.metadata.display_label) ? modelData.metadata.display_label : (modelData.name || "Smart Slot"))
                                         color: "white"
                                         font.bold: true
