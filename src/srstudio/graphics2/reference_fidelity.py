@@ -35,8 +35,18 @@ def migrate_reference_slot(page, slot, presets) -> bool:
     preset_id = str(slot.metadata.get("preset_id") or "")
     if preset_id not in ("individual-beta44", "multi-cell-beta44"):
         return False
-    if int(slot.metadata.get("reference_fidelity_revision") or 0) >= 47:
-        return False
+    revision = int(slot.metadata.get("reference_fidelity_revision") or 0)
+    if revision >= 47:
+        # Beta47/48 scenes already have the original 1-price artwork. Upgrade
+        # ONLY the two-price overlay from the newly supplied PowerPoint.
+        if int(slot.metadata.get("two_price_reference_revision") or 0) >= 49:
+            return False
+        from .two_price_reference import apply_two_price_layout
+        is_two = str(slot.metadata.get("price_variant") or "one") == "two"
+        changed = apply_two_price_layout(page, slot, is_two)
+        if changed:
+            slot.metadata["two_price_reference_revision"] = 49
+        return changed
     root = page.node(str(slot.metadata.get("root_node_id") or ""))
     if root is None:
         return False
@@ -160,6 +170,9 @@ def migrate_reference_slot(page, slot, presets) -> bool:
 
     root.metadata["reference_fidelity_revision"] = 47
     slot.metadata["reference_fidelity_revision"] = 47
+    from .two_price_reference import apply_two_price_layout
+    apply_two_price_layout(page, slot,
+                           str(slot.metadata.get("price_variant") or "one") == "two")
     return True
 
 

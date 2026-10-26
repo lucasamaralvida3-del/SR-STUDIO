@@ -470,8 +470,8 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 },
                 "state": "empty",
                 "reference_fidelity_revision": 47 if source_faithful else 1,
-                "reference_source": ("individual(1).pptx" if preset_id == "individual-beta44"
-                                     else "multi slots(1).pptx") if source_faithful else "",
+                "reference_source": ("individual(2).pptx" if preset_id == "individual-beta44"
+                                     else "multi slots(2).pptx") if source_faithful else "",
                 "product_snapshot": {},
                 "price_mode": "auto",
                 "price_variant": "one",
@@ -672,6 +672,9 @@ def _reset_clone_content(page, slot: SmartSlot) -> None:
                 node = page.node(str(node_id))
                 if node is not None and node.kind is NodeKind.TEXT:
                     node.text = value
+    badge = page.node(str(slot.metadata.get("two_price_badge_node_id") or ""))
+    if badge is not None:
+        badge.visible = False
     for key, visible in (("club_label_node_id", False),
                          ("promotion_label_node_id", True)):
         node = page.node(str(slot.metadata.get(key) or ""))
@@ -714,6 +717,9 @@ def duplicate_item_slot(session: GraphicsSession, slot_id: str, *, dx: float = 2
         old_promotion = str(source_slot.metadata.get("promotion_label_node_id") or "")
         if old_promotion:
             clone.metadata["promotion_label_node_id"] = mapping.get(old_promotion, "")
+        old_two_badge = str(source_slot.metadata.get("two_price_badge_node_id") or "")
+        if old_two_badge:
+            clone.metadata["two_price_badge_node_id"] = mapping.get(old_two_badge, "")
         # Duplicating one cell produces a standalone card, not a reference
         # to the parent strip. The original multi strip stays untouched.
         for key in ("multi_parent_id", "multi_index", "multi_count"):
@@ -892,14 +898,12 @@ def _apply_reference_price_state(page, slot: SmartSlot, source: dict[str, Any], 
             node.text = _role_value(role, combined)
     secondary = page.node(str(slot.node_by_role.get(BindingRole.RETAIL_PRICE.value) or ""))
     if secondary is not None:
-        secondary.text = _role_value(BindingRole.RETAIL_PRICE, combined) if retail is not None else ("R$ 00,00" if two else "")
+        # The smaller badge carries the regular/promotional price while the
+        # large blue plate carries the Clube SR price, as in the supplied PPTX.
+        secondary.text = _role_value(BindingRole.RETAIL_PRICE, combined) if retail is not None else ""
         secondary.visible = two
-    promo = page.node(str(slot.metadata.get("promotion_label_node_id") or ""))
-    if promo is not None:
-        promo.visible = not two
-    club = page.node(str(slot.metadata.get("club_label_node_id") or ""))
-    if club is not None:
-        club.visible = bool(two and (source.get("club_price") or source.get("app_price")))
+    from .two_price_reference import apply_two_price_layout
+    apply_two_price_layout(page, slot, two)
     slot.metadata["price_variant"] = "two" if two else "one"
     snapshot = slot.metadata.get("product_snapshot")
     if isinstance(snapshot, dict):
@@ -1014,6 +1018,9 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
         if image_node.metadata.get("bound_image_source"):
             repeated_image.metadata["bound_image_source"] = image_node.metadata["bound_image_source"]
         repeated_image.metadata["placeholder"] = image_node.metadata.get("placeholder", True)
-        repeated_image.visible = image_node.visible
+        # The new two-price Individual PPTX has one large product; only
+        # the one-price variant uses the overlapping repeated copy.
+        repeated_image.visible = (image_node.visible and
+                                  slot.metadata.get("price_variant") != "two")
     refresh_item_slot_metadata(session.page, slot)
     return True

@@ -1,0 +1,66 @@
+name: G2 Beta49 Two-Price PPTX Windows
+
+on:
+  push:
+    branches:
+      - fix/g2-beta49-two-price-pptx-fidelity
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'tests/test_graphics2_beta49_two_price_pptx_fidelity.py'
+      - 'tests/test_graphics2_beta45_reference_fidelity.py'
+      - 'tests/test_graphics2_beta46_price_integrity.py'
+      - '.github/workflows/g2-beta49-two-price-windows.yml'
+      - '.github/workflows/g2-beta49-candidate-windows.yml'
+      - 'tools/promote_g2_beta49_launcher.py'
+      - 'tools/test_promote_g2_beta49_launcher.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  two-price-pptx:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      QT_QPA_PLATFORM: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install Qt and G2
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: New two-price source geometry and prior price regression
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_beta49_two_price_pptx_fidelity.py tests/test_graphics2_beta47_pptx_source_fidelity.py tests/test_graphics2_beta46_price_integrity.py tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_beta46_real_slot_layouts.py tests/test_graphics2_qml_load.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Render two-price thumbnails using real Qt
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from PySide6.QtGui import QGuiApplication, QImage
+          from PySide6.QtCore import QUrl
+          from srstudio.graphics2.slot_preview import build_slot_preview_catalog
+          app = QGuiApplication.instance() or QGuiApplication([])
+          catalog = build_slot_preview_catalog(Path('beta49-two-price-preview'))
+          for mode in ('individual-two','multi5-two','multi6-two'):
+              image = QImage(QUrl(catalog[mode]).toLocalFile())
+              assert not image.isNull() and image.width() > 80 and image.height() > 20, mode
+              print('TWO_PRICE_PREVIEW', mode, image.width(), image.height())
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: G2-Beta49-Two-Price-Qt-Previews
+          path: beta49-two-price-preview/*.png
+          retention-days: 30
+          if-no-files-found: warn

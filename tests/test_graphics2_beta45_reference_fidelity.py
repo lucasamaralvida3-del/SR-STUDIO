@@ -121,7 +121,7 @@ def test_multi_strips_match_ppt_structure(count):
                            and p.node(n).visible for n in p.descendants(r.id)) for r in roots)
 
 
-def test_promotion_modes_never_show_promo_and_club_label_together():
+def test_two_price_pptx_keeps_promotion_badge_and_club_label_together():
     s = session()
     a = create_item_slot(s, "individual-beta44")
     p = s.page
@@ -133,12 +133,18 @@ def test_promotion_modes_never_show_promo_and_club_label_together():
         "id": "item", "name": "OLEO ABC PET 900ML SOJA", "price": "7,21",
         "club_price": "6,39",
     })
-    assert extra.visible and club.visible and not promo.visible
+    # The *newly supplied* Individual two-price PPTX contains BOTH labels:
+    # NA PROMOÇÃO on the smaller price badge and NO CLUBE SR on the main plate.
+    assert extra.visible and club.visible and promo.visible
+    assert promo.text == "NA PROMOÇÃO"
+    badge = p.node(a.metadata["two_price_badge_node_id"])
+    assert badge is not None and badge.visible
     assert p.node(a.node_by_role[BindingRole.UNIT.value]).text == "UN"
     assert bind_product_to_item_slot(s, a.id, {
         "id": "item", "name": "OLEO ABC PET 900ML SOJA", "price": "7,21",
     })
     assert promo.visible and not club.visible and not extra.visible
+    assert not badge.visible
 
 
 def test_saved_beta44_slots_upgrade_without_losing_product():
