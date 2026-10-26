@@ -47,7 +47,7 @@ def safe_member(path: str) -> str:
 def prepare(source: Path, target: Path, existing_manifest: Path, result_manifest: Path) -> dict:
     base = json.loads(existing_manifest.read_text(encoding="utf-8-sig"))
     if base.get("channel") != "beta" or base.get("version") != "5.0.0-hybrid.g2beta.46":
-        raise ValueError("Beta channel must currently point to Beta45; refusing to overwrite a newer release")
+        raise ValueError("Beta channel must currently point to Beta46; refusing to overwrite a newer release")
     target.parent.mkdir(parents=True, exist_ok=True)
     with ZipFile(source, "r") as previous, ZipFile(target, "w", compression=ZIP_DEFLATED, compresslevel=3, allowZip64=True) as out:
         members = {safe_member(x.filename): x for x in previous.infolist() if not x.is_dir()}
@@ -60,7 +60,7 @@ def prepare(source: Path, target: Path, existing_manifest: Path, result_manifest
                 raise ValueError(f"Archive symlink not supported: {name}")
             with previous.open(member) as file_in, out.open("files/SRStudio5/" + name, "w", force_zip64=True) as file_out:
                 shutil.copyfileobj(file_in, file_out, length=4 * 1024 * 1024)
-        out.writestr("files/VERSAO.txt", "G2 BETA 45\n")
+        out.writestr("files/VERSAO.txt", "G2 BETA 47\n")
         out.writestr("files/version.json", json.dumps({
             "version": VERSION,
             "release": "g2-beta-47",
@@ -81,7 +81,7 @@ def prepare(source: Path, target: Path, existing_manifest: Path, result_manifest
         "channel": "beta",
         "version": VERSION,
         "product_version": "5.0.0",
-        "release_label": "G2 Beta 46 - Smart Slots, layouts seguros e banco de imagens aprovado",
+        "release_label": "G2 Beta 47 - Fidelidade PPTX e layouts seguros",
         "published_at": datetime.now(timezone.utc).isoformat(),
         "min_launcher": base.get("min_launcher", "4.0.1-hybrid.base2.6"),
         "min_launcher_version": base.get("min_launcher_version", "4.0.1-hybrid.base2.6"),
@@ -100,7 +100,7 @@ def prepare(source: Path, target: Path, existing_manifest: Path, result_manifest
         "public_asset_verified": True,
         "tag": "g2-beta-47",
         "asset": ASSET,
-        "notes": "Beta 46: Smart Slots reais, layouts editáveis, PNG/PDF e banco de imagens histórico somente após aprovação. Stable intacta.",
+        "notes": "Beta 47: Smart Slots individuais com duas imagens fiéis ao PPTX, Multi de 5/6 produtos corrigido, layouts sem deformação. Stable intacta.",
     }
     result_manifest.parent.mkdir(parents=True, exist_ok=True)
     result_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
