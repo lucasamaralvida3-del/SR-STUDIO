@@ -89,7 +89,7 @@ def test_campaign_date_manual_automatic_and_missing_are_not_guessed():
     with pytest.raises(ValueError):
         set_campaign_date(session, mode="manual", value="31/02/2026")
     assert set_campaign_date(session, mode="auto") == "13/10/2026"
-    doc.metadata["products"].append({"VALIDADE": "14/10/2026"})
+    session.document.metadata["products"].append({"VALIDADE": "14/10/2026"})
     assert set_campaign_date(session, mode="auto") == ""
 
 
