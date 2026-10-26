@@ -1,0 +1,156 @@
+{
+  "format": "SRSTUDIO_BUILTIN_CAMPAIGN_ART_1",
+  "version": "2026-10-beta54",
+  "default_seals": {
+    "terca-verde": "terca-verde:seal:terca-verde",
+    "quarta-cafe": "quarta-cafe:seal:quarta-cafe",
+    "quinta-file": "quinta-file:seal:quinta-file",
+    "churrasco": "churrasco:seal:churrasco"
+  },
+  "assets": [
+    {
+      "id": "terca-verde:background:terca-verde",
+      "campaign_id": "terca-verde",
+      "kind": "background",
+      "name": "Terca Verde",
+      "path": "backgrounds/terca-verde.webp",
+      "thumbnail": "thumbs/backgrounds/terca-verde.webp",
+      "sha256": "a09e81779f55b056fd8bd75266b6b94c7229c725588f1c071ec37ef801264f81",
+      "size": 194754,
+      "thumbnail_sha256": "95760e5e4d33e722ed9b90d1f22397d70ec7aaab34d40911f31cf855bf7f1032",
+      "thumbnail_size": 13956
+    },
+    {
+      "id": "quarta-cafe:background:quarta-cafe",
+      "campaign_id": "quarta-cafe",
+      "kind": "background",
+      "name": "Quarta Cafe",
+      "path": "backgrounds/quarta-cafe.webp",
+      "thumbnail": "thumbs/backgrounds/quarta-cafe.webp",
+      "sha256": "d35a2c1f05d032924e563ba015faaffb1a22c259d588c977080bc04084280ec0",
+      "size": 86654,
+      "thumbnail_sha256": "3c78cbc312b5b8af0ce5f1d9a8c659d2ed0c6e26d1e9d6426f560c23b696fde6",
+      "thumbnail_size": 10058
+    },
+    {
+      "id": "quinta-file:background:quinta-file",
+      "campaign_id": "quinta-file",
+      "kind": "background",
+      "name": "Quinta File",
+      "path": "backgrounds/quinta-file.webp",
+      "thumbnail": "thumbs/backgrounds/quinta-file.webp",
+      "sha256": "804fd8aa50fa19d0a55c371da625bc0038003b0b05897600fc7bff6e603ed3c7",
+      "size": 174358,
+      "thumbnail_sha256": "9499b71b21a3d7d84a41404496466a027edac9cc7f9c0dbd87f0d677048e69f8",
+      "thumbnail_size": 12260
+    },
+    {
+      "id": "churrasco:background:churrasco-acougue",
+      "campaign_id": "churrasco",
+      "kind": "background",
+      "name": "Churrasco Acougue",
+      "path": "backgrounds/churrasco-acougue.webp",
+      "thumbnail": "thumbs/backgrounds/churrasco-acougue.webp",
+      "sha256": "cfcce8bb11d3d9acb9e422cb37f7dbd25b841955e93bb5e31fe5d0114cf6bfd8",
+      "size": 183180,
+      "thumbnail_sha256": "3e04f8f392de484adf347e4530e2c84aece8ca09ec165b66d1673be5441d3fcf",
+      "thumbnail_size": 12696
+    },
+    {
+      "id": "terca-verde:seal:terca-verde",
+      "campaign_id": "terca-verde",
+      "kind": "seal",
+      "name": "Terça Verde (PPTX original)",
+      "path": "seals/terca-verde.webp",
+      "thumbnail": "thumbs/seals/terca-verde.webp",
+      "sha256": "38af520a3fdd61281c6029a9c4afd00fe2b704169bbe5a02277a08f915911729",
+      "size": 133612,
+      "thumbnail_sha256": "7d8033c414c6464028eb7d6672da5fc9d50f2226b6832879a88a9905c94f3474",
+      "thumbnail_size": 16748
+    },
+    {
+      "id": "quarta-cafe:seal:quarta-cafe",
+      "campaign_id": "quarta-cafe",
+      "kind": "seal",
+      "name": "Quarta Cafe",
+      "path": "seals/quarta-cafe.webp",
+      "thumbnail": "thumbs/seals/quarta-cafe.webp",
+      "sha256": "330482d50014ab04d1134334f94ea7d71113c012c12cc2c0e12f78989c073c2c",
+      "size": 96626,
+      "thumbnail_sha256": "15d1c1914806c922f4c0c4f5321faa8cde7afe62e6f33d28b45d1aac0d39d06f",
+      "thumbnail_size": 16776
+    },
+    {
+      "id": "quinta-file:seal:quinta-file",
+      "campaign_id": "quinta-file",
+      "kind": "seal",
+      "name": "Quinta File",
+      "path": "seals/quinta-file.webp",
+      "thumbnail": "thumbs/seals/quinta-file.webp",
+      "sha256": "56ed4b4a1e15dda89d97f2dc0b48264a4aabdbc20529faedcab4c82af37c8e82",
+      "size": 87596,
+      "thumbnail_sha256": "1978fa0901b723b9c78a54249167093316569c62702844540d899bd4ec278478",
+      "thumbnail_size": 11002
+    },
+    {
+      "id": "quinta-file:seal:quinta-file-sanju",
+      "campaign_id": "quinta-file",
+      "kind": "seal",
+      "name": "Quinta File Sanju",
+      "path": "seals/quinta-file-sanju.webp",
+      "thumbnail": "thumbs/seals/quinta-file-sanju.webp",
+      "sha256": "a679b370a82573de59266dabd75074053c830f157b9785b582dd1308a228e8c1",
+      "size": 66468,
+      "thumbnail_sha256": "487f07a8ec30debc1861562f52dec9890042749d5f3f8036f016557bc6ffb9a5",
+      "thumbnail_size": 18910
+    },
+    {
+      "id": "quinta-file:seal:quinta-file-nova-ponte",
+      "campaign_id": "quinta-file",
+      "kind": "seal",
+      "name": "Quinta File Nova Ponte",
+      "path": "seals/quinta-file-nova-ponte.webp",
+      "thumbnail": "thumbs/seals/quinta-file-nova-ponte.webp",
+      "sha256": "63e1457bc33e78d30f7d6793a4107de70398f981b2a5c743030d0ecd20d229d5",
+      "size": 61478,
+      "thumbnail_sha256": "908dcc6a9f85c845f1ddfe286542783b99c8b320dba73a0c66cc6f78be587dbd",
+      "thumbnail_size": 11784
+    },
+    {
+      "id": "churrasco:seal:churrasco",
+      "campaign_id": "churrasco",
+      "kind": "seal",
+      "name": "Churrasco",
+      "path": "seals/churrasco.webp",
+      "thumbnail": "thumbs/seals/churrasco.webp",
+      "sha256": "ff019c91a5b99aef1c225a9e168d1e3c7652121f379f677b4f6eea55f57b9142",
+      "size": 63538,
+      "thumbnail_sha256": "62884bd222f8e73aa3c396781b71f9159cf867357fcc5d7125dd2cfd12a4af58",
+      "thumbnail_size": 11626
+    },
+    {
+      "id": "churrasco:seal:acougue",
+      "campaign_id": "churrasco",
+      "kind": "seal",
+      "name": "Acougue",
+      "path": "seals/acougue.webp",
+      "thumbnail": "thumbs/seals/acougue.webp",
+      "sha256": "a7a08cf97302a20f9bd0e43dbe869e97f2ec6ebd58b0e48294ac8a0624e6e3c6",
+      "size": 151760,
+      "thumbnail_sha256": "bafc5a9015f7b51350c5f1156754611fedce0162a05b0bf9aafbaa98e4a13eaa",
+      "thumbnail_size": 26976
+    },
+    {
+      "id": "churrasco:seal:acougue-premiado",
+      "campaign_id": "churrasco",
+      "kind": "seal",
+      "name": "Acougue Premiado",
+      "path": "seals/acougue-premiado.webp",
+      "thumbnail": "thumbs/seals/acougue-premiado.webp",
+      "sha256": "1de7df766702957de32c0315822b017989aa567d39ad8ae074f27a4f60cda262",
+      "size": 62280,
+      "thumbnail_sha256": "4c322574790d63447f93c62cfe51b9e3ddcebc4f38ea3a8604e49540b482c0e9",
+      "thumbnail_size": 14778
+    }
+  ]
+}

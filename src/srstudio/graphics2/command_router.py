@@ -42,6 +42,7 @@ class GraphicsCommandRouter:
         self.integrity_repair = repair_legacy_cross_page_ids(self.session.document)
         self.snap = SnapSettings()
         self._clipboard: dict[str, Any] | None = None
+        self._campaign_assets_cache: list[dict] | None = None
 
     def payload(self) -> dict[str, Any]:
         scene = self.session.document.to_dict()
@@ -62,6 +63,10 @@ class GraphicsCommandRouter:
             "products": list(self.session.document.metadata.get("products") or []),
             "integrity_repair": self.integrity_repair.to_dict(),
         }
+        if self._campaign_assets_cache is None:
+            from .campaign_asset_library import list_campaign_assets
+            self._campaign_assets_cache = list_campaign_assets()
+        scene["editor"]["campaign_assets"] = list(self._campaign_assets_cache)
         return scene
 
     def dispatch_json(self, raw: str, *, include_scene_payload: bool = True) -> str:
@@ -340,6 +345,85 @@ class GraphicsCommandRouter:
                 if "tolerance_screen_px" in command:
                     self.snap.tolerance_screen_px = max(0.1, float(command["tolerance_screen_px"]))
                 return CommandResult(True, False, "Snap atualizado.", {"snap": asdict(self.snap)})
+            if name == "add_item_slot":
+                from .item_slots import create_item_slot
+                preset_id = str(command.get("preset_id") or "individual-beta44")
+                slot = create_item_slot(self.session, preset_id)
+                return CommandResult(True, True, "Smart Slot adicionado.", {"slot_id": slot.id})
+            if name == "add_multi_item_slot":
+                from .multi_item_strip import create_multi_item_strip
+                result = create_multi_item_strip(
+                    self.session, count=int(command.get("count") or 5),
+                    price_mode=str(command.get("price_mode") or "auto"))
+                return CommandResult(True, True, "Faixa Multi adicionada.", result)
+            if name == "set_item_price_mode":
+                from .item_slots import set_reference_price_mode
+                slot_id = str(command.get("slot_id") or "")
+                if slot_id not in self.session.page.slots:
+                    return CommandResult(False, False, "Smart Slot não encontrado.")
+                updated = set_reference_price_mode(
+                    self.session, [slot_id], str(command.get("mode") or "auto"))
+                return CommandResult(True, bool(updated), "Modo de preço atualizado.", {"slot_ids": updated})
+            if name == "apply_promotion_layout":
+                from .promotion_layouts import plan_promotion
+                from .promotion_composition import apply_slot_composition
+                plan = plan_promotion(
+                    str(command.get("mode") or "auto"),
+                    count=int(command["count"]) if command.get("count") is not None else None,
+                    logo_reserved=float(command.get("logo_reserved", .24)),
+                    variation=int(command.get("variation") or 0))
+                layout = apply_slot_composition(
+                    self.session, plan,
+                    price_mode=str(command.get("price_mode") or "auto"),
+                    reuse_existing=bool(command.get("reuse_existing", True)))
+                return CommandResult(True, True, "Layout aplicado com Smart Slots reais.", {
+                    "slot_ids": list(layout.slot_ids),
+                    "reused_slot_ids": list(layout.reused_slot_ids),
+                    "created_slot_ids": list(layout.created_slot_ids),
+                    "root_node_ids": list(layout.root_node_ids)})
+            if name == "set_slot_theme":
+                from .campaign_tools import apply_slot_theme
+                all_slots = bool(command.get("entire_page", False))
+                slot_id = str(command.get("slot_id") or "")
+                if not all_slots and slot_id not in self.session.page.slots:
+                    return CommandResult(False, False, "Selecione um Smart Slot válido.")
+                count = apply_slot_theme(
+                    self.session, str(command.get("theme") or "azul"),
+                    slot_ids=None if all_slots else [slot_id], entire_page=all_slots)
+                return CommandResult(True, bool(count), "Cores dos Smart Slots atualizadas.", {"count": count})
+            if name == "apply_campaign_preset":
+                from .campaign_tools import apply_campaign_preset
+                result = apply_campaign_preset(
+                    self.session, str(command.get("background_id") or ""))
+                return CommandResult(True, True,
+                    "Campanha aplicada: fundo completo, logo e cores automáticas.",
+                    result)
+            if name == "apply_campaign_seal":
+                from .campaign_tools import apply_campaign_seal
+                result = apply_campaign_seal(
+                    self.session, str(command.get("seal_id") or ""))
+                return CommandResult(True, True,
+                    "Selo alterado e posicionado automaticamente.", result)
+            if name == "import_campaign_pack":
+                from .campaign_asset_library import import_campaign_pack, list_campaign_assets
+                stats = import_campaign_pack(str(command.get("path") or ""))
+                self._campaign_assets_cache = list_campaign_assets()
+                return CommandResult(True, False,
+                    f'Acervo promocional importado: {stats["imported"]} imagens.',
+                    stats)
+            if name == "set_campaign_art":
+                from .campaign_tools import apply_campaign_art
+                node_id = apply_campaign_art(
+                    self.session, str(command.get("kind") or ""),
+                    str(command.get("path") or ""),
+                    campaign_id=command.get("campaign_id"))
+                return CommandResult(True, True, "Arte promocional aplicada.", {"node_id": node_id})
+            if name == "set_campaign_date":
+                from .campaign_tools import set_campaign_date
+                displayed = set_campaign_date(
+                    self.session, mode=str(command.get("mode") or "auto"),
+                    value=command.get("value"))
+                return CommandResult(True, True, "Data da promoção atualizada.", {"date": displayed})
             if name == "drop_product":
                 if "x" not in command or "y" not in command:
                     return CommandResult(False, False, "Drop requer coordenadas x/y do documento.")

@@ -8,6 +8,7 @@ from __future__ import annotations
 from datetime import datetime, date, timedelta
 from hashlib import sha256
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 import mimetypes
 import re
 import unicodedata
@@ -16,7 +17,35 @@ from .model import AssetRef, GraphicsNode, NodeKind, Transform
 
 BLUE = "#105594"
 GREEN = "#075D08"
-THEMES = {"azul": BLUE, "terca-verde": GREEN}
+COFFEE = "#78441F"
+MEAT = "#851B22"
+BARBECUE = "#B32D18"
+# Keep campaigns and color variants separate from Smart Slot families.
+CAMPAIGNS = {
+    "terca-verde": {"label": "Terça Verde", "theme": GREEN},
+    "quarta-cafe": {"label": "Quarta Café com Pão", "theme": COFFEE},
+    "quinta-file": {"label": "Quinta Filé", "theme": MEAT},
+    "churrasco": {"label": "Churrasco e Açougue", "theme": BARBECUE},
+}
+THEMES = {"azul": BLUE, **{key: item["theme"] for key, item in CAMPAIGNS.items()}}
+
+# Placement is normalized to the page and calibrated to the supplied
+# promotional poster examples. The SR logo is already on each background.
+# Left ~0-.33 is kept clear for the printed SR mark.
+SEAL_PLACEMENTS = {
+    "terca-verde": (.35, .019, .64, .345),
+    "quarta-cafe": (.33, .026, .66, .345),
+    "quinta-file": (.38, .020, .60, .350),
+    "churrasco": (.38, .024, .60, .350),
+}
+
+def _campaign_art_bounds(page, kind, campaign_id, path):
+    if kind == "background":
+        return (0.0, 0.0, page.width, page.height)
+    x, y, w, h = SEAL_PLACEMENTS[campaign_id]
+    if str(path).lower().endswith("acougue-premiado.webp"):
+        x, y, w, h = (.49, .095, .47, .20)
+    return (page.width * x, page.height * y, page.width * w, page.height * h)
 
 
 def _canonical_key(value):
@@ -60,8 +89,21 @@ def detect_sheet_date(document):
     return next(iter(distinct)) if len(distinct) == 1 else ""
 
 
+def local_campaign_path(path):
+    """Normalize native paths and file:// URLs emitted by Qt FileDialog."""
+    raw = str(path)
+    if raw.startswith("file:"):
+        url = urlsplit(raw)
+        if url.scheme != "file" or url.netloc not in ("", "localhost"):
+            raise ValueError("A imagem deve ser um arquivo local.")
+        raw = unquote(url.path)
+        if re.match(r"^/[A-Za-z]:/", raw):
+            raw = raw[1:]
+    return Path(raw).expanduser().resolve()
+
+
 def _asset_for_file(document, path):
-    source = Path(path).expanduser().resolve()
+    source = local_campaign_path(path)
     if not source.is_file() or source.suffix.lower() not in (".jpg", ".jpeg", ".png", ".webp"):
         raise ValueError("Selecione um arquivo JPG, PNG ou WebP existente.")
     digest = sha256(source.read_bytes()).hexdigest()
@@ -75,38 +117,89 @@ def _asset_for_file(document, path):
     return asset.id
 
 
-def apply_campaign_art(session, kind, path):
+def apply_campaign_art(session, kind, path, *, campaign_id=None):
     if kind not in ("background", "seal"):
         raise ValueError("Elemento da campanha não reconhecido.")
     page = session.page
+    campaign_id = str(campaign_id or page.metadata.get("campaign_id") or "terca-verde")
+    if campaign_id not in CAMPAIGNS:
+        raise ValueError("Campanha não reconhecida.")
     asset_id = _asset_for_file(session.document, path)
     key = "campaign_" + kind + "_node"
     with session.transaction("Aplicar arte promocional " + kind):
         node = page.node(str(page.metadata.get(key) or ""))
+        rect = _campaign_art_bounds(page, kind, campaign_id, path)
+        # Cover fills the entire page without stretching product imagery.
+        # Seal uses contain for native aspect ratio and transparency.
+        style, z = ({"fit": "cover"}, -950) if kind == "background" else ({"fit": "contain"}, 95)
         if node is None:
-            if kind == "background":
-                rect = (0, 0, page.width, page.height)
-                style, z = {"fit": "fill"}, -950
-            else:
-                # The supplied reference: top center/right, clear of SR logo.
-                rect = (page.width * .355, page.height * .041,
-                        page.width * .615, page.height * .345)
-                style, z = {"fit": "contain"}, 95
             node = GraphicsNode(
                 kind=NodeKind.IMAGE,
-                name="Terça Verde · " + ("Fundo" if kind == "background" else "Selo"),
+                name=CAMPAIGNS[campaign_id]["label"] + " · " + ("Fundo" if kind == "background" else "Selo"),
                 transform=Transform(x=rect[0], y=rect[1], width=rect[2], height=rect[3]),
                 z_index=z, style=style,
-                metadata={"campaign_art": kind, "campaign_id": "terca-verde"},
+                metadata={"campaign_art": kind, "campaign_id": campaign_id},
             )
             page.add_node(node)
             page.metadata[key] = node.id
+        # Re-selecting a new campaign resets dimensions/position to its own
+        # reference, preventing old placements from leaking into new campaigns.
+        node.transform.x, node.transform.y = rect[0], rect[1]
+        node.transform.width, node.transform.height = rect[2], rect[3]
+        node.style.update(style)
+        node.z_index = z
         node.asset_id = asset_id
         node.visible = True
-        page.metadata["campaign_id"] = "terca-verde"
+        node.name = CAMPAIGNS[campaign_id]["label"] + " · " + ("Fundo" if kind == "background" else "Selo")
+        node.metadata["campaign_id"] = campaign_id
+        page.metadata["campaign_id"] = campaign_id
         if kind == "background":
             update_campaign_date(session.document, page)
     return node.id
+
+
+def apply_campaign_preset(session, background_id: str) -> dict:
+    """One-click composition: full background + matching default seal + palette.
+
+    The operation is undoable as ONE transaction; existing product slots stay
+    bound and are recolored in place, never replaced.
+    """
+    from .builtin_campaign_catalog import (
+        find_builtin_campaign_asset, default_seal_for_campaign,
+    )
+    background = find_builtin_campaign_asset(background_id, expected_kind="background")
+    campaign = background["campaign_id"]
+    if campaign not in CAMPAIGNS:
+        raise ValueError("Campanha desconhecida.")
+    seal = default_seal_for_campaign(campaign)
+    # Resolve both paths before touching the scene, then use one atomic Undo.
+    with session.transaction("Aplicar campanha completa"):
+        background_node_id = apply_campaign_art(
+            session, "background", background["path"], campaign_id=campaign)
+        seal_node_id = apply_campaign_art(
+            session, "seal", seal["path"], campaign_id=campaign)
+        apply_slot_theme(session, campaign, entire_page=True)
+        session.page.metadata["campaign_background_asset"] = background["id"]
+        session.page.metadata["campaign_seal_asset"] = seal["id"]
+    return {"campaign_id": campaign, "background_node_id": background_node_id,
+            "seal_node_id": seal_node_id, "background_id": background["id"],
+            "seal_id": seal["id"]}
+
+
+def apply_campaign_seal(session, seal_id: str) -> dict:
+    """Switch logo variant without changing the background or product slots."""
+    from .builtin_campaign_catalog import find_builtin_campaign_asset
+    seal = find_builtin_campaign_asset(seal_id, expected_kind="seal")
+    # The current background determines campaign; mixing unrelated artwork
+    # is prevented because it produces visually broken posters.
+    current = str(session.page.metadata.get("campaign_id") or "")
+    if current and current != seal["campaign_id"]:
+        raise ValueError("Selo de outra campanha: selecione o fundo correspondente.")
+    with session.transaction("Trocar selo da promoção"):
+        node_id = apply_campaign_art(
+            session, "seal", seal["path"], campaign_id=seal["campaign_id"])
+        session.page.metadata["campaign_seal_asset"] = seal["id"]
+    return {"seal_id": seal["id"], "seal_node_id": node_id}
 
 
 def update_campaign_date(document, page, *, mode=None, manual_date=None):
@@ -132,10 +225,11 @@ def update_campaign_date(document, page, *, mode=None, manual_date=None):
                    "font_weight": 700, "color": "#FFFFFF", "align": "center",
                    "v_align": "center", "fit_inside_box": True,
                    "single_line": True, "nowrap": True, "min_font_size": 9},
-            metadata={"campaign_id": "terca-verde", "campaign_date": True})
+            metadata={"campaign_id": str(page.metadata.get("campaign_id") or "terca-verde"), "campaign_date": True})
         page.add_node(node)
         page.metadata[key] = node.id
     node.text = displayed
+    node.metadata["campaign_id"] = str(page.metadata.get("campaign_id") or "terca-verde")
     page.metadata["campaign_date_display"] = displayed
     return displayed
 
@@ -156,7 +250,7 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
     else:
         raise ValueError("Escolha Azul, Terça Verde ou uma cor hexadecimal #RRGGBB.")
     page = session.page
-    palette = {BLUE.upper(), GREEN.upper()}
+    palette = {value.upper() for value in THEMES.values()}
     for existing in page.slots.values():
         previous = str(existing.metadata.get("color_hex") or "").upper()
         if re.fullmatch(r"#[0-9A-F]{6}", previous):
