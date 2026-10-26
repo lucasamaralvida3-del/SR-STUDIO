@@ -1,0 +1,75 @@
+name: G2 Beta47 PPTX Visual Geometry Windows
+
+on:
+  push:
+    branches:
+      - fix/g2-beta47-pptx-slot-fidelity
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'tests/test_graphics2_beta4*.py'
+      - '.github/workflows/g2-beta47-visual-windows.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-fidelity:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install rendering and regression dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify real PPTX proportions, two photos and legacy preservation
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_beta47_pptx_source_fidelity.py tests/test_graphics2_beta46_real_slot_layouts.py tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_beta46_recovery_resize.py tests/test_graphics2_beta46_price_integrity.py tests/test_graphics2_item_slots.py tests/test_graphics2_qml_load.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Render canonical slots and layouts with real Qt export
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from PySide6.QtGui import QGuiApplication, QImage, QFontDatabase
+          from PySide6.QtCore import QUrl
+          from srstudio.graphics2.slot_preview import build_slot_preview_catalog, PREVIEW_TYPES
+          app = QGuiApplication.instance() or QGuiApplication([])
+          print('QT_PLATFORM', QGuiApplication.platformName())
+          print('SOURCE_FONTS', [x for x in QFontDatabase.families() if x in ('Anton', 'Impact')])
+          output = Path('beta47-previews')
+          links = build_slot_preview_catalog(output)
+          assert set(links) == set(PREVIEW_TYPES), (links.keys(), PREVIEW_TYPES)
+          for key, uri in links.items():
+              file = Path(QUrl(uri).toLocalFile())
+              img = QImage(str(file))
+              assert not img.isNull() and img.width() > 40 and img.height() > 30, key
+              count_blue = sum(img.pixelColor(x, y).name().lower() == '#105594'
+                               for y in range(0, img.height(), 3)
+                               for x in range(0, img.width(), 3))
+              if key != 'blue':
+                  assert count_blue >= 10, (key, count_blue)
+              if key.startswith('multi'):
+                  assert 4.55 < img.width() / img.height() < 4.95, (key, img.size())
+              if key.startswith('individual'):
+                  assert .89 < img.width() / img.height() < .99, (key, img.size())
+              print('QT_VISUAL_OK', key, img.width(), img.height(), count_blue, file.stat().st_size)
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: G2-Beta47-Real-Qt-Visuals
+          path: beta47-previews/*.png
+          if-no-files-found: warn
+          retention-days: 30
