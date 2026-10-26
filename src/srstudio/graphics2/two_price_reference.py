@@ -37,7 +37,7 @@ TWO_PRICE_GEOMETRY = {
         "badge": (.572, .538, .338, .194),
         "promo_label": (.578, .548, .322, .051),
         "secondary_price": (.583, .612, .314, .101),
-        "club_label": (.589, .819, .335, .076),
+        "club_label": (.590, .850, .340, .055),
         "main_price": (.010, .715, .980, .280),
         # Two-price main digits stop before NO CLUBE SR.
         "currency": (.052, .200, .148, .420),
@@ -139,7 +139,7 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
         if name_node is not None:
             from .item_slots import _builtins
             base_name = _builtins()[preset_id].roles["name"]["bounds"]
-            name_bounds = geometry["name"] if enabled else base_name
+            name_bounds = geometry["name"] if enabled else (.578, .572, .407, .145)
             _position(name_node, _absolute(root_rect, name_bounds))
             name_node.z_index = 20
     badge = _ensure_badge(page, slot)
