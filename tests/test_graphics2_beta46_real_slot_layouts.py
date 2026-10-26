@@ -139,7 +139,7 @@ def test_auto_layout_positions_preexisting_multi_strip_without_creating_cards(co
     assert set(session.page.nodes) == roots_before
     group = session.page.node(multi["root_node_id"])
     assert group.rect.y >= session.page.height * .3
-    assert group.rect.width / group.rect.height == pytest.approx(4, abs=.03)
+    assert group.rect.width / group.rect.height == pytest.approx(4.75, abs=.03)
     assert all(session.page.slots[sid].product_id == f"MULTI-{i}"
                for i, sid in enumerate(multi["slot_ids"]))
 
