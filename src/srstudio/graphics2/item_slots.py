@@ -61,21 +61,22 @@ def _ppt_role(x: float, y: float, w: float, h: float, *, size: float, color: str
               align: str = "center", weight: int = 700) -> dict[str, Any]:
     """An editable Anton-like source text role with generous fit bounds.
 
-    Measured from individual(1).pptx and multi slots(1).pptx.
+    Measured from user-supplied individual(2).pptx and multi slots(2).pptx.
     Font fallback is chosen by Qt when Anton is unavailable.
     """
     role = _text_role(x, y, w, h, size=size, weight=weight, align=align)
-    # The source uses Anton, but that face is not available on standard
-    # Windows installations. Arial is explicitly selected instead of
-    # letting Qt render missing-glyph boxes for every price digit.
-    # Prefer the *exact* PPTX typeface when the machine has it; Windows
-    # includes Impact as a visually close, readable condensed fallback.
-    family = "Impact"
+    # Missing Impact/Anton on Windows runners previously produced square
+    # missing-glyph characters in every price and title. Resolve against
+    # QFontDatabase instead of blindly requesting an unavailable face.
+    family = "Arial"
     try:
         from PySide6.QtGui import QGuiApplication, QFontDatabase
         if QGuiApplication.instance() is not None:
-            if "Anton" in QFontDatabase.families():
-                family = "Anton"
+            installed = {value.casefold(): value for value in QFontDatabase.families()}
+            family = next((installed[f.casefold()] for f in
+                           ("Anton", "Impact", "Arial Narrow", "Bahnschrift Condensed",
+                            "Arial", "Segoe UI", "Liberation Sans", "DejaVu Sans")
+                           if f.casefold() in installed), "Arial")
     except (ImportError, RuntimeError):
         pass
     role["style"].update({"font_family": family, "source_font_family": "Anton", "color": color,
@@ -115,26 +116,26 @@ def _builtins() -> dict[str, ItemSlotPreset]:
             id="individual-beta44",
             name="INDIVIDUAL PROMOCIONAL",
             width=460,
-            height=510,
+            height=490,
             background={"fill": "#FFFFFF", "stroke": "none", "stroke_width": 0},
             roles={
                 "image": {"bounds": [.005, .005, .41, .985],
                           "style": {"fit": "contain"}},
-                "name": _ppt_role(.555, .535, .435, .155, size=27,
+                "name": _ppt_role(.555, .570, .435, .140, size=19,
                                   color="#105594", align="center"),
                 "price": {"bounds": [.525, .722, .475, .269],
                           "background": {"fill": "#105594", "stroke_width": 0,
                                          "radius_ratio": .13}},
-                "currency": _ppt_role(.07, .52, .23, .37, size=39, color="#FFFFFF"),
-                "integer": _ppt_role(.27, .31, .45, .70, size=91, color="#FFFFFF"),
-                "decimal": _ppt_role(.72, .29, .26, .29, size=30, color="#FFFFFF"),
-                "unit": _ppt_role(.81, .89, .17, .08, size=20, color="#FFFFFF"),
+                "currency": _ppt_role(.07, .52, .23, .37, size=32, color="#FFFFFF"),
+                "integer": _ppt_role(.27, .31, .45, .70, size=67, color="#FFFFFF"),
+                "decimal": _ppt_role(.72, .29, .26, .29, size=26, color="#FFFFFF"),
+                "unit": _ppt_role(.81, .89, .17, .08, size=18, color="#FFFFFF"),
                 "secondary_price": _ppt_role(.55, .73, .23, .05, size=12,
                                              color="#FFFFFF"),
                 "limit": _ppt_role(.53, .988, .47, .028, size=9, color="#105594"),
                 "club_label": _ppt_role(.80, .73, .18, .06, size=10,
                                         color="#FFFFFF"),
-                "promotion_label": _ppt_role(.63, .73, .32, .05, size=20,
+                "promotion_label": _ppt_role(.63, .73, .32, .05, size=16,
                                              color="#FFFFFF"),
             },
         ),
@@ -147,20 +148,20 @@ def _builtins() -> dict[str, ItemSlotPreset]:
             height=300,
             background=None,  # the parent owns the continuous blue footer
             roles={
-                "name": _ppt_role(.015, .085, .97, .17, size=16,
+                "name": _ppt_role(.015, .025, .97, .15, size=13.2,
                                   color="#105594"),
-                "image": {"bounds": [.08, .28, .84, .48],
+                "image": {"bounds": [.045, .185, .91, .545],
                           "style": {"fit": "contain"}},
-                "price": {"bounds": [.01, .805, .98, .19]},
-                "currency": _ppt_role(.035, .27, .20, .54, size=17, color="#FFFFFF"),
-                "integer": _ppt_role(.245, .045, .47, .90, size=46, color="#FFFFFF"),
-                "decimal": _ppt_role(.695, .17, .29, .33, size=18, color="#FFFFFF"),
-                "unit": _ppt_role(.75, .944, .215, .052, size=11, color="#FFFFFF"),
-                "secondary_price": _ppt_role(.05, .768, .48, .035,
+                "price": {"bounds": [.01, .715, .98, .28]},
+                "currency": _ppt_role(.035, .27, .20, .54, size=14.8, color="#FFFFFF"),
+                "integer": _ppt_role(.245, .045, .47, .90, size=35.6, color="#FFFFFF"),
+                "decimal": _ppt_role(.695, .17, .29, .33, size=12.6, color="#FFFFFF"),
+                "unit": _ppt_role(.75, .944, .215, .052, size=12.2, color="#FFFFFF"),
+                "secondary_price": _ppt_role(.05, .729, .48, .035,
                                              size=9, color="#FFFFFF"),
-                "club_label": _ppt_role(.55, .768, .43, .035,
+                "club_label": _ppt_role(.55, .729, .43, .035,
                                         size=8, color="#FFFFFF"),
-                "promotion_label": _ppt_role(.20, .767, .60, .035,
+                "promotion_label": _ppt_role(.20, .729, .60, .035,
                                              size=8, color="#FFFFFF"),
             },
         ),
@@ -335,6 +336,22 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
         )
         _add_node(page, image, root.id)
 
+        # individual(2).pptx contains two overlapping photos of one SKU.
+        repeated_image = None
+        if preset_id == "individual-beta44":
+            repeat_rect = _absolute(root_rect, [.236, .005, .41, .985])
+            repeated_image = GraphicsNode(
+                kind=NodeKind.IMAGE,
+                name="IMAGE ROLE · repeated product",
+                transform=Transform(x=repeat_rect.x, y=repeat_rect.y,
+                                    width=repeat_rect.width, height=repeat_rect.height),
+                style=copy.deepcopy(image_spec.get("style") or {"fit": "contain"}),
+                z_index=9,
+                metadata={"manual_item_slot_child": True, "item_slot_repeated_image": True,
+                          "placeholder": True},
+            )
+            _add_node(page, repeated_image, root.id)
+
         name_spec = dict(roles.get("name") or {})
         name_rect = _absolute(root_rect, list(name_spec.get("bounds") or [0.08, 0.05, 0.84, 0.13]))
         name_node = _make_text(
@@ -442,6 +459,7 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 "preset_id": str(preset.get("id") or preset_id),
                 "root_node_id": root.id,
                 "role_area_nodes": {"image": image.id, "name": name_node.id, "price": price_group.id, "unit": unit.id},
+                "image_repeat_node_id": repeated_image.id if repeated_image is not None else "",
                 "decorative_nodes": [item for item in (background_id, image_backplate.id if image_backplate else "", price_background_id) if item],
                 "price_block": {
                     "currency_node": component_nodes["currency"].id,
@@ -451,7 +469,7 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                     "combined_value": "",
                 },
                 "state": "empty",
-                "reference_fidelity_revision": 46 if source_faithful else 1,
+                "reference_fidelity_revision": 47 if source_faithful else 1,
                 "reference_source": ("individual(1).pptx" if preset_id == "individual-beta44"
                                      else "multi slots(1).pptx") if source_faithful else "",
                 "product_snapshot": {},
@@ -474,13 +492,15 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
                 layer.z_index = -40
             elif layer.metadata.get("item_slot_price_background"):
                 layer.z_index = 30
+            elif layer.metadata.get("item_slot_repeated_image"):
+                layer.z_index = 9
             elif layer.kind is NodeKind.IMAGE:
                 layer.z_index = 10
             elif layer.kind is NodeKind.TEXT:
                 layer.z_index = 50 if (layer.binding_role not in (BindingRole.NAME,)) else 20
 
         root.metadata["item_slot_id"] = slot.id
-        root.metadata["reference_fidelity_revision"] = 46 if source_faithful else 1
+        root.metadata["reference_fidelity_revision"] = 47 if source_faithful else 1
         page.slots[slot.id] = slot
 
     session.selection = {root.id}
@@ -632,6 +652,12 @@ def _reset_clone_content(page, slot: SmartSlot) -> None:
             node.visible = False
         elif role in placeholders and node.kind is NodeKind.TEXT:
             node.text = placeholders[role]
+    repeated_image = page.node(str(slot.metadata.get("image_repeat_node_id") or ""))
+    if repeated_image is not None:
+        repeated_image.asset_id = ""
+        repeated_image.metadata.pop("bound_image_source", None)
+        repeated_image.metadata["placeholder"] = True
+        repeated_image.visible = False
     # Product-free duplicates must not retain secondary promotion amounts.
     extra_placeholders = {
         "promotion_integer": "00", "promotion_cents": ",00",
@@ -679,6 +705,9 @@ def duplicate_item_slot(session: GraphicsSession, slot_id: str, *, dx: float = 2
             if node_id in mapping
         }
         clone.metadata["decorative_nodes"] = [mapping[node_id] for node_id in source_slot.metadata.get("decorative_nodes") or [] if node_id in mapping]
+        repeated_image_id = str(source_slot.metadata.get("image_repeat_node_id") or "")
+        if repeated_image_id:
+            clone.metadata["image_repeat_node_id"] = mapping.get(repeated_image_id, "")
         original_club_label = str(source_slot.metadata.get("club_label_node_id") or "")
         if original_club_label:
             clone.metadata["club_label_node_id"] = mapping.get(original_club_label, "")
@@ -977,5 +1006,14 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
         image_node.metadata["placeholder"] = not has_image
         if has_image:
             image_node.visible = True
+    # Keep both cutouts bound to one product (including image clearing).
+    repeated_image = session.page.node(str(slot.metadata.get("image_repeat_node_id") or ""))
+    if image_node is not None and repeated_image is not None:
+        repeated_image.asset_id = image_node.asset_id
+        repeated_image.metadata.pop("bound_image_source", None)
+        if image_node.metadata.get("bound_image_source"):
+            repeated_image.metadata["bound_image_source"] = image_node.metadata["bound_image_source"]
+        repeated_image.metadata["placeholder"] = image_node.metadata.get("placeholder", True)
+        repeated_image.visible = image_node.visible
     refresh_item_slot_metadata(session.page, slot)
     return True

@@ -35,13 +35,42 @@ def migrate_reference_slot(page, slot, presets) -> bool:
     preset_id = str(slot.metadata.get("preset_id") or "")
     if preset_id not in ("individual-beta44", "multi-cell-beta44"):
         return False
-    if int(slot.metadata.get("reference_fidelity_revision") or 0) >= 46:
+    if int(slot.metadata.get("reference_fidelity_revision") or 0) >= 47:
         return False
     root = page.node(str(slot.metadata.get("root_node_id") or ""))
     if root is None:
         return False
     root_rect = root.rect.normalized()
     roles = presets[preset_id].roles
+
+    # The PPTX Individual has two cutouts. Repair existing Beta46 scenes
+    # without modifying product IDs or the source image asset.
+    if preset_id == "individual-beta44":
+        primary = page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
+        repeated = page.node(str(slot.metadata.get("image_repeat_node_id") or ""))
+        if primary is not None:
+            repeat_rect = _rect(root_rect, [.236, .005, .41, .985])
+            if repeated is None:
+                repeated = GraphicsNode(
+                    kind=NodeKind.IMAGE,
+                    name="IMAGE ROLE · repeated product",
+                    transform=Transform(x=repeat_rect.x, y=repeat_rect.y,
+                                        width=repeat_rect.width, height=repeat_rect.height),
+                    style=copy.deepcopy(primary.style),
+                    z_index=9,
+                    metadata={"manual_item_slot_child": True,
+                              "item_slot_repeated_image": True,
+                              "placeholder": primary.metadata.get("placeholder", True)},
+                )
+                page.add_node(repeated, parent_id=root.id)
+                slot.metadata["image_repeat_node_id"] = repeated.id
+            else:
+                _set_bounds(repeated, repeat_rect, roles["image"].get("style"))
+            repeated.asset_id = primary.asset_id
+            repeated.metadata.pop("bound_image_source", None)
+            if primary.metadata.get("bound_image_source"):
+                repeated.metadata["bound_image_source"] = primary.metadata["bound_image_source"]
+            repeated.visible = primary.visible
 
     for role, key in ((BindingRole.IMAGE, "image"),
                       (BindingRole.NAME, "name"),
@@ -114,6 +143,8 @@ def migrate_reference_slot(page, slot, presets) -> bool:
             node.z_index = -40
         elif node.metadata.get("item_slot_price_background"):
             node.z_index = 30
+        elif node.metadata.get("item_slot_repeated_image"):
+            node.z_index = 9
         elif node.kind is NodeKind.IMAGE:
             node.z_index = 10
         elif node.kind is NodeKind.TEXT:
@@ -127,8 +158,8 @@ def migrate_reference_slot(page, slot, presets) -> bool:
         name_node.text = _format_reference_name(
             name_node.text, max_chars=19 if preset_id == "multi-cell-beta44" else 18)
 
-    root.metadata["reference_fidelity_revision"] = 46
-    slot.metadata["reference_fidelity_revision"] = 46
+    root.metadata["reference_fidelity_revision"] = 47
+    slot.metadata["reference_fidelity_revision"] = 47
     return True
 
 
@@ -137,7 +168,7 @@ def migrate_multi_parent(page, parent_id: str) -> bool:
     root = page.node(parent_id)
     if root is None or not root.metadata.get("multi_slot_beta44"):
         return False
-    if int(root.metadata.get("reference_fidelity_revision") or 0) >= 46:
+    if int(root.metadata.get("reference_fidelity_revision") or 0) >= 47:
         return False
     rect = root.rect.normalized()
     count = int(root.metadata.get("multi_count") or 5)
@@ -159,26 +190,26 @@ def migrate_multi_parent(page, parent_id: str) -> bool:
         paper = GraphicsNode(
             kind=NodeKind.RECT, name="Fundo branco da faixa",
             transform=Transform(x=rect.x, y=rect.y, width=rect.width,
-                                height=rect.height * .80),
+                                height=rect.height * .70),
             z_index=-110,
             style={"fill": WHITE, "stroke_width": 0},
             metadata={"multi_item_decoration": True})
         page.add_node(paper, parent_id=root.id)
     else:
-        _set_bounds(paper, Rect(rect.x, rect.y, rect.width, rect.height * .80))
+        _set_bounds(paper, Rect(rect.x, rect.y, rect.width, rect.height * .70))
         paper.z_index = -110
         paper.style = {"fill": WHITE, "stroke_width": 0}
     if footer is not None:
-        _set_bounds(footer, Rect(rect.x, rect.y + rect.height * .77,
-                                 rect.width, rect.height * .23))
+        _set_bounds(footer, Rect(rect.x, rect.y + rect.height * .70,
+                                 rect.width, rect.height * .30))
         footer.style = {"fill": BLUE, "stroke_width": 0, "radius_ratio": .29}
         footer.z_index = -100
     for index, sep in enumerate(sorted(separators, key=lambda n: n.name), start=1):
         _set_bounds(sep, Rect(rect.x + index * rect.width / count - 1.2,
-                              rect.y + rect.height * .17,
-                              2.4, rect.height * .56))
+                              rect.y + rect.height * .14,
+                              2.4, rect.height * .47))
         sep.style = {"fill": BLUE, "stroke_width": 0}
         sep.z_index = 8
-    root.metadata["reference_pptx"] = "multi slots(1).pptx"
-    root.metadata["reference_fidelity_revision"] = 46
+    root.metadata["reference_pptx"] = "multi slots(2).pptx"
+    root.metadata["reference_fidelity_revision"] = 47
     return True

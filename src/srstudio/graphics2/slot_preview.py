@@ -73,6 +73,8 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
     if QGuiApplication.instance() is None:
         raise RuntimeError("Qt previews need QGuiApplication")
 
+    # Native Windows Qt provides the real font database; offscreen mode may
+    # report no installed families. The visual CI renders on the native platform.
     # The same eleven heavy Qt renderings used to run on every launch.
     # Cache by the actual renderer/preset source and font availability so
     # changed slots invalidate naturally, with no stale fake thumbnails.
@@ -97,7 +99,9 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
         digest.update(str("Anton" in QFontDatabase.families()).encode("ascii"))
         root = Path(gettempdir()) / ("sr-g2-real-slot-preview-" + digest.hexdigest()[:16])
     else:
-        root = Path(directory)
+        # Qt render/export resolves local images strictly. Relative preview
+        # directories broke thumbnails on Windows (IMAGE_NOT_LOCAL).
+        root = Path(directory).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     output: dict[str, str] = {}
     for kind in PREVIEW_TYPES:

@@ -20,8 +20,8 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
         raise ValueError("Modo de preços inválido.")
     page = session.page
     width = min(page.width * .94, 1180.0)
-    # PPT: approximately 4:1 complete strip aspect ratio, not a tall card.
-    height = min(page.height * .31, 315.0, width / 4.0)
+    # PPT: approximately 4.75:1 complete strip aspect ratio, not a tall card.
+    height = min(page.height * .31, 315.0, width / 4.75)
     left = (page.width - width) / 2 if x is None else float(x)
     top = page.height * .48 if y is None else float(y)
     root = GraphicsNode(
@@ -37,17 +37,17 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
         paper = GraphicsNode(
             kind=NodeKind.RECT,
             name="Fundo branco da faixa",
-            transform=Transform(x=left, y=top, width=width, height=height * .80),
+            transform=Transform(x=left, y=top, width=width, height=height * .70),
             z_index=-110,
             style={"fill": "#FFFFFF", "stroke_width": 0},
-            metadata={"multi_item_decoration": True, "source_reference": "multi slots(1).pptx"},
+            metadata={"multi_item_decoration": True, "source_reference": "multi slots(2).pptx"},
         )
         page.add_node(paper, parent_id=root.id)
         footer = GraphicsNode(
             kind=NodeKind.RECT,
             name="Faixa azul contínua",
-            transform=Transform(x=left, y=top + height * .77,
-                                width=width, height=height * .23),
+            transform=Transform(x=left, y=top + height * .70,
+                                width=width, height=height * .30),
             z_index=-100,
             style={"fill": "#105594", "stroke_width": 0, "radius_ratio": .29},
             metadata={"multi_item_decoration": True},
@@ -64,8 +64,8 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
                 kind=NodeKind.RECT,
                 name=f"Divisor {index}",
                 transform=Transform(x=left + index * cell_width - 1.2,
-                                    y=top + height * .17, width=2.4,
-                                    height=height * .56),
+                                    y=top + height * .14, width=2.4,
+                                    height=height * .47),
                 z_index=8,
                 style={"fill": "#105594", "stroke_width": 0},
                 metadata={"multi_item_decoration": True},
@@ -94,8 +94,8 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
             child_ids.append(slot.id)
     with session.transaction("Finalizar Smart Slot Multi"):
         root.metadata["child_slot_ids"] = child_ids
-        root.metadata["reference_pptx"] = "multi slots(1).pptx"
-        root.metadata["reference_fidelity_revision"] = 46
+        root.metadata["reference_pptx"] = "multi slots(2).pptx"
+        root.metadata["reference_fidelity_revision"] = 47
     session.selection = {root.id}
     session.anchor_id = root.id
     return {"root_node_id": root.id, "slot_ids": child_ids,

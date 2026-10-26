@@ -52,7 +52,7 @@ def test_original_reference_aspect_ratios_and_promo_label_clearance():
     for count in (5, 6):
         multi = create_multi_item_strip(s, count=count)
         group = s.page.node(multi["root_node_id"])
-        assert 3.9 <= group.rect.width / group.rect.height <= 4.1
+        assert 4.70 <= group.rect.width / group.rect.height <= 4.80
 
 
 def test_multi_caption_wraps_without_intersecting_product_image():
@@ -110,7 +110,8 @@ def test_multi_strips_match_ppt_structure(count):
     assert ribbon.style["radius_ratio"] >= .25
     assert ribbon.rect.x == pytest.approx(group.rect.x)
     assert ribbon.rect.width == pytest.approx(group.rect.width)
-    assert ribbon.rect.y == pytest.approx(group.rect.y + .77 * group.rect.height)
+    # Source multi slots(2).pptx: ribbon begins at ~74.8% of strip height.
+    assert ribbon.rect.y == pytest.approx(group.rect.y + .70 * group.rect.height)
     roots = [p.node(p.slots[sid].metadata["root_node_id"]) for sid in result["slot_ids"]]
     assert all(r.rect.width == pytest.approx(group.rect.width / count) for r in roots)
     assert all(r.rect.right <= group.rect.right + 1e-5 for r in roots)
@@ -203,12 +204,13 @@ def test_reference_slots_render_png_offscreen(tmp_path: Path):
     fixture = QImage(40, 70, QImage.Format_ARGB32)
     fixture.fill(QColor("#DDCD60"))
     assert fixture.save(str(bottle))
-    for slot in s.page.slots.values():
-        node = s.page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
-        if node:
-            node.metadata["bound_image_source"] = str(bottle)
-            node.metadata["placeholder"] = False
-            node.visible = True
+    for index, slot in enumerate(s.page.slots.values()):
+            # Bind through the actual product path: Individual(2) has two
+            # image cutouts, both must have a valid source for strict export.
+            assert bind_product_to_item_slot(s, slot.id, {
+                "id": f"RENDER-{index}", "name": "PRODUTO DA REFERÊNCIA",
+                "price": "7,21", "image_path": str(bottle),
+            })
     out = tmp_path / "beta45-ppt-reference.png"
     active_index = next(i for i, page in enumerate(s.document.pages) if page.id == s.page.id)
     report = render_png(s.document, out, page_index=active_index, dpi=96)
