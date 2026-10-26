@@ -97,7 +97,9 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
         digest.update(str("Anton" in QFontDatabase.families()).encode("ascii"))
         root = Path(gettempdir()) / ("sr-g2-real-slot-preview-" + digest.hexdigest()[:16])
     else:
-        root = Path(directory)
+        # Qt render/export resolves local images strictly. Relative preview
+        # directories broke thumbnails on Windows (IMAGE_NOT_LOCAL).
+        root = Path(directory).expanduser().resolve()
     root.mkdir(parents=True, exist_ok=True)
     output: dict[str, str] = {}
     for kind in PREVIEW_TYPES:
