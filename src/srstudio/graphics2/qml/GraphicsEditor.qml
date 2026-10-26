@@ -1533,7 +1533,9 @@ ApplicationWindow {
                                         anchors.bottomMargin: textInset(modelData.style, "bottom")
                                         visible: modelData.kind === "text"
                                         clip: true
-                                        text: modelData.text || ""
+                                        text: modelData.style.single_line
+                                              ? String(modelData.text || "").replace(/\\s+/g, " ").trim()
+                                              : (modelData.text || "")
                                         color: modelData.style.color || "#111827"
                                         font.family: modelData.style.font_family || "Segoe UI"
                                         font.pixelSize: Math.max(4, Number(modelData.style.font_size || 20) * (String(modelData.style.font_size_unit || "pt") === "pt" ? 1.333333 : 1) * zoom)
@@ -1542,9 +1544,10 @@ ApplicationWindow {
                                         font.letterSpacing: Number(modelData.style.letter_spacing || 0) * zoom
                                         horizontalAlignment: modelData.style.align === "left" ? Text.AlignLeft : modelData.style.align === "right" ? Text.AlignRight : Text.AlignHCenter
                                         verticalAlignment: modelData.style.v_align === "top" ? Text.AlignTop : modelData.style.v_align === "bottom" ? Text.AlignBottom : Text.AlignVCenter
-                                        wrapMode: modelData.style.nowrap ? Text.NoWrap : Text.WordWrap
-                                        maximumLineCount: 2147483647
-                                        fontSizeMode: fitTextInside ? Text.Fit : Text.FixedSize
+                                        wrapMode: (modelData.style.single_line || modelData.style.nowrap) ? Text.NoWrap : Text.WordWrap
+                                        maximumLineCount: modelData.style.single_line ? 1 : 2147483647
+                                        // HorizontalFit shrinks text horizontally, never stacks words.
+                                        fontSizeMode: modelData.style.single_line ? Text.HorizontalFit : (fitTextInside ? Text.Fit : Text.FixedSize)
                                         // Respect the existing slot typography contract at every zoom.
                                         // The PNG/PDF renderer already uses min_font_size.
                                         minimumPixelSize: Math.max(1, Number(modelData.style.min_font_size || 4) * zoom)
