@@ -226,6 +226,7 @@ def launch_qt_quick_editor(
         autosaveDone = Signal(bool, str, str)
         backgroundRemovalDone = Signal(bool, str, str, str)
         productImageDone = Signal(bool, str, str, str)
+        historicalImageBankDone = Signal(bool, str)
 
         def __init__(self) -> None:
             super().__init__()
@@ -248,6 +249,7 @@ def launch_qt_quick_editor(
             self.autosaveDone.connect(self._finish_autosave)
             self.backgroundRemovalDone.connect(self._finish_background_removal)
             self.productImageDone.connect(self._finish_product_image)
+            self.historicalImageBankDone.connect(self._finish_historical_bank_import)
             self._bg_running = False
             self._slot_previews_json: str | None = None
 
@@ -524,6 +526,39 @@ def launch_qt_quick_editor(
                     self._status = "Não foi possível abrir a pasta do Banco de Imagens."
             except Exception as exc:
                 self._status = f"Falha ao abrir Banco SR: {exc}"
+            self.statusChanged.emit()
+
+        @Slot(str)
+        def importHistoricalReviewZip(self, source: str) -> None:
+            """Install only pending images from a separately downloaded bank ZIP."""
+            target = _qml_file_path(source, ".zip", QUrl)
+            if target is None or not target.is_file():
+                self._status = "Selecione o ZIP histórico de revisão baixado do GitHub."
+                self.statusChanged.emit()
+                return
+            self._status = "Conferindo e importando imagens para revisão..."
+            self.statusChanged.emit()
+
+            def worker():
+                try:
+                    from .historical_review_import import import_historical_review_zip
+                    result = import_historical_review_zip(target)
+                    self.historicalImageBankDone.emit(True, json.dumps(result))
+                except Exception as exc:
+                    self.historicalImageBankDone.emit(False, f"{type(exc).__name__}: {exc}")
+
+            threading.Thread(target=worker, name="sr-historic-images-import", daemon=True).start()
+
+        def _finish_historical_bank_import(self, ok: bool, response: str) -> None:
+            if ok:
+                data = json.loads(response)
+                self._status = (
+                    f"Banco SR: {data['installed_pending']} novas imagens para revisão; "
+                    f"{data['already_present']} já existentes. Nenhuma aprovada automaticamente."
+                )
+                self.sceneChanged.emit()
+            else:
+                self._status = "Falha na importação do Banco SR: " + response
             self.statusChanged.emit()
 
         @Slot(str, str, str)
