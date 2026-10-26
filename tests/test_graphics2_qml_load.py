@@ -67,6 +67,29 @@ class _Bridge(QObject):
     def dispatch(self, _payload: str) -> str:
         return '{"ok":true}'
 
+    historicalImageBankDone = Signal(bool, str)
+
+    @Slot(result=str)
+    def imageBankJson(self) -> str:
+        return json.dumps({"images": [{"id": "fixture", "name": "IMAGEM PENDENTE",
+                                       "image_path": "", "status": "pending",
+                                       "source": "Banco SR", "can_link": False,
+                                       "product_id": ""}],
+                           "counts": {"pending": 1, "approved": 0, "manual": 0}})
+
+    @Slot()
+    def openImageBankFolder(self) -> None:
+        pass
+
+    @Slot(str)
+    def importHistoricalReviewZip(self, _source: str) -> None:
+        pass
+
+    @Slot(str, str, str)
+    def attachProductImage(self, _id: str, _name: str, _source: str) -> None:
+        pass
+
+
 
 def test_graphics_editor_qml_loads_offscreen_without_component_errors():
     app = QGuiApplication.instance() or QGuiApplication([])
@@ -77,3 +100,12 @@ def test_graphics_editor_qml_loads_offscreen_without_component_errors():
     engine.load(QUrl.fromLocalFile(str(qml.resolve())))
     app.processEvents()
     assert engine.rootObjects(), "GraphicsEditor.qml não carregou; há erro de QML ou dependência."
+    # Changing to Imagens must instantiate the actual bank gallery rather than
+    # reuse the Produtos ListView or raise an unknown bridge-slot exception.
+    window = engine.rootObjects()[0]
+    window.setProperty("studioSection", 3)
+    app.processEvents()
+    assert window.property("studioSection") == 3
+    inventory = window.property("imageBankInventory")
+    assert inventory is not None
+
