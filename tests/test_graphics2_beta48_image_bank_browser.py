@@ -76,3 +76,55 @@ def test_qml_images_has_independent_real_bank_gallery():
     assert "sceneBridge.openImageBankFolder()" in qml
     assert 'text: "Usar neste produto"' in qml
     assert 'enabled: !!modelData.can_link && !!imageBankTargetProductId' in qml
+
+
+
+def _review_archive(path: Path, original: Path, *, approved=False, corrupt=False):
+    from hashlib import sha256
+    from zipfile import ZipFile
+    import json
+    digest = sha256(original.read_bytes()).hexdigest()
+    key = digest[:24]
+    item = {
+        "kind": "unknown", "review_status": "accepted" if approved else "pending",
+        "path": str(original), "source_file": "legacy.png",
+        "metadata": {"requires_manual_approval": True, "original_file_sha256": digest},
+    }
+    with ZipFile(path, "w") as archive:
+        archive.writestr("index.json", json.dumps({key: item}))
+        archive.writestr(f"assets/{key}.png", b"broken" if corrupt else original.read_bytes())
+    return key
+
+
+def test_import_historical_zip_only_as_pending_with_no_auto_approval(tmp_path):
+    from srstudio.graphics2.historical_review_import import import_historical_review_zip
+    picture = _image(tmp_path / "legacy.png", "orange")
+    zipfile = tmp_path / "review.zip"
+    _review_archive(zipfile, picture)
+    bank_dir = tmp_path / "bank"
+    result = import_historical_review_zip(zipfile, destination=bank_dir)
+    assert result["installed_pending"] == 1
+    assert result["auto_approved"] == 0
+    assert result["manual_review_required"] is True
+    assert len(ImageLibrary(bank_dir).all(status="pending")) == 1
+    assert not ImageLibrary(bank_dir).all(status="accepted")
+    # Re-import must not create duplicates or elevate an image.
+    repeated = import_historical_review_zip(zipfile, destination=bank_dir)
+    assert repeated["installed_pending"] == 0
+    assert repeated["already_present"] == 1
+
+
+def test_rejected_historical_zip_never_changes_local_bank(tmp_path):
+    from srstudio.graphics2.historical_review_import import import_historical_review_zip
+    import pytest
+    picture = _image(tmp_path / "original.png", "purple")
+    archive = tmp_path / "bad.zip"
+    _review_archive(archive, picture, approved=True)
+    bank_dir = tmp_path / "bank"
+    with pytest.raises(ValueError, match="aprovar"):
+        import_historical_review_zip(archive, destination=bank_dir)
+    assert not (bank_dir / "index.json").exists()
+    _review_archive(archive, picture, corrupt=True)
+    with pytest.raises(ValueError, match="Checksum"):
+        import_historical_review_zip(archive, destination=bank_dir)
+    assert not (bank_dir / "index.json").exists()
