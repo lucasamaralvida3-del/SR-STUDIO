@@ -1,0 +1,66 @@
+name: G2 Beta50 Slot Visual Fidelity Windows
+
+on:
+  push:
+    branches:
+      - fix/g2-beta50-slot-visual-fidelity
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'tests/test_graphics2_beta50_slot_visual_fidelity.py'
+      - 'tests/test_graphics2_beta49_two_price_pptx_fidelity.py'
+      - '.github/workflows/g2-beta50-visual-windows.yml'
+      - '.github/workflows/g2-beta50-candidate-windows.yml'
+      - 'tools/promote_g2_beta50_launcher.py'
+      - 'tools/test_promote_g2_beta50_launcher.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  slot-geometry-and-qt:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install Graphics2 and Qt
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check screenshot defects, saved layouts and existing references
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_beta50_slot_visual_fidelity.py tests/test_graphics2_beta49_two_price_pptx_fidelity.py tests/test_graphics2_beta47_pptx_source_fidelity.py tests/test_graphics2_beta46_price_integrity.py tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_qml_load.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Render actual one and two-price Smart Slots using Windows Qt
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from PySide6.QtGui import QGuiApplication, QImage
+          from PySide6.QtCore import QUrl
+          from srstudio.graphics2.slot_preview import build_slot_preview_catalog
+          app = QGuiApplication.instance() or QGuiApplication([])
+          output = Path('beta50-slot-previews')
+          paths = build_slot_preview_catalog(output)
+          for mode in ('individual', 'individual-two', 'multi5', 'multi5-two', 'multi6', 'multi6-two'):
+              image = QImage(QUrl(paths[mode]).toLocalFile())
+              assert not image.isNull() and image.width() > 100 and image.height() > 20, mode
+              print('BETA50_QT_OK', mode, image.width(), image.height())
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: G2-Beta50-Qt-Individual-and-Multi-Previews
+          path: beta50-slot-previews/*.png
+          if-no-files-found: warn
+          retention-days: 30
