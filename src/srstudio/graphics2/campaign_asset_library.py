@@ -1,8 +1,7 @@
-"""Local, validated catalog of promotional backgrounds and transparent seals.
+"""Campaign artwork shipped with Beta updates, with optional legacy ZIP imports.
 
-The user imports a curated ZIP once. Artwork binaries live in the user data
-directory, not the Git repository, and are only attached to a scene after
-explicit selection. The reference PPTX and flattened posters are NOT artwork.
+Built-in originals and exact thumbnails live with the G2 host. Flattened
+posters containing prices and products must never be used as editable art.
 """
 from __future__ import annotations
 
@@ -29,11 +28,14 @@ def campaign_library_root(root=None) -> Path:
 
 
 def list_campaign_assets(*, root=None) -> list[dict]:
-    """List only installed artwork with existing local image files."""
+    """Include bundled artwork in runtime; explicit test/legacy roots stay isolated."""
+    from .builtin_campaign_catalog import builtin_campaign_assets
+
+    builtin = builtin_campaign_assets() if root is None else []
     library = campaign_library_root(root)
     index = library / "catalog.json"
     if not index.exists():
-        return []
+        return builtin
     try:
         rows = json.loads(index.read_text(encoding="utf-8"))
         if not isinstance(rows, list):
@@ -54,10 +56,12 @@ def list_campaign_assets(*, root=None) -> list[dict]:
                 "campaign_id": entry["campaign_id"], "kind": entry["kind"],
                 "name": str(entry.get("name") or source.name),
                 "path": str(source),
+                "preview_url": source.as_uri(),
+                "source": "user",
             })
-        return sorted(valid, key=lambda item: (item["campaign_id"], item["kind"], item["name"]))
+        return sorted(builtin + valid, key=lambda item: (item["campaign_id"], item["kind"], item["name"]))
     except (OSError, ValueError, TypeError):
-        return []
+        return builtin
 
 
 def import_campaign_pack(source, *, root=None) -> dict:
