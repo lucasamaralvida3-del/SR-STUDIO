@@ -42,7 +42,7 @@ TWO_PRICE_GEOMETRY = {
         "badge": (.572, .538, .338, .194),
         "promo_label": (.578, .548, .322, .051),
         "secondary_price": (.583, .612, .314, .101),
-        "club_label": (.562, .842, .420, .069),
+        "club_label": (.562, .846, .420, .065),
         "main_price": (.010, .715, .980, .280),
         # Disjoint money boxes: reais, cents, full NO CLUBE SR and unit.
         "currency": (.055, .290, .160, .440),
