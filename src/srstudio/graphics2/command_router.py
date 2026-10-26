@@ -393,7 +393,8 @@ class GraphicsCommandRouter:
                     image = self.session.page.node(str(slot.node_by_role.get("image") or ""))
                     if image is None or not (image.asset_id or image.metadata.get("bound_image_source")):
                         return CommandResult(True, changed,
-                            "Produto aplicado sem foto vinculada. Abra Imagens e associe uma foto aprovada ao código do produto.")
+                            "Produto aplicado sem foto vinculada. Abra Imagens e associe uma foto aprovada ao código do produto.",
+                            {"binding_route": binding_route, "image_linked": False})
                 return CommandResult(True, changed, "Produto aplicado ao Smart Slot.",
                                      {"binding_route": binding_route})
             if name in {"adjust_smart_slot", "set_smart_slot_bounds"}:
