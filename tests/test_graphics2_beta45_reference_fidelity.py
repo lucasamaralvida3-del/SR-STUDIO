@@ -204,12 +204,13 @@ def test_reference_slots_render_png_offscreen(tmp_path: Path):
     fixture = QImage(40, 70, QImage.Format_ARGB32)
     fixture.fill(QColor("#DDCD60"))
     assert fixture.save(str(bottle))
-    for slot in s.page.slots.values():
-        node = s.page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
-        if node:
-            node.metadata["bound_image_source"] = str(bottle)
-            node.metadata["placeholder"] = False
-            node.visible = True
+for index, slot in enumerate(s.page.slots.values()):
+            # Bind through the actual product path: Individual(2) has two
+            # image cutouts, both must have a valid source for strict export.
+            assert bind_product_to_item_slot(s, slot.id, {
+                "id": f"RENDER-{index}", "name": "PRODUTO DA REFERÊNCIA",
+                "price": "7,21", "image_path": str(bottle),
+            })
     out = tmp_path / "beta45-ppt-reference.png"
     active_index = next(i for i, page in enumerate(s.document.pages) if page.id == s.page.id)
     report = render_png(s.document, out, page_index=active_index, dpi=96)
