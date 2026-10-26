@@ -78,5 +78,5 @@ def test_multi_slot_and_date_commands_via_same_bridge():
 def test_qml_exposes_campaign_choice_and_warning_for_flattened_examples():
     source = (Path(qt_host.__file__).with_name("qml") / "GraphicsEditor.qml").read_text("utf-8")
     for expected in ("campaignCampaignChoice", "Quarta Café com Pão",
-                     "Quinta Filé", "Churrasco / Açougue", "preços ou datas gravados"):
+                     "Quinta Filé", "Churrasco / Açougue", "Sem importar arquivos"):
         assert expected in source
