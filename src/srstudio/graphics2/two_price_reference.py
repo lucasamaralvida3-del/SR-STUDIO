@@ -196,6 +196,15 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
             node.style["min_font_size"] = min_size
             node.style["nowrap"] = True
             node.style["wrap"] = False
+            node.style["pptx_wrap"] = "none"
+            if key == "club_label":
+                # QML Text.Fit in a narrow group may stack words vertically.
+                # This field is an intentional single horizontal line in both
+                # source PPTX references, in editor AND PNG/PDF export.
+                node.style["single_line"] = True
+                node.style["min_font_size"] = 3
+                node.style["align"] = "center"
+                node.transform.rotation = 0
             # Fonts and target bounds are source-measured: prevent a split
             # NO CLUBE / SR and keep all legends within their own box.
             if preset_id == "multi-cell-beta44":
@@ -213,6 +222,7 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
         if club is not None:
             club.text = "NO CLUBE SR"
             club.visible = True
+            club.style["single_line"] = True
     else:
         # The 1-price template must not inherit the 2-price text positions.
         from .item_slots import _builtins
