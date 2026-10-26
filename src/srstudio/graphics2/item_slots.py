@@ -1018,6 +1018,9 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
         if image_node.metadata.get("bound_image_source"):
             repeated_image.metadata["bound_image_source"] = image_node.metadata["bound_image_source"]
         repeated_image.metadata["placeholder"] = image_node.metadata.get("placeholder", True)
-        repeated_image.visible = image_node.visible
+        # The new two-price Individual PPTX has one large product; only
+        # the one-price variant uses the overlapping repeated copy.
+        repeated_image.visible = (image_node.visible and
+                                  slot.metadata.get("price_variant") != "two")
     refresh_item_slot_metadata(session.page, slot)
     return True
