@@ -61,7 +61,7 @@ def _ppt_role(x: float, y: float, w: float, h: float, *, size: float, color: str
               align: str = "center", weight: int = 700) -> dict[str, Any]:
     """An editable Anton-like source text role with generous fit bounds.
 
-    Measured from individual(1).pptx and multi slots(1).pptx.
+    Measured from user-supplied individual(2).pptx and multi slots(2).pptx.
     Font fallback is chosen by Qt when Anton is unavailable.
     """
     role = _text_role(x, y, w, h, size=size, weight=weight, align=align)
