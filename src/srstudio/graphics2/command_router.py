@@ -42,6 +42,7 @@ class GraphicsCommandRouter:
         self.integrity_repair = repair_legacy_cross_page_ids(self.session.document)
         self.snap = SnapSettings()
         self._clipboard: dict[str, Any] | None = None
+        self._campaign_assets_cache: list[dict] | None = None
 
     def payload(self) -> dict[str, Any]:
         scene = self.session.document.to_dict()
@@ -62,6 +63,10 @@ class GraphicsCommandRouter:
             "products": list(self.session.document.metadata.get("products") or []),
             "integrity_repair": self.integrity_repair.to_dict(),
         }
+        if self._campaign_assets_cache is None:
+            from .campaign_asset_library import list_campaign_assets
+            self._campaign_assets_cache = list_campaign_assets()
+        scene["editor"]["campaign_assets"] = list(self._campaign_assets_cache)
         return scene
 
     def dispatch_json(self, raw: str, *, include_scene_payload: bool = True) -> str:
@@ -386,6 +391,13 @@ class GraphicsCommandRouter:
                     self.session, str(command.get("theme") or "azul"),
                     slot_ids=None if all_slots else [slot_id], entire_page=all_slots)
                 return CommandResult(True, bool(count), "Cores dos Smart Slots atualizadas.", {"count": count})
+            if name == "import_campaign_pack":
+                from .campaign_asset_library import import_campaign_pack, list_campaign_assets
+                stats = import_campaign_pack(str(command.get("path") or ""))
+                self._campaign_assets_cache = list_campaign_assets()
+                return CommandResult(True, False,
+                    f'Acervo promocional importado: {stats["imported"]} imagens.',
+                    stats)
             if name == "set_campaign_art":
                 from .campaign_tools import apply_campaign_art
                 node_id = apply_campaign_art(
