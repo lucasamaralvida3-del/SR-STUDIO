@@ -125,7 +125,7 @@ jobs:
   publish:
     # This runs only after the tested, packaged Windows artifact exists.
     # Stable branches and existing releases are never modified.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/g2-beta54-terca-verde-editor'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/g2-beta54-promotion-art-catalog'
     needs: [validate, package]
     runs-on: ubuntu-latest
     timeout-minutes: 30
