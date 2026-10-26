@@ -100,7 +100,7 @@ def test_editor_command_uses_specialized_reference_binding_and_exact_sku_image(m
     result = router.dispatch(
         {"name": "bind_product", "slot_id": slot.id, "product_id": "CAF-500"})
     assert result.ok and result.changed
-    assert result.payload and result.payload["binding_route"] == "manual-item-slot", (
+    assert result.payload and result.payload.get("binding_route") == "manual-item-slot", (
         result.payload, result.message)
     current = s.page.slots[slot.id]
     assert "original_product_snapshot" in current.metadata, (
