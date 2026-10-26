@@ -24,6 +24,22 @@ class CompositionResult:
     unused_slot_ids: tuple[str, ...]
 
 
+def _fit_component(x: float, y: float, w: float, h: float, ratio: float):
+    """Contain a canonical Smart Slot without distorting its PPTX artwork.
+
+    A composition is a map of *locations*, not permission to stretch its
+    original product images, price plate and typography independently.
+    """
+    if min(w, h, ratio) <= 0:
+        raise ValueError("Área inválida para composição de Smart Slots.")
+    if w / h > ratio:
+        fitted_w, fitted_h = h * ratio, h
+    else:
+        fitted_w, fitted_h = w, w / ratio
+    return (x + (w - fitted_w) / 2, y + (h - fitted_h) / 2,
+            fitted_w, fitted_h)
+
+
 def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "auto",
                            reuse_existing: bool = True) -> CompositionResult:
     """Position real Smart Slots while retaining existing products.
@@ -171,7 +187,8 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
                 multi_root_id = multi5.id
                 ids = list(multi5.metadata.get("child_slot_ids") or [])
                 reused.extend(ids)
-            session.resize_node(multi_root_id, x=x, y=y, width=w, height=h)
+            fx, fy, fw, fh = _fit_component(x, y, w, h, 4.0)
+            session.resize_node(multi_root_id, x=fx, y=fy, width=fw, height=fh)
             set_reference_price_mode(session, ids, price_mode)
             arranged.extend(ids)
             root_ids.append(multi_root_id)
@@ -184,7 +201,11 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
             slot = create_item_slot(session, "individual-beta44", x=x, y=y)
             created.append(slot.id)
         root_id = str(slot.metadata["root_node_id"])
-        session.resize_node(root_id, x=x, y=y, width=w, height=h)
+        root = page.node(root_id)
+        source_ratio = (root.rect.width / root.rect.height
+                        if root and root.rect.height > 0 else 460.0 / 490.0)
+        fx, fy, fw, fh = _fit_component(x, y, w, h, source_ratio)
+        session.resize_node(root_id, x=fx, y=fy, width=fw, height=fh)
         if slot.metadata.get("preset_id") == "individual-beta44":
             set_reference_price_mode(session, [slot.id], price_mode)
         arranged.append(slot.id)
