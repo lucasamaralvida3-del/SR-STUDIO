@@ -110,7 +110,8 @@ def test_multi_strips_match_ppt_structure(count):
     assert ribbon.style["radius_ratio"] >= .25
     assert ribbon.rect.x == pytest.approx(group.rect.x)
     assert ribbon.rect.width == pytest.approx(group.rect.width)
-    assert ribbon.rect.y == pytest.approx(group.rect.y + .77 * group.rect.height)
+    # Source multi slots(2).pptx: ribbon begins at ~74.8% of strip height.
+    assert ribbon.rect.y == pytest.approx(group.rect.y + .748 * group.rect.height)
     roots = [p.node(p.slots[sid].metadata["root_node_id"]) for sid in result["slot_ids"]]
     assert all(r.rect.width == pytest.approx(group.rect.width / count) for r in roots)
     assert all(r.rect.right <= group.rect.right + 1e-5 for r in roots)
