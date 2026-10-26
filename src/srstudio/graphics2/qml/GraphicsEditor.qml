@@ -167,6 +167,23 @@ ApplicationWindow {
                                      ? JSON.parse(sceneBridge.slotPreviewsJson) : ({})
     property string selectedSlotId: ""
     property var campaignIds: ["terca-verde", "quarta-cafe", "quinta-file", "churrasco"]
+    function campaignArtworkList(kind) {
+        var items = scene && scene.editor && scene.editor.campaign_assets
+                    ? scene.editor.campaign_assets : []
+        var campaign = window.campaignIds[campaignCampaignChoice.currentIndex]
+        return items.filter(function(entry) {
+            return entry.kind === kind && entry.campaign_id === campaign
+        })
+    }
+    function applyInstalledCampaignArt(kind, index) {
+        var items = campaignArtworkList(kind)
+        if (index < 0 || index >= items.length)
+            return
+        sceneBridge.dispatch(JSON.stringify({
+            "name":"set_campaign_art", "kind":kind, "path":items[index].path,
+            "campaign_id":window.campaignIds[campaignCampaignChoice.currentIndex]
+        }))
+    }
     property string pendingImageProductId: ""
     property string pendingImageProductName: ""
     FileDialog {
@@ -174,6 +191,14 @@ ApplicationWindow {
         title: "Adicionar imagem ao produto"
         nameFilters: ["Imagens (*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tif *.tiff)"]
         onAccepted: sceneBridge.attachProductImage(window.pendingImageProductId, window.pendingImageProductName, selectedFile.toString())
+    }
+    FileDialog {
+        id: campaignPackDialog
+        title: "Importar pacote de campanhas do SR Studio"
+        nameFilters: ["Pacote ZIP de campanhas (*.zip)"]
+        onAccepted: sceneBridge.dispatch(JSON.stringify({
+            "name":"import_campaign_pack", "path":selectedFile.toString()
+        }))
     }
     FileDialog {
         id: campaignBackgroundDialog
@@ -1293,7 +1318,28 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     model: ["Terça Verde", "Quarta Café com Pão", "Quinta Filé", "Churrasco / Açougue"]
                                 }
+                                Button {
+                                    Layout.fillWidth: true
+                                    text: "Importar pacote de campanhas (ZIP)"
+                                    onClicked: campaignPackDialog.open()
+                                }
+                                Label {
+                                    Layout.fillWidth: true
+                                    wrapMode: Text.WordWrap; color: "#64748B"
+                                    text: "O pacote instala fundos e selos para escolher aqui. Fotos com preços ficam só como referência."
+                                }
                                 Label { text: "Fundos Promocionais"; color: "#284F8F"; font.bold: true }
+                                ComboBox {
+                                    id: installedCampaignBackground
+                                    Layout.fillWidth: true
+                                    model: window.campaignArtworkList("background").map(function(item) { return item.name })
+                                }
+                                Button {
+                                    Layout.fillWidth: true
+                                    text: "Aplicar fundo do acervo"
+                                    enabled: window.campaignArtworkList("background").length > 0
+                                    onClicked: window.applyInstalledCampaignArt("background", installedCampaignBackground.currentIndex)
+                                }
                                 Label {
                                     text: "Escolha o fundo limpo, sem produtos, preços ou datas gravados. Fotos prontas são referências de layout."
                                     Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#64748B"
@@ -1303,6 +1349,17 @@ ApplicationWindow {
                                     onClicked: campaignBackgroundDialog.open()
                                 }
                                 Label { text: "Selos Promocionais"; color: "#284F8F"; font.bold: true }
+                                ComboBox {
+                                    id: installedCampaignSeal
+                                    Layout.fillWidth: true
+                                    model: window.campaignArtworkList("seal").map(function(item) { return item.name })
+                                }
+                                Button {
+                                    Layout.fillWidth: true
+                                    text: "Aplicar selo do acervo"
+                                    enabled: window.campaignArtworkList("seal").length > 0
+                                    onClicked: window.applyInstalledCampaignArt("seal", installedCampaignSeal.currentIndex)
+                                }
                                 Label {
                                     text: "Logo/selo PNG transparente editável. Confira a posição para não encobrir a marca SR."
                                     Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#64748B"
