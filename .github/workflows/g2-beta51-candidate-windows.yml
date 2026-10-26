@@ -308,7 +308,7 @@ jobs:
           if test "$version" = "5.0.0-hybrid.g2beta.53"; then
             echo "Beta53 already active"; exit 0
           fi
-          test "$version" = "5.0.0-hybrid.g2beta.50"
+          test "$version" = "5.0.0-hybrid.g2beta.52"
           sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" --jq .sha)"
           encoded="$(base64 -w0 promotion/manifest-new.json)"
           gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json" \
