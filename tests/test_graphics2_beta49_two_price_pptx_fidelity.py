@@ -62,10 +62,18 @@ def test_two_price_pptx_has_separate_badge_with_both_labels(preset):
         TWO_PRICE_GEOMETRY[preset]["club_label"], abs=.005)
     assert slot.metadata["two_price_reference_revision"] == 49
     assert slot.product_id == "789012"
+    if preset == "individual-beta44":
+        primary = s.page.node(slot.node_by_role[BindingRole.IMAGE.value])
+        repeated = s.page.node(slot.metadata["image_repeat_node_id"])
+        assert repeated is not None and not repeated.visible
+        assert ratio_bbox(primary.rect, root.rect) == pytest.approx(
+            TWO_PRICE_GEOMETRY[preset]["image"], abs=.005)
 
     assert set_reference_price_mode(s, [slot.id], "one") == [slot.id]
     assert not badge.visible and not club.visible and not retail.visible
     assert promo.visible
+    if preset == "individual-beta44":
+        assert s.page.node(slot.metadata["image_repeat_node_id"]).visible
     assert slot.product_id == "789012"
     assert s.page.node(slot.metadata["role_area_nodes"]["price"]).rect == one_main
     assert set_reference_price_mode(s, [slot.id], "two") == [slot.id]
