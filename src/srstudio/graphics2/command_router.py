@@ -84,6 +84,29 @@ class GraphicsCommandRouter:
         if not name:
             return CommandResult(False, False, "Comando vazio.")
         try:
+            # Route manual SR ItemSlots BEFORE generic/legacy command handling.
+            # The UI's bind_product previously bypassed photo hydration and
+            # the two-price text layout, leaving large empty product areas.
+            if name == "bind_product":
+                sid = str(command.get("slot_id") or "")
+                slot = self.session.page.slots.get(sid)
+                if slot is not None and slot.metadata.get("source") == "manual-item-slot":
+                    from .item_slots import bind_product_to_item_slot
+                    item = command.get("product")
+                    if not isinstance(item, dict):
+                        product_id = str(command.get("product_id") or "")
+                        item = next((p for p in self.session.document.metadata.get("products") or []
+                                     if isinstance(p, dict) and
+                                     str(p.get("id") or p.get("product_id") or "") == product_id), None)
+                    if not isinstance(item, dict):
+                        return CommandResult(False, False, "Produto não encontrado.")
+                    changed = bind_product_to_item_slot(self.session, sid, item)
+                    picture = self.session.page.node(str(slot.node_by_role.get("image") or ""))
+                    linked = bool(picture and (picture.asset_id or picture.metadata.get("bound_image_source")))
+                    message = ("Produto aplicado ao Smart Slot." if linked else
+                               "Produto aplicado sem foto vinculada. Abra Imagens e associe uma foto aprovada ao código do produto.")
+                    return CommandResult(True, changed, message,
+                                         {"binding_route": "manual-item-slot", "image_linked": linked})
             if name == "select":
                 node_id = str(command.get("node_id") or "")
                 if not node_id:
