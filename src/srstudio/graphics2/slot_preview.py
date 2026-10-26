@@ -14,7 +14,7 @@ from tempfile import gettempdir
 
 PREVIEW_TYPES = ("blue", "individual", "individual-two", "multi5", "multi5-two",
                  "multi6", "multi6-two", "layout-individual", "layout-six",
-                 "layout-seven", "layout-eleven")
+                 "layout-seven", "layout-nine", "layout-eleven")
 
 
 def _sample_product(path: Path, index: int) -> dict:
@@ -82,7 +82,7 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
         from PySide6.QtGui import QFontDatabase
         sources = ("slot_preview.py", "item_slots.py", "slot_limpeza_blue.py",
                    "multi_item_strip.py", "two_price_reference.py", "promotion_composition.py",
-                   "promotion_layouts.py", "qt_renderer.py")
+                   "promotion_layouts.py", "campaign_tools.py", "qt_renderer.py")
         digest = sha256()
         import sys
         for name in sources:
@@ -152,9 +152,18 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
                 bind_product_to_item_slot(session, sid, product(index))
             rendered_root = None
 
+        # The chooser must not show white paper behind the transparent
+        # multi-strip artwork. The actual editor document is unchanged.
+        if not kind.startswith("layout-"):
+            for element in page.nodes.values():
+                if element.metadata.get("item_slot_background"):
+                    element.visible = False
+                if element.metadata.get("multi_item_decoration") and element.name == "Fundo branco da faixa":
+                    element.visible = False
         full = root / ("render-" + kind + ".png")
         report = render_png(doc, full, page_index=doc.pages.index(page),
-                            target_width=730)
+                            target_width=730,
+                            transparent=not kind.startswith("layout-"))
         raw = QImage(str(report.output))
         if raw.isNull():
             raise RuntimeError(f"Missing Qt preview for {kind}")

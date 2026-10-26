@@ -10,7 +10,7 @@ from dataclasses import asdict, dataclass
 from math import ceil
 from typing import Literal
 
-LayoutKind = Literal["individual", "six", "seven", "eleven", "auto"]
+LayoutKind = Literal["individual", "six", "seven", "nine", "eleven", "auto"]
 
 
 @dataclass(frozen=True)
@@ -47,7 +47,7 @@ def plan_promotion(mode: LayoutKind, *, count: int | None = None,
     Supported reference compositions: 1, 6, 7 and 11 products. Automatic
     mode also supports 5, and arbitrary counts from 1 to 24.
     """
-    presets = {"individual": 1, "six": 6, "seven": 7, "eleven": 11}
+    presets = {"individual": 1, "six": 6, "seven": 7, "nine": 9, "eleven": 11}
     if mode not in (*presets, "auto"):
         raise ValueError("Unknown promotion layout")
     n = presets[mode] if mode != "auto" else (count if count is not None else 6)
@@ -72,6 +72,20 @@ def plan_promotion(mode: LayoutKind, *, count: int | None = None,
         items.append(SlotPlacement(2, .492, top + right_height + .012,
                                    .463, right_height, "individual"))
         items.extend(_row(3, lower_count, split, bottom - split))
+    elif mode == "nine":
+        # Supplied Terça Verde PPTX page 2: one left hero, four small
+        # right-side cards (2x2), plus four equal bottom offers.
+        split = top + available * .62
+        items.append(SlotPlacement(0, .045, top, .425, split - top - .012, "individual"))
+        right_x, right_w, gap = .49, .465, .012
+        each_w = (right_w - gap) / 2
+        row_h = (split - top - .024) / 2
+        for row in range(2):
+            for col in range(2):
+                idx = 1 + row * 2 + col
+                items.append(SlotPlacement(idx, right_x + col * (each_w + gap),
+                                           top + row * (row_h + .012), each_w, row_h, "individual"))
+        items.extend(_row(5, 4, split, bottom - split))
     elif mode == "eleven":
         first = available * .32
         second = available * .32

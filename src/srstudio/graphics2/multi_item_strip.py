@@ -96,6 +96,17 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
         root.metadata["child_slot_ids"] = child_ids
         root.metadata["reference_pptx"] = "multi slots(2).pptx"
         root.metadata["reference_fidelity_revision"] = 47
+    from .campaign_tools import THEMES
+    theme = str(page.metadata.get("slot_theme") or "azul")
+    if theme != "azul":
+        target = THEMES.get(theme, theme)
+        for nid in page.descendants(root.id):
+            n = page.node(nid)
+            if n is not None:
+                for key in ("fill", "stroke", "color"):
+                    val = n.style.get(key)
+                    if isinstance(val, str) and val.upper() == "#105594":
+                        n.style[key] = target
     session.selection = {root.id}
     session.anchor_id = root.id
     return {"root_node_id": root.id, "slot_ids": child_ids,
