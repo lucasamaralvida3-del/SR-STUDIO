@@ -391,6 +391,19 @@ class GraphicsCommandRouter:
                     self.session, str(command.get("theme") or "azul"),
                     slot_ids=None if all_slots else [slot_id], entire_page=all_slots)
                 return CommandResult(True, bool(count), "Cores dos Smart Slots atualizadas.", {"count": count})
+            if name == "apply_campaign_preset":
+                from .campaign_tools import apply_campaign_preset
+                result = apply_campaign_preset(
+                    self.session, str(command.get("background_id") or ""))
+                return CommandResult(True, True,
+                    "Campanha aplicada: fundo completo, logo e cores automáticas.",
+                    result)
+            if name == "apply_campaign_seal":
+                from .campaign_tools import apply_campaign_seal
+                result = apply_campaign_seal(
+                    self.session, str(command.get("seal_id") or ""))
+                return CommandResult(True, True,
+                    "Selo alterado e posicionado automaticamente.", result)
             if name == "import_campaign_pack":
                 from .campaign_asset_library import import_campaign_pack, list_campaign_assets
                 stats = import_campaign_pack(str(command.get("path") or ""))
