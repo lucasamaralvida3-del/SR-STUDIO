@@ -84,6 +84,12 @@ def test_editor_command_uses_specialized_reference_binding_and_exact_sku_image(m
     from srstudio.graphics2.legacy_image_bank_bridge import complete_product_image
     assert "CAF-500" in read_product_links()
     assert Path(complete_product_image(product())["image_path"]).is_file()
+    direct = session()
+    direct_slot = create_item_slot(direct, "individual-beta44")
+    assert bind_product_to_item_slot(direct, direct_slot.id, product())
+    direct_photo = direct.page.node(direct_slot.node_by_role[BindingRole.IMAGE.value])
+    assert direct_photo.asset_id or direct_photo.metadata.get("bound_image_source"), (
+        "Direct ItemSlot binder did not retain the exact-SKU image")
     s = session()
     slot = create_item_slot(s, "individual-beta44")
     s.document.metadata["products"] = [product()]
