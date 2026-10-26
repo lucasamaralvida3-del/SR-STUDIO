@@ -1,0 +1,64 @@
+name: G2 Beta51 Text and Image Binding Windows
+
+on:
+  push:
+    branches: [fix/g2-beta51-legibility-and-safe-image-links]
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'tests/test_graphics2_beta51_legibility_and_image_links.py'
+      - 'tests/test_graphics2_beta50_slot_visual_fidelity.py'
+      - '.github/workflows/g2-beta51-legibility-windows.yml'
+      - '.github/workflows/g2-beta51-candidate-windows.yml'
+      - 'tools/promote_g2_beta51_launcher.py'
+      - 'tools/test_promote_g2_beta51_launcher.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  no-overlap-and-images:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      QT_QPA_PLATFORM: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install graphics2 and tests
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Check text collision and photo approval regression
+        shell: pwsh
+        run: |
+          python -m pytest -q tests/test_graphics2_beta51_legibility_and_image_links.py tests/test_graphics2_beta50_slot_visual_fidelity.py tests/test_graphics2_beta49_two_price_pptx_fidelity.py tests/test_graphics2_beta48_image_bank_browser.py tests/test_graphics2_beta47_pptx_source_fidelity.py tests/test_graphics2_beta46_price_integrity.py tests/test_graphics2_qml_load.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Render true Qt preview and verify nonempty output
+        shell: pwsh
+        run: |
+          @'
+          from pathlib import Path
+          from PySide6.QtGui import QGuiApplication, QImage
+          from PySide6.QtCore import QUrl
+          from srstudio.graphics2.slot_preview import build_slot_preview_catalog
+          app = QGuiApplication.instance() or QGuiApplication([])
+          previews = build_slot_preview_catalog(Path("beta51-preview"))
+          for name in ("individual", "individual-two", "multi5", "multi5-two", "multi6", "multi6-two"):
+              image = QImage(QUrl(previews[name]).toLocalFile())
+              assert not image.isNull() and image.width() > 80 and image.height() > 20
+              print("BETA51_RENDER_OK", name, image.width(), image.height())
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: G2-Beta51-Qt-Text-Image-Previews
+          path: beta51-preview/*.png
+          retention-days: 30
+          if-no-files-found: warn
