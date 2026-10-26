@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from srstudio.graphics2.command_router import GraphicsCommandRouter
+from srstudio.graphics2.item_slot_host import ItemSlotCommandRouter
 from srstudio.graphics2.item_slots import create_item_slot, bind_product_to_item_slot, refresh_all_item_slots
 from srstudio.graphics2.model import BindingRole, GraphicsDocument, GraphicsPage
 from srstudio.graphics2.multi_item_strip import create_multi_item_strip
@@ -95,7 +95,7 @@ def test_editor_command_uses_specialized_reference_binding_and_exact_sku_image(m
     s.document.metadata["products"] = [product()]
     from srstudio.graphics2.item_slots import is_manual_item_slot
     assert is_manual_item_slot(slot)
-    router = GraphicsCommandRouter(s)
+    router = ItemSlotCommandRouter(s)
     assert is_manual_item_slot(s.page.slots[slot.id]), s.page.slots[slot.id].metadata
     result = router.dispatch(
         {"name": "bind_product", "slot_id": slot.id, "product_id": "CAF-500"})
@@ -117,7 +117,7 @@ def test_editor_command_uses_specialized_reference_binding_and_exact_sku_image(m
 
     # A different SKU without an approved photo must *not* keep CAF-500's pack.
     s.document.metadata["products"] = [product("OUTRO-123")]
-    next_result = GraphicsCommandRouter(s).dispatch(
+    next_result = ItemSlotCommandRouter(s).dispatch(
         {"name": "bind_product", "slot_id": slot.id, "product_id": "OUTRO-123"})
     assert next_result.ok
     assert "sem foto" in next_result.message.lower()
