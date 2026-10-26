@@ -48,7 +48,12 @@ jobs:
           from srstudio.graphics2.slot_preview import build_slot_preview_catalog, PREVIEW_TYPES
           app = QGuiApplication.instance() or QGuiApplication([])
           print('QT_PLATFORM', QGuiApplication.platformName())
-          print('SOURCE_FONTS', [x for x in QFontDatabase.families() if x in ('Anton', 'Impact')])
+          available = {x.casefold() for x in QFontDatabase.families()}
+          from srstudio.graphics2.item_slots import _ppt_role
+          selected = _ppt_role(.0, .0, 1., 1., size=18, color='#105594')['style']['font_family']
+          print('RENDER_FONT', selected)
+          print('AVAILABLE_WINDOWS_FONTS', sorted(QFontDatabase.families())[:45])
+          assert selected.casefold() in available, ('PPTX font missing', selected)
           output = Path('beta47-previews')
           links = build_slot_preview_catalog(output)
           assert set(links) == set(PREVIEW_TYPES), (links.keys(), PREVIEW_TYPES)
