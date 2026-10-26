@@ -373,11 +373,14 @@ class GraphicsCommandRouter:
                 slot = self.session.page.slots.get(slot_id)
                 if slot is None:
                     return CommandResult(False, False, "Smart Slot não encontrado.")
+                binding_route = "generic"
                 if slot.metadata.get("source") == "canva-smart-slot":
+                    binding_route = "canva"
                     changed = CanvaBindingService.bind(self.session, slot_id, product)
                 else:
                     from .item_slots import is_manual_item_slot, bind_product_to_item_slot
                     if is_manual_item_slot(slot):
+                        binding_route = "manual-item-slot"
                         # IMPORTANT: generic GraphicsSession.bind_product does
                         # not lay out the 1/2-price plates or hydrate exact SKU
                         # photos. The QML 'bind_product' command must use the
@@ -391,7 +394,8 @@ class GraphicsCommandRouter:
                     if image is None or not (image.asset_id or image.metadata.get("bound_image_source")):
                         return CommandResult(True, changed,
                             "Produto aplicado sem foto vinculada. Abra Imagens e associe uma foto aprovada ao código do produto.")
-                return CommandResult(True, changed, "Produto aplicado ao Smart Slot.")
+                return CommandResult(True, changed, "Produto aplicado ao Smart Slot.",
+                                     {"binding_route": binding_route})
             if name in {"adjust_smart_slot", "set_smart_slot_bounds"}:
                 slot_id = str(command.get("slot_id") or "")
                 if slot_id not in self.session.page.slots:
