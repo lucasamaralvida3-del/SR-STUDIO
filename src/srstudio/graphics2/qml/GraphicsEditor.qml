@@ -173,16 +173,16 @@ ApplicationWindow {
         var campaign = window.campaignIds[campaignCampaignChoice.currentIndex]
         return items.filter(function(entry) {
             return entry.kind === kind && entry.campaign_id === campaign
+                   && entry.source === "builtin"
         })
     }
     function applyInstalledCampaignArt(kind, index) {
         var items = campaignArtworkList(kind)
         if (index < 0 || index >= items.length)
             return
-        sceneBridge.dispatch(JSON.stringify({
-            "name":"set_campaign_art", "kind":kind, "path":items[index].path,
-            "campaign_id":window.campaignIds[campaignCampaignChoice.currentIndex]
-        }))
+        sceneBridge.dispatch(JSON.stringify(kind === "background"
+            ? {"name":"apply_campaign_preset", "background_id":items[index].id}
+            : {"name":"apply_campaign_seal", "seal_id":items[index].id}))
     }
     property string pendingImageProductId: ""
     property string pendingImageProductName: ""
@@ -1318,55 +1318,90 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     model: ["Terça Verde", "Quarta Café com Pão", "Quinta Filé", "Churrasco / Açougue"]
                                 }
-                                Button {
-                                    Layout.fillWidth: true
-                                    text: "Importar pacote de campanhas (ZIP)"
-                                    onClicked: campaignPackDialog.open()
-                                }
                                 Label {
-                                    Layout.fillWidth: true
-                                    wrapMode: Text.WordWrap; color: "#64748B"
-                                    text: "O pacote instala fundos e selos para escolher aqui. Fotos com preços ficam só como referência."
+                                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                    color: "#64748B"
+                                    text: "Escolha uma miniatura. O fundo ocupa toda a página e o selo correspondente é colocado automaticamente. Sem importar arquivos."
                                 }
                                 Label { text: "Fundos Promocionais"; color: "#284F8F"; font.bold: true }
-                                ComboBox {
-                                    id: installedCampaignBackground
+                                GridLayout {
                                     Layout.fillWidth: true
-                                    model: window.campaignArtworkList("background").map(function(item) { return item.name })
+                                    columns: 2
+                                    rowSpacing: 8; columnSpacing: 7
+                                    Repeater {
+                                        model: window.campaignArtworkList("background")
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            required property int index
+                                            Layout.preferredWidth: 109
+                                            Layout.preferredHeight: 158
+                                            color: "#F8FAFC"
+                                            radius: 7; border.width: 1
+                                            border.color: page && page.metadata && page.metadata.campaign_background_asset === modelData.id
+                                                ? "#1673C5" : "#DDE5F0"
+                                            Image {
+                                                anchors.left: parent.left; anchors.right: parent.right
+                                                anchors.top: parent.top; anchors.margins: 5
+                                                height: 125; asynchronous: true
+                                                source: modelData.preview_url || ""
+                                                fillMode: Image.PreserveAspectCrop
+                                                sourceSize.width: 148
+                                            }
+                                            Label {
+                                                anchors.bottom: parent.bottom
+                                                anchors.left: parent.left; anchors.right: parent.right
+                                                height: 20; horizontalAlignment: Text.AlignHCenter
+                                                font.pixelSize: 10; elide: Text.ElideRight
+                                                text: modelData.name || "Fundo"
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: window.applyInstalledCampaignArt("background", index)
+                                            }
+                                        }
+                                    }
                                 }
-                                Button {
-                                    Layout.fillWidth: true
-                                    text: "Aplicar fundo do acervo"
-                                    enabled: window.campaignArtworkList("background").length > 0
-                                    onClicked: window.applyInstalledCampaignArt("background", installedCampaignBackground.currentIndex)
-                                }
+                                Label { text: "Logos e Selos Promocionais"; color: "#284F8F"; font.bold: true }
                                 Label {
-                                    text: "Escolha o fundo limpo, sem produtos, preços ou datas gravados. Fotos prontas são referências de layout."
-                                    Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#64748B"
+                                    Layout.fillWidth: true; wrapMode: Text.WordWrap
+                                    color: "#64748B"
+                                    text: "O logo padrão acompanha o fundo; toque em outra miniatura para trocar somente o logo."
                                 }
-                                Button {
-                                    Layout.fillWidth: true; text: "Selecionar fundo da campanha"
-                                    onClicked: campaignBackgroundDialog.open()
-                                }
-                                Label { text: "Selos Promocionais"; color: "#284F8F"; font.bold: true }
-                                ComboBox {
-                                    id: installedCampaignSeal
+                                GridLayout {
                                     Layout.fillWidth: true
-                                    model: window.campaignArtworkList("seal").map(function(item) { return item.name })
-                                }
-                                Button {
-                                    Layout.fillWidth: true
-                                    text: "Aplicar selo do acervo"
-                                    enabled: window.campaignArtworkList("seal").length > 0
-                                    onClicked: window.applyInstalledCampaignArt("seal", installedCampaignSeal.currentIndex)
-                                }
-                                Label {
-                                    text: "Logo/selo PNG transparente editável. Confira a posição para não encobrir a marca SR."
-                                    Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#64748B"
-                                }
-                                Button {
-                                    Layout.fillWidth: true; text: "Selecionar logo / selo da campanha"
-                                    onClicked: campaignSealDialog.open()
+                                    columns: 2
+                                    rowSpacing: 8; columnSpacing: 7
+                                    Repeater {
+                                        model: window.campaignArtworkList("seal")
+                                        delegate: Rectangle {
+                                            required property var modelData
+                                            required property int index
+                                            Layout.preferredWidth: 109
+                                            Layout.preferredHeight: 112
+                                            color: "#F8FAFC"; radius: 7; border.width: 1
+                                            border.color: page && page.metadata && page.metadata.campaign_seal_asset === modelData.id
+                                                ? "#1673C5" : "#DDE5F0"
+                                            Image {
+                                                anchors.left: parent.left; anchors.right: parent.right
+                                                anchors.top: parent.top; anchors.margins: 4
+                                                height: 85; asynchronous: true
+                                                source: modelData.preview_url || ""
+                                                fillMode: Image.PreserveAspectFit
+                                                sourceSize.width: 148
+                                            }
+                                            Label {
+                                                anchors.bottom: parent.bottom
+                                                anchors.left: parent.left; anchors.right: parent.right
+                                                height: 20; horizontalAlignment: Text.AlignHCenter
+                                                font.pixelSize: 10; elide: Text.ElideRight
+                                                text: modelData.name || "Selo"
+                                            }
+                                            MouseArea {
+                                                anchors.fill: parent; cursorShape: Qt.PointingHandCursor
+                                                onClicked: window.applyInstalledCampaignArt("seal", index)
+                                            }
+                                        }
+                                    }
                                 }
                                 Rectangle { Layout.fillWidth: true; height: 1; color: "#E5EAF4" }
                                 Label { text: "Data da Promoção"; color: "#284F8F"; font.bold: true }
