@@ -100,9 +100,11 @@ def test_graphics_editor_qml_separates_nowrap_from_autofit_policy():
     qml = (Path(qt_host.__file__).with_name("qml") / "GraphicsEditor.qml").read_text(encoding="utf-8")
 
     assert 'property bool fitTextInside: !!modelData.style.fit_inside_box || String(modelData.style.semantic_fit_policy || "").toLowerCase() === "overflow_only"' in qml
-    assert "wrapMode: modelData.style.nowrap ? Text.NoWrap : Text.WordWrap" in qml
-    assert "maximumLineCount: 2147483647" in qml
+    # Single-line promo labels opt in to horizontal fitting; ordinary nowrap
+    # and price-block overflow policy must retain their original semantics.
+    assert "wrapMode: (modelData.style.single_line || modelData.style.nowrap) ? Text.NoWrap : Text.WordWrap" in qml
+    assert "maximumLineCount: modelData.style.single_line ? 1 : 2147483647" in qml
     assert "maximumLineCount: modelData.style.nowrap ? 1 : 2147483647" not in qml
-    assert "fontSizeMode: fitTextInside ? Text.Fit : Text.FixedSize" in qml
+    assert "fontSizeMode: modelData.style.single_line ? Text.HorizontalFit : (fitTextInside ? Text.Fit : Text.FixedSize)" in qml
     assert "elide: fitTextInside ? Text.ElideNone : (modelData.style.nowrap ? Text.ElideNone : Text.ElideRight)" in qml
     assert "fontSizeMode: (modelData.style.fit_inside_box || modelData.style.nowrap) ? Text.Fit : Text.FixedSize" not in qml
