@@ -26,6 +26,8 @@ TWO_PRICE_GEOMETRY = {
         "secondary_price": (.542, .929, .140, .056),
         "club_label": (.720, .933, .230, .045),
         "main_price": (.610, .715, .390, .260),
+        "image": (.015, .015, .76, .970),
+        "unit": (.898, .846, .075, .085),
     },
     "multi-cell-beta44": {
         "badge": (.465, .524, .375, .220),
@@ -33,6 +35,7 @@ TWO_PRICE_GEOMETRY = {
         "secondary_price": (.475, .611, .350, .105),
         "club_label": (.460, .818, .460, .116),
         "main_price": (.010, .715, .980, .280),
+        "unit": (.760, .865, .185, .105),
     },
 }
 
@@ -92,6 +95,21 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
     badge = _ensure_badge(page, slot)
     if badge is not None:
         badge.visible = enabled
+
+    # The two-price Individual PPTX shows ONE large product cutout. The
+    # earlier one-price file shows the repeated cutouts; switching modes must
+    # restore them without replacing or dropping the SKU image.
+    primary = page.node(str(slot.node_by_role.get(BindingRole.IMAGE.value) or ""))
+    repeated = page.node(str(slot.metadata.get("image_repeat_node_id") or ""))
+    if primary is not None:
+        from .item_slots import _builtins
+        base_image = _builtins()[preset_id].roles["image"]["bounds"]
+        chosen_image = geometry.get("image", base_image) if enabled else base_image
+        _position(primary, _absolute(root_rect, chosen_image))
+    if repeated is not None:
+        _position(repeated, _absolute(root_rect, (.236, .005, .41, .985)))
+        repeated.visible = (not enabled) and bool(
+            repeated.asset_id or repeated.metadata.get("bound_image_source"))
 
     # All three text pieces remain editable text nodes in their original slot.
     promo = page.node(str(slot.metadata.get("promotion_label_node_id") or ""))
@@ -153,6 +171,12 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
         node = page.node(str(node_id))
         if node is not None and node.metadata.get("item_slot_price_background"):
             _position(node, price_rect)
+    unit = page.node(str(slot.node_by_role.get(BindingRole.UNIT.value) or ""))
+    if unit is not None:
+        unit_box = geometry.get("unit", roles["unit"]["bounds"]) if enabled else roles["unit"]["bounds"]
+        _position(unit, _absolute(root_rect, unit_box))
+        if enabled:
+            unit.z_index = 85
 
     slot.metadata["two_price_reference_revision"] = PPTX_TWO_PRICE_REVISION
     slot.metadata["two_price_reference_source"] = (
