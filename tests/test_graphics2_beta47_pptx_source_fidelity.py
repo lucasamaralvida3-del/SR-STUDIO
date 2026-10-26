@@ -90,3 +90,20 @@ def test_multi_pptx_uses_source_band_and_readable_separate_role_boxes(count):
         assert integer.rect.y >= footer.rect.y
         assert integer.style["font_size"] == pytest.approx(35.6)
         assert slot.metadata["reference_fidelity_revision"] == 47
+
+
+@pytest.mark.parametrize("mode", ["individual", "six", "seven", "eleven"])
+def test_layout_places_original_components_without_stretching(mode):
+    from srstudio.graphics2.promotion_layouts import plan_promotion
+    from srstudio.graphics2.promotion_composition import apply_slot_composition
+
+    s = session()
+    result = apply_slot_composition(s, plan_promotion(mode), reuse_existing=False)
+    for root_id in result.root_node_ids:
+        node = s.page.node(root_id)
+        assert node is not None
+        aspect = node.rect.width / node.rect.height
+        if node.metadata.get("multi_slot_beta44"):
+            assert aspect == pytest.approx(4.0, abs=.015)
+        elif node.metadata.get("preset_id") == "individual-beta44":
+            assert aspect == pytest.approx(460 / 490, abs=.015)
