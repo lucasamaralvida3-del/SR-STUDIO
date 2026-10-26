@@ -8,6 +8,8 @@ on:
       - 'src/srstudio/graphics2/**'
       - 'tests/test_graphics2_beta4*.py'
       - '.github/workflows/g2-beta47-visual-windows.yml'
+      - '.github/workflows/g2-beta47-candidate-windows.yml'
+      - 'tools/promote_g2_beta47_launcher.py'
   workflow_dispatch:
 
 permissions:
