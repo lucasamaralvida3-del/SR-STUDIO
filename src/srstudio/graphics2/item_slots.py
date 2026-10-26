@@ -502,6 +502,11 @@ def create_item_slot(session: GraphicsSession, preset_id: str, *, x: float | Non
         root.metadata["item_slot_id"] = slot.id
         root.metadata["reference_fidelity_revision"] = 47 if source_faithful else 1
         page.slots[slot.id] = slot
+        if preset_id == "individual-beta44":
+            # The source template has a white rounded panel behind the title.
+            # Create it even before a SKU is bound, not on a later refresh.
+            from .two_price_reference import ensure_individual_name_panel
+            ensure_individual_name_panel(page, slot)
 
     session.selection = {root.id}
     session.anchor_id = root.id
@@ -720,6 +725,9 @@ def duplicate_item_slot(session: GraphicsSession, slot_id: str, *, dx: float = 2
         old_two_badge = str(source_slot.metadata.get("two_price_badge_node_id") or "")
         if old_two_badge:
             clone.metadata["two_price_badge_node_id"] = mapping.get(old_two_badge, "")
+        old_name_panel = str(source_slot.metadata.get("name_backdrop_node_id") or "")
+        if old_name_panel:
+            clone.metadata["name_backdrop_node_id"] = mapping.get(old_name_panel, "")
         # Duplicating one cell produces a standalone card, not a reference
         # to the parent strip. The original multi strip stays untouched.
         for key in ("multi_parent_id", "multi_index", "multi_count"):
