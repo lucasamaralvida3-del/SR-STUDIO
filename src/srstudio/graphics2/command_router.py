@@ -84,29 +84,6 @@ class GraphicsCommandRouter:
         if not name:
             return CommandResult(False, False, "Comando vazio.")
         try:
-            # Route manual SR ItemSlots BEFORE generic/legacy command handling.
-            # The UI's bind_product previously bypassed photo hydration and
-            # the two-price text layout, leaving large empty product areas.
-            if name == "bind_product":
-                sid = str(command.get("slot_id") or "")
-                slot = self.session.page.slots.get(sid)
-                if slot is not None and slot.metadata.get("source") == "manual-item-slot":
-                    from .item_slots import bind_product_to_item_slot
-                    item = command.get("product")
-                    if not isinstance(item, dict):
-                        product_id = str(command.get("product_id") or "")
-                        item = next((p for p in self.session.document.metadata.get("products") or []
-                                     if isinstance(p, dict) and
-                                     str(p.get("id") or p.get("product_id") or "") == product_id), None)
-                    if not isinstance(item, dict):
-                        return CommandResult(False, False, "Produto não encontrado.")
-                    changed = bind_product_to_item_slot(self.session, sid, item)
-                    picture = self.session.page.node(str(slot.node_by_role.get("image") or ""))
-                    linked = bool(picture and (picture.asset_id or picture.metadata.get("bound_image_source")))
-                    message = ("Produto aplicado ao Smart Slot." if linked else
-                               "Produto aplicado sem foto vinculada. Abra Imagens e associe uma foto aprovada ao código do produto.")
-                    return CommandResult(True, changed, message,
-                                         {"binding_route": "manual-item-slot", "image_linked": linked})
             if name == "select":
                 node_id = str(command.get("node_id") or "")
                 if not node_id:
@@ -396,30 +373,11 @@ class GraphicsCommandRouter:
                 slot = self.session.page.slots.get(slot_id)
                 if slot is None:
                     return CommandResult(False, False, "Smart Slot não encontrado.")
-                binding_route = "generic"
                 if slot.metadata.get("source") == "canva-smart-slot":
-                    binding_route = "canva"
                     changed = CanvaBindingService.bind(self.session, slot_id, product)
                 else:
-                    from .item_slots import is_manual_item_slot, bind_product_to_item_slot
-                    if is_manual_item_slot(slot):
-                        binding_route = "manual-item-slot"
-                        # IMPORTANT: generic GraphicsSession.bind_product does
-                        # not lay out the 1/2-price plates or hydrate exact SKU
-                        # photos. The QML 'bind_product' command must use the
-                        # same specialized handler as drag/drop manual slots.
-                        changed = bind_product_to_item_slot(self.session, slot_id, product)
-                    else:
-                        self.session.bind_product(slot_id, product)
-                        changed = True
-                if changed and slot.metadata.get("manual_item_slot"):
-                    image = self.session.page.node(str(slot.node_by_role.get("image") or ""))
-                    if image is None or not (image.asset_id or image.metadata.get("bound_image_source")):
-                        return CommandResult(True, changed,
-                            "Produto aplicado sem foto vinculada. Abra Imagens e associe uma foto aprovada ao código do produto.",
-                            {"binding_route": binding_route, "image_linked": False})
-                return CommandResult(True, changed, "Produto aplicado ao Smart Slot.",
-                                     {"binding_route": binding_route})
+                    self.session.bind_product(slot_id, product); changed = True
+                return CommandResult(True, changed, "Produto aplicado ao Smart Slot.")
             if name in {"adjust_smart_slot", "set_smart_slot_bounds"}:
                 slot_id = str(command.get("slot_id") or "")
                 if slot_id not in self.session.page.slots:
