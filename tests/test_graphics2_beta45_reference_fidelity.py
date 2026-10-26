@@ -204,7 +204,7 @@ def test_reference_slots_render_png_offscreen(tmp_path: Path):
     fixture = QImage(40, 70, QImage.Format_ARGB32)
     fixture.fill(QColor("#DDCD60"))
     assert fixture.save(str(bottle))
-for index, slot in enumerate(s.page.slots.values()):
+    for index, slot in enumerate(s.page.slots.values()):
             # Bind through the actual product path: Individual(2) has two
             # image cutouts, both must have a valid source for strict export.
             assert bind_product_to_item_slot(s, slot.id, {
