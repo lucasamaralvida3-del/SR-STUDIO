@@ -32,6 +32,7 @@ def test_vertical_clube_multi_and_horizontal_individual():
     individual = create_item_slot(session, "individual-beta44")
     strip = create_multi_item_strip(session, count=5, price_mode="two")
     assert len(strip["slot_ids"]) == 5
+    set_reference_price_mode(session, strip["slot_ids"], "two")
     set_reference_price_mode(session, [individual.id], "two")
     for sid, expected in [(individual.id, 0)] + [(s, 90) for s in strip["slot_ids"]]:
         slot = session.page.slots[sid]
