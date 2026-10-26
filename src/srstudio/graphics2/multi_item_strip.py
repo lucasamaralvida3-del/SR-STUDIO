@@ -37,17 +37,17 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
         paper = GraphicsNode(
             kind=NodeKind.RECT,
             name="Fundo branco da faixa",
-            transform=Transform(x=left, y=top, width=width, height=height * .80),
+            transform=Transform(x=left, y=top, width=width, height=height * .748),
             z_index=-110,
             style={"fill": "#FFFFFF", "stroke_width": 0},
-            metadata={"multi_item_decoration": True, "source_reference": "multi slots(1).pptx"},
+            metadata={"multi_item_decoration": True, "source_reference": "multi slots(2).pptx"},
         )
         page.add_node(paper, parent_id=root.id)
         footer = GraphicsNode(
             kind=NodeKind.RECT,
             name="Faixa azul contínua",
-            transform=Transform(x=left, y=top + height * .77,
-                                width=width, height=height * .23),
+            transform=Transform(x=left, y=top + height * .748,
+                                width=width, height=height * .252),
             z_index=-100,
             style={"fill": "#105594", "stroke_width": 0, "radius_ratio": .29},
             metadata={"multi_item_decoration": True},
@@ -64,8 +64,8 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
                 kind=NodeKind.RECT,
                 name=f"Divisor {index}",
                 transform=Transform(x=left + index * cell_width - 1.2,
-                                    y=top + height * .17, width=2.4,
-                                    height=height * .56),
+                                    y=top + height * .267, width=2.4,
+                                    height=height * .40),
                 z_index=8,
                 style={"fill": "#105594", "stroke_width": 0},
                 metadata={"multi_item_decoration": True},
@@ -94,8 +94,8 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
             child_ids.append(slot.id)
     with session.transaction("Finalizar Smart Slot Multi"):
         root.metadata["child_slot_ids"] = child_ids
-        root.metadata["reference_pptx"] = "multi slots(1).pptx"
-        root.metadata["reference_fidelity_revision"] = 46
+        root.metadata["reference_pptx"] = "multi slots(2).pptx"
+        root.metadata["reference_fidelity_revision"] = 47
     session.selection = {root.id}
     session.anchor_id = root.id
     return {"root_node_id": root.id, "slot_ids": child_ids,
