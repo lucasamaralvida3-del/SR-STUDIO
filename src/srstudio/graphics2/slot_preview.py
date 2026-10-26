@@ -73,6 +73,8 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
     if QGuiApplication.instance() is None:
         raise RuntimeError("Qt previews need QGuiApplication")
 
+    # Native Windows Qt provides the real font database; offscreen mode may
+    # report no installed families. The visual CI renders on the native platform.
     # The same eleven heavy Qt renderings used to run on every launch.
     # Cache by the actual renderer/preset source and font availability so
     # changed slots invalidate naturally, with no stale fake thumbnails.
