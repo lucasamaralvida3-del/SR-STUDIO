@@ -501,6 +501,31 @@ def launch_qt_quick_editor(
             self.sceneChanged.emit()
             return result_raw
 
+        @Slot(result=str)
+        def imageBankJson(self) -> str:
+            """Inventory for the Imagens sidebar; no silent pending approvals."""
+            try:
+                from .image_bank_browser import image_bank_inventory
+                return json.dumps(image_bank_inventory(), ensure_ascii=False)
+            except Exception as exc:
+                return json.dumps({"images": [], "counts": {}, "error":
+                                   f"{type(exc).__name__}: {exc}"}, ensure_ascii=False)
+
+        @Slot()
+        def openImageBankFolder(self) -> None:
+            """Open the legacy bank actually used by the main SR Studio shell."""
+            try:
+                from PySide6.QtCore import QUrl
+                from PySide6.QtGui import QDesktopServices
+                from .legacy_image_bank_bridge import image_bank_root
+                root = image_bank_root()
+                root.mkdir(parents=True, exist_ok=True)
+                if not QDesktopServices.openUrl(QUrl.fromLocalFile(str(root.resolve()))):
+                    self._status = "Não foi possível abrir a pasta do Banco de Imagens."
+            except Exception as exc:
+                self._status = f"Falha ao abrir Banco SR: {exc}"
+            self.statusChanged.emit()
+
         @Slot(str, str, str)
         def attachProductImage(self, product_id: str, name: str, source: str) -> None:
             if not product_id.strip():
