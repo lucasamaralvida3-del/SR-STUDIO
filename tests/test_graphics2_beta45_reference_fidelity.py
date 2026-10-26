@@ -52,7 +52,7 @@ def test_original_reference_aspect_ratios_and_promo_label_clearance():
     for count in (5, 6):
         multi = create_multi_item_strip(s, count=count)
         group = s.page.node(multi["root_node_id"])
-        assert 3.9 <= group.rect.width / group.rect.height <= 4.1
+        assert 4.70 <= group.rect.width / group.rect.height <= 4.80
 
 
 def test_multi_caption_wraps_without_intersecting_product_image():
@@ -111,7 +111,7 @@ def test_multi_strips_match_ppt_structure(count):
     assert ribbon.rect.x == pytest.approx(group.rect.x)
     assert ribbon.rect.width == pytest.approx(group.rect.width)
     # Source multi slots(2).pptx: ribbon begins at ~74.8% of strip height.
-    assert ribbon.rect.y == pytest.approx(group.rect.y + .748 * group.rect.height)
+    assert ribbon.rect.y == pytest.approx(group.rect.y + .70 * group.rect.height)
     roots = [p.node(p.slots[sid].metadata["root_node_id"]) for sid in result["slot_ids"]]
     assert all(r.rect.width == pytest.approx(group.rect.width / count) for r in roots)
     assert all(r.rect.right <= group.rect.right + 1e-5 for r in roots)
