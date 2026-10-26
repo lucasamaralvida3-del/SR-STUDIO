@@ -27,6 +27,7 @@ from .item_slots import (
     refresh_all_item_slots,
     save_item_slot_as_preset,
     set_item_slot_role_bounds,
+    set_reference_price_mode,
 )
 from .slot_corpus_bindings import bind_product_to_quinta3_slot
 from .slot_limpeza_blue import (
@@ -127,10 +128,9 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
             return CommandResult(True, True, "Faixa Multi Itens inserida.", result)
 
         if name == "set_item_price_mode":
-            from .model import BindingRole
             mode = str(command.get("mode") or "auto")
             if mode not in ("auto", "one", "two"):
-                return CommandResult(False, False, "Modo inválido.")
+                return CommandResult(False, False, "Modo de preços inválido.")
             root_id = str(command.get("multi_root_id") or "")
             selected = [str(command.get("slot_id") or "")]
             if root_id:
@@ -138,27 +138,7 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                 if root is None or not root.metadata.get("multi_slot_beta44"):
                     return CommandResult(False, False, "Faixa Multi não encontrada.")
                 selected = list(root.metadata.get("child_slot_ids") or [])
-            updated = []
-            for sid in selected:
-                slot = self.session.page.slots.get(sid)
-                if not is_manual_item_slot(slot):
-                    continue
-                if slot.metadata.get("preset_id") not in ("individual-beta44", "multi-cell-beta44"):
-                    continue
-                with self.session.transaction("Alterar quantidade de preços"):
-                    slot.metadata["price_mode"] = mode
-                    second = self.session.page.node(str(slot.node_by_role.get(BindingRole.RETAIL_PRICE.value) or ""))
-                    if second is not None:
-                        second.visible = mode == "two" or (mode == "auto" and slot.metadata.get("price_variant") == "two")
-                        slot.metadata["price_variant"] = "two" if second.visible else "one"
-                        promotion = self.session.page.node(str(slot.metadata.get("promotion_label_node_id") or ""))
-                        if promotion is not None:
-                            promotion.visible = not second.visible
-                        club = self.session.page.node(str(slot.metadata.get("club_label_node_id") or ""))
-                        if club is not None:
-                            snapshot = slot.metadata.get("product_snapshot") or {}
-                            club.visible = bool(second.visible and (snapshot.get("club_price") or snapshot.get("app_price")))
-                updated.append(sid)
+            updated = set_reference_price_mode(self.session, selected, mode)
             return CommandResult(bool(updated), bool(updated), "Modo de preços atualizado.", {"slot_ids": updated})
 
         if name == "add_item_slot":
@@ -205,7 +185,7 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
 
         if name == "apply_promotion_layout":
             from .promotion_layouts import plan_promotion
-            from .model import Transform
+            from .promotion_composition import apply_slot_composition
             try:
                 plan = plan_promotion(
                     str(command.get("mode") or "auto"),
@@ -213,74 +193,28 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                     logo_reserved=float(command.get("logo_reserved", 0.24)),
                     variation=int(command.get("variation", 0)),
                 )
+                with self.session.transaction("Organizar layout com Smart Slots"):
+                    result = apply_slot_composition(
+                        self.session, plan,
+                        price_mode=str(command.get("price_mode") or "auto"),
+                        reuse_existing=bool(command.get("reuse_existing", True)),
+                    )
             except (ValueError, AssertionError, TypeError) as exc:
                 return CommandResult(False, False, str(exc))
-            price_mode = str(command.get("price_mode") or "auto")
-            if price_mode not in ("auto", "one", "two"):
-                return CommandResult(False, False, "Modo de preços inválido.")
-            # Multiple template insertions must not obscure existing
-            # product cards. Preserve the old page and create a fresh page
-            # with the same dimensions when any Smart Slots already exist.
-            if self.session.page.slots:
-                previous = self.session.page
-                previous_width, previous_height = previous.width, previous.height
-                previous_background = previous.background
-                self.session.add_page(name="Layout promocional")
-                with self.session.transaction("Preservar formato da página"):
-                    self.session.page.width = previous_width
-                    self.session.page.height = previous_height
-                    self.session.page.background = previous_background
-            page = self.session.page
-            created = []
-            # Each template is inserted as editable Smart Slots.
-            for position in plan.placements:
-                if plan.mode == "eleven" and position.index in (7, 8, 9, 10):
-                    # These four items are already owned by the 5-item group.
-                    continue
-                if plan.mode == "eleven" and position.index == 6:
-                    from .multi_item_strip import create_multi_item_strip
-                    end = plan.placements[10]
-                    x = page.width * position.x
-                    y = page.height * position.y
-                    group_width = page.width * (end.x + end.width - position.x)
-                    group_height = page.height * position.height
-                    multi = create_multi_item_strip(self.session, count=5,
-                                                    price_mode=price_mode,
-                                                    x=x, y=y)
-                    self.session.resize_node(
-                        multi["root_node_id"], x=x, y=y,
-                        width=group_width, height=group_height)
-                    created.extend(multi["slot_ids"])
-                    continue
-                target_x = page.width * position.x
-                target_y = page.height * position.y
-                target_w = page.width * position.width
-                target_h = page.height * position.height
-                slot = create_item_slot(self.session, "individual-beta44",
-                                        x=target_x, y=target_y)
-                slot.metadata["price_mode"] = price_mode
-                root_id = str(slot.metadata.get("root_node_id") or "")
-                root = page.node(root_id)
-                original = root.transform
-                sx = target_w / max(1.0, original.width)
-                sy = target_h / max(1.0, original.height)
-                with self.session.transaction("Dimensionar slot promocional"):
-                    for node_id in [root_id] + list(page.descendants(root_id)):
-                        node = page.node(node_id)
-                        if node is None:
-                            continue
-                        t = node.transform
-                        node.transform = Transform(
-                            x=target_x + (t.x - original.x) * sx,
-                            y=target_y + (t.y - original.y) * sy,
-                            width=max(1.0, t.width * sx),
-                            height=max(1.0, t.height * sy),
-                        )
-                created.append(slot.id)
-            return CommandResult(True, True, "Layout promocional inserido.", {
-                "slot_ids": created, "logo_reserved": plan.logo_reserved,
-                "page_id": page.id
-            })
+            return CommandResult(
+                True, True,
+                "Smart Slots reais organizados sem recriar seus produtos.",
+                {
+                    "slot_ids": list(result.slot_ids),
+                    "reused_slot_ids": list(result.reused_slot_ids),
+                    "created_slot_ids": list(result.created_slot_ids),
+                    "unused_slot_ids": list(result.unused_slot_ids),
+                    "root_node_ids": list(result.root_node_ids),
+                    "logo_reserved": plan.logo_reserved,
+                    "page_id": self.session.page.id,
+                    "component_source": "canonical-smart-slots",
+                },
+            )
 
         if name == "plan_promotion_layout":
             from .promotion_layouts import plan_promotion
@@ -380,6 +314,12 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                     product = next((item for item in products if str(item.get("id") or "") == product_id), None)
                 if not isinstance(product, dict):
                     return CommandResult(False, False, "Produto não encontrado.")
+
+                # The old SR ImageLibrary has a separate approved-image index.
+                # Resolve it only for products missing a usable picture; the
+                # user's explicit G2 image always takes precedence.
+                from .legacy_image_bank_bridge import complete_product_image
+                product = complete_product_image(product)
 
                 if slot.metadata.get("limpeza_blue_profile") == LIMPEZA_BLUE_ID:
                     changed = bind_product_to_limpeza_blue_slot(self.session, slot_id, product)

@@ -214,7 +214,9 @@ def launch_qt_quick_editor(
     router = GraphicsCommandRouter(session)
     gate = context.gate or inspect_production_gate(session.document, require_visual_fidelity=False)
     from .product_image_library import apply_stored_product_links
+    from .legacy_image_bank_bridge import hydrate_legacy_bank
     apply_stored_product_links(session.document)
+    hydrate_legacy_bank(session.document)
     preview_provider = create_live_scene_image_provider()
 
     class SceneBridge(QObject):
@@ -247,6 +249,21 @@ def launch_qt_quick_editor(
             self.backgroundRemovalDone.connect(self._finish_background_removal)
             self.productImageDone.connect(self._finish_product_image)
             self._bg_running = False
+            self._slot_previews_json: str | None = None
+
+        @Property(str, constant=True)
+        def slotPreviewsJson(self) -> str:
+            # Build preview files once, using the exact runtime scene
+            # constructors and production QPainter renderer. No separately
+            # drawn/decorated QML mini-cards can drift from actual slots.
+            if self._slot_previews_json is None:
+                try:
+                    from .slot_preview import build_slot_preview_catalog
+                    self._slot_previews_json = json.dumps(build_slot_preview_catalog())
+                except Exception as exc:
+                    self._slot_previews_json = "{}"
+                    self._status = f"Prévias dos Smart Slots: {type(exc).__name__}: {exc}"
+            return self._slot_previews_json
 
         @Property(str, notify=sceneChanged)
         def sceneJson(self) -> str:
@@ -254,6 +271,7 @@ def launch_qt_quick_editor(
             # Rehydrate after spreadsheet/catalog imports, without serializing
             # image bytes into the scene or mutating project image ownership.
             apply_stored_product_links(session.document)
+            hydrate_legacy_bank(session.document)
             payload = inject_preview_image_urls(router.payload(), session.document)
             editor = payload.setdefault("editor", {})
             editor["diagnostics"] = build_editor_diagnostics(
@@ -373,6 +391,7 @@ def launch_qt_quick_editor(
                 )
                 session.document = recovered
                 apply_stored_product_links(session.document)
+                hydrate_legacy_bank(session.document)
                 session.history.clear()
                 session.clear_selection()
                 context.document = recovered
@@ -401,6 +420,12 @@ def launch_qt_quick_editor(
             self._busy = True
             labels = {"save": "Salvando projeto", "pdf": "Exportando PDF", "png": "Exportando PNG"}
             self._status = f"{labels.get(kind, 'Processando')} · {target.name}..."
+            if kind in ("pdf", "png"):
+                from .slot_export_audit import inspect_smart_slot_flyer
+                scope = ({snapshot.active_page_id} if kind == "png" else None)
+                warnings = inspect_smart_slot_flyer(snapshot, page_ids=scope)
+                if warnings:
+                    self._status += f" · {len(warnings)} aviso(s) detectados antes da exportação"
             self.statusChanged.emit()
 
             def worker() -> None:
@@ -588,6 +613,7 @@ def launch_qt_quick_editor(
                 imported = GraphicsImportService().import_file(path, project_name=path.stem)
                 session.document = imported.document
                 apply_stored_product_links(session.document)
+                hydrate_legacy_bank(session.document)
                 session.history.clear()
                 session.clear_selection()
                 context.document = session.document
@@ -622,9 +648,12 @@ def launch_qt_quick_editor(
 
             def task(snapshot: GraphicsDocument, output: Path) -> str:
                 from .qt_renderer import render_pdf
+                from .slot_export_audit import inspect_smart_slot_flyer
 
+                issues = inspect_smart_slot_flyer(snapshot)
                 report = render_pdf(snapshot, output, dpi=600)
-                warning = f" · {len(report.warnings)} aviso(s)" if report.warnings else ""
+                counts = len(issues) + len(report.warnings)
+                warning = f" · {counts} aviso(s) de conteúdo/render" if counts else ""
                 return f"PDF exportado · {report.pages} página(s){warning}"
 
             self._start_file_job("pdf", target, task)
@@ -642,9 +671,13 @@ def launch_qt_quick_editor(
 
             def task(snapshot: GraphicsDocument, output: Path) -> str:
                 from .qt_renderer import render_png
+                from .slot_export_audit import inspect_smart_slot_flyer
 
+                issues = inspect_smart_slot_flyer(
+                    snapshot, page_ids={snapshot.pages[page_index].id})
                 report = render_png(snapshot, output, page_index=page_index, dpi=300)
-                warning = f" · {len(report.warnings)} aviso(s)" if report.warnings else ""
+                counts = len(issues) + len(report.warnings)
+                warning = f" · {counts} aviso(s) de conteúdo/render" if counts else ""
                 return f"PNG exportado · {report.width}×{report.height}px{warning}"
 
             self._start_file_job("png", target, task)

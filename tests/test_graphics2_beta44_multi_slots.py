@@ -134,9 +134,13 @@ def test_switching_promotion_layout_preserves_existing_page():
     page_count = len(session.document.pages)
     next_layout = router.dispatch({"name": "apply_promotion_layout", "mode": "seven"})
     assert next_layout.ok
-    assert len(session.document.pages) == page_count + 1
-    assert session.page.id != original_page_id
-    assert set(original_page.slots) == original_slot_ids
+    # The preset is only a positioning map: it must reuse the same page
+    # and the same six product slots, creating only the missing seventh.
+    assert len(session.document.pages) == page_count
+    assert session.page.id == original_page_id
+    assert set(original_page.slots).issuperset(original_slot_ids)
+    assert set(next_layout.payload["reused_slot_ids"]) == original_slot_ids
+    assert len(next_layout.payload["created_slot_ids"]) == 1
     assert len(session.page.slots) == 7
     assert session.page.width == original_page.width
     assert session.page.height == original_page.height

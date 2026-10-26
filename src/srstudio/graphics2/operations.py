@@ -73,6 +73,7 @@ class GraphicsSession:
         self.selection: set[str] = set()
         self.anchor_id: str | None = None
         self.history = TransactionHistory(history_limit)
+        self._transaction_depth = 0
 
     @property
     def page(self) -> GraphicsPage:
@@ -98,7 +99,18 @@ class GraphicsSession:
 
     @contextmanager
     def transaction(self, label: str) -> Iterator[None]:
+        # Nested edit operations belong to ONE user action. A predefined
+        # layout can create/resize many slots; a single Undo must restore
+        # everything, including linked prices, images and visibility.
+        if self._transaction_depth:
+            self._transaction_depth += 1
+            try:
+                yield
+            finally:
+                self._transaction_depth -= 1
+            return
         before = self.history.capture(self.document)
+        self._transaction_depth = 1
         try:
             yield
             assert_document_integrity(self.document)
@@ -106,7 +118,10 @@ class GraphicsSession:
             self.document = GraphicsDocument.from_dict(before)
             self.clear_selection()
             raise
-        self.history.push(label, before, self.history.capture(self.document))
+        else:
+            self.history.push(label, before, self.history.capture(self.document))
+        finally:
+            self._transaction_depth = 0
 
     def undo(self) -> bool:
         if not self.history.can_undo:
