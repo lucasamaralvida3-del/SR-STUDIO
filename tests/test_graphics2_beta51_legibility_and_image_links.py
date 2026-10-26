@@ -80,12 +80,19 @@ def test_editor_command_uses_specialized_reference_binding_and_exact_sku_image(m
     source = tmp_path / "cafe.png"
     Image.new("RGB", (80, 100), "blue").save(source)
     store_product_image("CAF-500", "CAFÉ VASCONCELOS", str(source))
+    from srstudio.graphics2.product_image_library import read_product_links
+    from srstudio.graphics2.legacy_image_bank_bridge import complete_product_image
+    assert "CAF-500" in read_product_links()
+    assert Path(complete_product_image(product())["image_path"]).is_file()
     s = session()
     slot = create_item_slot(s, "individual-beta44")
     s.document.metadata["products"] = [product()]
     result = GraphicsCommandRouter(s).dispatch(
         {"name": "bind_product", "slot_id": slot.id, "product_id": "CAF-500"})
     assert result.ok and result.changed
+    assert slot.metadata["original_product_snapshot"].get("image_path"), (
+        "Router did not hydrate stored SKU image",
+        slot.metadata["original_product_snapshot"], result.message)
     image = s.page.node(slot.node_by_role[BindingRole.IMAGE.value])
     assert image.asset_id or image.metadata.get("bound_image_source")
     assert image.visible
