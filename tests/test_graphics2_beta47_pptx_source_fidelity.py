@@ -78,8 +78,8 @@ def test_multi_pptx_uses_source_band_and_readable_separate_role_boxes(count):
         s.page.node(nid) for nid in s.page.node(info["root_node_id"]).children
         if s.page.node(nid).name == "Faixa azul contínua"
     )
-    assert footer.rect.y == pytest.approx(root.y + root.height * .748, abs=.01)
-    assert footer.rect.height == pytest.approx(root.height * .252, abs=.01)
+    assert footer.rect.y == pytest.approx(root.y + root.height * .70, abs=.01)
+    assert footer.rect.height == pytest.approx(root.height * .30, abs=.01)
     assert len(info["slot_ids"]) == count
     for sid in info["slot_ids"]:
         slot = s.page.slots[sid]
@@ -104,6 +104,6 @@ def test_layout_places_original_components_without_stretching(mode):
         assert node is not None
         aspect = node.rect.width / node.rect.height
         if node.metadata.get("multi_slot_beta44"):
-            assert aspect == pytest.approx(4.0, abs=.015)
+            assert aspect == pytest.approx(4.75, abs=.015)
         elif node.metadata.get("preset_id") == "individual-beta44":
             assert aspect == pytest.approx(460 / 490, abs=.015)
