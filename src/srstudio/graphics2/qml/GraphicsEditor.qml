@@ -166,6 +166,7 @@ ApplicationWindow {
     property var slotPreviewCatalog: sceneBridge && sceneBridge.slotPreviewsJson
                                      ? JSON.parse(sceneBridge.slotPreviewsJson) : ({})
     property string selectedSlotId: ""
+    property var campaignIds: ["terca-verde", "quarta-cafe", "quinta-file", "churrasco"]
     property string pendingImageProductId: ""
     property string pendingImageProductName: ""
     FileDialog {
@@ -176,18 +177,20 @@ ApplicationWindow {
     }
     FileDialog {
         id: campaignBackgroundDialog
-        title: "Fundo Terça Verde sem data fixa"
+        title: "Selecionar fundo da campanha (sem preços nem datas fixos)"
         nameFilters: ["Imagens (*.jpg *.jpeg *.png *.webp)"]
         onAccepted: sceneBridge.dispatch(JSON.stringify({
-            "name":"set_campaign_art", "kind":"background", "path":selectedFile.toString()
+            "name":"set_campaign_art", "kind":"background", "path":selectedFile.toString(),
+            "campaign_id":window.campaignIds[campaignCampaignChoice.currentIndex]
         }))
     }
     FileDialog {
         id: campaignSealDialog
-        title: "Selo Terça Verde sem fundo"
+        title: "Selecionar logo ou selo da campanha"
         nameFilters: ["Selos (*.png *.webp *.jpg *.jpeg)"]
         onAccepted: sceneBridge.dispatch(JSON.stringify({
-            "name":"set_campaign_art", "kind":"seal", "path":selectedFile.toString()
+            "name":"set_campaign_art", "kind":"seal", "path":selectedFile.toString(),
+            "campaign_id":window.campaignIds[campaignCampaignChoice.currentIndex]
         }))
     }
     FileDialog {
@@ -1102,9 +1105,9 @@ ApplicationWindow {
                                 Label { text: "Tema para os layouts"; color: "#284F8F"; font.bold: true }
                                 Label { text: "O layout reutiliza os Smart Slots reais, sem criar novas famílias."; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 Button {
-                                    Layout.fillWidth: true; text: "Verde Terça Verde · página inteira"
+                                    Layout.fillWidth: true; text: "Cor da campanha selecionada · página inteira"
                                     onClicked: sceneBridge.dispatch(JSON.stringify({
-                                        "name":"set_slot_theme", "theme":"terca-verde", "entire_page":true
+                                        "name":"set_slot_theme", "theme":window.campaignIds[campaignCampaignChoice.currentIndex], "entire_page":true
                                     }))
                                 }
                                 Label { text: "Auto Layout"; color: "#284F8F"; font.bold: true }
@@ -1229,11 +1232,11 @@ ApplicationWindow {
                             ComboBox {
                                 id: slotThemeChoice
                                 visible: studioSection === 1; Layout.fillWidth: true
-                                model: ["Azul SR", "Verde Terça Verde", "Personalizada"]
+                                model: ["Azul SR", "Verde Terça Verde", "Marrom Quarta Café", "Vinho Quinta Filé", "Vermelho Churrasco", "Personalizada"]
                             }
                             TextField {
                                 id: slotCustomColor
-                                visible: studioSection === 1 && slotThemeChoice.currentIndex === 2
+                                visible: studioSection === 1 && slotThemeChoice.currentIndex === 5
                                 Layout.fillWidth: true; text: "#075D08"; placeholderText: "#RRGGBB"
                             }
                             RowLayout {
@@ -1243,16 +1246,16 @@ ApplicationWindow {
                                     enabled: selectedSlotId !== ""
                                     onClicked: sceneBridge.dispatch(JSON.stringify({
                                         "name":"set_slot_theme", "slot_id":selectedSlotId,
-                                        "theme":slotThemeChoice.currentIndex === 2 ? slotCustomColor.text :
-                                            (slotThemeChoice.currentIndex === 1 ? "terca-verde" : "azul")
+                                        "theme":slotThemeChoice.currentIndex === 5 ? slotCustomColor.text :
+                                            (["azul", "terca-verde", "quarta-cafe", "quinta-file", "churrasco"][slotThemeChoice.currentIndex])
                                     }))
                                 }
                                 Button {
                                     Layout.fillWidth: true; text: "Página inteira"
                                     onClicked: sceneBridge.dispatch(JSON.stringify({
                                         "name":"set_slot_theme", "entire_page":true,
-                                        "theme":slotThemeChoice.currentIndex === 2 ? slotCustomColor.text :
-                                            (slotThemeChoice.currentIndex === 1 ? "terca-verde" : "azul")
+                                        "theme":slotThemeChoice.currentIndex === 5 ? slotCustomColor.text :
+                                            (["azul", "terca-verde", "quarta-cafe", "quinta-file", "churrasco"][slotThemeChoice.currentIndex])
                                     }))
                                 }
                             }
@@ -1284,22 +1287,28 @@ ApplicationWindow {
                             visible: studioSection === 6; clip: true
                             ColumnLayout {
                                 width: 235; spacing: 12
+                                Label { text: "Campanha"; color: "#284F8F"; font.bold: true }
+                                ComboBox {
+                                    id: campaignCampaignChoice
+                                    Layout.fillWidth: true
+                                    model: ["Terça Verde", "Quarta Café com Pão", "Quinta Filé", "Churrasco / Açougue"]
+                                }
                                 Label { text: "Fundos Promocionais"; color: "#284F8F"; font.bold: true }
                                 Label {
-                                    text: "Terça Verde · use o novo fundo sem data fixa."
+                                    text: "Escolha o fundo limpo, sem produtos, preços ou datas gravados. Fotos prontas são referências de layout."
                                     Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#64748B"
                                 }
                                 Button {
-                                    Layout.fillWidth: true; text: "Selecionar fundo Terça Verde"
+                                    Layout.fillWidth: true; text: "Selecionar fundo da campanha"
                                     onClicked: campaignBackgroundDialog.open()
                                 }
                                 Label { text: "Selos Promocionais"; color: "#284F8F"; font.bold: true }
                                 Label {
-                                    text: "Inserção no topo à direita, preservando a logo do SR."
+                                    text: "Logo/selo PNG transparente editável. Confira a posição para não encobrir a marca SR."
                                     Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#64748B"
                                 }
                                 Button {
-                                    Layout.fillWidth: true; text: "Selecionar selo Terça Verde"
+                                    Layout.fillWidth: true; text: "Selecionar logo / selo da campanha"
                                     onClicked: campaignSealDialog.open()
                                 }
                                 Rectangle { Layout.fillWidth: true; height: 1; color: "#E5EAF4" }
