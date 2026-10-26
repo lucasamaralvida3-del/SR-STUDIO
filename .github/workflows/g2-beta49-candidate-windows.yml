@@ -3,7 +3,7 @@ name: G2 Beta49 Windows Candidate
 on:
   push:
     branches:
-      - fix/g2-beta49-image-bank-browser
+      - fix/g2-beta49-two-price-pptx-fidelity
     paths:
       - 'src/srstudio/graphics2/**'
       - 'src/srstudio/app/**'
@@ -119,7 +119,7 @@ jobs:
   publish:
     # This runs only after the tested, packaged Windows artifact exists.
     # Stable branches and existing releases are never modified.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/g2-beta49-image-bank-browser'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/g2-beta49-two-price-pptx-fidelity'
     needs: [validate, package]
     runs-on: ubuntu-latest
     timeout-minutes: 30
