@@ -13,7 +13,7 @@ extra artwork when mode='two'.
 
 from .model import BindingRole, GraphicsNode, NodeKind, Rect, Transform
 
-PPTX_TWO_PRICE_REVISION = 50
+PPTX_TWO_PRICE_REVISION = 51
 BLUE = "#105594"
 
 # Main price plate, smaller overlapping price badge, and editable labels.
@@ -25,25 +25,32 @@ TWO_PRICE_GEOMETRY = {
         "badge": (.529, .879, .167, .110),
         "promo_label": (.539, .887, .148, .035),
         "secondary_price": (.536, .922, .152, .061),
-        "club_label": (.720, .931, .230, .048),
+        # Keep club text BELOW digits and LEFT of the unit. No component
+        # rectangles intersect even when showing a 3-digit price.
+        "club_label": (.713, .905, .185, .048),
         "main_price": (.610, .715, .390, .260),
+        "currency": (.265, .31, .080, .30),
+        "integer": (.355, .13, .370, .60),
+        "decimal": (.745, .21, .220, .27),
         "name_panel": (.620, .575, .380, .411),
         "name": (.634, .588, .352, .145),
         "image": (.015, .015, .76, .970),
-        "unit": (.898, .846, .075, .085),
+        "unit": (.910, .918, .070, .065),
     },
     "multi-cell-beta44": {
         # The PPTX mini-badges are narrower and further right in each cell.
         "badge": (.572, .538, .338, .194),
         "promo_label": (.578, .548, .322, .051),
         "secondary_price": (.583, .612, .314, .101),
-        "club_label": (.590, .850, .340, .055),
+        "club_label": (.562, .846, .420, .065),
         "main_price": (.010, .715, .980, .280),
-        # Two-price main digits stop before NO CLUBE SR.
-        "currency": (.052, .200, .148, .420),
-        "integer": (.203, .037, .335, .807),
-        "decimal": (.548, .122, .150, .335),
-        "unit": (.770, .911, .159, .072),
+        # Disjoint money boxes: reais, cents, full NO CLUBE SR and unit.
+        "currency": (.055, .290, .160, .440),
+        "integer": (.224, .060, .315, .785),
+        "decimal": (.575, .165, .168, .290),
+        "unit": (.782, .920, .197, .060),
+        "name": (.015, .018, .970, .175),
+        "image": (.045, .210, .910, .465),
     },
 }
 
@@ -156,6 +163,13 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
         base_image = _builtins()[preset_id].roles["image"]["bounds"]
         chosen_image = geometry.get("image", base_image) if enabled else base_image
         _position(primary, _absolute(root_rect, chosen_image))
+    if preset_id == "multi-cell-beta44":
+        from .item_slots import _builtins
+        base_name = _builtins()[preset_id].roles["name"]["bounds"]
+        name_node = page.node(str(slot.node_by_role.get(BindingRole.NAME.value) or ""))
+        if name_node is not None:
+            _position(name_node, _absolute(root_rect,
+                      geometry["name"] if enabled else base_name))
     if repeated is not None:
         _position(repeated, _absolute(root_rect, (.236, .005, .41, .985)))
         repeated.visible = (not enabled) and bool(
@@ -182,21 +196,33 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
             node.style["min_font_size"] = min_size
             node.style["nowrap"] = True
             node.style["wrap"] = False
+            node.style["pptx_wrap"] = "none"
+            if key == "club_label":
+                # QML Text.Fit in a narrow group may stack words vertically.
+                # This field is an intentional single horizontal line in both
+                # source PPTX references, in editor AND PNG/PDF export.
+                node.style["single_line"] = True
+                node.style["min_font_size"] = 3
+                node.style["align"] = "center"
+                node.transform.rotation = 0
             # Fonts and target bounds are source-measured: prevent a split
             # NO CLUBE / SR and keep all legends within their own box.
             if preset_id == "multi-cell-beta44":
                 node.style["font_size"] = {
-                    "promo_label": 7.0, "secondary_price": 9.2,
-                    "club_label": 7.1,
+                    "promo_label": 7.3, "secondary_price": 10.0,
+                    "club_label": 8.7,
                 }[key]
             elif key == "secondary_price":
-                node.style["font_size"] = 13.0
+                node.style["font_size"] = 12.4
+            elif key == "club_label":
+                node.style["font_size"] = 10.2
         if promo is not None:
             promo.text = "NA PROMOÇÃO"
             promo.visible = True
         if club is not None:
             club.text = "NO CLUBE SR"
             club.visible = True
+            club.style["single_line"] = True
     else:
         # The 1-price template must not inherit the 2-price text positions.
         from .item_slots import _builtins

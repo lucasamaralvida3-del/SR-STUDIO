@@ -340,7 +340,18 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
                     changed = bind_product_to_quinta3_slot(self.session, slot_id, product)
                 else:
                     changed = bind_product_to_item_slot(self.session, slot_id, product)
-                return CommandResult(True, changed, "Produto aplicado ao ItemSlot.")
+                # The Qt editor runs ItemSlotCommandRouter, not the generic
+                # GraphicsCommandRouter. Report a missing approved SKU photo
+                # rather than leaving a large unexplained empty image region.
+                picture = self.session.page.node(str(slot.node_by_role.get("image") or ""))
+                image_linked = bool(picture and
+                    (picture.asset_id or picture.metadata.get("bound_image_source")))
+                message = ("Produto aplicado ao ItemSlot." if image_linked else
+                           "Produto aplicado sem foto vinculada. Selecione uma imagem aprovada no Banco SR.")
+                return CommandResult(True, changed, message, {
+                    "slot_id": slot.id, "product_id": slot.product_id,
+                    "binding_route": "manual-item-slot", "image_linked": image_linked,
+                })
 
         result = super().dispatch(command)
         if result.changed and name in {"drop_product", "paste", "undo", "redo", "delete"}:

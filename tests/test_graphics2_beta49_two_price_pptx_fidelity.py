@@ -64,7 +64,7 @@ def test_two_price_pptx_has_separate_badge_with_both_labels(preset, tmp_path):
         TWO_PRICE_GEOMETRY[preset]["secondary_price"], abs=.005)
     assert ratio_bbox(club.rect, root.rect) == pytest.approx(
         TWO_PRICE_GEOMETRY[preset]["club_label"], abs=.005)
-    assert slot.metadata["two_price_reference_revision"] == 50
+    assert slot.metadata["two_price_reference_revision"] == 51
     assert slot.product_id == "789012"
     if preset == "individual-beta44":
         primary = s.page.node(slot.node_by_role[BindingRole.IMAGE.value])
@@ -132,7 +132,7 @@ def test_old_saved_two_price_is_upgraded_without_losing_product_or_slot():
     assert badge.visible
     assert saved.product_id == "OLD-SKU"
     assert saved.metadata["original_product_snapshot"] == original_price
-    assert saved.metadata["two_price_reference_revision"] == 50
+    assert saved.metadata["two_price_reference_revision"] == 51
     before = len(restored.active_page.nodes)
     refresh_all_item_slots(restored)
     assert len(restored.active_page.nodes) == before

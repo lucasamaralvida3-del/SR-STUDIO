@@ -950,6 +950,14 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
     previous_image_asset = str(old_picture.asset_id or "") if old_picture is not None else ""
     preset_id = str(slot.metadata.get("preset_id") or "")
     if preset_id in ("individual-beta44", "multi-cell-beta44"):
+        # Resolve an image only for the identical stored SKU or an explicitly
+        # approved unambiguous image-bank match. Never infer a packshot from
+        # another product's name or use historical images pending review.
+        from .legacy_image_bank_bridge import complete_product_image
+        try:
+            product = complete_product_image(product)
+        except (OSError, ValueError):
+            product = dict(product)  # Corrupt/unavailable bank must not block price edits.
         # Automatic 1/2-price variation shares the price parsing semantics
         # with the certified Azul slot, but keeps individual item bindings.
         from .slot_limpeza_blue import _price_variant
