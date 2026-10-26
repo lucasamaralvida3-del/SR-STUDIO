@@ -174,6 +174,19 @@ ApplicationWindow {
         nameFilters: ["Imagens (*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tif *.tiff)"]
         onAccepted: sceneBridge.attachProductImage(window.pendingImageProductId, window.pendingImageProductName, selectedFile.toString())
     }
+    FileDialog {
+        id: historicalReviewZipDialog
+        title: "Importar acervo histórico para revisão"
+        nameFilters: ["Banco histórico ZIP (*.zip)"]
+        onAccepted: sceneBridge.importHistoricalReviewZip(selectedFile.toString())
+    }
+    Connections {
+        target: sceneBridge
+        function onHistoricalImageBankDone(ok, detail) {
+            if (studioSection === 3)
+                refreshImageBank()
+        }
+    }
     property string hoveredSlotId: ""
     property bool smartSlotInspectionMode: false
     property bool smartSlotEditMode: false
@@ -951,6 +964,11 @@ ApplicationWindow {
                                     font.pixelSize: 11; color: "#64748B"
                                     text: "Nenhuma imagem local encontrada neste filtro. No SR Studio principal, abra Banco de Imagens para importar e revisar fotos. O acervo histórico do GitHub exige instalação separada."
                                 }
+                            }
+                            Button {
+                                Layout.fillWidth: true
+                                text: "Importar acervo histórico ZIP (para revisão)"
+                                onClicked: historicalReviewZipDialog.open()
                             }
                             RowLayout {
                                 Layout.fillWidth: true
