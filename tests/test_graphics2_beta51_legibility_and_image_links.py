@@ -87,12 +87,19 @@ def test_editor_command_uses_specialized_reference_binding_and_exact_sku_image(m
     s = session()
     slot = create_item_slot(s, "individual-beta44")
     s.document.metadata["products"] = [product()]
-    result = GraphicsCommandRouter(s).dispatch(
+    from srstudio.graphics2.item_slots import is_manual_item_slot
+    assert is_manual_item_slot(slot)
+    router = GraphicsCommandRouter(s)
+    assert is_manual_item_slot(s.page.slots[slot.id]), s.page.slots[slot.id].metadata
+    result = router.dispatch(
         {"name": "bind_product", "slot_id": slot.id, "product_id": "CAF-500"})
     assert result.ok and result.changed
-    assert slot.metadata["original_product_snapshot"].get("image_path"), (
+    current = s.page.slots[slot.id]
+    assert "original_product_snapshot" in current.metadata, (
+        "Router did not use manual Smart Slot binder", current.metadata, result.message)
+    assert current.metadata["original_product_snapshot"].get("image_path"), (
         "Router did not hydrate stored SKU image",
-        slot.metadata["original_product_snapshot"], result.message)
+        current.metadata["original_product_snapshot"], result.message)
     image = s.page.node(slot.node_by_role[BindingRole.IMAGE.value])
     assert image.asset_id or image.metadata.get("bound_image_source")
     assert image.visible
