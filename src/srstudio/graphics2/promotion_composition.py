@@ -141,7 +141,7 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
                 target_w = page.width * .91
                 available_top = page.height * (plan.logo_reserved + .025)
                 available_h = page.height * .975 - available_top
-                target_h = min(target_w / 4, available_h)
+                target_h = min(target_w / 4.75, available_h)
                 target_x = page.width * .045
                 target_y = available_top + max(0, available_h - target_h) / 2
                 session.resize_node(root.id, x=target_x, y=target_y,
@@ -187,7 +187,7 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
                 multi_root_id = multi5.id
                 ids = list(multi5.metadata.get("child_slot_ids") or [])
                 reused.extend(ids)
-            fx, fy, fw, fh = _fit_component(x, y, w, h, 4.0)
+            fx, fy, fw, fh = _fit_component(x, y, w, h, 4.75)
             session.resize_node(multi_root_id, x=fx, y=fy, width=fw, height=fh)
             set_reference_price_mode(session, ids, price_mode)
             arranged.extend(ids)
