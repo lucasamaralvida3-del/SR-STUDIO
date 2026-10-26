@@ -243,10 +243,14 @@ def _draw_text(painter, node: GraphicsNode, QtCore, QtGui, *, color_override: st
     if style.get("letter_spacing") not in (None, ""):
         font.setLetterSpacing(QtGui.QFont.AbsoluteSpacing, float(style.get("letter_spacing") or 0))
     flags = _text_flags(style, QtCore)
+    render_text = (" ".join(str(node.text or "").split())
+                   if style.get("single_line") else str(node.text or ""))
+    if style.get("single_line"):
+        flags |= QtCore.Qt.TextSingleLine
     if _should_fit_text(style):
         font = _fit_font(
             font,
-            str(node.text or ""),
+            render_text,
             rect,
             flags,
             QtCore,
@@ -255,7 +259,7 @@ def _draw_text(painter, node: GraphicsNode, QtCore, QtGui, *, color_override: st
         )
     painter.setFont(font)
     painter.setPen(QtGui.QPen(QtGui.QColor(str(color_override or style.get("color") or "#111827"))))
-    text = str(node.text or "")
+    text = render_text
     layout = _explicit_multiline_layout(text, rect, style, font, QtCore, QtGui)
     if layout is not None:
         painter.save()
