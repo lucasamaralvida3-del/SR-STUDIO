@@ -65,17 +65,18 @@ def _ppt_role(x: float, y: float, w: float, h: float, *, size: float, color: str
     Font fallback is chosen by Qt when Anton is unavailable.
     """
     role = _text_role(x, y, w, h, size=size, weight=weight, align=align)
-    # The source uses Anton, but that face is not available on standard
-    # Windows installations. Arial is explicitly selected instead of
-    # letting Qt render missing-glyph boxes for every price digit.
-    # Prefer the *exact* PPTX typeface when the machine has it; Windows
-    # includes Impact as a visually close, readable condensed fallback.
-    family = "Impact"
+    # Missing Impact/Anton on Windows runners previously produced square
+    # missing-glyph characters in every price and title. Resolve against
+    # QFontDatabase instead of blindly requesting an unavailable face.
+    family = "Arial"
     try:
         from PySide6.QtGui import QGuiApplication, QFontDatabase
         if QGuiApplication.instance() is not None:
-            if "Anton" in QFontDatabase.families():
-                family = "Anton"
+            installed = {value.casefold(): value for value in QFontDatabase.families()}
+            family = next((installed[f.casefold()] for f in
+                           ("Anton", "Impact", "Arial Narrow", "Bahnschrift Condensed",
+                            "Arial", "Segoe UI", "Liberation Sans", "DejaVu Sans")
+                           if f.casefold() in installed), "Arial")
     except (ImportError, RuntimeError):
         pass
     role["style"].update({"font_family": family, "source_font_family": "Anton", "color": color,
