@@ -23,6 +23,35 @@ ApplicationWindow {
     property string productQuery: ""
     property string productFilter: "Todos os produtos"
     property int visibleProductLimit: 12
+    property var imageBankInventory: ({"images":[],"counts":{}})
+    property string imageBankQuery: ""
+    property string imageBankStatus: "Todos"
+    property string imageBankTargetProductId: ""
+    property string imageBankTargetProductName: ""
+    onStudioSectionChanged: if (studioSection === 3) refreshImageBank()
+
+    function refreshImageBank() {
+        try {
+            imageBankInventory = JSON.parse(sceneBridge.imageBankJson())
+        } catch (error) {
+            imageBankInventory = {"images":[], "counts":{}, "error":String(error)}
+        }
+    }
+
+    function filteredBankImages() {
+        var text = imageBankQuery.toLocaleLowerCase().trim()
+        var entries = imageBankInventory.images || []
+        return entries.filter(function(entry) {
+            var matches = !text || (String(entry.name || "") + " " + String(entry.product_id || "")
+                        + " " + String(entry.source || "")).toLocaleLowerCase().indexOf(text) >= 0
+            var filter = imageBankStatus === "Todos" ||
+                (imageBankStatus === "Aprovadas" && entry.status === "approved") ||
+                (imageBankStatus === "Pendentes" && entry.status === "pending") ||
+                (imageBankStatus === "Vinculadas" && entry.status === "manual")
+            return matches && filter
+        })
+    }
+
     property bool showProductionGate: false
     property bool showAdvancedSlotActions: false
 
@@ -144,6 +173,19 @@ ApplicationWindow {
         title: "Adicionar imagem ao produto"
         nameFilters: ["Imagens (*.png *.jpg *.jpeg *.webp *.bmp *.gif *.tif *.tiff)"]
         onAccepted: sceneBridge.attachProductImage(window.pendingImageProductId, window.pendingImageProductName, selectedFile.toString())
+    }
+    FileDialog {
+        id: historicalReviewZipDialog
+        title: "Importar acervo histórico para revisão"
+        nameFilters: ["Banco histórico ZIP (*.zip)"]
+        onAccepted: sceneBridge.importHistoricalReviewZip(selectedFile.toString())
+    }
+    Connections {
+        target: sceneBridge
+        function onHistoricalImageBankDone(ok, detail) {
+            if (studioSection === 3)
+                refreshImageBank()
+        }
     }
     property string hoveredSlotId: ""
     property bool smartSlotInspectionMode: false
@@ -639,7 +681,7 @@ ApplicationWindow {
                         ColumnLayout {
                             Layout.fillHeight: true
                             Layout.fillWidth: true
-                            visible: studioSection === 0 || studioSection === 3
+                            visible: studioSection === 0
                             spacing: 11
                             RowLayout {
                                 Layout.fillWidth: true
@@ -771,6 +813,174 @@ ApplicationWindow {
                                 text: "Ver mais produtos"
                                 flat: true
                                 onClicked: visibleProductLimit += 24
+                            }
+                        }
+                        ColumnLayout {
+                            Layout.fillHeight: true
+                            Layout.fillWidth: true
+                            visible: studioSection === 3
+                            spacing: 8
+                            Label {
+                                Layout.fillWidth: true
+                                text: "Banco de Imagens SR"
+                                color: "#173D72"; font.bold: true; font.pixelSize: 14
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                color: "#64748B"; font.pixelSize: 10
+                                text: "Aprovadas: " + Number(imageBankInventory.counts.approved || 0)
+                                    + "  ·  Pendentes: " + Number(imageBankInventory.counts.pending || 0)
+                                    + "  ·  Vinculadas: " + Number(imageBankInventory.counts.manual || 0)
+                            }
+                            Label {
+                                visible: !!imageBankInventory.error
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                color: "#B91C1C"; font.pixelSize: 10
+                                text: String(imageBankInventory.error || "")
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                TextField {
+                                    Layout.fillWidth: true
+                                    placeholderText: "Buscar imagens ou códigos..."
+                                    text: imageBankQuery
+                                    onTextChanged: imageBankQuery = text
+                                    font.pixelSize: 11
+                                }
+                                ToolButton {
+                                    text: "⟳"
+                                    ToolTip.text: "Atualizar banco local"
+                                    ToolTip.visible: hovered
+                                    onClicked: refreshImageBank()
+                                }
+                            }
+                            ComboBox {
+                                Layout.fillWidth: true
+                                model: ["Todos", "Aprovadas", "Pendentes", "Vinculadas"]
+                                onActivated: imageBankStatus = currentText
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: "Vincular imagem aprovada ao produto:"
+                                font.pixelSize: 10; color: "#64748B"
+                            }
+                            ComboBox {
+                                id: imageBankTargetCombo
+                                Layout.fillWidth: true
+                                model: [{"label":"Selecione um produto...", "id":"", "name":""}]
+                                    .concat(products().map(function(p) {
+                                        return {"label":productLabel(p),
+                                                "id":String(p.id || p.product_id || ""),
+                                                "name":String(p.name || p.display_name || p.original_name || "")}
+                                    }))
+                                textRole: "label"; valueRole: "id"
+                                onActivated: {
+                                    var data = model[currentIndex] || {}
+                                    imageBankTargetProductId = String(data.id || "")
+                                    imageBankTargetProductName = String(data.name || data.label || "")
+                                }
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                color: "#64748B"; font.pixelSize: 10
+                                text: "Fotos pendentes são somente para revisão. Elas nunca serão vinculadas automaticamente."
+                            }
+                            ListView {
+                                id: imageBankList
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
+                                clip: true
+                                spacing: 7
+                                model: filteredBankImages()
+                                ScrollBar.vertical: ScrollBar {}
+                                delegate: Rectangle {
+                                    required property var modelData
+                                    width: imageBankList.width - 4
+                                    height: 108
+                                    radius: 8
+                                    color: "#FFFFFF"
+                                    border.color: "#D9E4F2"
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.margins: 7
+                                        spacing: 7
+                                        Rectangle {
+                                            Layout.preferredWidth: 73
+                                            Layout.preferredHeight: 85
+                                            radius: 5; color: "#F8FAFC"
+                                            border.color: "#E5EAF1"
+                                            Image {
+                                                anchors.fill: parent
+                                                anchors.margins: 3
+                                                source: localSource(modelData.image_path)
+                                                fillMode: Image.PreserveAspectFit
+                                                asynchronous: true
+                                            }
+                                        }
+                                        ColumnLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 3
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: String(modelData.name || "Imagem")
+                                                font.pixelSize: 11; font.bold: true
+                                                elide: Text.ElideRight
+                                                color: "#17213E"
+                                            }
+                                            Label {
+                                                text: modelData.status === "pending" ? "PENDENTE · Revisar no Banco SR" :
+                                                      modelData.status === "approved" ? "APROVADA" : "VINCULADA"
+                                                color: modelData.status === "pending" ? "#9A6700" : "#12805C"
+                                                font.pixelSize: 9
+                                            }
+                                            Label {
+                                                text: String(modelData.source || "")
+                                                color: "#64748B"; font.pixelSize: 9
+                                            }
+                                            Button {
+                                                text: "Usar neste produto"
+                                                Layout.fillWidth: true
+                                                font.pixelSize: 10
+                                                enabled: !!modelData.can_link && !!imageBankTargetProductId
+                                                onClicked: {
+                                                    sceneBridge.attachProductImage(
+                                                        imageBankTargetProductId,
+                                                        imageBankTargetProductName,
+                                                        localSource(modelData.image_path))
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                Label {
+                                    anchors.centerIn: parent
+                                    visible: imageBankList.count === 0
+                                    width: imageBankList.width - 20
+                                    horizontalAlignment: Text.AlignHCenter
+                                    wrapMode: Text.WordWrap
+                                    font.pixelSize: 11; color: "#64748B"
+                                    text: "Nenhuma imagem local encontrada neste filtro. No SR Studio principal, abra Banco de Imagens para importar e revisar fotos. O acervo histórico do GitHub exige instalação separada."
+                                }
+                            }
+                            Button {
+                                Layout.fillWidth: true
+                                text: "Importar acervo histórico ZIP (para revisão)"
+                                onClicked: historicalReviewZipDialog.open()
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Button {
+                                    Layout.fillWidth: true
+                                    text: "Abrir pasta do Banco SR"
+                                    onClicked: sceneBridge.openImageBankFolder()
+                                }
+                                Button {
+                                    text: "Atualizar"
+                                    onClicked: refreshImageBank()
+                                }
                             }
                         }
                         ColumnLayout {
