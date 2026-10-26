@@ -33,13 +33,17 @@ def ratio_bbox(rect, root):
 
 
 @pytest.mark.parametrize("preset", ("individual-beta44", "multi-cell-beta44"))
-def test_two_price_pptx_has_separate_badge_with_both_labels(preset):
+def test_two_price_pptx_has_separate_badge_with_both_labels(preset, tmp_path):
+    from PIL import Image
+    photo = tmp_path / "product.png"
+    Image.new("RGB", (90, 120), "#597FC2").save(photo)
     s = make_session()
     slot = create_item_slot(s, preset)
     root = s.page.node(slot.metadata["root_node_id"])
     one_main = s.page.node(slot.metadata["role_area_nodes"]["price"]).rect
     product = {"id": "789012", "name": "OVO DE GALINHA CARTELA 30UN",
-               "price": "24,86", "club_price": "21,49", "unit": "UN"}
+               "price": "24,86", "club_price": "21,49", "unit": "UN",
+               "image_path": str(photo)}
     assert bind_product_to_item_slot(s, slot.id, product)
     badge = s.page.node(slot.metadata["two_price_badge_node_id"])
     assert badge is not None and badge.parent_id == root.id and badge.visible
