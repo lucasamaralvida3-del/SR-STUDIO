@@ -42,7 +42,9 @@ def image_bank_inventory(*, legacy_root: Path | None = None,
                     or asset.original_name or "Imagem sem identificação"),
                 "image_path": str(path.resolve()), "source": "Banco SR",
                 "status": "approved" if state == "accepted" else "pending",
-                "can_link": state == "accepted" and asset.kind == "product",
+                "can_link": (state == "accepted" and asset.kind == "product"
+                             and (not asset.metadata.get("official")
+                                  or asset.metadata.get("official_active", True))),
                 "product_id": "",
                 "kind": str(asset.kind),
             })
