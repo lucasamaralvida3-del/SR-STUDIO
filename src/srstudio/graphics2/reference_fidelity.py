@@ -39,7 +39,7 @@ def migrate_reference_slot(page, slot, presets) -> bool:
     if revision >= 47:
         # Beta47/48 scenes already have the original 1-price artwork. Upgrade
         # ONLY the two-price overlay from the newly supplied PowerPoint.
-        if int(slot.metadata.get("two_price_reference_revision") or 0) >= 50:
+        if int(slot.metadata.get("two_price_reference_revision") or 0) >= 51:
             # A deleted white panel is recovered even on current projects.
             if preset_id != "individual-beta44":
                 return False
@@ -50,7 +50,7 @@ def migrate_reference_slot(page, slot, presets) -> bool:
         is_two = str(slot.metadata.get("price_variant") or "one") == "two"
         changed = apply_two_price_layout(page, slot, is_two)
         if changed:
-            slot.metadata["two_price_reference_revision"] = 50
+            slot.metadata["two_price_reference_revision"] = 51
         return changed
     root = page.node(str(slot.metadata.get("root_node_id") or ""))
     if root is None:
