@@ -1,0 +1,304 @@
+name: G2 Beta50 Windows Candidate
+
+on:
+  push:
+    branches:
+      - fix/g2-beta50-slot-visual-fidelity
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'src/srstudio/app/**'
+      - 'tests/test_graphics2_beta50_*.py'
+      - 'tools/promote_g2_beta50_launcher.py'
+      - 'tools/test_promote_g2_beta50_launcher.py'
+      - '.github/workflows/g2-beta50-candidate-windows.yml'
+      - '.github/workflows/g2-beta50-visual-windows.yml'
+      - 'tests/test_graphics2_beta45_reference_fidelity.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta50-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate Beta50 launcher packaging and manifest guards
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tools -p test_promote_g2_beta50_launcher.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile G2
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/graphics2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate Beta50 PPTX fidelity and original Azul contracts
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m pytest -q tests/test_graphics2_beta50_slot_visual_fidelity.py tests/test_graphics2_beta49_two_price_pptx_fidelity.py tests/test_graphics2_beta47_pptx_source_fidelity.py tests/test_graphics2_beta48_image_bank_browser.py tests/test_graphics2_beta46_legacy_image_bank.py tests/test_graphics2_beta46_flyer_quality.py tests/test_graphics2_beta46_real_slot_layouts.py tests/test_graphics2_beta46_recovery_resize.py tests/test_graphics2_beta46_price_integrity.py tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_promotion_layouts.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_beta42_shell_layout.py tests/test_graphics2_item_slots.py tests/test_graphics2_slot_limpeza_blue.py tests/test_graphics2_quinta3_studio_manual_build.py tests/test_graphics2_qml_load.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prove Qt Quick runtime
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -c "from srstudio.graphics2.qt_host import qt_quick_available; assert qt_quick_available()"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+  package:
+    needs: validate
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install packager
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2-build,background-removal]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package SR Studio 5 shell
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "EXE ausente" }
+      - name: Package Graphics2 child host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
+          Copy-Item "dist/graphics2-host/SRGraphicsEngine2Host/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Qt host ausente" }
+      - name: Validate runtime and SHA-256
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; from srstudio.graphics2.host_runtime import validate_runtime_host; r=validate_runtime_host(Path('dist/SR Studio 5/Graphics2Host').resolve(), full=True); assert r.ok, r"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path "release" | Out-Null
+          $file = "release/SR_STUDIO_G2_BETA_50_CANDIDATE_WIN64.zip"
+          Compress-Archive -Path "dist/SR Studio 5/*" -DestinationPath $file -Force
+          $digest = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+          "commit=$env:GITHUB_SHA" | Out-File "release/beta50-provenance.txt" -Encoding utf8
+          "sha256=$digest" | Out-File "release/beta50-checksum.txt" -Encoding ascii
+          Write-Host "BETA50_CANDIDATE_SHA256=$digest"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR-Studio-G2-Beta50-Windows-Candidate
+          path: |
+            release/SR_STUDIO_G2_BETA_50_CANDIDATE_WIN64.zip
+            release/beta50-checksum.txt
+            release/beta50-provenance.txt
+          if-no-files-found: error
+          retention-days: 30
+
+
+  publish:
+    # This runs only after the tested, packaged Windows artifact exists.
+    # Stable branches and existing releases are never modified.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/fix/g2-beta50-slot-visual-fidelity'
+    needs: [validate, package]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - name: Wait for matching GitHub CI gates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+          import sys
+          import time
+
+          sha = os.environ["GITHUB_SHA"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          required = {
+              "SR Studio 5 Quality",
+              "SR Graphics Engine 2 CI",
+              "G2 Alpha 43 Validation",
+              "G2 Beta50 Slot Visual Fidelity Windows",
+          }
+          for attempt in range(72):
+              data = json.loads(subprocess.check_output(
+                  ["gh", "api", f"repos/{repo}/actions/runs?head_sha={sha}&per_page=100"],
+                  text=True,
+              ))
+              runs = {
+                  row["name"]: row for row in data.get("workflow_runs", [])
+                  if row.get("head_sha") == sha and row.get("name") in required
+              }
+              finished = {name: row.get("conclusion") for name, row in runs.items()
+                          if row.get("status") == "completed"}
+              bad = {name: status for name, status in finished.items()
+                     if status != "success"}
+              if bad:
+                  sys.exit(f"CI gate failed: {bad}")
+              if all(finished.get(name) == "success" for name in required):
+                  print("All required matching CI gates passed for", sha)
+                  break
+              print("Pending CI:", sorted(required - set(finished)), "attempt", attempt + 1)
+              time.sleep(15)
+          else:
+              sys.exit("CI gates timed out: Beta50 release withheld.")
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: SR-Studio-G2-Beta50-Windows-Candidate
+          path: release
+      - name: Verify archive provenance and SHA-256
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Archive contents:"
+          ls -lh release
+          expected_commit="$(sed -n 's/^commit=//p' release/beta50-provenance.txt | tr -d '\r\n')"
+          test "$expected_commit" = "$GITHUB_SHA"
+          expected_checksum="$(sed -n 's/^sha256=//p' release/beta50-checksum.txt | tr -d '\r\n')"
+          actual_checksum="$(sha256sum release/SR_STUDIO_G2_BETA_50_CANDIDATE_WIN64.zip | cut -d' ' -f1)"
+          test -n "$expected_checksum"
+          test "$expected_checksum" = "$actual_checksum"
+          cp release/SR_STUDIO_G2_BETA_50_CANDIDATE_WIN64.zip release/SR_STUDIO_G2_BETA_50_PROFESSIONAL_WIN64.zip
+          echo "$actual_checksum  SR_STUDIO_G2_BETA_50_PROFESSIONAL_WIN64.zip" > release/SR_STUDIO_G2_BETA_50_SHA256.txt
+      - name: Publish isolated prerelease Beta50
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view g2-beta-50 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "Beta50 release already exists: no duplicate upload."
+            exit 0
+          fi
+          cat > /tmp/beta50-notes.md <<'EOF'
+          # SR Studio G2 Beta 50 — Correções de fidelidade visual
+
+          - Fundo branco arredondado atrás do nome no Smart Slot Individual, como na referência PowerPoint.
+          - Placa azul da promoção Individual levemente maior e todos os textos reposicionados.
+          - Selos promocionais menores e melhor alinhados nos Multi-5 e Multi-6.
+          - Texto **NO CLUBE SR** completo e em uma única linha, sem colisão com preço, centavos ou unidade.
+          - Preço principal, centavos, moeda e UN recalibrados no Multi de dois preços.
+          - Etiquetas técnicas de edição ocultas até selecionar ou passar o mouse sobre o slot.
+          - Modo de um preço continua no mesmo componente editável, sem reutilizar a disposição de dois preços.
+          - Projetos Beta49 antigos migram sem perder código, imagem ou dados do produto.
+          - Banco de Imagens Beta48 preservado, Beta49 e Stable não são alterados.
+
+          Pré-lançamento Windows para comparação visual com os PPTX recebidos;
+          a validação não substitui a inspeção humana final no editor.
+          EOF
+          gh release create g2-beta-50 \
+            release/SR_STUDIO_G2_BETA_50_PROFESSIONAL_WIN64.zip \
+            release/SR_STUDIO_G2_BETA_50_SHA256.txt \
+            release/beta50-provenance.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "SR Studio G2 Beta 50 — Fidelidade Visual Individual e Multi" \
+            --notes-file /tmp/beta50-notes.md \
+            --prerelease \
+            --latest=false
+
+
+
+  promote_launcher:
+    # The Beta launcher needs a compatible ZIP, not just a GitHub prerelease.
+    # Publish ZIP first, then change main beta/manifest.json. Stable untouched.
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Test launcher ZIP safety and manifest semantics
+        run: python -m unittest discover -s tools -p test_promote_g2_beta50_launcher.py -v
+      - name: Confirm release and verified commit
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/g2-beta-50" --jq .target_commitish)"
+          test "$actual" = "$GITHUB_SHA"
+      - name: Download signed Beta50 Windows archive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          mkdir -p promotion
+          gh release download g2-beta-50 --repo "$GITHUB_REPOSITORY" --dir promotion \
+            -p SR_STUDIO_G2_BETA_50_PROFESSIONAL_WIN64.zip \
+            -p SR_STUDIO_G2_BETA_50_SHA256.txt \
+            -p beta50-provenance.txt
+          (cd promotion && sha256sum -c SR_STUDIO_G2_BETA_50_SHA256.txt)
+          grep -F "$GITHUB_SHA" promotion/beta50-provenance.txt
+      - name: Build safe Beta launcher archive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" \
+            --jq .content | base64 -d > promotion/manifest-old.json
+          python tools/promote_g2_beta50_launcher.py \
+            --input promotion/SR_STUDIO_G2_BETA_50_PROFESSIONAL_WIN64.zip \
+            --bundle-output promotion/SR_STUDIO_G2_BETA_50_LAUNCHER_BUNDLE.zip \
+            --existing-manifest promotion/manifest-old.json \
+            --manifest-output promotion/manifest-new.json
+      - name: Upload launcher ZIP and verify public file
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          asset=SR_STUDIO_G2_BETA_50_LAUNCHER_BUNDLE.zip
+          gh release upload g2-beta-50 "promotion/$asset" --repo "$GITHUB_REPOSITORY" --clobber
+          expected="$(stat -c%s "promotion/$asset")"
+          remote="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/g2-beta-50" \
+            --jq '.assets[] | select(.name == "SR_STUDIO_G2_BETA_50_LAUNCHER_BUNDLE.zip") | .size')"
+          test "$expected" = "$remote"
+          test "$remote" -gt 100000000
+          curl -fsSIL --retry 5 --retry-delay 3 \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/g2-beta-50/$asset" >/dev/null
+      - name: Promote public Beta manifest last, without changing Stable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          version="$(gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" \
+            --jq .content | base64 -d | python -c 'import json,sys;print(json.load(sys.stdin)["version"])')"
+          if test "$version" = "5.0.0-hybrid.g2beta.50"; then
+            echo "Beta50 already active"; exit 0
+          fi
+          test "$version" = "5.0.0-hybrid.g2beta.49"
+          sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" --jq .sha)"
+          encoded="$(base64 -w0 promotion/manifest-new.json)"
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json" \
+            -f message='Publicar G2 Beta50 validada no launcher Beta' \
+            -f branch=main -f sha="$sha" -f content="$encoded" >/dev/null
+          current="$(gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" \
+            --jq .content | base64 -d | python -c 'import json,sys;print(json.load(sys.stdin)["version"])')"
+          test "$current" = "5.0.0-hybrid.g2beta.50"
