@@ -917,15 +917,16 @@ def _apply_reference_price_state(page, slot: SmartSlot, source: dict[str, Any], 
     apply_two_price_layout(page, slot, two)
     slot.metadata["price_variant"] = "two" if two else "one"
     # Preserve the chosen palette when switching one/two prices.
-    if slot.metadata.get("color_theme") == "terca-verde":
-        from .campaign_tools import GREEN, BLUE
+    if slot.metadata.get("color_theme") not in (None, "", "azul"):
+        from .campaign_tools import BLUE
+        color = str(slot.metadata.get("color_hex") or "#075D08")
         for nid in page.descendants(str(slot.metadata.get("root_node_id") or "")):
             deco = page.node(nid)
             if deco is not None:
                 for key in ("fill", "stroke", "color"):
                     val = deco.style.get(key)
                     if isinstance(val, str) and val.upper() == BLUE:
-                        deco.style[key] = GREEN
+                        deco.style[key] = color
 
     snapshot = slot.metadata.get("product_snapshot")
     if isinstance(snapshot, dict):

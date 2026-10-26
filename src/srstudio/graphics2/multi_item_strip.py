@@ -98,8 +98,8 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
         root.metadata["reference_fidelity_revision"] = 47
     from .campaign_tools import THEMES
     theme = str(page.metadata.get("slot_theme") or "azul")
-    if theme in THEMES and theme != "azul":
-        target = THEMES[theme]
+    if theme != "azul":
+        target = THEMES.get(theme, theme)
         for nid in page.descendants(root.id):
             n = page.node(nid)
             if n is not None:
