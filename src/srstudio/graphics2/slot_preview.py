@@ -81,7 +81,7 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
     if directory is None:
         from PySide6.QtGui import QFontDatabase
         sources = ("slot_preview.py", "item_slots.py", "slot_limpeza_blue.py",
-                   "multi_item_strip.py", "promotion_composition.py",
+                   "multi_item_strip.py", "two_price_reference.py", "promotion_composition.py",
                    "promotion_layouts.py", "qt_renderer.py")
         digest = sha256()
         import sys
