@@ -9,6 +9,9 @@ on:
       - 'tests/test_graphics2_beta48_image_bank_browser.py'
       - 'tests/test_graphics2_qml_load.py'
       - '.github/workflows/g2-beta48-image-bank-windows.yml'
+      - '.github/workflows/g2-beta48-candidate-windows.yml'
+      - 'tools/promote_g2_beta48_launcher.py'
+      - 'tools/test_promote_g2_beta48_launcher.py'
   workflow_dispatch:
 
 permissions:
