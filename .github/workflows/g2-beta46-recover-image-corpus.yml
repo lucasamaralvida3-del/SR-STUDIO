@@ -10,6 +10,9 @@ on:
       - src/srstudio/graphics2/legacy_image_bank_bridge.py
       - tests/test_graphics2_beta46_legacy_image_bank.py
       - .github/workflows/g2-beta46-recover-image-corpus.yml
+      - .github/workflows/g2-beta46-candidate-windows.yml
+      - tools/promote_g2_beta46_launcher.py
+      - tools/test_promote_g2_beta46_launcher.py
   workflow_dispatch:
 
 permissions:
