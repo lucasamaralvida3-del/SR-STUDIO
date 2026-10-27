@@ -39,7 +39,8 @@ def image_bank_inventory(*, legacy_root: Path | None = None,
                 continue
             images.append({
                 "id": str(asset.id), "name": (asset.product_name or asset.product_key
-                    or asset.original_name or "Imagem sem identificação"),
+                    or asset.metadata.get("review_original_filename")
+                    or asset.source_file or asset.original_name or "Imagem sem identificação"),
                 "image_path": str(path.resolve()), "source": "Banco SR",
                 "status": "approved" if state == "accepted" else "pending",
                 "can_link": (state == "accepted" and asset.kind == "product"

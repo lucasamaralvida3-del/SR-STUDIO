@@ -30,6 +30,67 @@ ApplicationWindow {
     property string imageBankStatus: "Todos"
     property string imageBankTargetProductId: ""
     property string imageBankTargetProductName: ""
+    property bool showProductImageReview: false
+    property bool imageBankShowAll: false
+    property var bankSelectedImage: null
+    property bool bankDownloadStarted: false
+
+    function openImageReviewFor(product) {
+        studioSection = 0
+        var p = product || ({})
+        imageBankTargetProductId = String(p.id || p.product_id || "")
+        imageBankTargetProductName = String(p.name || p.display_name || p.original_name || "")
+        imageBankQuery = ""
+        imageBankShowAll = false
+        showProductImageReview = true
+        refreshImageBank()
+        Qt.callLater(function() {
+            var choices = imageBankTargetCombo.model || []
+            for (var i = 0; i < choices.length; ++i) {
+                if (String(choices[i].id || "") === imageBankTargetProductId) {
+                    imageBankTargetCombo.currentIndex = i
+                    break
+                }
+            }
+        })
+    }
+
+    function plainBankName(value) {
+        return String(value || "").toUpperCase()
+            .replace(/[ÁÀÂÃÄ]/g, "A").replace(/[ÉÈÊË]/g, "E")
+            .replace(/[ÍÌÎÏ]/g, "I").replace(/[ÓÒÔÕÖ]/g, "O")
+            .replace(/[ÚÙÛÜ]/g, "U").replace(/Ç/g, "C")
+    }
+
+    function bankSuggestionScore(entry) {
+        if (!imageBankTargetProductId)
+            return 0
+        var id = String(imageBankTargetProductId || "").toLocaleUpperCase().trim()
+        var product = plainBankName(imageBankTargetProductName)
+        var title = plainBankName(entry.name)
+        var code = String(entry.product_id || "").toLocaleUpperCase().trim()
+        if (code && code === id)
+            return 100
+        if (!title || title === "IMAGEM SEM IDENTIFICAÇÃO")
+            return 0
+        if (title === product)
+            return 90
+        // Display suggestions only. Actual linkage requires a preview and
+        // explicit confirmation. Do not assign by fuzzy name alone.
+        var relevant = product.replace(/[^A-Z0-9 ]/g, " ").split(/\s+/)
+            .filter(function(word) { return word.length >= 4 })
+        var hits = relevant.filter(function(word) { return title.indexOf(word) >= 0 }).length
+        if (hits < 2)
+            return 0
+        // If both names expose package measures, mismatches are rejected.
+        var sizesProduct = product.match(/\b\d+(?:[.,]\d+)?\s*(?:KG|G|ML|L|UN)\b/g) || []
+        var sizesImage = title.match(/\b\d+(?:[.,]\d+)?\s*(?:KG|G|ML|L|UN)\b/g) || []
+        if (sizesProduct.length && sizesImage.length &&
+            sizesProduct[0].replace(/\s/g, "") !== sizesImage[0].replace(/\s/g, ""))
+            return 0
+        return hits * 10
+    }
+
     // The bank is internal; only linked spreadsheet products are shown in Produtos.
 
     function refreshImageBank() {
@@ -43,6 +104,8 @@ ApplicationWindow {
     function filteredBankImages() {
         var text = imageBankQuery.toLocaleLowerCase().trim()
         var entries = imageBankInventory.images || []
+        if (!imageBankTargetProductId)
+            return []
         return entries.filter(function(entry) {
             var matches = !text || (String(entry.name || "") + " " + String(entry.product_id || "")
                         + " " + String(entry.source || "")).toLocaleLowerCase().indexOf(text) >= 0
@@ -50,8 +113,10 @@ ApplicationWindow {
                 (imageBankStatus === "Aprovadas" && entry.status === "approved") ||
                 (imageBankStatus === "Pendentes" && entry.status === "pending") ||
                 (imageBankStatus === "Vinculadas" && entry.status === "manual")
-            return matches && filter
-        })
+            var allowedKind = entry.kind === "product" || entry.kind === "unknown"
+            return matches && filter && allowedKind &&
+                (imageBankShowAll || bankSuggestionScore(entry) > 0)
+        }).sort(function(a, b) { return bankSuggestionScore(b) - bankSuggestionScore(a) })
     }
 
     property bool showProductionGate: false
@@ -269,10 +334,57 @@ ApplicationWindow {
         nameFilters: ["Banco histórico ZIP (*.zip)"]
         onAccepted: sceneBridge.importHistoricalReviewZip(selectedFile.toString())
     }
+    Dialog {
+        id: bankReviewConfirm
+        modal: true
+        title: "Confirmar imagem da embalagem"
+        width: 440
+        height: 360
+        x: Math.max(0, (window.width - width) / 2)
+        y: Math.max(0, (window.height - height) / 2)
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            if (!imageBankTargetProductId || !bankSelectedImage)
+                return
+            sceneBridge.attachProductImage(
+                imageBankTargetProductId, imageBankTargetProductName,
+                localSource(bankSelectedImage.image_path))
+        }
+        ColumnLayout {
+            anchors.fill: parent
+            spacing: 8
+            Label {
+                Layout.fillWidth: true
+                text: "Produto: " + imageBankTargetProductName
+                wrapMode: Text.WordWrap
+                font.bold: true
+                color: "#142D5B"
+            }
+            Image {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                source: localSource(bankSelectedImage ? bankSelectedImage.image_path : "")
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                font.pixelSize: 11
+                text: "Confira marca, sabor e tamanho. Ao confirmar, esta foto será salva para este código de produto e reutilizada nas próximas planilhas. Nenhuma outra foto será aprovada."
+                color: "#7A4D0A"
+            }
+        }
+    }
     Connections {
         target: sceneBridge
         function onHistoricalImageBankDone(ok, detail) {
-            if (studioSection === 3)
+            bankDownloadStarted = false
+            if (studioSection === 0 && showProductImageReview)
+                refreshImageBank()
+        }
+        function onProductImageDone(ok, productId, payload, error) {
+            if (studioSection === 0 && showProductImageReview)
                 refreshImageBank()
         }
     }
@@ -836,16 +948,25 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: ["Produtos","Slots","Layouts de Promoção","","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
+                                text: (studioSection === 0 && showProductImageReview) ? "Banco SR · Produtos" :
+                                      ["Produtos","Slots","Layouts de Promoção","","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
                                 color: "#111B38"; font.pixelSize: 15; font.bold: true
                             }
                             Item { Layout.fillWidth: true }
-                            ToolButton { text: "⌄"; onClicked: studioSection = 0 }
+                            ToolButton {
+                                text: showProductImageReview ? "← Produtos" : "⌄"
+                                onClicked: {
+                                    if (showProductImageReview)
+                                        showProductImageReview = false
+                                    else
+                                        studioSection = 0
+                                }
+                            }
                         }
                         ColumnLayout {
                             Layout.fillHeight: true
                             Layout.fillWidth: true
-                            visible: studioSection === 0
+                            visible: studioSection === 0 && !showProductImageReview
                             spacing: 11
                             RowLayout {
                                 Layout.fillWidth: true
@@ -873,6 +994,12 @@ ApplicationWindow {
                                     ToolTip.text: "Reconsultar o banco de imagens aprovado"
                                     ToolTip.visible: hovered
                                     onClicked: sceneBridge.refreshProductImages()
+                                }
+                                ToolButton {
+                                    text: "Banco SR"
+                                    ToolTip.text: "Buscar, recuperar e confirmar fotos apenas para produtos desta planilha"
+                                    ToolTip.visible: hovered
+                                    onClicked: window.openImageReviewFor(window.inspectorProduct)
                                 }
                             }
                             Label { text: "Destino do produto"; font.pixelSize: 10; color: "#79849A" }
@@ -1021,6 +1148,10 @@ ApplicationWindow {
                                         Menu {
                                             id: productActions
                                             MenuItem {
+                                                text: "Buscar foto no Banco SR"
+                                                onTriggered: window.openImageReviewFor(productCard.productData)
+                                            }
+                                            MenuItem {
                                                 text: "Adicionar ou substituir imagem"
                                                 onTriggered: {
                                                     var p = productCard.productData
@@ -1046,7 +1177,7 @@ ApplicationWindow {
                         ColumnLayout {
                             Layout.fillHeight: true
                             Layout.fillWidth: true
-                            visible: studioSection === 3
+                            visible: studioSection === 0 && showProductImageReview
                             spacing: 8
                             Label {
                                 Layout.fillWidth: true
@@ -1091,7 +1222,7 @@ ApplicationWindow {
                             }
                             Label {
                                 Layout.fillWidth: true
-                                text: "Vincular imagem aprovada ao produto:"
+                                text: "Escolha um produto da planilha para revisar as fotos:"
                                 font.pixelSize: 10; color: "#64748B"
                             }
                             ComboBox {
@@ -1114,7 +1245,14 @@ ApplicationWindow {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
                                 color: "#64748B"; font.pixelSize: 10
-                                text: "Fotos pendentes são somente para revisão. Elas nunca serão vinculadas automaticamente."
+                                text: "Somente fotos do produto selecionado são sugeridas. As pendentes exigem sua confirmação após conferir a embalagem."
+                            }
+                            CheckBox {
+                                Layout.fillWidth: true
+                                enabled: !!imageBankTargetProductId
+                                text: "Procurar também entre outras fotos do banco"
+                                checked: imageBankShowAll
+                                onToggled: imageBankShowAll = checked
                             }
                             ListView {
                                 id: imageBankList
@@ -1159,7 +1297,7 @@ ApplicationWindow {
                                                 color: "#17213E"
                                             }
                                             Label {
-                                                text: modelData.status === "pending" ? "PENDENTE · Revisar no Banco SR" :
+                                                text: modelData.status === "pending" ? "PENDENTE · Confirmar embalagem" :
                                                       modelData.status === "approved" ? "APROVADA" : "VINCULADA"
                                                 color: modelData.status === "pending" ? "#9A6700" : "#12805C"
                                                 font.pixelSize: 9
@@ -1169,15 +1307,13 @@ ApplicationWindow {
                                                 color: "#64748B"; font.pixelSize: 9
                                             }
                                             Button {
-                                                text: "Usar neste produto"
+                                                text: "Conferir e vincular"
                                                 Layout.fillWidth: true
                                                 font.pixelSize: 10
-                                                enabled: !!modelData.can_link && !!imageBankTargetProductId
+                                                enabled: !!imageBankTargetProductId
                                                 onClicked: {
-                                                    sceneBridge.attachProductImage(
-                                                        imageBankTargetProductId,
-                                                        imageBankTargetProductName,
-                                                        localSource(modelData.image_path))
+                                                    bankSelectedImage = modelData
+                                                    bankReviewConfirm.open()
                                                 }
                                             }
                                         }
@@ -1190,12 +1326,25 @@ ApplicationWindow {
                                     horizontalAlignment: Text.AlignHCenter
                                     wrapMode: Text.WordWrap
                                     font.pixelSize: 11; color: "#64748B"
-                                    text: "Nenhuma imagem local encontrada neste filtro. No SR Studio principal, abra Banco de Imagens para importar e revisar fotos. O acervo histórico do GitHub exige instalação separada."
+                                    text: !imageBankTargetProductId ?
+                                          "Selecione um produto da planilha acima." :
+                                          !imageBankShowAll ?
+                                          "Nenhuma correspondência sugerida. Marque 'Procurar também entre outras fotos' para examinar o acervo e conferir manualmente a embalagem." :
+                                          "Nenhuma foto disponível neste filtro. Use Baixar acervo histórico ou importe seu ZIP."
                                 }
                             }
                             Button {
                                 Layout.fillWidth: true
-                                text: "Importar acervo histórico ZIP (para revisão)"
+                                text: bankDownloadStarted ? "Recuperando acervo..." : "Baixar acervo histórico verificado (36 MB)"
+                                enabled: !bankDownloadStarted
+                                onClicked: {
+                                    bankDownloadStarted = true
+                                    sceneBridge.downloadHistoricalReviewBank()
+                                }
+                            }
+                            Button {
+                                Layout.fillWidth: true
+                                text: "Importar ZIP histórico já baixado"
                                 onClicked: historicalReviewZipDialog.open()
                             }
                             RowLayout {

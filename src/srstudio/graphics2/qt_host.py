@@ -584,6 +584,29 @@ def launch_qt_quick_editor(
                 self._status = f"Falha ao abrir Banco SR: {exc}"
             self.statusChanged.emit()
 
+        @Slot()
+        def downloadHistoricalReviewBank(self) -> None:
+            """User-requested recovery of a pinned, SHA-256-verified release ZIP.
+
+            The importer deliberately keeps every recovered photograph pending.
+            The user must review its preview and confirm the exact product.
+            """
+            self._status = ("Baixando o acervo histórico oficial (36 MB). "
+                            "As imagens não serão aprovadas automaticamente.")
+            self.statusChanged.emit()
+
+            def worker():
+                try:
+                    from .historical_bank_download import download_and_import_review_bank
+                    result = download_and_import_review_bank()
+                    self.historicalImageBankDone.emit(True, json.dumps(result))
+                except Exception as exc:
+                    self.historicalImageBankDone.emit(
+                        False, f"{type(exc).__name__}: {exc}")
+
+            threading.Thread(target=worker, name="sr-beta59-review-bank-download",
+                             daemon=True).start()
+
         @Slot(str)
         def importHistoricalReviewZip(self, source: str) -> None:
             """Install only pending images from a separately downloaded bank ZIP."""
@@ -612,6 +635,9 @@ def launch_qt_quick_editor(
                     f"Banco SR: {data['installed_pending']} novas imagens para revisão; "
                     f"{data['already_present']} já existentes. Nenhuma aprovada automaticamente."
                 )
+                # The import only mutates the local photo library. Explicit
+                # product associations are done separately in the review panel.
+                self.refreshProductImages()
                 self.sceneChanged.emit()
             else:
                 self._status = "Falha na importação do Banco SR: " + response
