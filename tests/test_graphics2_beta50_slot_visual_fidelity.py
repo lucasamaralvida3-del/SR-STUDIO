@@ -103,7 +103,14 @@ def test_multi_badges_smaller_and_legends_do_not_overlap_price_digits(tmp_path, 
         unit = s.page.node(slot.node_by_role[BindingRole.UNIT.value])
         assert promo.text == "NA PROMOÇÃO" and promo.visible
         assert club.text == "NO CLUBE SR" and club.visible
-        assert secondary.visible and secondary.text == "R$ 3,99"
+        # Beta58 keeps the linked canonical retail price node but paints
+        # R$/integer/cents as separate glyphs so centavos never collide.
+        assert secondary.text == "R$ 3,99" and not secondary.visible
+        parts = {key: s.page.node(nid) for key, nid in
+                 slot.metadata["promotion_amount_nodes"].items()}
+        assert all(n.visible for n in parts.values())
+        assert parts["promo_integer"].text == "3"
+        assert parts["promo_cents"].text == ",99"
         assert club.style["nowrap"] is True
         assert club.style["wrap"] is False
         assert _overlap(club.rect, cents.rect) == 0

@@ -681,6 +681,15 @@ def _reset_clone_content(page, slot: SmartSlot) -> None:
                 node = page.node(str(node_id))
                 if node is not None and node.kind is NodeKind.TEXT:
                     node.text = value
+    # Removing bound product data must clear the split promotional text too.
+    for node_id in dict(slot.metadata.get("promotion_amount_nodes") or {}).values():
+        node = page.node(str(node_id))
+        if node is not None:
+            node.text = ""
+            node.visible = False
+    promotion_unit = page.node(str(slot.metadata.get("promotion_unit_node_id") or ""))
+    if promotion_unit is not None:
+        promotion_unit.visible = False
     badge = page.node(str(slot.metadata.get("two_price_badge_node_id") or ""))
     if badge is not None:
         badge.visible = False
@@ -729,6 +738,14 @@ def duplicate_item_slot(session: GraphicsSession, slot_id: str, *, dx: float = 2
         old_two_badge = str(source_slot.metadata.get("two_price_badge_node_id") or "")
         if old_two_badge:
             clone.metadata["two_price_badge_node_id"] = mapping.get(old_two_badge, "")
+        clone.metadata["promotion_amount_nodes"] = {
+            key: mapping[node_id]
+            for key, node_id in dict(source_slot.metadata.get("promotion_amount_nodes") or {}).items()
+            if node_id in mapping
+        }
+        old_promo_unit = str(source_slot.metadata.get("promotion_unit_node_id") or "")
+        if old_promo_unit:
+            clone.metadata["promotion_unit_node_id"] = mapping.get(old_promo_unit, "")
         old_name_panel = str(source_slot.metadata.get("name_backdrop_node_id") or "")
         if old_name_panel:
             clone.metadata["name_backdrop_node_id"] = mapping.get(old_name_panel, "")
@@ -895,6 +912,10 @@ def _reference_price_state(product: dict[str, Any], mode: str) -> tuple[bool, ob
     two = mode == "two" or (mode == "auto" and variant == "two")
     normal = product.get("price")
     primary = promotional if two or mode == "auto" else (normal if normal not in (None, "") else promotional)
+    # Explicit "two prices" should never leave an empty promotion badge.
+    # Auto still collapses equal-price products to a single price.
+    if mode == "two" and retail in (None, ""):
+        retail = normal if normal not in (None, "") else primary
     return two, primary, retail if two else None
 
 

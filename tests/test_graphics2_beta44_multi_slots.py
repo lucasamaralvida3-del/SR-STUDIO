@@ -58,8 +58,11 @@ def test_multi_cells_bind_distinct_products_and_switch_prices():
     first_extra = page.node(page.slots[one].node_by_role[BindingRole.RETAIL_PRICE.value])
     second_extra = page.node(page.slots[two].node_by_role[BindingRole.RETAIL_PRICE.value])
     assert not first_extra.visible
-    assert second_extra.visible
+    assert not second_extra.visible  # old whole-value field is binding-only
     assert "19,99" in second_extra.text
+    parts = page.slots[two].metadata["promotion_amount_nodes"]
+    assert all(page.node(nid).visible for nid in parts.values())
+    assert page.node(parts["promo_cents"]).text == ",99"
     out = router.dispatch({"name": "set_item_price_mode", "multi_root_id": data["root_node_id"], "mode": "one"})
     assert out.ok
     assert not second_extra.visible
@@ -76,7 +79,9 @@ def test_single_promotional_slot_supports_two_prices_and_optional_limit():
         "club_price": "7,99", "cpf_limit": 20,
     })
     page = session.page
-    assert page.node(slot.node_by_role[BindingRole.RETAIL_PRICE.value]).visible
+    assert not page.node(slot.node_by_role[BindingRole.RETAIL_PRICE.value]).visible
+    assert all(page.node(nid).visible for nid in
+               slot.metadata["promotion_amount_nodes"].values())
     assert page.node(slot.node_by_role[BindingRole.LIMIT.value]).visible
     assert page.node(slot.node_by_role[BindingRole.LIMIT.value]).text == "LIMITE DE 20 UN POR CPF"
 

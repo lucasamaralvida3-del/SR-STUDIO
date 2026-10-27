@@ -52,10 +52,13 @@ def test_two_price_text_never_overlaps_other_values(preset):
     assert label.style["font_size"] >= 8.0
     assert all(not overlaps(a.rect, b.rect) for i, a in enumerate(
         price_nodes + [label]) for b in (price_nodes + [label])[i+1:])
-    small = [page.node(slot.metadata["promotion_label_node_id"]),
-             page.node(slot.node_by_role[BindingRole.RETAIL_PRICE.value])]
+    retail_binding = page.node(slot.node_by_role[BindingRole.RETAIL_PRICE.value])
+    assert retail_binding.text == "R$ 27,66" and not retail_binding.visible
+    small = [page.node(slot.metadata["promotion_label_node_id"])] + [
+        page.node(nid) for nid in slot.metadata["promotion_amount_nodes"].values()]
     assert all(node.visible for node in small)
-    assert not overlaps(small[0].rect, small[1].rect)
+    assert all(not overlaps(a.rect, b.rect)
+               for i, a in enumerate(small) for b in small[i+1:])
     for a in small:
         for b in price_nodes + [label]:
             assert not overlaps(a.rect, b.rect), (a.name, b.name)

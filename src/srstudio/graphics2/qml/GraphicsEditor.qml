@@ -16,6 +16,8 @@ ApplicationWindow {
     property var scene: JSON.parse(sceneBridge.sceneJson)
     property var page: activePage()
     property real zoom: 0.72
+    property real productSidebarWidth: sceneBridge.productSidebarWidth
+    property string imageMatchReport: ""
     // Beta 42: studio navigation mirrors the supplied SR Studio 5.0 reference.
     property int studioSection: 0
     property int studioNavigation: 2
@@ -742,6 +744,13 @@ ApplicationWindow {
     Shortcut { sequence: StandardKey.Undo; onActivated: sceneBridge.undo() }
     Shortcut { sequence: StandardKey.Redo; onActivated: sceneBridge.redo() }
     Shortcut { sequence: StandardKey.Delete; onActivated: sceneBridge.dispatch('{"name":"delete"}') }
+    Timer {
+        id: saveProductSidebarWidth
+        interval: 650
+        repeat: false
+        onTriggered: sceneBridge.saveProductSidebarWidth(Math.round(window.productSidebarWidth))
+    }
+
     Shortcut { sequence: "Ctrl+D"; onActivated: selectedSlotId ? duplicateSelectedSmartSlot() : sceneBridge.dispatch('{"name":"duplicate"}') }
     Shortcut { sequence: "Ctrl+G"; onActivated: sceneBridge.dispatch('{"name":"group"}') }
     Shortcut { sequence: "Ctrl+Shift+G"; onActivated: sceneBridge.dispatch('{"name":"ungroup"}') }
@@ -765,8 +774,17 @@ ApplicationWindow {
             Layout.fillHeight: true
             orientation: Qt.Horizontal
             Rectangle {
-                SplitView.preferredWidth: 332
-                SplitView.minimumWidth: 285
+                id: catalogSidebar
+                SplitView.preferredWidth: studioSection === 0 ? window.productSidebarWidth : 332
+                SplitView.minimumWidth: 340
+                SplitView.maximumWidth: 565
+                onWidthChanged: {
+                    if (studioSection === 0 && width >= 340 && width <= 565
+                            && Math.abs(width - window.productSidebarWidth) >= 2) {
+                        window.productSidebarWidth = width
+                        saveProductSidebarWidth.restart()
+                    }
+                }
                 color: "#FFFFFF"
                 border.color: "#E5EAF4"
                 RowLayout {
@@ -839,6 +857,24 @@ ApplicationWindow {
                                 model: ["Todos os produtos","Com imagem","Sem imagem"]
                                 onActivated: productFilter = currentText
                             }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Label {
+                                    Layout.fillWidth: true
+                                    text: {
+                                        var all = products()
+                                        var count = all.filter(function(p) { return !!(p.image_path || p.image) }).length
+                                        return "Fotos encontradas: " + count + " / " + all.length
+                                    }
+                                    color: "#536783"; font.pixelSize: 11
+                                }
+                                ToolButton {
+                                    text: "↻ Fotos"
+                                    ToolTip.text: "Reconsultar o banco de imagens aprovado"
+                                    ToolTip.visible: hovered
+                                    onClicked: sceneBridge.refreshProductImages()
+                                }
+                            }
                             Label { text: "Destino do produto"; font.pixelSize: 10; color: "#79849A" }
                             ComboBox {
                                 id: slotCombo
@@ -860,7 +896,7 @@ ApplicationWindow {
                                     id: productCard
                                     required property var modelData
                                     width: productList.width - 4
-                                    height: Math.max(104, productInformation.implicitHeight + 24)
+                                    height: Math.max(122, productInformation.implicitHeight + 28)
                                     radius: 11
                                     color: productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF"
                                     border.color: productMouse.dragging ? "#2869EF" : "#DCE5F1"
@@ -868,11 +904,11 @@ ApplicationWindow {
                                     property var productData: modelData
                                     RowLayout {
                                         anchors.fill: parent
-                                        anchors.margins: 9
-                                        spacing: 8
+                                        anchors.margins: 11
+                                        spacing: 10
                                         Rectangle {
-                                            Layout.preferredWidth: 59
-                                            Layout.preferredHeight: 72
+                                            Layout.preferredWidth: 84
+                                            Layout.preferredHeight: 96
                                             Layout.alignment: Qt.AlignVCenter
                                             radius: 8
                                             color: "#F8FAFE"
@@ -897,18 +933,18 @@ ApplicationWindow {
                                                 text: modelData.display_name || modelData.name || modelData.original_name || "Produto"
                                                 color: "#11234A"
                                                 font.bold: true
-                                                font.pixelSize: 11
+                                                font.pixelSize: 13
                                                 wrapMode: Text.WordWrap
                                                 elide: Text.ElideNone
                                             }
                                             Label {
                                                 text: String(modelData.unit || "UN").toUpperCase()
-                                                color: "#7886A0"; font.pixelSize: 10
+                                                color: "#7886A0"; font.pixelSize: 11
                                             }
                                             Label {
                                                 Layout.fillWidth: true
                                                 text: modelData.price ? ("Oferta  R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"
-                                                color: "#1154D8"; font.bold: true; font.pixelSize: 12
+                                                color: "#1154D8"; font.bold: true; font.pixelSize: 14
                                             }
                                             Label {
                                                 Layout.fillWidth: true
@@ -921,7 +957,7 @@ ApplicationWindow {
                                                                 (modelData.wholesale_price ? "Atacado  " : "Varejo  ")
                                                     return label + "R$ " + String(extra || "").replace(".", ",")
                                                 }
-                                                color: "#B32D18"; font.bold: true; font.pixelSize: 11
+                                                color: "#B32D18"; font.bold: true; font.pixelSize: 13
                                             }
                                         }
                                         ToolButton {

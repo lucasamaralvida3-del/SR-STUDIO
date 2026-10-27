@@ -28,7 +28,11 @@ TWO_PRICE_GEOMETRY = {
         # Keep club text BELOW digits and LEFT of the unit. No component
         # rectangles intersect even when showing a 3-digit price.
         "club_label": (.713, .905, .185, .048),
-        "promotion_unit": (.656, .910, .056, .049),
+        "promotion_unit": (.662, .924, .046, .043),
+        # Split promotion like the certified Slot Único: R$ | 32 | ,86.
+        "promo_currency": (.488, .910, .038, .054),
+        "promo_integer": (.526, .891, .093, .084),
+        "promo_cents": (.620, .899, .040, .046),
         "main_price": (.610, .715, .390, .260),
         "currency": (.265, .31, .080, .30),
         "integer": (.355, .13, .370, .60),
@@ -44,7 +48,10 @@ TWO_PRICE_GEOMETRY = {
         "promo_label": (.548, .531, .372, .050),
         "secondary_price": (.548, .605, .293, .103),
         "club_label": (.760, .745, .230, .130),
-        "promotion_unit": (.845, .645, .075, .054),
+        "promotion_unit": (.849, .650, .071, .050),
+        "promo_currency": (.540, .618, .057, .068),
+        "promo_integer": (.597, .594, .167, .115),
+        "promo_cents": (.767, .600, .077, .061),
         "main_price": (.010, .715, .980, .280),
         # Disjoint money boxes: reais, cents, full NO CLUBE SR and unit.
         "currency": (.055, .290, .160, .440),
@@ -128,6 +135,66 @@ def _ensure_promotional_unit(page, slot, geometry, enabled: bool):
     node.z_index = 86
 
 
+def _split_promotional_price(page, slot, geometry, enabled: bool) -> None:
+    """Keep the secondary-price binding, but paint 3 independently fitted glyphs.
+
+    Original RETAIL_PRICE node stays in the document for edits and import,
+    so switching between one/two prices or reopening a saved scene loses no
+    product metadata. Rendering the entire price as one string made centavos
+    collide with reais in small Multi badges.
+    """
+    from .operations import _price_parts
+
+    root = page.node(str(slot.metadata.get("root_node_id") or ""))
+    if root is None:
+        return
+    source = page.node(str(slot.node_by_role.get(BindingRole.RETAIL_PRICE.value) or ""))
+    raw = str(source.text or "") if source is not None else ""
+    whole, cents = _price_parts(raw)
+    nodes = dict(slot.metadata.get("promotion_amount_nodes") or {})
+    for key, value, size in (
+        ("promo_currency", "R$", 12.5),
+        ("promo_integer", whole, 26.0),
+        ("promo_cents", cents, 13.0),
+    ):
+        node = page.node(str(nodes.get(key) or ""))
+        if node is None:
+            # Migrates already saved Beta 56/57 cards without duplicating
+            # old standalone cards or breaking their original price binding.
+            node = next((
+                page.node(nid) for nid in page.descendants(root.id)
+                if page.node(nid).metadata.get("item_slot_promo_component") == key
+            ), None)
+        if node is None:
+            node = GraphicsNode(
+                kind=NodeKind.TEXT,
+                name="PROMOÇÃO · " + key.upper(),
+                text="", transform=Transform(), z_index=86,
+                style={"font_family": "Impact", "font_size": size,
+                       "font_size_unit": "pt", "font_weight": 700,
+                       "color": "#FFFFFF", "fill": "#FFFFFF",
+                       "align": "center", "v_align": "center",
+                       "fit_inside_box": True, "single_line": True,
+                       "nowrap": True, "wrap": False, "min_font_size": 6},
+                metadata={"manual_item_slot_child": True,
+                          "item_slot_promo_component": key}, visible=False,
+            )
+            page.add_node(node, parent_id=root.id)
+        nodes[key] = node.id
+        node.text = value
+        _position(node, _absolute(root.rect.normalized(), geometry[key]))
+        node.style["font_size"] = size
+        node.style["align"] = "right" if key == "promo_integer" else (
+            "left" if key == "promo_cents" else "center")
+        node.visible = bool(enabled and whole and cents and value)
+        node.z_index = 86
+    slot.metadata["promotion_amount_nodes"] = nodes
+    # The whole-value binding still receives spreadsheet updates, but
+    # displaying it as an additional text node is precisely the overlap bug.
+    if source is not None:
+        source.visible = False
+
+
 def ensure_individual_name_panel(page, slot, *, two_prices=False):
     """Create the source-white name background between image and editable title.
 
@@ -184,6 +251,7 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
     if badge is not None:
         badge.visible = enabled
     _ensure_promotional_unit(page, slot, geometry, enabled)
+    _split_promotional_price(page, slot, geometry, enabled)
 
     # The two-price Individual PPTX shows ONE large product cutout. The
     # earlier one-price file shows the repeated cutouts; switching modes must

@@ -134,7 +134,12 @@ def test_two_price_pptx_keeps_promotion_badge_and_club_label_together():
     })
     # The *newly supplied* Individual two-price PPTX contains BOTH labels:
     # NA PROMOÇÃO on the smaller price badge and NO CLUBE SR on the main plate.
-    assert extra.visible and club.visible and promo.visible
+    assert not extra.visible and club.visible and promo.visible
+    assert extra.text == "R$ 7,21"
+    parts = a.metadata["promotion_amount_nodes"]
+    assert all(p.node(node_id).visible for node_id in parts.values())
+    assert p.node(parts["promo_integer"]).text == "7"
+    assert p.node(parts["promo_cents"]).text == ",21"
     assert promo.text == "NA PROMOÇÃO"
     badge = p.node(a.metadata["two_price_badge_node_id"])
     assert badge is not None and badge.visible
