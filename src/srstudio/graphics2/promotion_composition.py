@@ -119,7 +119,7 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
             )
 
     multi5 = None
-    if reuse_existing and plan.mode == "eleven":
+    if reuse_existing and plan.mode in {"eleven", "nine"}:
         for node in page.nodes.values():
             if node.metadata.get("multi_slot_beta44") and int(node.metadata.get("multi_count") or 0) == 5:
                 ids = list(node.metadata.get("child_slot_ids") or [])
@@ -162,7 +162,7 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
     # do not introduce an artificial new Multi strip and abandon five
     # products. In that case the bottom five positions use the existing
     # individual components. A real Multi-5 is preferred if already present.
-    use_multi5 = plan.mode == "eleven" and (multi5 is not None or len(singles) <= 6)
+    use_multi5 = plan.mode in {"eleven", "nine"} and (multi5 is not None or len(singles) <= (6 if plan.mode == "eleven" else 4))
 
     arranged: list[str] = []
     reused: list[str] = []
