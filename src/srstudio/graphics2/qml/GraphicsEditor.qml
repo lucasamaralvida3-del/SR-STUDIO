@@ -22,13 +22,13 @@ ApplicationWindow {
     property int autoLayoutVariation: 0
     property string productQuery: ""
     property string productFilter: "Todos os produtos"
-    property int visibleProductLimit: 12
+    // ListView virtualizes delegates, so all spreadsheet products remain scrollable.
     property var imageBankInventory: ({"images":[],"counts":{}})
     property string imageBankQuery: ""
     property string imageBankStatus: "Todos"
     property string imageBankTargetProductId: ""
     property string imageBankTargetProductName: ""
-    onStudioSectionChanged: if (studioSection === 3) refreshImageBank()
+    // The bank is internal; only linked spreadsheet products are shown in Produtos.
 
     function refreshImageBank() {
         try {
@@ -64,7 +64,7 @@ ApplicationWindow {
                 && (productFilter === "Todos os produtos"
                     || (productFilter === "Com imagem" && hasImage)
                     || (productFilter === "Sem imagem" && !hasImage))
-        }).slice(0, visibleProductLimit)
+        })
     }
 
     function createBlueSlot() {
@@ -184,6 +184,7 @@ ApplicationWindow {
             ? {"name":"apply_campaign_preset", "background_id":items[index].id}
             : {"name":"apply_campaign_seal", "seal_id":items[index].id}))
     }
+    property var inspectorProduct: null
     property string pendingImageProductId: ""
     property string pendingImageProductName: ""
     FileDialog {
@@ -681,11 +682,11 @@ ApplicationWindow {
                             spacing: 7
                             Repeater {
                                 model: [
-                                    { icon:"⬡", title:"Produtos" }, { icon:"⬡", title:"Slots" },
-                                    { icon:"♧", title:"Layouts" }, { icon:"▧", title:"Imagens" },
-                                    { icon:"T", title:"Texto" }, { icon:"♧", title:"Formas" },
-                                    { icon:"▨", title:"Fundos" }, { icon:"▱", title:"Camadas" },
-                                    { icon:"☷", title:"Projeto" }
+                                    { icon:"⬡", title:"Produtos", section:0 }, { icon:"⬡", title:"Slots", section:1 },
+                                    { icon:"♧", title:"Layouts", section:2 },
+                                    { icon:"T", title:"Texto", section:4 }, { icon:"♧", title:"Formas", section:5 },
+                                    { icon:"▨", title:"Fundos", section:6 }, { icon:"▱", title:"Camadas", section:7 },
+                                    { icon:"☷", title:"Projeto", section:8 }
                                 ]
                                 delegate: Rectangle {
                                     required property var modelData
@@ -695,14 +696,14 @@ ApplicationWindow {
                                     Layout.leftMargin: 5
                                     Layout.rightMargin: 5
                                     radius: 9
-                                    color: studioSection === index ? "#EFF3FF" : "transparent"
+                                    color: studioSection === modelData.section ? "#EFF3FF" : "transparent"
                                     ColumnLayout {
                                         anchors.centerIn: parent
                                         spacing: 5
-                                        Label { text: modelData.icon; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#2C4BFA" : "#4C577F"; font.pixelSize: 24 }
-                                        Label { text: modelData.title; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#284DFF" : "#425072"; font.pixelSize: 9; font.bold: studioSection === index }
+                                        Label { text: modelData.icon; Layout.alignment: Qt.AlignHCenter; color: studioSection === modelData.section ? "#2C4BFA" : "#4C577F"; font.pixelSize: 24 }
+                                        Label { text: modelData.title; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#284DFF" : "#425072"; font.pixelSize: 9; font.bold: studioSection === modelData.section }
                                     }
-                                    MouseArea { anchors.fill: parent; onClicked: studioSection = index }
+                                    MouseArea { anchors.fill: parent; onClicked: studioSection = modelData.section }
                                 }
                             }
                             Item { Layout.fillHeight: true }
@@ -716,7 +717,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: ["Produtos","Slots","Layouts de Promoção","Imagens","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
+                                text: ["Produtos","Slots","Layouts de Promoção","","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
                                 color: "#111B38"; font.pixelSize: 15; font.bold: true
                             }
                             Item { Layout.fillWidth: true }
@@ -758,40 +759,84 @@ ApplicationWindow {
                                     id: productCard
                                     required property var modelData
                                     width: productList.width - 4
-                                    height: 99
-                                    radius: 9
+                                    height: Math.max(104, productInformation.implicitHeight + 24)
+                                    radius: 11
                                     color: productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF"
-                                    border.color: productMouse.dragging ? "#0F5BD8" : "#D9E4F2"
+                                    border.color: productMouse.dragging ? "#2869EF" : "#DCE5F1"
                                     border.width: productMouse.dragging ? 2 : 1
                                     property var productData: modelData
-
                                     RowLayout {
                                         anchors.fill: parent
                                         anchors.margins: 9
-                                        spacing: 9
+                                        spacing: 8
                                         Rectangle {
-                                            Layout.preferredWidth: 64
-                                            Layout.preferredHeight: 66
-                                            radius: 5
-                                            color: "#FAFBFE"
-                                            border.color: "#E5EAF1"
-                                            clip: true
+                                            Layout.preferredWidth: 59
+                                            Layout.preferredHeight: 72
+                                            Layout.alignment: Qt.AlignVCenter
+                                            radius: 8
+                                            color: "#F8FAFE"
+                                            border.color: "#E8EEF6"
                                             Image {
                                                 anchors.fill: parent
                                                 anchors.margins: 3
                                                 source: localSource(modelData.image_path || modelData.image || "")
                                                 fillMode: Image.PreserveAspectFit
                                                 asynchronous: true
+                                                cache: true
+                                                smooth: true
                                             }
                                         }
                                         ColumnLayout {
+                                            id: productInformation
                                             Layout.fillWidth: true
-                                            spacing: 2
-                                            Label { Layout.fillWidth: true; text: modelData.display_name || modelData.name || modelData.original_name || "Produto"; color: "#111827"; font.bold: true; font.pixelSize: 12; elide: Text.ElideRight }
-                                            Label { text: (modelData.unit || "UN") + (modelData.category ? " · " + modelData.category : ""); color: "#64748B"; font.pixelSize: 10 }
-                                            Label { text: modelData.price ? ("R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 14 }
+                                            Layout.alignment: Qt.AlignVCenter
+                                            spacing: 3
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: modelData.display_name || modelData.name || modelData.original_name || "Produto"
+                                                color: "#11234A"
+                                                font.bold: true
+                                                font.pixelSize: 11
+                                                wrapMode: Text.WordWrap
+                                                elide: Text.ElideNone
+                                            }
+                                            Label {
+                                                text: String(modelData.unit || "UN").toUpperCase()
+                                                color: "#7886A0"; font.pixelSize: 10
+                                            }
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: modelData.price ? ("Oferta  R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"
+                                                color: "#1154D8"; font.bold: true; font.pixelSize: 12
+                                            }
+                                            Label {
+                                                Layout.fillWidth: true
+                                                visible: !!(modelData.app_price || modelData.club_price ||
+                                                            modelData.wholesale_price || modelData.retail_price)
+                                                text: {
+                                                    var extra = modelData.app_price || modelData.club_price ||
+                                                                modelData.wholesale_price || modelData.retail_price
+                                                    var label = (modelData.app_price || modelData.club_price) ? "Clube SR  " :
+                                                                (modelData.wholesale_price ? "Atacado  " : "Varejo  ")
+                                                    return label + "R$ " + String(extra || "").replace(".", ",")
+                                                }
+                                                color: "#B32D18"; font.bold: true; font.pixelSize: 11
+                                            }
                                         }
-                                        ToolButton { text: "+"; font.pixelSize: 18; enabled: selectedSlotId !== ""; onClicked: bindProduct(modelData) }
+                                        ToolButton {
+                                            text: "+"
+                                            font.pixelSize: 18
+                                            z: 3
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 32
+                                            onClicked: {
+                                                window.inspectorProduct = productCard.productData
+                                                if (selectedSlotId)
+                                                    bindProduct(modelData)
+                                            }
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: selectedSlotId ? "Aplicar ao Smart Slot selecionado" : "Selecione um slot antes de aplicar"
+                                        }
                                     }
                                     MouseArea {
                                         id: productMouse
@@ -803,6 +848,7 @@ ApplicationWindow {
                                         property real pressY: 0
                                         property bool dragging: false
                                         onPressed: {
+                                            window.inspectorProduct = productCard.productData
                                             if (mouse.button === Qt.RightButton) {
                                                 productActions.popup()
                                                 return
@@ -835,28 +881,29 @@ ApplicationWindow {
                                             cancelProductDrag()
                                         }
                                         onDoubleClicked: if (selectedSlotId) bindProduct(productCard.productData)
-                                    Menu {
-                                        id: productActions
-                                        MenuItem {
-                                            text: "Adicionar imagem"
-                                            onTriggered: {
-                                                var p = productCard.productData
-                                                window.pendingImageProductId = String(p.id || p.product_id || "")
-                                                window.pendingImageProductName = productLabel(p)
-                                                productImageDialog.open()
+                                        Menu {
+                                            id: productActions
+                                            MenuItem {
+                                                text: "Adicionar ou substituir imagem"
+                                                onTriggered: {
+                                                    var p = productCard.productData
+                                                    window.pendingImageProductId = String(p.id || p.product_id || "")
+                                                    window.pendingImageProductName = productLabel(p)
+                                                    productImageDialog.open()
+                                                }
                                             }
                                         }
                                     }
-                                    }
                                 }
-                                Label { anchors.centerIn: parent; visible: productList.count === 0; text: "Importe uma planilha para carregar produtos."; width: productList.width - 30; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; color: "#94A3B8" }
-                            }
-
-                            Button {
-                                Layout.fillWidth: true
-                                text: "Ver mais produtos"
-                                flat: true
-                                onClicked: visibleProductLimit += 24
+                                Label {
+                                    anchors.centerIn: parent
+                                    visible: productList.count === 0
+                                    text: "Importe uma planilha para carregar produtos."
+                                    width: productList.width - 30
+                                    wrapMode: Text.WordWrap
+                                    horizontalAlignment: Text.AlignHCenter
+                                    color: "#94A3B8"
+                                }
                             }
                         }
                         ColumnLayout {
@@ -1160,7 +1207,7 @@ ApplicationWindow {
                                 width: 235
                                 spacing: 7
                                 Label { text: "Ações do projeto"; font.bold: true; color: "#263D71" }
-                                Button { text: "+ Slot Azul"; Layout.fillWidth: true; onClicked: createBlueSlot() }
+                                Button { text: "+ Slot Único"; Layout.fillWidth: true; onClicked: createBlueSlot() }
                                 Button { text: "Ajustar Smart Slots"; Layout.fillWidth: true; checkable: true; checked: smartSlotEditMode; onClicked: { smartSlotEditMode = checked; smartSlotInspectionMode = checked } }
                                 Button { text: "Copiar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"copy"}') }
                                 Button { text: "Colar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"paste"}') }
@@ -1192,7 +1239,7 @@ ApplicationWindow {
 
                             Repeater {
                                 model: [
-                                    {"key":"blue", "label":"Slot Azul", "count":0},
+                                    {"key":"blue", "label":"Slot Único", "count":0},
                                     {"key":"individual", "label":"Smart Slot Individual", "count":0},
                                     {"key":"multi5", "label":"Multi Itens — 5 produtos", "count":5},
                                     {"key":"multi6", "label":"Multi Itens — 6 produtos", "count":6}
@@ -1483,7 +1530,7 @@ ApplicationWindow {
                             }
                         }
                         ToolButton { text: "T"; ToolTip.text: "Texto"; ToolTip.visible: hovered; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
-                        ToolButton { text: "▧"; ToolTip.text: "Imagens"; ToolTip.visible: hovered; onClicked: studioSection = 3 }
+                        ToolButton { text: "▧"; ToolTip.text: "Imagens dos produtos"; ToolTip.visible: hovered; onClicked: studioSection = 0 }
                         ToolSeparator {}
                         ToolButton { text: "↶"; enabled: !!scene.editor && scene.editor.can_undo; onClicked: sceneBridge.undo() }
                         ToolButton { text: "↷"; enabled: !!scene.editor && scene.editor.can_redo; onClicked: sceneBridge.redo() }
