@@ -67,9 +67,11 @@ ApplicationWindow {
         })
     }
 
-    function createBlueSlot() {
+    function createBlueSlot(dropX, dropY) {
         var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
-            "name": "add_item_slot", "preset_id": "limpeza-blue-v1"
+            "name": "add_item_slot", "preset_id": "limpeza-blue-v1",
+            "x": dropX === undefined ? null : dropX,
+            "y": dropY === undefined ? null : dropY
         })))
         if (result.ok && result.payload) {
             selectedSlotId = String(result.payload.slot_id || "")
@@ -78,9 +80,11 @@ ApplicationWindow {
         }
     }
 
-    function createIndividualSlot() {
+    function createIndividualSlot(dropX, dropY) {
         var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
-            "name": "add_item_slot", "preset_id": "individual-beta44"
+            "name": "add_item_slot", "preset_id": "individual-beta44",
+            "x": dropX === undefined ? null : dropX,
+            "y": dropY === undefined ? null : dropY
         })))
         if (result.ok && result.payload) {
             selectedSlotId = String(result.payload.slot_id || "")
@@ -89,11 +93,13 @@ ApplicationWindow {
         }
     }
 
-    function createMultiSlot(count) {
+    function createMultiSlot(count, dropX, dropY) {
         var modes = ["auto", "one", "two"]
         var mode = modes[slotPriceMode.currentIndex] || "auto"
         var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
-            "name": "add_multi_item_slot", "count": count, "price_mode": mode
+            "name": "add_multi_item_slot", "count": count, "price_mode": mode,
+            "x": dropX === undefined ? null : dropX,
+            "y": dropY === undefined ? null : dropY
         })))
         if (result.ok && result.payload) {
             var created = result.payload.slot_ids || []
@@ -101,6 +107,37 @@ ApplicationWindow {
             smartSlotEditMode = true
             smartSlotInspectionMode = true
         }
+    }
+
+    function placeSlotAt(kind, sourceItem, mouseX, mouseY) {
+        if (!page || !sheet)
+            return
+        var point = sourceItem.mapToItem(sheet, mouseX, mouseY)
+        var docX = point.x / zoom
+        var docY = point.y / zoom
+        if (docX < 0 || docY < 0 || docX > page.width || docY > page.height)
+            return
+        var w = kind === "blue" ? 418 : (kind === "individual" ? 460 : page.width * .94)
+        var h = kind === "blue" ? 320 : (kind === "individual" ? 490 :
+                     Math.min(page.height * .31, 315, w / 4.75))
+        var px = Math.max(0, Math.min(page.width - w, docX - w / 2))
+        var py = Math.max(0, Math.min(page.height - h, docY - h / 2))
+        if (kind === "blue")
+            createBlueSlot(px, py)
+        else if (kind === "individual")
+            createIndividualSlot(px, py)
+        else
+            createMultiSlot(kind === "multi5" ? 5 : 6, px, py)
+    }
+
+    function duplicateSelectedSmartSlot() {
+        if (!selectedSlotId)
+            return
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
+            "name":"duplicate_slot", "slot_id":selectedSlotId
+        })))
+        if (result.ok && result.payload && result.payload.slot_ids.length)
+            selectedSlotId = String(result.payload.slot_ids[0])
     }
 
     function selectedPicture() {
@@ -185,6 +222,11 @@ ApplicationWindow {
             : {"name":"apply_campaign_seal", "seal_id":items[index].id}))
     }
     property var inspectorProduct: null
+    property bool slotDragActive: false
+    property string slotDragKey: ""
+    property real slotDragX: 0
+    property real slotDragY: 0
+    property string inspectorStatus: ""
     property string pendingImageProductId: ""
     property string pendingImageProductName: ""
     FileDialog {
@@ -641,7 +683,7 @@ ApplicationWindow {
     Shortcut { sequence: StandardKey.Undo; onActivated: sceneBridge.undo() }
     Shortcut { sequence: StandardKey.Redo; onActivated: sceneBridge.redo() }
     Shortcut { sequence: StandardKey.Delete; onActivated: sceneBridge.dispatch('{"name":"delete"}') }
-    Shortcut { sequence: "Ctrl+D"; onActivated: sceneBridge.dispatch('{"name":"duplicate"}') }
+    Shortcut { sequence: "Ctrl+D"; onActivated: selectedSlotId ? duplicateSelectedSmartSlot() : sceneBridge.dispatch('{"name":"duplicate"}') }
     Shortcut { sequence: "Ctrl+G"; onActivated: sceneBridge.dispatch('{"name":"group"}') }
     Shortcut { sequence: "Ctrl+Shift+G"; onActivated: sceneBridge.dispatch('{"name":"ungroup"}') }
     Shortcut { sequence: "G"; onActivated: showGrid = !showGrid }
@@ -1280,16 +1322,45 @@ ApplicationWindow {
                                         font.pixelSize: 11; color: "#64748B"
                                     }
                                     MouseArea {
+                                        id: slotPaletteMouse
                                         anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            var count = canonicalSlotPreviewCard.modelData.count
-                                            if (canonicalSlotPreviewCard.modelData.key === "blue")
+                                        cursorShape: Qt.OpenHandCursor
+                                        preventStealing: true
+                                        property real originX: 0
+                                        property real originY: 0
+                                        property bool dragging: false
+                                        onPressed: {
+                                            originX = mouse.x; originY = mouse.y
+                                            dragging = false
+                                        }
+                                        onPositionChanged: {
+                                            if (!pressed) return
+                                            var distance = Math.hypot(mouse.x-originX, mouse.y-originY)
+                                            if (!dragging && distance >= 7)
+                                                dragging = true
+                                            if (dragging) {
+                                                window.slotDragActive = true
+                                                window.slotDragKey = canonicalSlotPreviewCard.modelData.key
+                                                var point = mapToItem(window.contentItem, mouse.x, mouse.y)
+                                                window.slotDragX = point.x
+                                                window.slotDragY = point.y
+                                            }
+                                        }
+                                        onReleased: {
+                                            var key = canonicalSlotPreviewCard.modelData.key
+                                            if (dragging) {
+                                                window.placeSlotAt(key, slotPaletteMouse, mouse.x, mouse.y)
+                                            } else if (key === "blue") {
                                                 window.createBlueSlot()
-                                            else if (canonicalSlotPreviewCard.modelData.key === "individual")
+                                            } else if (key === "individual") {
                                                 window.createIndividualSlot()
-                                            else
-                                                window.createMultiSlot(count)
+                                            } else {
+                                                window.createMultiSlot(canonicalSlotPreviewCard.modelData.count)
+                                            }
+                                            dragging = false; window.slotDragActive = false
+                                        }
+                                        onCanceled: {
+                                            dragging = false; window.slotDragActive = false
                                         }
                                     }
                                 }
@@ -1524,6 +1595,7 @@ ApplicationWindow {
                                 id: studioSlotMenu
                                 MenuItem { text: "Remover Fundo"; onTriggered: removeCurrentBackground() }
                                 MenuItem { text: "Restaurar Auto"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"restore_smart_slot_auto","slot_id":selectedSlotId})) }
+                                MenuItem { text: "Duplicar Smart Slot  ·  Ctrl+D"; enabled: selectedSlotId !== ""; onTriggered: duplicateSelectedSmartSlot() }
                                 MenuItem { text: "Excluir Slot"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"delete_smart_slot","slot_id":selectedSlotId})) }
                                 MenuItem { text: "Não-produto"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"mark_smart_slot_non_product","slot_id":selectedSlotId})) }
                                 MenuItem { text: "Fundo automático"; checkable: true; checked: autoRemoveProductBackground; onTriggered: autoRemoveProductBackground = checked }
@@ -2349,6 +2421,29 @@ ApplicationWindow {
                         Math.min((workspace.width - 180) / page.width, (workspace.height - 140) / page.height)))
                 }
             }
+        }
+    }
+
+    Rectangle {
+        id: slotDragGhost
+        visible: window.slotDragActive
+        x: window.slotDragX + 12
+        y: window.slotDragY + 12
+        width: 192
+        height: 46
+        z: 1000020
+        radius: 9
+        color: "#F8FAFF"
+        border.width: 2
+        border.color: "#2166EF"
+        opacity: .96
+        Label {
+            anchors.centerIn: parent
+            text: "Soltar · " + (window.slotDragKey === "blue" ? "Slot Único" :
+                  window.slotDragKey === "individual" ? "Individual" :
+                  window.slotDragKey === "multi5" ? "Multi 5" : "Multi 6")
+            color: "#164FAF"
+            font.bold: true
         }
     }
 
