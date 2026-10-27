@@ -4,6 +4,28 @@ from srstudio.graphics2.autosave import AutosaveManager
 from srstudio.graphics2.model import GraphicsDocument
 
 
+def test_same_clock_tick_never_overwrites_a_recovery_generation(tmp_path, monkeypatch):
+    from datetime import datetime, timezone
+    import srstudio.graphics2.autosave as autosave
+    class FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 27, 12, 0, tzinfo=timezone.utc)
+    monkeypatch.setattr(autosave, "datetime", FrozenDatetime)
+    manager = AutosaveManager(tmp_path, generations=2)
+    document = GraphicsDocument(name="Fast saves")
+    paths = []
+    for revision in range(4):
+        document.metadata["revision"] = revision
+        paths.append(manager.save(document))
+    assert len(set(paths)) == 4
+    latest = manager.latest(document.id)
+    assert manager.recover(latest).metadata["revision"] == 3
+    latest.path.write_bytes(b"truncated")
+    previous = manager.latest(document.id)
+    assert manager.recover(previous).metadata["revision"] == 2
+
+
 def test_autosave_keeps_generations_and_recovers(tmp_path):
     manager = AutosaveManager(tmp_path, generations=2)
     document = GraphicsDocument(name="Campanha")

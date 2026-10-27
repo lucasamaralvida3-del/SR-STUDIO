@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from threading import RLock
 import json
@@ -58,8 +58,27 @@ class AutosaveManager:
         with self._lock:
             folder = self.root / _safe_id(document.id)
             folder.mkdir(parents=True, exist_ok=True)
-            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S.%fZ")
-            path = folder / f"{stamp}.srscene"
+            moment = datetime.now(timezone.utc)
+            stamp_format = "%Y%m%dT%H%M%S.%fZ"
+            # A coarse Windows clock can return the SAME microsecond for
+            # consecutive saves. Never replace the previous recovery file.
+            # Read the latest filename too, so restarting a manager or pruning
+            # older generations cannot make an earlier name reusable.
+            for existing in sorted(folder.glob("*.srscene"), reverse=True):
+                try:
+                    previous = datetime.strptime(existing.stem, stamp_format).replace(tzinfo=timezone.utc)
+                except ValueError:
+                    continue
+                moment = max(moment, previous + timedelta(microseconds=1))
+                break
+            while True:
+                stamp = moment.strftime(stamp_format)
+                path = folder / f"{stamp}.srscene"
+                try:
+                    path.touch(exist_ok=False)  # reserve against another writer
+                    break
+                except FileExistsError:
+                    moment += timedelta(microseconds=1)
             embed = self.embed_local_assets if embed_local_assets is None else bool(embed_local_assets)
             save_package(document, path, embed_local_assets=embed)
 
