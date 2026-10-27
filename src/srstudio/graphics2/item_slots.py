@@ -894,7 +894,7 @@ def _reference_price_state(product: dict[str, Any], mode: str) -> tuple[bool, ob
     variant, promotional, retail = _price_variant(product)
     two = mode == "two" or (mode == "auto" and variant == "two")
     normal = product.get("price")
-    primary = promotional if two else (normal if normal not in (None, "") else promotional)
+    primary = promotional if two or mode == "auto" else (normal if normal not in (None, "") else promotional)
     return two, primary, retail if two else None
 
 

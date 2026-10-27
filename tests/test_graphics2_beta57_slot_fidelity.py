@@ -177,3 +177,23 @@ def test_multi_one_price_digits_do_not_overlap_after_two_price_toggle():
         integer = s.page.node(slot.node_by_role["price_reais"])
         cents = s.page.node(slot.node_by_role["price_cents"])
         assert ink_bounds(integer)[1] < ink_bounds(cents)[0]
+
+
+@pytest.mark.parametrize("preset", ["limpeza-blue-v1", "individual-beta44", "multi-cell-beta44"])
+def test_auto_equal_promotion_and_club_is_one_price_and_keeps_discount(preset):
+    from srstudio.graphics2.slot_limpeza_blue import create_limpeza_blue_slot, bind_product_to_limpeza_blue_slot
+    s = GraphicsSession(GraphicsDocument())
+    p = {**product(), "price": "35,90", "promotion_price": "31,99"}
+    if preset == "limpeza-blue-v1":
+        slot = create_limpeza_blue_slot(s)
+        assert bind_product_to_limpeza_blue_slot(s, slot.id, p)
+        assert slot.metadata["limpeza_blue_price_mode"] == "one"
+        promo = s.page.node(slot.metadata["extra_bindings"]["promotion_integer"][0])
+        assert not promo.visible
+    else:
+        slot = create_item_slot(s, preset)
+        assert bind_product_to_item_slot(s, slot.id, p)
+        assert slot.metadata["price_variant"] == "one"
+        assert not s.page.node(slot.node_by_role["retail_price"]).visible
+    assert s.page.node(slot.node_by_role["price_reais"]).text == "31"
+    assert s.page.node(slot.node_by_role["price_cents"]).text == ",99"
