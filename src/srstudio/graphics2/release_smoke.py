@@ -105,8 +105,17 @@ def run_release_smoke(output_dir: str | Path) -> dict[str, object]:
     # sincronamente dentro de launch_qt_quick_editor; o timer apenas fecha o
     # event loop logo depois, para manter o smoke não interativo.
     os.environ["SR_STUDIO_G2_AUTOSAVE_ROOT"] = str(root / "autosave")
-    QTimer.singleShot(750, app.quit)
-    editor_exit_code = launch_qt_quick_editor(reopened, graphics_api="software")
+    # Preview/font startup may process events before app.exec(). A single-shot
+    # quit consumed there has no effect on the future event loop and used to
+    # leave the frozen gate running forever. Keep retrying until exec exits.
+    quit_timer = QTimer()
+    quit_timer.setInterval(750)
+    quit_timer.timeout.connect(app.quit)
+    quit_timer.start()
+    try:
+        editor_exit_code = launch_qt_quick_editor(reopened, graphics_api="software")
+    finally:
+        quit_timer.stop()
     if editor_exit_code != 0:
         raise RuntimeError(f"Editor Qt Quick encerrou o release smoke com código {editor_exit_code}.")
 

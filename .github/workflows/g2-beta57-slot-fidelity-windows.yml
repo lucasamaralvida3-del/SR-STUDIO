@@ -144,12 +144,17 @@ jobs:
           retention-days: 30
 
       - name: Smoke test the frozen Windows executable
+        timeout-minutes: 5
         shell: pwsh
         env:
           QT_QPA_PLATFORM: windows
         run: |
           $hostExe = (Resolve-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe").Path
-          $smoke = Start-Process -FilePath $hostExe -ArgumentList '--release-smoke','--output-dir',"$env:RUNNER_TEMP/beta57-smoke" -WindowStyle Hidden -Wait -PassThru
+          $smoke = Start-Process -FilePath $hostExe -ArgumentList '--release-smoke','--output-dir',"$env:RUNNER_TEMP/beta57-smoke" -WindowStyle Hidden -PassThru
+          if (!$smoke.WaitForExit(120000)) {
+            Stop-Process -Id $smoke.Id -ErrorAction SilentlyContinue
+            throw "Frozen host smoke timed out without an approved runtime report"
+          }
           if ($smoke.ExitCode -ne 0) { throw "Frozen host smoke failed" }
           $report = Get-Content "$env:RUNNER_TEMP/beta57-smoke/release-smoke.json" -Raw | ConvertFrom-Json
           if (!$report.ok -or !$report.frozen -or !$report.editor_qml_startup) { throw "Frozen smoke report invalid" }
