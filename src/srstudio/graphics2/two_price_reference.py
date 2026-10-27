@@ -28,11 +28,11 @@ TWO_PRICE_GEOMETRY = {
         # Keep club text BELOW digits and LEFT of the unit. No component
         # rectangles intersect even when showing a 3-digit price.
         "club_label": (.713, .905, .185, .048),
-        "promotion_unit": (.664, .924, .046, .043),
+        "promotion_unit": (.662, .924, .046, .043),
         # Split promotion like the certified Slot Único: R$ | 32 | ,86.
         "promo_currency": (.488, .910, .038, .054),
-        "promo_integer": (.526, .891, .104, .084),
-        "promo_cents": (.632, .899, .056, .046),
+        "promo_integer": (.526, .891, .093, .084),
+        "promo_cents": (.620, .899, .040, .046),
         "main_price": (.610, .715, .390, .260),
         "currency": (.265, .31, .080, .30),
         "integer": (.355, .13, .370, .60),
