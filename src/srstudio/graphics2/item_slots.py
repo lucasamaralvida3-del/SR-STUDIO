@@ -912,6 +912,10 @@ def _reference_price_state(product: dict[str, Any], mode: str) -> tuple[bool, ob
     two = mode == "two" or (mode == "auto" and variant == "two")
     normal = product.get("price")
     primary = promotional if two or mode == "auto" else (normal if normal not in (None, "") else promotional)
+    # Explicit "two prices" should never leave an empty promotion badge.
+    # Auto still collapses equal-price products to a single price.
+    if mode == "two" and retail in (None, ""):
+        retail = normal if normal not in (None, "") else primary
     return two, primary, retail if two else None
 
 
