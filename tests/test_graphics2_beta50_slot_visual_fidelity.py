@@ -58,11 +58,11 @@ def test_individual_backdrop_exists_empty_and_persists_across_modes(tmp_path):
     assert title.rect.right <= backdrop.rect.right + .01
     assert title.rect.y >= backdrop.rect.y
     assert title.rect.bottom <= backdrop.rect.bottom + .01
-    assert slot.metadata["two_price_reference_revision"] == 51
+    assert slot.metadata["two_price_reference_revision"] == 57
     assert set_reference_price_mode(s, [slot.id], "one") == [slot.id]
-    assert not page.node(slot.metadata["name_backdrop_node_id"]).visible
+    assert page.node(slot.metadata["name_backdrop_node_id"]).visible
     assert set_reference_price_mode(s, [slot.id], "two") == [slot.id]
-    assert not page.node(slot.metadata["name_backdrop_node_id"]).visible
+    assert page.node(slot.metadata["name_backdrop_node_id"]).visible
     assert slot.product_id == "123"
 
 
@@ -125,7 +125,7 @@ def test_duplicates_have_own_white_panel_and_badge(tmp_path):
     assert first.metadata["name_backdrop_node_id"] != other.metadata["name_backdrop_node_id"]
     assert first.metadata["two_price_badge_node_id"] != other.metadata["two_price_badge_node_id"]
     assert s.page.node(other.metadata["name_backdrop_node_id"]).parent_id == other.metadata["root_node_id"]
-    assert not s.page.node(other.metadata["name_backdrop_node_id"]).visible
+    assert s.page.node(other.metadata["name_backdrop_node_id"]).visible
     assert not s.page.node(other.metadata["two_price_badge_node_id"]).visible
     assert not other.product_id
 

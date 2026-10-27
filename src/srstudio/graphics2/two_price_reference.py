@@ -13,7 +13,7 @@ extra artwork when mode='two'.
 
 from .model import BindingRole, GraphicsNode, NodeKind, Rect, Transform
 
-PPTX_TWO_PRICE_REVISION = 51
+PPTX_TWO_PRICE_REVISION = 57
 BLUE = "#105594"
 
 # Main price plate, smaller overlapping price badge, and editable labels.
@@ -49,8 +49,9 @@ TWO_PRICE_GEOMETRY = {
         # Disjoint money boxes: reais, cents, full NO CLUBE SR and unit.
         "currency": (.055, .290, .160, .440),
         "integer": (.224, .060, .315, .785),
-        "decimal": (.575, .165, .168, .290),
-        "unit": (.782, .920, .197, .060),
+        "decimal": (.550, .165, .168, .290),
+        # Original PPTX: unit under cents, left of the rotated club legend.
+        "unit": (.549, .895, .165, .085),
         "name": (.015, .018, .970, .175),
         "image": (.045, .210, .910, .465),
     },
@@ -155,10 +156,8 @@ def ensure_individual_name_panel(page, slot, *, two_prices=False):
               if two_prices else (.552, .563, .448, .415))
     _position(panel, _absolute(root.rect.normalized(), bounds))
     panel.z_index = 15
-    # The white source backplate must not obstruct a promotional background.
-    # Preserve the real node/geometry for existing saved projects.
-    panel.visible = False
-    panel.metadata["transparent_campaign_backplate"] = True
+    panel.visible = True
+    panel.metadata.pop("transparent_campaign_backplate", None)
     return panel
 
 
@@ -246,7 +245,7 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
                 node.style["font_family"] = "Impact"
                 node.style["font_weight"] = 700
                 node.style["single_line"] = True
-            if preset_id == "multi-cell-beta44":
+            if preset_id == "multi-cell-beta44" and enabled:
                 node.style["font_size"] = {
                     "promo_label": 9.0, "secondary_price": 15.0,
                     "club_label": 8.0,
@@ -294,6 +293,12 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
         if node is not None:
             spec = geometry[key] if enabled and key in geometry else roles[key]["bounds"]
             _position(node, _absolute(price_rect, spec))
+            if preset_id == "multi-cell-beta44" and enabled:
+                # Adjacent box edges alone do not ensure adjacent INK: the
+                # former centered glyphs left a variable gap for 1/2 digits.
+                node.style["align"] = "right" if key == "integer" else "left" if key == "decimal" else "center"
+            elif preset_id == "multi-cell-beta44":
+                node.style["align"] = roles[key]["style"].get("align", "center")
     for node_id in slot.metadata.get("decorative_nodes") or []:
         node = page.node(str(node_id))
         if node is not None and node.metadata.get("item_slot_price_background"):

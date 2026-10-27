@@ -296,14 +296,16 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
             page.metadata["slot_theme"] = theme
         recolored = set()
         for slot in slots:
-            # Existing saved versions may still carry white backing nodes.
-            # They are decorative, not packaging or editable price plates.
+            # Only the generic page-sized backing is transparent. Source
+            # white panels are part of the artwork, not campaign background.
             for nid in page.descendants(str(slot.metadata.get("root_node_id") or "")):
                 plate = page.node(nid)
-                if plate is not None and (plate.metadata.get("item_slot_background")
-                        or plate.metadata.get("item_slot_name_backdrop")
-                        or plate.metadata.get("limpeza_blue_role") == "white_panel"):
-                    plate.visible = False
+                if plate is not None:
+                    if plate.metadata.get("item_slot_background"):
+                        plate.visible = False
+                    elif (plate.metadata.get("item_slot_name_backdrop")
+                          or plate.metadata.get("limpeza_blue_role") == "white_panel"):
+                        plate.visible = True
             slot.metadata["color_theme"] = theme
             slot.metadata["color_hex"] = target
             root_id = str(slot.metadata.get("root_node_id") or "")

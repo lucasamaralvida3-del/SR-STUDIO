@@ -29,7 +29,7 @@ def _name(value: Any) -> str:
 
 
 @lru_cache(maxsize=12)
-def _approved_assets(path: str, stamp: tuple[int, int]):
+def _approved_assets(path: str, stamp: tuple[int, ...]):
     from srstudio.images.library import ImageLibrary
     # The official SR Studio shell stores the original ImageLibrary index
     # under ~/.srstudio5/images. Do not duplicate or migrate that database.
@@ -46,7 +46,9 @@ def _verified_assets(root: Path):
         return ()
     try:
         stat = index.stat()
-        return _approved_assets(str(root.resolve()), (stat.st_mtime_ns, stat.st_size))
+        # ImageLibrary replaces the index atomically. Include file identity:
+        # accepted/rejected have equal length and Windows may preserve mtime.
+        return _approved_assets(str(root.resolve()), (stat.st_mtime_ns, stat.st_size, stat.st_ino))
     except (OSError, ValueError):
         return ()
 

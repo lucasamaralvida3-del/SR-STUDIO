@@ -1,0 +1,165 @@
+name: G2 Beta57 Premium Flyer Windows Candidate
+
+on:
+  push:
+    branches:
+      - fix/g2-beta57-slot-fidelity
+    paths:
+      - 'src/srstudio/graphics2/**'
+      - 'src/srstudio/__init__.py'
+      - 'src/srstudio/app/**'
+      - 'tests/test_graphics2_beta51_*.py'
+      - 'tests/test_graphics2_beta54_*.py'
+      - 'tests/test_graphics2_beta57_*.py'
+      - 'tools/render_g2_beta57_slots.py'
+      - 'src/srstudio/assets/campaigns/**'
+      - 'tools/promote_g2_beta57_launcher.py'
+      - 'tools/test_promote_g2_beta57_launcher.py'
+      - '.github/workflows/g2-beta57-slot-fidelity-windows.yml'
+      - '.github/workflows/g2-beta51-legibility-windows.yml'
+      - 'tests/test_graphics2_beta45_reference_fidelity.py'
+      - 'tests/test_graphics2_qml_price_preview.py'
+      - 'src/srstudio/graphics2/campaign_tools.py'
+  pull_request:
+    branches: [feature/g2-beta56-premium-flyer-fixes]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta57-windows-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install dependencies
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2]"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate Beta57 launcher packaging and manifest guards
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tools -p test_promote_g2_beta57_launcher.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Compile G2
+        shell: pwsh
+        run: |
+          python -m compileall -q src/srstudio/graphics2
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate Beta57 PPTX fidelity and original Azul contracts
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+        run: |
+          python -m pytest -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Prove Qt Quick runtime
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+        run: |
+          python -c "from srstudio.graphics2.qt_host import qt_quick_available; assert qt_quick_available()"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Native Windows renderer and actual QML review artifacts
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+        run: |
+          python tools/render_g2_beta57_slots.py --output review --qml
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: G2-Beta57-Visual-Review
+          path: |
+            review/slots.png
+            review/slots.pdf
+            review/editor.png
+            review/render-report.json
+          if-no-files-found: error
+
+
+  package:
+    needs: validate
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Install packager
+        shell: pwsh
+        run: |
+          python -m pip install -U pip
+          python -m pip install -e ".[dev,graphics2-build,background-removal]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Package SR Studio 5 shell
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          if (!(Test-Path "dist/SR Studio 5/SR Studio 5.exe")) { throw "EXE ausente" }
+      - name: Package Graphics2 child host
+        shell: pwsh
+        run: |
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
+          Copy-Item "dist/graphics2-host/SRGraphicsEngine2Host/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          if (!(Test-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe")) { throw "Qt host ausente" }
+          python -c "from pathlib import Path; import json; r=Path('dist/SR Studio 5/Graphics2Host/_internal/srstudio/assets/campaigns'); m=json.loads((r/'catalog.json').read_text(encoding='utf-8')); assert len(m['assets'])==12; assert all((r/a['path']).is_file() and (r/a['thumbnail']).is_file() for a in m['assets']), 'Fundo/selo/miniatura ausente no EXE'"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate runtime and SHA-256
+        shell: pwsh
+        run: |
+          python -c "from pathlib import Path; from srstudio.graphics2.host_runtime import validate_runtime_host; r=validate_runtime_host(Path('dist/SR Studio 5/Graphics2Host').resolve(), full=True); assert r.ok, r"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path "release" | Out-Null
+          $file = "release/SR_STUDIO_G2_BETA_57_CANDIDATE_WIN64.zip"
+          Compress-Archive -Path "dist/SR Studio 5/*" -DestinationPath $file -Force
+          $digest = (Get-FileHash $file -Algorithm SHA256).Hash.ToLowerInvariant()
+          "commit=$env:GITHUB_SHA" | Out-File "release/beta57-provenance.txt" -Encoding utf8
+          "sha256=$digest" | Out-File "release/beta57-checksum.txt" -Encoding ascii
+          Write-Host "BETA57_CANDIDATE_SHA256=$digest"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SR-Studio-G2-Beta57-Windows-Candidate
+          path: |
+            release/SR_STUDIO_G2_BETA_57_CANDIDATE_WIN64.zip
+            release/beta57-checksum.txt
+            release/beta57-provenance.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Smoke test the frozen Windows executable
+        timeout-minutes: 5
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: windows
+        run: |
+          $hostExe = (Resolve-Path "dist/SR Studio 5/Graphics2Host/SRGraphicsEngine2Host.exe").Path
+          $smoke = Start-Process -FilePath $hostExe -ArgumentList '--release-smoke','--output-dir',"$env:RUNNER_TEMP/beta57-smoke" -WindowStyle Hidden -PassThru
+          if (!$smoke.WaitForExit(120000)) {
+            Stop-Process -Id $smoke.Id -ErrorAction SilentlyContinue
+            throw "Frozen host smoke timed out without an approved runtime report"
+          }
+          if ($smoke.ExitCode -ne 0) { throw "Frozen host smoke failed" }
+          $report = Get-Content "$env:RUNNER_TEMP/beta57-smoke/release-smoke.json" -Raw | ConvertFrom-Json
+          if (!$report.ok -or !$report.frozen -or !$report.editor_qml_startup) { throw "Frozen smoke report invalid" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: G2-Beta57-Frozen-Smoke
+          path: ${{ runner.temp }}/beta57-smoke/
+          if-no-files-found: error

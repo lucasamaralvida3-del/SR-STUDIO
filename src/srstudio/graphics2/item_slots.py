@@ -596,7 +596,7 @@ def refresh_all_item_slots(document) -> None:
     # Upgrade legacy Limpeza V1 once on load without creating extra slots.
     # Version 2 is idempotent; later payload refreshes are effectively O(1).
     from .slot_limpeza_blue import upgrade_limpeza_blue_slot
-    from .reference_fidelity import migrate_reference_slot, migrate_multi_parent
+    from .reference_fidelity import migrate_reference_slot, migrate_multi_parent, repair_beta56_slot_art
     presets = _builtins()
 
     for page in document.pages:
@@ -607,6 +607,7 @@ def refresh_all_item_slots(document) -> None:
             if slot.metadata.get("limpeza_blue_profile"):
                 upgrade_limpeza_blue_slot(page, slot)
             migrate_reference_slot(page, slot, presets)
+            repair_beta56_slot_art(page, slot)
             refresh_item_slot_metadata(page, slot)
 
 
@@ -893,7 +894,7 @@ def _reference_price_state(product: dict[str, Any], mode: str) -> tuple[bool, ob
     variant, promotional, retail = _price_variant(product)
     two = mode == "two" or (mode == "auto" and variant == "two")
     normal = product.get("price")
-    primary = promotional if two else (normal if normal not in (None, "") else promotional)
+    primary = promotional if two or mode == "auto" else (normal if normal not in (None, "") else promotional)
     return two, primary, retail if two else None
 
 

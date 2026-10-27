@@ -19,7 +19,7 @@ def router():
     return GraphicsCommandRouter(GraphicsSession(GraphicsDocument()))
 
 
-def test_transparent_individual_and_multi_have_no_white_obstructing_artwork():
+def test_transparent_campaign_background_preserves_original_individual_name_panel():
     r = router()
     a = r.dispatch({"name": "add_item_slot", "preset_id": "individual-beta44"})
     assert a.ok, a.message
@@ -27,8 +27,10 @@ def test_transparent_individual_and_multi_have_no_white_obstructing_artwork():
     slot = page.slots[a.payload["slot_id"]]
     for node_id in page.descendants(slot.metadata["root_node_id"]):
         node = page.node(node_id)
-        if node.metadata.get("item_slot_background") or node.metadata.get("item_slot_name_backdrop"):
+        if node.metadata.get("item_slot_background"):
             assert node.visible is False
+        if node.metadata.get("item_slot_name_backdrop"):
+            assert node.visible and node.style["fill"] == "#FFFFFF"
     m = r.dispatch({"name": "add_multi_item_slot", "count": 5})
     assert m.ok, m.message
     members = page.descendants(m.payload["root_node_id"])
@@ -51,7 +53,7 @@ def test_unico_uses_exact_blue_reference_and_recolors_entire_card():
     layers = [page.node(n) for n in page.descendants(slot.metadata["root_node_id"])]
     assert any(n.metadata.get("limpeza_blue_role") == "outer_frame"
                and n.style.get("fill") == THEMES["churrasco"] for n in layers)
-    assert all(not n.visible for n in layers
+    assert all(n.visible and n.style.get("fill") == "#FFFFFF" for n in layers
                if n.metadata.get("limpeza_blue_role") == "white_panel")
 
 

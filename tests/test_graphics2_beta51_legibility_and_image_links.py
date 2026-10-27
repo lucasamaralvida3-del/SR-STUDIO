@@ -59,7 +59,7 @@ def test_two_price_text_never_overlaps_other_values(preset):
     for a in small:
         for b in price_nodes + [label]:
             assert not overlaps(a.rect, b.rect), (a.name, b.name)
-    assert slot.metadata["two_price_reference_revision"] == 51
+    assert slot.metadata["two_price_reference_revision"] == 57
 
 
 @pytest.mark.parametrize("count", (5, 6))
@@ -145,5 +145,5 @@ def test_old_beta50_price_geometry_reflows_without_changing_product():
     refresh_all_item_slots(doc)
     saved = doc.active_page.slots[slot.id]
     assert saved.product_id == "CAF-500"
-    assert saved.metadata["two_price_reference_revision"] == 51
+    assert saved.metadata["two_price_reference_revision"] == 57
     assert saved.metadata["original_product_snapshot"] == before

@@ -1,0 +1,154 @@
+name: Promote reviewed G2 Beta57 to Beta launcher
+
+on:
+  pull_request:
+    branches: [feature/g2-beta56-premium-flyer-fixes]
+    paths: ['.github/workflows/g2-beta57-publish-reviewed.yml']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: beta57-reviewed-promotion
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'fix/g2-beta57-slot-fidelity'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      SOURCE_SHA: f938cba5f548fdb34e105296f297244438a3cbca
+      CANDIDATE_RUN: '40539411620'
+      REVIEWED_ARCHIVE_SHA256: 91e86b1c677e9fec3c4289e4bb0129603e1ac624e2525844799c84ea4c9173a4
+      REVIEWED_VISUAL_ARTIFACT: '12750026771'
+      REVIEWED_VISUAL_DIGEST: sha256:9a5b4964448397eb78b3bb63fc362cc7d63a7d4719cbd8477a1753e61aa0ebd1
+      # These exact CI images were inspected before adding this workflow.
+      REVIEWER: Codex visual inspection after comparison with supplied PPTX and screenshot
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.SOURCE_SHA }}
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Require every matching CI gate and the reviewed immutable artifact
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json, os, subprocess
+          repo, sha = os.environ['GITHUB_REPOSITORY'], os.environ['SOURCE_SHA']
+          def api(path):
+              return json.loads(subprocess.check_output(['gh','api',f'repos/{repo}/{path}'], text=True))
+          required = {'SR Studio 5 Quality', 'SR Graphics Engine 2 CI', 'G2 Alpha 43 Validation',
+                      'G2 Beta57 Premium Flyer Windows Candidate'}
+          runs = api(f'actions/runs?head_sha={sha}&per_page=100')['workflow_runs']
+          latest = {}
+          for run in runs:
+              if run['head_sha'] == sha and run['name'] in required:
+                  if run['name'] not in latest or run['id'] > latest[run['name']]['id']:
+                      latest[run['name']] = run
+          assert set(latest) == required, 'A required matching gate is missing'
+          assert all(r['status']=='completed' and r['conclusion']=='success' for r in latest.values()), 'CI not approved'
+          candidate = api('actions/runs/'+os.environ['CANDIDATE_RUN'])
+          assert candidate['head_sha']==sha and candidate['conclusion']=='success'
+          assert latest['G2 Beta57 Premium Flyer Windows Candidate']['id']==candidate['id']
+          artifact = api('actions/artifacts/'+os.environ['REVIEWED_VISUAL_ARTIFACT'])
+          assert artifact['workflow_run']['head_sha']==sha and not artifact['expired']
+          assert artifact['workflow_run']['id']==candidate['id']
+          assert artifact['name']=='G2-Beta57-Visual-Review'
+          assert artifact['digest']==os.environ['REVIEWED_VISUAL_DIGEST']
+          print('Verified source CI, frozen Windows build and inspected visual artifact:', sha)
+          PY
+      - uses: actions/download-artifact@v4
+        with:
+          name: SR-Studio-G2-Beta57-Windows-Candidate
+          run-id: ${{ env.CANDIDATE_RUN }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path: promotion
+      - name: Verify reviewed ZIP checksum and exact source tree provenance
+        run: |
+          set -euo pipefail
+          file=promotion/SR_STUDIO_G2_BETA_57_CANDIDATE_WIN64.zip
+          actual="$(sha256sum "$file" | cut -d' ' -f1)"
+          test "$actual" = "$REVIEWED_ARCHIVE_SHA256"
+          listed="$(sed -n 's/^sha256=//p' promotion/beta57-checksum.txt | tr -d '\r\n')"
+          test "$actual" = "$listed"
+          built="$(sed -n 's/^commit=//p' promotion/beta57-provenance.txt | tr -d '\r\n')"
+          # pull_request builds use a temporary merge SHA. Its entire tree
+          # must equal SOURCE_SHA, rather than merely trusting a branch label.
+          built_tree="$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$built" --jq .tree.sha)"
+          source_tree="$(gh api "repos/$GITHUB_REPOSITORY/git/commits/$SOURCE_SHA" --jq .tree.sha)"
+          test "$built_tree" = "$source_tree"
+          cp "$file" promotion/SR_STUDIO_G2_BETA_57_PROFESSIONAL_WIN64.zip
+          echo "$actual  SR_STUDIO_G2_BETA_57_PROFESSIONAL_WIN64.zip" > promotion/SR_STUDIO_G2_BETA_57_SHA256.txt
+      - name: Prepare launcher bundle against Beta56 only
+        run: |
+          set -euo pipefail
+          python -m unittest discover -s tools -p test_promote_g2_beta57_launcher.py -v
+          gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" --jq .content | base64 -d > promotion/old.json
+          gh api "repos/$GITHUB_REPOSITORY/contents/stable/manifest.json?ref=main" --jq .sha > promotion/stable-before.txt
+          GITHUB_SHA="$SOURCE_SHA" python tools/promote_g2_beta57_launcher.py \
+            --input promotion/SR_STUDIO_G2_BETA_57_PROFESSIONAL_WIN64.zip \
+            --bundle-output promotion/SR_STUDIO_G2_BETA_57_LAUNCHER_BUNDLE.zip \
+            --existing-manifest promotion/old.json --manifest-output promotion/new.json
+      - name: Publish isolated Beta57 prerelease and verified assets
+        run: |
+          set -euo pipefail
+          if gh release view g2-beta-57 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Release already exists; refusing to overwrite it'; exit 1
+          fi
+          if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/g2-beta-57" >/dev/null 2>&1; then
+            echo 'Tag already exists; refusing to attach binaries to an unverified tag'; exit 1
+          fi
+          cat > promotion/notes.md <<'EOF'
+          G2 Beta 57 restaura os painÃ©is brancos originais do Slot Ãšnico e do Individual, corrige a cor da campanha no Slot Ãšnico, aproxima os centavos no Multi 5/6 e posiciona UN abaixo deles, mantendo NO CLUBE SR vertical. PreÃ§os promocionais explÃ­citos e de clube sÃ£o preservados, inclusive quando iguais. MovimentaÃ§Ã£o, redimensionamento, desfazer/refazer e save/load foram testados.
+
+          PublicaÃ§Ã£o condicionada aos gates de qualidade e Qt do mesmo cÃ³digo, build Windows, smoke do executÃ¡vel e inspeÃ§Ã£o dos renders. Canal Stable preservado.
+          EOF
+          gh release create g2-beta-57 \
+            promotion/SR_STUDIO_G2_BETA_57_PROFESSIONAL_WIN64.zip \
+            promotion/SR_STUDIO_G2_BETA_57_SHA256.txt \
+            promotion/SR_STUDIO_G2_BETA_57_LAUNCHER_BUNDLE.zip \
+            promotion/beta57-provenance.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$SOURCE_SHA" \
+            --title 'SR Studio G2 Beta 57 â€” Fidelidade dos Smart Slots' \
+            --notes-file promotion/notes.md --prerelease --latest=false
+          tag_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/g2-beta-57" --jq .object.sha)"
+          test "$tag_sha" = "$SOURCE_SHA"
+          asset=SR_STUDIO_G2_BETA_57_LAUNCHER_BUNDLE.zip
+          expected="$(stat -c%s "promotion/$asset")"
+          remote="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/g2-beta-57" --jq '.assets[] | select(.name == "SR_STUDIO_G2_BETA_57_LAUNCHER_BUNDLE.zip") | .size')"
+          test "$remote" = "$expected"; test "$remote" -gt 100000000
+          digest="$(sha256sum "promotion/$asset" | cut -d' ' -f1)"
+          remote_digest="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/g2-beta-57" --jq '.assets[] | select(.name == "SR_STUDIO_G2_BETA_57_LAUNCHER_BUNDLE.zip") | .digest')"
+          test "$remote_digest" = "sha256:$digest"
+          curl -fsSIL --retry 5 --retry-delay 3 "https://github.com/$GITHUB_REPOSITORY/releases/download/g2-beta-57/$asset" >/dev/null
+      - name: Promote Beta manifest last and verify Stable is unchanged
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" > promotion/current-response.json
+          python -c 'import base64,json;d=json.load(open("promotion/current-response.json"));open("promotion/current.json","wb").write(base64.b64decode(d["content"]))'
+          cmp promotion/old.json promotion/current.json
+          current="$(python -c 'import base64,json;d=json.load(open("promotion/current-response.json"));print(json.loads(base64.b64decode(d["content"]))["version"])')"
+          test "$current" = '5.0.0-hybrid.g2beta.56'
+          sha="$(python -c 'import json;print(json.load(open("promotion/current-response.json"))["sha"])')"
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json" \
+            -f message='Publicar G2 Beta57 apÃ³s CI, build Windows e revisÃ£o visual' \
+            -f branch=main -f sha="$sha" -f content="$(base64 -w0 promotion/new.json)" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" --jq .content | base64 -d > promotion/public.json
+          cmp promotion/new.json promotion/public.json
+          gh api "repos/$GITHUB_REPOSITORY/contents/stable/manifest.json?ref=main" --jq .sha > promotion/stable-after.txt
+          cmp promotion/stable-before.txt promotion/stable-after.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: G2-Beta57-Promotion-Evidence
+          path: |
+            promotion/new.json
+            promotion/public.json
+            promotion/stable-before.txt
+            promotion/stable-after.txt
