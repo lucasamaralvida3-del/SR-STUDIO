@@ -729,6 +729,14 @@ def duplicate_item_slot(session: GraphicsSession, slot_id: str, *, dx: float = 2
         old_two_badge = str(source_slot.metadata.get("two_price_badge_node_id") or "")
         if old_two_badge:
             clone.metadata["two_price_badge_node_id"] = mapping.get(old_two_badge, "")
+        clone.metadata["promotion_amount_nodes"] = {
+            key: mapping[node_id]
+            for key, node_id in dict(source_slot.metadata.get("promotion_amount_nodes") or {}).items()
+            if node_id in mapping
+        }
+        old_promo_unit = str(source_slot.metadata.get("promotion_unit_node_id") or "")
+        if old_promo_unit:
+            clone.metadata["promotion_unit_node_id"] = mapping.get(old_promo_unit, "")
         old_name_panel = str(source_slot.metadata.get("name_backdrop_node_id") or "")
         if old_name_panel:
             clone.metadata["name_backdrop_node_id"] = mapping.get(old_name_panel, "")
