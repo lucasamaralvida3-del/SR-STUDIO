@@ -87,7 +87,7 @@ def test_real_root_and_all_artwork_translate_once_after_manual_resize():
 def test_editor_does_not_steal_image_mouse_press_and_aligns_slot_outline():
     qml = (Path(__file__).resolve().parents[1]/
            "src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
-    assert "var rootId = slot.metadata ? String(slot.metadata.root_node_id" in qml
+    assert "slot.metadata.multi_parent_id || slot.metadata.root_node_id" in qml
     assert "enabled: smartSlotEditMode || productDragActive" in qml
     assert "enabled: !smartSlotEditMode && !effectiveLocked(modelData)" in qml
     assert "Selecting on press emitted sceneChanged" in qml
