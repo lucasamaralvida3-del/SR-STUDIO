@@ -126,7 +126,10 @@ def ensure_individual_name_panel(page, slot, *, two_prices=False):
               if two_prices else (.552, .563, .448, .415))
     _position(panel, _absolute(root.rect.normalized(), bounds))
     panel.z_index = 15
-    panel.visible = True
+    # The white source backplate must not obstruct a promotional background.
+    # Preserve the real node/geometry for existing saved projects.
+    panel.visible = False
+    panel.metadata["transparent_campaign_backplate"] = True
     return panel
 
 
