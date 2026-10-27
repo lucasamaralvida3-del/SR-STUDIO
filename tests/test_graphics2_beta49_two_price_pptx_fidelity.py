@@ -55,7 +55,9 @@ def test_two_price_pptx_has_separate_badge_with_both_labels(preset, tmp_path):
     promo = s.page.node(slot.metadata["promotion_label_node_id"])
     club = s.page.node(slot.metadata["club_label_node_id"])
     retail = s.page.node(slot.node_by_role[BindingRole.RETAIL_PRICE.value])
-    assert promo.visible and club.visible and retail.visible
+    assert promo.visible and club.visible and not retail.visible
+    assert all(s.page.node(nid).visible for nid in
+               slot.metadata["promotion_amount_nodes"].values())
     assert promo.text == "NA PROMOÇÃO" and club.text == "NO CLUBE SR"
     assert retail.text == "R$ 24,86"
     assert ratio_bbox(promo.rect, root.rect) == pytest.approx(
