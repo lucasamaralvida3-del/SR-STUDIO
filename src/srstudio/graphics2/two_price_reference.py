@@ -22,12 +22,13 @@ BLUE = "#105594"
 TWO_PRICE_GEOMETRY = {
     "individual-beta44": {
         # Slightly larger than Beta49 while remaining inside the plate.
-        "badge": (.529, .879, .167, .110),
-        "promo_label": (.539, .887, .148, .035),
-        "secondary_price": (.536, .922, .152, .061),
+        "badge": (.477, .832, .237, .148),
+        "promo_label": (.486, .850, .214, .038),
+        "secondary_price": (.482, .899, .169, .066),
         # Keep club text BELOW digits and LEFT of the unit. No component
         # rectangles intersect even when showing a 3-digit price.
         "club_label": (.713, .905, .185, .048),
+        "promotion_unit": (.656, .910, .056, .049),
         "main_price": (.610, .715, .390, .260),
         "currency": (.265, .31, .080, .30),
         "integer": (.355, .13, .370, .60),
@@ -39,10 +40,11 @@ TWO_PRICE_GEOMETRY = {
     },
     "multi-cell-beta44": {
         # The PPTX mini-badges are narrower and further right in each cell.
-        "badge": (.572, .538, .338, .194),
-        "promo_label": (.578, .548, .322, .051),
-        "secondary_price": (.583, .612, .314, .101),
+        "badge": (.530, .515, .410, .222),
+        "promo_label": (.548, .531, .372, .050),
+        "secondary_price": (.548, .605, .293, .103),
         "club_label": (.760, .745, .230, .130),
+        "promotion_unit": (.845, .645, .075, .054),
         "main_price": (.010, .715, .980, .280),
         # Disjoint money boxes: reais, cents, full NO CLUBE SR and unit.
         "currency": (.055, .290, .160, .440),
@@ -96,6 +98,33 @@ def _ensure_badge(page, slot):
     badge.style["radius_ratio"] = .24
     badge.z_index = 38
     return badge
+
+
+def _ensure_promotional_unit(page, slot, geometry, enabled: bool):
+    """Use the same currency/value/unit anatomy as certified Slot Único."""
+    root = page.node(str(slot.metadata.get("root_node_id") or ""))
+    if root is None:
+        return
+    node = page.node(str(slot.metadata.get("promotion_unit_node_id") or ""))
+    if node is None:
+        node = GraphicsNode(
+            kind=NodeKind.TEXT, name="PREÇO PROMOCIONAL · UNIDADE",
+            z_index=86, text="UN", transform=Transform(),
+            style={"font_family":"Impact", "font_size":10, "font_size_unit":"pt",
+                   "font_weight":700, "color":"#FFFFFF", "align":"center",
+                   "v_align":"center", "single_line":True, "nowrap":True,
+                   "fit_inside_box":True, "min_font_size":6},
+            metadata={"manual_item_slot_child":True,
+                      "item_slot_role_area":"promotion_unit"},
+            visible=False,
+        )
+        page.add_node(node, parent_id=root.id)
+        slot.metadata["promotion_unit_node_id"] = node.id
+    unit = page.node(str(slot.node_by_role.get(BindingRole.UNIT.value) or ""))
+    node.text = str(unit.text if unit is not None else "UN").lstrip("/")
+    _position(node, _absolute(root.rect.normalized(), geometry["promotion_unit"]))
+    node.visible = enabled
+    node.z_index = 86
 
 
 def ensure_individual_name_panel(page, slot, *, two_prices=False):
@@ -155,6 +184,7 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
     badge = _ensure_badge(page, slot)
     if badge is not None:
         badge.visible = enabled
+    _ensure_promotional_unit(page, slot, geometry, enabled)
 
     # The two-price Individual PPTX shows ONE large product cutout. The
     # earlier one-price file shows the repeated cutouts; switching modes must
@@ -212,13 +242,17 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
                 node.transform.rotation = 90 if preset_id == "multi-cell-beta44" else 0
             # Fonts and target bounds are source-measured: prevent a split
             # NO CLUBE / SR and keep all legends within their own box.
+            if key in ("promo_label", "secondary_price"):
+                node.style["font_family"] = "Impact"
+                node.style["font_weight"] = 700
+                node.style["single_line"] = True
             if preset_id == "multi-cell-beta44":
                 node.style["font_size"] = {
-                    "promo_label": 7.3, "secondary_price": 10.0,
+                    "promo_label": 9.0, "secondary_price": 15.0,
                     "club_label": 8.0,
                 }[key]
             elif key == "secondary_price":
-                node.style["font_size"] = 12.4
+                node.style["font_size"] = 16.0
             elif key == "club_label":
                 node.style["font_size"] = 10.2
         if promo is not None:
