@@ -103,7 +103,9 @@ def import_historical_review_zip(archive: str | Path, *,
                     confidence=0.0, review_status="pending",
                     source_kind="legacy-github-corpus",
                     source_file=str(row.get("source_file") or row.get("original_name") or ""),
-                    metadata=dict(metadata),
+                    metadata={**metadata,
+                              "review_original_filename": str(row.get("original_name") or ""),
+                              "review_source_file": str(row.get("source_file") or "")},
                 )
                 existing.add(new.id)
                 installed += 1
