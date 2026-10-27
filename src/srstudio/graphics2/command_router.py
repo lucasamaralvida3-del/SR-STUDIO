@@ -348,14 +348,34 @@ class GraphicsCommandRouter:
             if name == "add_item_slot":
                 from .item_slots import create_item_slot
                 preset_id = str(command.get("preset_id") or "individual-beta44")
-                slot = create_item_slot(self.session, preset_id)
+                x = _optional_float(command, "x")
+                y = _optional_float(command, "y")
+                slot = create_item_slot(self.session, preset_id, x=x, y=y)
                 return CommandResult(True, True, "Smart Slot adicionado.", {"slot_id": slot.id})
             if name == "add_multi_item_slot":
                 from .multi_item_strip import create_multi_item_strip
                 result = create_multi_item_strip(
                     self.session, count=int(command.get("count") or 5),
-                    price_mode=str(command.get("price_mode") or "auto"))
+                    price_mode=str(command.get("price_mode") or "auto"),
+                    x=_optional_float(command, "x"), y=_optional_float(command, "y"))
                 return CommandResult(True, True, "Faixa Multi adicionada.", result)
+            if name == "duplicate_slot":
+                slot_id = str(command.get("slot_id") or "")
+                slot = self.session.page.slots.get(slot_id)
+                if slot is None:
+                    return CommandResult(False, False, "Selecione um Smart Slot para duplicar.")
+                # A Multi is ONE visual strip. Clone the actual parent group,
+                # not a lone cell with a disconnected price ribbon.
+                root_id = str(slot.metadata.get("multi_parent_id")
+                              or slot.metadata.get("root_node_id") or "")
+                if not self.session.page.node(root_id):
+                    return CommandResult(False, False, "Grupo visual do Smart Slot não encontrado.")
+                self.session.selection = {root_id}
+                self.session.anchor_id = root_id
+                clones, clone_slots = self._duplicate_selected_with_semantics(
+                    float(command.get("dx", 22)), float(command.get("dy", 22)))
+                return CommandResult(True, bool(clones), "Smart Slot duplicado.",
+                                     {"root_node_ids": clones, "slot_ids": clone_slots})
             if name == "set_item_price_mode":
                 from .item_slots import set_reference_price_mode
                 slot_id = str(command.get("slot_id") or "")
