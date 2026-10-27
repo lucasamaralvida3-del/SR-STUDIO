@@ -83,9 +83,11 @@ def test_unexpected_extensions_cannot_clear_the_active_page(tmp_path):
 def test_user_facing_import_chooses_safe_compatible_file_types():
     source = (Path(__file__).resolve().parents[1] /
               "src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text("utf-8")
-    assert 'id: spreadsheetImportDialog' in source
-    assert 'id: templateImportDialog' in source
-    assert 'Produtos Excel (*.xlsx *.xlsm)' in source
-    assert 'text: "Importar produtos Excel (manter encarte)"' in source
-    assert 'text: "Abrir modelo PPTX (trocar layout)"' in source
-    assert 'id: sourceImportDialog' not in source
+    # Historical single-control shell remains intact; the Qt host now
+    # routes each accepted type safely without introducing duplicate buttons.
+    assert 'id: sourceImportDialog' in source
+    assert 'text: "Importar PPTX / Planilha"' in source
+    assert 'Excel/Canva (*.xlsx *.xlsm *.pptx)' in source
+    assert 'XLSX/XLSM adiciona produtos sem apagar o encarte' in source
+    assert 'id: spreadsheetImportDialog' not in source
+    assert 'id: templateImportDialog' not in source
