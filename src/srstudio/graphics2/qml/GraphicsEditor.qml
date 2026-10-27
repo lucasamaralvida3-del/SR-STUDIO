@@ -643,6 +643,64 @@ ApplicationWindow {
             sceneBridge.removeSlotBackground(chosenSlot)
     }
 
+    function selectedSmartSlot() {
+        for (var i = 0; i < slots().length; ++i)
+            if (slots()[i].id === selectedSlotId)
+                return slots()[i]
+        return null
+    }
+
+    function propertyProduct() {
+        if (inspectorProduct)
+            return inspectorProduct
+        var slot = selectedSmartSlot()
+        if (!slot)
+            return null
+        var p = slot.metadata ? slot.metadata.product_snapshot : null
+        return p && Object.keys(p).length ? p : null
+    }
+
+    function refreshPropertyFields() {
+        var product = propertyProduct()
+        if (product) {
+            inspectorProductName.text = product.display_name || product.name || product.original_name || ""
+            inspectorPrice.text = String(product.price || "")
+            inspectorAppPrice.text = String(product.app_price || product.club_price || "")
+            inspectorUnit.text = String(product.unit || "UN")
+        } else {
+            inspectorProductName.text = ""
+            inspectorPrice.text = ""
+            inspectorAppPrice.text = ""
+            inspectorUnit.text = "UN"
+        }
+    }
+
+    function saveProductProperties() {
+        var product = propertyProduct()
+        if (!product)
+            return
+        var changes = {
+            "display_name": inspectorProductName.text,
+            "price": inspectorPrice.text,
+            "app_price": inspectorAppPrice.text,
+            "unit": inspectorUnit.text
+        }
+        var command
+        if (inspectorProduct && String(product.id || product.product_id || "")) {
+            command = {"name":"update_product_data",
+                       "product_id":String(product.id || product.product_id),
+                       "changes":changes, "cascade":true}
+        } else {
+            command = {"name":"update_product_fields",
+                       "slot_id":selectedSlotId, "changes":changes}
+        }
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify(command)))
+        inspectorStatus = result.message || ""
+    }
+
+    onInspectorProductChanged: Qt.callLater(refreshPropertyFields)
+    onSelectedSlotIdChanged: Qt.callLater(refreshPropertyFields)
+
     function syncInspector() {
         var node = selectedNode()
         anchorNode = node
@@ -668,6 +726,7 @@ ApplicationWindow {
         hoveredSlotId = ""
         dragHoverSlotId = ""
         Qt.callLater(syncInspector)
+        Qt.callLater(refreshPropertyFields)
     }
 
     Connections {
@@ -2300,6 +2359,137 @@ ApplicationWindow {
                             Label { text: anchorNode ? ("ID: " + String(anchorNode.id).slice(0, 8)) : "Nenhum item"; font.pixelSize: 9; color: "#8995AC" }
                         }
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#EDF0F5" }
+                        GroupBox {
+                            title: "Produto selecionado"
+                            visible: !!window.propertyProduct()
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 8
+                                Label { text: "Nome do produto"; color: "#53617A"; font.pixelSize: 10 }
+                                TextField { id: inspectorProductName; Layout.fillWidth: true; placeholderText: "Nome completo"; font.pixelSize: 12 }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "Preço (R$)"; font.pixelSize: 10; color: "#53617A" }
+                                        TextField { id: inspectorPrice; Layout.fillWidth: true; placeholderText: "0,00" }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "Clube SR / App"; font.pixelSize: 10; color: "#53617A" }
+                                        TextField { id: inspectorAppPrice; Layout.fillWidth: true; placeholderText: "0,00" }
+                                    }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Label { text: "Unidade"; color: "#53617A" }
+                                    TextField { id: inspectorUnit; Layout.fillWidth: true; placeholderText: "UN ou KG" }
+                                }
+                                Button {
+                                    text: "Salvar dados do produto"
+                                    Layout.fillWidth: true
+                                    highlighted: true
+                                    onClicked: window.saveProductProperties()
+                                }
+                            }
+                        }
+                        GroupBox {
+                            title: "Smart Slot · Formatação"
+                            Layout.fillWidth: true
+                            visible: selectedSlotId !== ""
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 9
+                                Button {
+                                    text: "Duplicar Smart Slot  ·  Ctrl + D"
+                                    Layout.fillWidth: true
+                                    onClicked: window.duplicateSelectedSmartSlot()
+                                }
+                                Label { text: "Alinhamento do nome"; color: "#53617A"; font.pixelSize: 10 }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Repeater {
+                                        model: [
+                                            {"label":"◧", "alignment":"left"},
+                                            {"label":"☷", "alignment":"center"},
+                                            {"label":"◨", "alignment":"right"}
+                                        ]
+                                        delegate: Button {
+                                            required property var modelData
+                                            Layout.fillWidth: true
+                                            text: modelData.label
+                                            onClicked: sceneBridge.dispatch(JSON.stringify({
+                                                "name":"set_slot_typography",
+                                                "slot_id":selectedSlotId,
+                                                "role":"name", "align":modelData.alignment
+                                            }))
+                                        }
+                                    }
+                                }
+                                Label { text: "Tipografia"; color: "#12295A"; font.bold: true }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    ComboBox {
+                                        id: inspectorFont
+                                        Layout.fillWidth: true
+                                        model: ["Impact", "Arial", "Poppins", "Segoe UI", "Anton"]
+                                    }
+                                    SpinBox {
+                                        id: inspectorFontSize
+                                        from: 8; to: 90; value: 22
+                                        editable: true
+                                        Layout.preferredWidth: 83
+                                    }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Label { text: "Cor"; color: "#53617A" }
+                                    TextField {
+                                        id: inspectorFontColor
+                                        Layout.fillWidth: true
+                                        text: "#B32D18"
+                                        placeholderText: "#RRGGBB"
+                                    }
+                                }
+                                Button {
+                                    text: "Aplicar tipografia"
+                                    Layout.fillWidth: true
+                                    onClicked: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_slot_typography",
+                                        "slot_id":selectedSlotId,
+                                        "role":"name",
+                                        "font_family":inspectorFont.currentText,
+                                        "font_size":inspectorFontSize.value,
+                                        "color":inspectorFontColor.text,
+                                        "font_weight":700
+                                    }))
+                                }
+                                Label { text: "Estilo do preço"; font.bold: true; color: "#12295A" }
+                                ComboBox {
+                                    id: inspectorPriceStyle
+                                    Layout.fillWidth: true
+                                    model: ["Automático", "1 preço", "2 preços"]
+                                    onActivated: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_item_price_mode",
+                                        "slot_id":selectedSlotId,
+                                        "mode":["auto","one","two"][currentIndex]
+                                    }))
+                                }
+                                Label { text: "Cores da campanha"; font.bold: true; color: "#12295A" }
+                                ComboBox {
+                                    id: inspectorTheme
+                                    Layout.fillWidth: true
+                                    model: ["Azul SR", "Verde Terça", "Marrom Café", "Vinho Filé", "Vermelho Churrasco"]
+                                    onActivated: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_slot_theme",
+                                        "slot_id":selectedSlotId,
+                                        "theme":["azul","terca-verde","quarta-cafe","quinta-file","churrasco"][currentIndex]
+                                    }))
+                                }
+                            }
+                        }
                         Label { text: "Nome do elemento"; color: "#606C84"; font.pixelSize: 10 }
                         Label { id: inspectorName; text: "Nada selecionado"; color: "#293957"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; padding: 9; background: Rectangle { color: "#FAFBFE"; radius: 6; border.color: "#DDE4F0" } }
                         Rectangle {
