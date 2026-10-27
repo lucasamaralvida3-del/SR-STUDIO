@@ -278,7 +278,9 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
     else:
         raise ValueError("Escolha Azul, Terça Verde ou uma cor hexadecimal #RRGGBB.")
     page = session.page
+    # Slot Único uses its certified older royal blue, unlike Multi/Individual.
     palette = {value.upper() for value in THEMES.values()}
+    palette.update({"#24518E", "#265398"})
     for existing in page.slots.values():
         previous = str(existing.metadata.get("color_hex") or "").upper()
         if re.fullmatch(r"#[0-9A-F]{6}", previous):
@@ -294,6 +296,14 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
             page.metadata["slot_theme"] = theme
         recolored = set()
         for slot in slots:
+            # Existing saved versions may still carry white backing nodes.
+            # They are decorative, not packaging or editable price plates.
+            for nid in page.descendants(str(slot.metadata.get("root_node_id") or "")):
+                plate = page.node(nid)
+                if plate is not None and (plate.metadata.get("item_slot_background")
+                        or plate.metadata.get("item_slot_name_backdrop")
+                        or plate.metadata.get("limpeza_blue_role") == "white_panel"):
+                    plate.visible = False
             slot.metadata["color_theme"] = theme
             slot.metadata["color_hex"] = target
             root_id = str(slot.metadata.get("root_node_id") or "")
@@ -318,6 +328,8 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
                 node = page.node(node_id)
                 if node is None or not node.metadata.get("multi_item_decoration"):
                     continue
+                if node.name == "Fundo branco da faixa":
+                    node.visible = False
                 for key in ("fill", "stroke", "color"):
                     color = node.style.get(key)
                     if isinstance(color, str) and color.upper() in palette:
