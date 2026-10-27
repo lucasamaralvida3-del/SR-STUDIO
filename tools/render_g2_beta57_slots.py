@@ -18,6 +18,7 @@ def main():
     parser.add_argument("--product-name", default="PRODUTO DE TESTE 500G")
     parser.add_argument("--qml", action="store_true")
     args = parser.parse_args()
+    args.output = args.output.resolve()
     os.environ.setdefault("QT_QPA_PLATFORM", "windows" if os.name == "nt" else "offscreen")
     # Keep QA autosaves inside the output folder, away from real projects.
     os.environ["SR_STUDIO_G2_AUTOSAVE_ROOT"] = str(args.output.resolve() / "qa-autosave")
