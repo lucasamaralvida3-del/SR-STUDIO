@@ -84,9 +84,9 @@ def test_individual_is_reference_art_not_gray_ui_card():
                    if page.node(n).name == "ItemSlot Background"]
     assert not backgrounds  # transparent on campaign art
     blue = get_decor(page, root.id, "PRICE BACKGROUND")
-        assert blue.style["fill"] == BLUE
+    assert blue.style["fill"] == BLUE
     assert blue.style["radius_ratio"] >= .1
-        assert blue.z_index < page.node(slot.node_by_role[BindingRole.PRICE_REAIS.value]).z_index
+    assert blue.z_index < page.node(slot.node_by_role[BindingRole.PRICE_REAIS.value]).z_index
     assert not any(page.node(n).metadata.get("item_slot_image_backplate")
                    and page.node(n).visible for n in page.descendants(root.id))
     name = page.node(slot.node_by_role[BindingRole.NAME.value])
