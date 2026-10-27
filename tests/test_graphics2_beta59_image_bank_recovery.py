@@ -99,7 +99,7 @@ def test_pending_photo_is_not_auto_bound_but_manual_confirmation_is_persistent(
     reimported = complete_product_image(product)
     assert reimported["image_path"] == saved["image_path"]
     assert reimported["image_linked_by"] == "product_id"
-    assert ImageLibrary(bank).find_by_id(imported.id).review_status == "pending"
+    assert next(a for a in ImageLibrary(bank).all() if a.id == imported.id).review_status == "pending"
 
 
 def test_bank_review_is_accessible_inside_products_not_hidden_image_tab():
