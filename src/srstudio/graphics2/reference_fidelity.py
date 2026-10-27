@@ -39,7 +39,7 @@ def migrate_reference_slot(page, slot, presets) -> bool:
     if revision >= 47:
         # Beta47/48 scenes already have the original 1-price artwork. Upgrade
         # ONLY the two-price overlay from the newly supplied PowerPoint.
-        if int(slot.metadata.get("two_price_reference_revision") or 0) >= 51:
+        if int(slot.metadata.get("two_price_reference_revision") or 0) >= 57:
             # A deleted white panel is recovered even on current projects.
             if preset_id != "individual-beta44":
                 return False
@@ -50,7 +50,7 @@ def migrate_reference_slot(page, slot, presets) -> bool:
         is_two = str(slot.metadata.get("price_variant") or "one") == "two"
         changed = apply_two_price_layout(page, slot, is_two)
         if changed:
-            slot.metadata["two_price_reference_revision"] = 51
+            slot.metadata["two_price_reference_revision"] = 57
         return changed
     root = page.node(str(slot.metadata.get("root_node_id") or ""))
     if root is None:
@@ -178,6 +178,32 @@ def migrate_reference_slot(page, slot, presets) -> bool:
     from .two_price_reference import apply_two_price_layout
     apply_two_price_layout(page, slot,
                            str(slot.metadata.get("price_variant") or "one") == "two")
+    return True
+
+
+def repair_beta56_slot_art(page, slot) -> bool:
+    """Repair known hidden source panels once, retaining IDs and user data."""
+    if int(slot.metadata.get("slot_art_revision") or 0) >= 57:
+        return False
+    preset = slot.metadata.get("preset_id")
+    if preset not in ("limpeza-blue-v1", "individual-beta44"):
+        return False
+    from .campaign_tools import THEMES
+    theme = slot.metadata.get("color_theme") or page.metadata.get("slot_theme") or "azul"
+    target = slot.metadata.get("color_hex") or THEMES.get(theme, theme)
+    for nid in page.descendants(str(slot.metadata.get("root_node_id") or "")):
+        node = page.node(nid)
+        if node is None:
+            continue
+        role = node.metadata.get("limpeza_blue_role")
+        if role == "white_panel" or node.metadata.get("item_slot_name_backdrop"):
+            node.visible = True
+            node.metadata.pop("transparent_campaign_backplate", None)
+        if theme != "azul" and role in ("outer_frame", "promotion_background", "club_background"):
+            for key in ("fill", "stroke"):
+                if str(node.style.get(key) or "").upper() in ("#24518E", "#265398"):
+                    node.style[key] = target
+    slot.metadata["slot_art_revision"] = 57
     return True
 
 

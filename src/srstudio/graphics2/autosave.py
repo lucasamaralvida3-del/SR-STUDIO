@@ -106,7 +106,7 @@ class AutosaveManager:
         for folder in self.root.iterdir():
             if folder.is_dir():
                 out.extend(self._points(folder))
-        return sorted(out, key=lambda item: item.saved_at, reverse=True)
+        return sorted(out, key=lambda item: (item.saved_at, item.path.name), reverse=True)
 
     def _points(self, folder: Path) -> list[RecoveryPoint]:
         if not folder.is_dir():
@@ -122,7 +122,10 @@ class AutosaveManager:
                 # Preserve o arquivo para diagnóstico, mas não conte uma geração
                 # corrompida como recovery válido.
                 continue
-        return sorted(points, key=lambda item: item.saved_at, reverse=True)
+        # Windows can give successive atomic saves the same modification time.
+        # UTC generation filenames break that tie in actual save order, so
+        # pruning and recovery cannot prefer an older revision arbitrarily.
+        return sorted(points, key=lambda item: (item.saved_at, item.path.name), reverse=True)
 
     def _prune(self, folder: Path) -> None:
         valid = self._points(folder)

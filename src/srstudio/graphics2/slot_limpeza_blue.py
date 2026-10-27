@@ -117,6 +117,13 @@ def _new_node(page, parent_id: str, role: str, *, text: str = "",
 
 def create_limpeza_blue_slot(session: GraphicsSession, *, x: float | None = None,
                             y: float | None = None):
+    # Creation, original artwork and campaign color are one editor action.
+    with session.transaction("Criar Slot Único"):
+        return _create_limpeza_blue_slot(session, x=x, y=y)
+
+
+def _create_limpeza_blue_slot(session: GraphicsSession, *, x: float | None = None,
+                             y: float | None = None):
     """Cria UM SmartSlot, mantendo subprecos como bindings internos independentes."""
     from .item_slots import create_item_slot
 
@@ -170,12 +177,10 @@ def create_limpeza_blue_slot(session: GraphicsSession, *, x: float | None = None
         slot.metadata["single_slot_contract"] = {"primary": "club", "secondary": "promotion",
                                                  "area_count": 1, "pixel_exact": False}
     upgrade_limpeza_blue_slot(page, slot)
-    # A single product keeps its blue frame and price plate, but not an opaque
-    # white rectangle over the selected promotional campaign.
-    for node_id in slot.metadata.get("limpeza_blue_nodes") or []:
-        node = page.node(node_id)
-        if node is not None and node.metadata.get("limpeza_blue_role") == "white_panel":
-            node.visible = False
+    # The specialized artwork is created AFTER the generic slot. Apply the
+    # campaign here too, including when called through ItemSlotCommandRouter.
+    from .campaign_tools import apply_default_slot_theme
+    apply_default_slot_theme(session, [slot.id])
     return slot
 
 
@@ -214,7 +219,7 @@ def upgrade_limpeza_blue_slot(page, slot) -> bool:
                 node.style["fill"] = BLUE if role != "white_panel" else WHITE
                 node.style["stroke"] = node.style["fill"]
                 if role == "white_panel":
-                    node.visible = False
+                    node.visible = True
                 node.style["radius_ratio"] = {
                     "outer_frame": 0.19, "white_panel": 0.18,
                     "promotion_background": 0.40, "club_background": 0.25,
@@ -319,7 +324,8 @@ def _price_variant(product: dict[str, Any]) -> tuple[str, object, object | None]
         return ("one", retail if _is_real_price(retail) else candidates[0], None)
     # The highlighted price is club or promotional; retail sits in the badge.
     primary = club if _is_real_price(club) else offer
-    secondary = retail if _is_real_price(retail) else offer
+    secondary = (offer if _is_real_price(club) and _is_real_price(offer)
+                 else retail if _is_real_price(retail) else offer)
     return ("two", primary, secondary)
 
 

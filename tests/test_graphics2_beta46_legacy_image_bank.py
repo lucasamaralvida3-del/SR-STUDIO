@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import os
 import zipfile
 from pathlib import Path
 
@@ -82,6 +83,22 @@ def test_review_images_never_used_and_ambiguity_is_not_guessed(tmp_path, monkeyp
     # Rejecting the preferred candidate makes the remaining reviewed image usable.
     bank.set_review_status(one.id, "rejected")
     assert approved_legacy_image({"id":"220"})["image_bank_asset_id"] == two.id
+
+
+def test_review_change_invalidates_cache_even_with_coarse_windows_mtime(tmp_path, monkeypatch):
+    root = tmp_path / "bank"
+    monkeypatch.setenv("SR_STUDIO_IMAGE_LIBRARY_ROOT", str(root))
+    bank = ImageLibrary(root)
+    image = approved(bank, picture(tmp_path / "rice.png", "blue"), name="ARROZ", code="220")
+    assert approved_legacy_image({"id": "220"})["image_bank_asset_id"] == image.id
+    index = root / "index.json"
+    old = index.stat()
+    bank.set_review_status(image.id, "rejected")
+    # Equal-length status and an unchanged coarse filesystem clock used to
+    # reuse the accepted cached image after the user had rejected it.
+    assert index.stat().st_size == old.st_size
+    os.utime(index, ns=(old.st_atime_ns, old.st_mtime_ns))
+    assert approved_legacy_image({"id": "220"}) is None
 
 
 def test_historical_aliases_without_explicit_review_cannot_trigger_autolink(tmp_path, monkeypatch):
