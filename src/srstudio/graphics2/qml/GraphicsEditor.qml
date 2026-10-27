@@ -44,14 +44,30 @@ ApplicationWindow {
         imageBankShowAll = false
         showProductImageReview = true
         refreshImageBank()
+        Qt.callLater(function() {
+            var choices = imageBankTargetCombo.model || []
+            for (var i = 0; i < choices.length; ++i) {
+                if (String(choices[i].id || "") === imageBankTargetProductId) {
+                    imageBankTargetCombo.currentIndex = i
+                    break
+                }
+            }
+        })
+    }
+
+    function plainBankName(value) {
+        return String(value || "").toUpperCase()
+            .replace(/[ÁÀÂÃÄ]/g, "A").replace(/[ÉÈÊË]/g, "E")
+            .replace(/[ÍÌÎÏ]/g, "I").replace(/[ÓÒÔÕÖ]/g, "O")
+            .replace(/[ÚÙÛÜ]/g, "U").replace(/Ç/g, "C")
     }
 
     function bankSuggestionScore(entry) {
         if (!imageBankTargetProductId)
             return 0
         var id = String(imageBankTargetProductId || "").toLocaleUpperCase().trim()
-        var product = String(imageBankTargetProductName || "").toLocaleUpperCase()
-        var title = String(entry.name || "").toLocaleUpperCase()
+        var product = plainBankName(imageBankTargetProductName)
+        var title = plainBankName(entry.name)
         var code = String(entry.product_id || "").toLocaleUpperCase().trim()
         if (code && code === id)
             return 100
