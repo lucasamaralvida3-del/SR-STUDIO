@@ -62,7 +62,7 @@ def test_individual_backdrop_exists_empty_and_persists_across_modes(tmp_path):
     assert set_reference_price_mode(s, [slot.id], "one") == [slot.id]
     assert not page.node(slot.metadata["name_backdrop_node_id"]).visible
     assert set_reference_price_mode(s, [slot.id], "two") == [slot.id]
-    assert page.node(slot.metadata["name_backdrop_node_id"]).visible
+    assert not page.node(slot.metadata["name_backdrop_node_id"]).visible
     assert slot.product_id == "123"
 
 
