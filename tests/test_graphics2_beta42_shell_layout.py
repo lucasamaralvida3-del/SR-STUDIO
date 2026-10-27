@@ -6,7 +6,7 @@ def test_beta42_reference_shell_and_bottom_pages():
     for label in ("Produtos","Projeto",
                   "Produtos","Slots","Layouts de Promoção","Imagens","Texto",
                   "Formas","Fundos","Camadas","Buscar produtos",
-                  "Todos os produtos","Ver mais produtos","Adicionar página",
+                  "Todos os produtos","Adicionar página",
                   "Importar PPTX / Planilha"):
         assert label in qml, label
     assert 'id: productList' in qml
@@ -18,6 +18,8 @@ def test_beta42_reference_shell_and_bottom_pages():
     assert "exportPdfDialog.open()" in qml
     assert "sceneBridge.attachProductImage(" in qml
     assert "function finishProductDrag" in qml
-    assert "function createBlueSlot()" in qml
+    assert "function createBlueSlot(" in qml
+    assert "Ver mais produtos" not in qml
+    assert "placeSlotAt" in qml
     assert "sceneBridge.saveSceneAs(selectedFile.toString())" in qml
     assert "sceneBridge.exportPng(selectedFile.toString())" in qml
