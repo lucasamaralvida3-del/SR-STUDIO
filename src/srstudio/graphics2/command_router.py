@@ -514,7 +514,7 @@ class GraphicsCommandRouter:
                     applied = set_manual_slot_bounds(self.session, slot_id, **bounds)
                 return CommandResult(True, True, "Área do Smart Slot ajustada.", {"slot_id": slot_id, "bounds": applied})
             if name == "set_slot_typography":
-                from .model import BindingRole, NodeKind
+                from .model import BindingRole
                 slot_id = str(command.get("slot_id") or "")
                 slot = self.session.page.slots.get(slot_id)
                 if slot is None:
