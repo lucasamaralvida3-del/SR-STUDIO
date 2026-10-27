@@ -57,7 +57,7 @@ def test_qml_right_click_and_minimal_inspector():
     qml = (Path(__file__).resolve().parents[1] /
            "src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
     assert "acceptedButtons: Qt.LeftButton | Qt.RightButton" in qml
-    assert 'text: "Adicionar imagem"' in qml
+    assert 'text: "Adicionar ou substituir imagem"' in qml
     assert "sceneBridge.attachProductImage(" in qml
     for removed in ['text: "Aplicar geometria"', 'text: "Opacidade"',
                     'text: "Organizar"', 'text: "Qt Quick / RHI']:

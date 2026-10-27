@@ -93,7 +93,7 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
     }
     if reuse_existing and filled_multi_roots:
         compatible_eleven = (
-            plan.mode == "eleven"
+            plan.mode in {"eleven", "nine"}
             and len(filled_multi_roots) == 1
             and all(
                 page.node(root_id) is not None
@@ -119,7 +119,7 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
             )
 
     multi5 = None
-    if reuse_existing and plan.mode == "eleven":
+    if reuse_existing and plan.mode in {"eleven", "nine"}:
         for node in page.nodes.values():
             if node.metadata.get("multi_slot_beta44") and int(node.metadata.get("multi_count") or 0) == 5:
                 ids = list(node.metadata.get("child_slot_ids") or [])
@@ -162,7 +162,7 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
     # do not introduce an artificial new Multi strip and abandon five
     # products. In that case the bottom five positions use the existing
     # individual components. A real Multi-5 is preferred if already present.
-    use_multi5 = plan.mode == "eleven" and (multi5 is not None or len(singles) <= 6)
+    use_multi5 = plan.mode in {"eleven", "nine"} and (multi5 is not None or len(singles) <= (6 if plan.mode == "eleven" else 4))
 
     arranged: list[str] = []
     reused: list[str] = []
@@ -171,12 +171,14 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
     # Arrange only assigned cards; unrelated elements (logo, text, saved
     # artworks, and unselected extra slots) are never deleted or re-created.
     for position in plan.placements:
-        if use_multi5 and position.index in (7, 8, 9, 10):
+        multi_start = 6 if plan.mode == "eleven" else 4
+        multi_end = multi_start + 5
+        if use_multi5 and multi_start < position.index < multi_end:
             continue
         x, y, w, h = (page.width * position.x, page.height * position.y,
                       page.width * position.width, page.height * position.height)
-        if use_multi5 and position.index == 6:
-            end = plan.placements[10]
+        if use_multi5 and position.index == multi_start:
+            end = plan.placements[multi_end - 1]
             w = page.width * (end.x + end.width - position.x)
             if multi5 is None:
                 data = create_multi_item_strip(session, count=5, price_mode=price_mode, x=x, y=y)

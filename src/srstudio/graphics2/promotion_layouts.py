@@ -73,19 +73,19 @@ def plan_promotion(mode: LayoutKind, *, count: int | None = None,
                                    .463, right_height, "individual"))
         items.extend(_row(3, lower_count, split, bottom - split))
     elif mode == "nine":
-        # Supplied Terça Verde PPTX page 2: one left hero, four small
-        # right-side cards (2x2), plus four equal bottom offers.
-        split = top + available * .62
+        # Four canonical Individual cards (hero + three compact) and ONE
+        # genuine Multi-5 strip, never five fake independent mini-cards.
+        split = top + available * .65
         items.append(SlotPlacement(0, .045, top, .425, split - top - .012, "individual"))
         right_x, right_w, gap = .49, .465, .012
-        each_w = (right_w - gap) / 2
-        row_h = (split - top - .024) / 2
-        for row in range(2):
-            for col in range(2):
-                idx = 1 + row * 2 + col
-                items.append(SlotPlacement(idx, right_x + col * (each_w + gap),
-                                           top + row * (row_h + .012), each_w, row_h, "individual"))
-        items.extend(_row(5, 4, split, bottom - split))
+        half_w = (right_w - gap) / 2
+        half_h = (split - top - gap - .012) / 2
+        for idx, col in ((1, 0), (2, 1)):
+            items.append(SlotPlacement(idx, right_x + col * (half_w + gap),
+                                       top, half_w, half_h, "individual"))
+        items.append(SlotPlacement(3, right_x + (right_w - half_w) / 2,
+                                   top + half_h + gap, half_w, half_h, "individual"))
+        items.extend(_row(4, 5, split, bottom - split))
     elif mode == "eleven":
         first = available * .32
         second = available * .32

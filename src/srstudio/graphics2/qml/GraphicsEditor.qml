@@ -22,13 +22,13 @@ ApplicationWindow {
     property int autoLayoutVariation: 0
     property string productQuery: ""
     property string productFilter: "Todos os produtos"
-    property int visibleProductLimit: 12
+    // ListView virtualizes delegates, so all spreadsheet products remain scrollable.
     property var imageBankInventory: ({"images":[],"counts":{}})
     property string imageBankQuery: ""
     property string imageBankStatus: "Todos"
     property string imageBankTargetProductId: ""
     property string imageBankTargetProductName: ""
-    onStudioSectionChanged: if (studioSection === 3) refreshImageBank()
+    // The bank is internal; only linked spreadsheet products are shown in Produtos.
 
     function refreshImageBank() {
         try {
@@ -64,12 +64,14 @@ ApplicationWindow {
                 && (productFilter === "Todos os produtos"
                     || (productFilter === "Com imagem" && hasImage)
                     || (productFilter === "Sem imagem" && !hasImage))
-        }).slice(0, visibleProductLimit)
+        })
     }
 
-    function createBlueSlot() {
+    function createBlueSlot(dropX, dropY) {
         var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
-            "name": "add_item_slot", "preset_id": "limpeza-blue-v1"
+            "name": "add_item_slot", "preset_id": "limpeza-blue-v1",
+            "x": dropX === undefined ? null : dropX,
+            "y": dropY === undefined ? null : dropY
         })))
         if (result.ok && result.payload) {
             selectedSlotId = String(result.payload.slot_id || "")
@@ -78,9 +80,11 @@ ApplicationWindow {
         }
     }
 
-    function createIndividualSlot() {
+    function createIndividualSlot(dropX, dropY) {
         var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
-            "name": "add_item_slot", "preset_id": "individual-beta44"
+            "name": "add_item_slot", "preset_id": "individual-beta44",
+            "x": dropX === undefined ? null : dropX,
+            "y": dropY === undefined ? null : dropY
         })))
         if (result.ok && result.payload) {
             selectedSlotId = String(result.payload.slot_id || "")
@@ -89,11 +93,13 @@ ApplicationWindow {
         }
     }
 
-    function createMultiSlot(count) {
+    function createMultiSlot(count, dropX, dropY) {
         var modes = ["auto", "one", "two"]
         var mode = modes[slotPriceMode.currentIndex] || "auto"
         var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
-            "name": "add_multi_item_slot", "count": count, "price_mode": mode
+            "name": "add_multi_item_slot", "count": count, "price_mode": mode,
+            "x": dropX === undefined ? null : dropX,
+            "y": dropY === undefined ? null : dropY
         })))
         if (result.ok && result.payload) {
             var created = result.payload.slot_ids || []
@@ -101,6 +107,37 @@ ApplicationWindow {
             smartSlotEditMode = true
             smartSlotInspectionMode = true
         }
+    }
+
+    function placeSlotAt(kind, sourceItem, mouseX, mouseY) {
+        if (!page || !sheet)
+            return
+        var point = sourceItem.mapToItem(sheet, mouseX, mouseY)
+        var docX = point.x / zoom
+        var docY = point.y / zoom
+        if (docX < 0 || docY < 0 || docX > page.width || docY > page.height)
+            return
+        var w = kind === "blue" ? 418 : (kind === "individual" ? 460 : page.width * .94)
+        var h = kind === "blue" ? 320 : (kind === "individual" ? 490 :
+                     Math.min(page.height * .31, 315, w / 4.75))
+        var px = Math.max(0, Math.min(page.width - w, docX - w / 2))
+        var py = Math.max(0, Math.min(page.height - h, docY - h / 2))
+        if (kind === "blue")
+            createBlueSlot(px, py)
+        else if (kind === "individual")
+            createIndividualSlot(px, py)
+        else
+            createMultiSlot(kind === "multi5" ? 5 : 6, px, py)
+    }
+
+    function duplicateSelectedSmartSlot() {
+        if (!selectedSlotId)
+            return
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({
+            "name":"duplicate_slot", "slot_id":selectedSlotId
+        })))
+        if (result.ok && result.payload && result.payload.slot_ids.length)
+            selectedSlotId = String(result.payload.slot_ids[0])
     }
 
     function selectedPicture() {
@@ -184,6 +221,12 @@ ApplicationWindow {
             ? {"name":"apply_campaign_preset", "background_id":items[index].id}
             : {"name":"apply_campaign_seal", "seal_id":items[index].id}))
     }
+    property var inspectorProduct: null
+    property bool slotDragActive: false
+    property string slotDragKey: ""
+    property real slotDragX: 0
+    property real slotDragY: 0
+    property string inspectorStatus: ""
     property string pendingImageProductId: ""
     property string pendingImageProductName: ""
     FileDialog {
@@ -251,7 +294,7 @@ ApplicationWindow {
         if (!slot || !page)
             return ids
         var roots = []
-        var rootId = slot.metadata ? String(slot.metadata.root_node_id || "") : ""
+        var rootId = slot.metadata ? String(slot.metadata.multi_parent_id || slot.metadata.root_node_id || "") : ""
         if (rootId && page.nodes[rootId])
             roots.push(rootId)
         var roleMap = slot.node_by_role || {}
@@ -463,7 +506,7 @@ ApplicationWindow {
         // The previous bounding box came from old role metadata and could be
         // hundreds of pixels away from the visible card after move/resize.
         // Always anchor manual Azul slots to the ACTUAL scene root.
-        var rootId = slot.metadata ? String(slot.metadata.root_node_id || "") : ""
+        var rootId = slot.metadata ? String(slot.metadata.multi_parent_id || slot.metadata.root_node_id || "") : ""
         var root = rootId && page.nodes ? page.nodes[rootId] : null
         if (root && root.transform) {
             var t = root.transform
@@ -600,6 +643,64 @@ ApplicationWindow {
             sceneBridge.removeSlotBackground(chosenSlot)
     }
 
+    function selectedSmartSlot() {
+        for (var i = 0; i < slots().length; ++i)
+            if (slots()[i].id === selectedSlotId)
+                return slots()[i]
+        return null
+    }
+
+    function propertyProduct() {
+        if (inspectorProduct)
+            return inspectorProduct
+        var slot = selectedSmartSlot()
+        if (!slot)
+            return null
+        var p = slot.metadata ? slot.metadata.product_snapshot : null
+        return p && Object.keys(p).length ? p : null
+    }
+
+    function refreshPropertyFields() {
+        var product = propertyProduct()
+        if (product) {
+            inspectorProductName.text = product.display_name || product.name || product.original_name || ""
+            inspectorPrice.text = String(product.price || "")
+            inspectorAppPrice.text = String(product.app_price || product.club_price || "")
+            inspectorUnit.text = String(product.unit || "UN")
+        } else {
+            inspectorProductName.text = ""
+            inspectorPrice.text = ""
+            inspectorAppPrice.text = ""
+            inspectorUnit.text = "UN"
+        }
+    }
+
+    function saveProductProperties() {
+        var product = propertyProduct()
+        if (!product)
+            return
+        var changes = {
+            "display_name": inspectorProductName.text,
+            "price": inspectorPrice.text,
+            "app_price": inspectorAppPrice.text,
+            "unit": inspectorUnit.text
+        }
+        var command
+        if (inspectorProduct && String(product.id || product.product_id || "")) {
+            command = {"name":"update_product_data",
+                       "product_id":String(product.id || product.product_id),
+                       "changes":changes, "cascade":true}
+        } else {
+            command = {"name":"update_product_fields",
+                       "slot_id":selectedSlotId, "changes":changes}
+        }
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify(command)))
+        inspectorStatus = result.message || ""
+    }
+
+    onInspectorProductChanged: Qt.callLater(refreshPropertyFields)
+    onSelectedSlotIdChanged: Qt.callLater(refreshPropertyFields)
+
     function syncInspector() {
         var node = selectedNode()
         anchorNode = node
@@ -625,6 +726,7 @@ ApplicationWindow {
         hoveredSlotId = ""
         dragHoverSlotId = ""
         Qt.callLater(syncInspector)
+        Qt.callLater(refreshPropertyFields)
     }
 
     Connections {
@@ -640,7 +742,7 @@ ApplicationWindow {
     Shortcut { sequence: StandardKey.Undo; onActivated: sceneBridge.undo() }
     Shortcut { sequence: StandardKey.Redo; onActivated: sceneBridge.redo() }
     Shortcut { sequence: StandardKey.Delete; onActivated: sceneBridge.dispatch('{"name":"delete"}') }
-    Shortcut { sequence: "Ctrl+D"; onActivated: sceneBridge.dispatch('{"name":"duplicate"}') }
+    Shortcut { sequence: "Ctrl+D"; onActivated: selectedSlotId ? duplicateSelectedSmartSlot() : sceneBridge.dispatch('{"name":"duplicate"}') }
     Shortcut { sequence: "Ctrl+G"; onActivated: sceneBridge.dispatch('{"name":"group"}') }
     Shortcut { sequence: "Ctrl+Shift+G"; onActivated: sceneBridge.dispatch('{"name":"ungroup"}') }
     Shortcut { sequence: "G"; onActivated: showGrid = !showGrid }
@@ -681,11 +783,11 @@ ApplicationWindow {
                             spacing: 7
                             Repeater {
                                 model: [
-                                    { icon:"⬡", title:"Produtos" }, { icon:"⬡", title:"Slots" },
-                                    { icon:"♧", title:"Layouts" }, { icon:"▧", title:"Imagens" },
-                                    { icon:"T", title:"Texto" }, { icon:"♧", title:"Formas" },
-                                    { icon:"▨", title:"Fundos" }, { icon:"▱", title:"Camadas" },
-                                    { icon:"☷", title:"Projeto" }
+                                    { icon:"⬡", title:"Produtos", section:0 }, { icon:"⬡", title:"Slots", section:1 },
+                                    { icon:"♧", title:"Layouts", section:2 },
+                                    { icon:"T", title:"Texto", section:4 }, { icon:"♧", title:"Formas", section:5 },
+                                    { icon:"▨", title:"Fundos", section:6 }, { icon:"▱", title:"Camadas", section:7 },
+                                    { icon:"☷", title:"Projeto", section:8 }
                                 ]
                                 delegate: Rectangle {
                                     required property var modelData
@@ -695,14 +797,14 @@ ApplicationWindow {
                                     Layout.leftMargin: 5
                                     Layout.rightMargin: 5
                                     radius: 9
-                                    color: studioSection === index ? "#EFF3FF" : "transparent"
+                                    color: studioSection === modelData.section ? "#EFF3FF" : "transparent"
                                     ColumnLayout {
                                         anchors.centerIn: parent
                                         spacing: 5
-                                        Label { text: modelData.icon; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#2C4BFA" : "#4C577F"; font.pixelSize: 24 }
-                                        Label { text: modelData.title; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#284DFF" : "#425072"; font.pixelSize: 9; font.bold: studioSection === index }
+                                        Label { text: modelData.icon; Layout.alignment: Qt.AlignHCenter; color: studioSection === modelData.section ? "#2C4BFA" : "#4C577F"; font.pixelSize: 24 }
+                                        Label { text: modelData.title; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#284DFF" : "#425072"; font.pixelSize: 9; font.bold: studioSection === modelData.section }
                                     }
-                                    MouseArea { anchors.fill: parent; onClicked: studioSection = index }
+                                    MouseArea { anchors.fill: parent; onClicked: studioSection = modelData.section }
                                 }
                             }
                             Item { Layout.fillHeight: true }
@@ -716,7 +818,7 @@ ApplicationWindow {
                         RowLayout {
                             Layout.fillWidth: true
                             Label {
-                                text: ["Produtos","Slots","Layouts de Promoção","Imagens","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
+                                text: ["Produtos","Slots","Layouts de Promoção","","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
                                 color: "#111B38"; font.pixelSize: 15; font.bold: true
                             }
                             Item { Layout.fillWidth: true }
@@ -758,40 +860,84 @@ ApplicationWindow {
                                     id: productCard
                                     required property var modelData
                                     width: productList.width - 4
-                                    height: 99
-                                    radius: 9
+                                    height: Math.max(104, productInformation.implicitHeight + 24)
+                                    radius: 11
                                     color: productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF"
-                                    border.color: productMouse.dragging ? "#0F5BD8" : "#D9E4F2"
+                                    border.color: productMouse.dragging ? "#2869EF" : "#DCE5F1"
                                     border.width: productMouse.dragging ? 2 : 1
                                     property var productData: modelData
-
                                     RowLayout {
                                         anchors.fill: parent
                                         anchors.margins: 9
-                                        spacing: 9
+                                        spacing: 8
                                         Rectangle {
-                                            Layout.preferredWidth: 64
-                                            Layout.preferredHeight: 66
-                                            radius: 5
-                                            color: "#FAFBFE"
-                                            border.color: "#E5EAF1"
-                                            clip: true
+                                            Layout.preferredWidth: 59
+                                            Layout.preferredHeight: 72
+                                            Layout.alignment: Qt.AlignVCenter
+                                            radius: 8
+                                            color: "#F8FAFE"
+                                            border.color: "#E8EEF6"
                                             Image {
                                                 anchors.fill: parent
                                                 anchors.margins: 3
                                                 source: localSource(modelData.image_path || modelData.image || "")
                                                 fillMode: Image.PreserveAspectFit
                                                 asynchronous: true
+                                                cache: true
+                                                smooth: true
                                             }
                                         }
                                         ColumnLayout {
+                                            id: productInformation
                                             Layout.fillWidth: true
-                                            spacing: 2
-                                            Label { Layout.fillWidth: true; text: modelData.display_name || modelData.name || modelData.original_name || "Produto"; color: "#111827"; font.bold: true; font.pixelSize: 12; elide: Text.ElideRight }
-                                            Label { text: (modelData.unit || "UN") + (modelData.category ? " · " + modelData.category : ""); color: "#64748B"; font.pixelSize: 10 }
-                                            Label { text: modelData.price ? ("R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"; color: "#0F5BD8"; font.bold: true; font.pixelSize: 14 }
+                                            Layout.alignment: Qt.AlignVCenter
+                                            spacing: 3
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: modelData.display_name || modelData.name || modelData.original_name || "Produto"
+                                                color: "#11234A"
+                                                font.bold: true
+                                                font.pixelSize: 11
+                                                wrapMode: Text.WordWrap
+                                                elide: Text.ElideNone
+                                            }
+                                            Label {
+                                                text: String(modelData.unit || "UN").toUpperCase()
+                                                color: "#7886A0"; font.pixelSize: 10
+                                            }
+                                            Label {
+                                                Layout.fillWidth: true
+                                                text: modelData.price ? ("Oferta  R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"
+                                                color: "#1154D8"; font.bold: true; font.pixelSize: 12
+                                            }
+                                            Label {
+                                                Layout.fillWidth: true
+                                                visible: !!(modelData.app_price || modelData.club_price ||
+                                                            modelData.wholesale_price || modelData.retail_price)
+                                                text: {
+                                                    var extra = modelData.app_price || modelData.club_price ||
+                                                                modelData.wholesale_price || modelData.retail_price
+                                                    var label = (modelData.app_price || modelData.club_price) ? "Clube SR  " :
+                                                                (modelData.wholesale_price ? "Atacado  " : "Varejo  ")
+                                                    return label + "R$ " + String(extra || "").replace(".", ",")
+                                                }
+                                                color: "#B32D18"; font.bold: true; font.pixelSize: 11
+                                            }
                                         }
-                                        ToolButton { text: "+"; font.pixelSize: 18; enabled: selectedSlotId !== ""; onClicked: bindProduct(modelData) }
+                                        ToolButton {
+                                            text: "+"
+                                            font.pixelSize: 18
+                                            z: 3
+                                            Layout.preferredWidth: 26
+                                            Layout.preferredHeight: 32
+                                            onClicked: {
+                                                window.inspectorProduct = productCard.productData
+                                                if (selectedSlotId)
+                                                    bindProduct(modelData)
+                                            }
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: selectedSlotId ? "Aplicar ao Smart Slot selecionado" : "Selecione um slot antes de aplicar"
+                                        }
                                     }
                                     MouseArea {
                                         id: productMouse
@@ -803,6 +949,7 @@ ApplicationWindow {
                                         property real pressY: 0
                                         property bool dragging: false
                                         onPressed: {
+                                            window.inspectorProduct = productCard.productData
                                             if (mouse.button === Qt.RightButton) {
                                                 productActions.popup()
                                                 return
@@ -835,28 +982,29 @@ ApplicationWindow {
                                             cancelProductDrag()
                                         }
                                         onDoubleClicked: if (selectedSlotId) bindProduct(productCard.productData)
-                                    Menu {
-                                        id: productActions
-                                        MenuItem {
-                                            text: "Adicionar imagem"
-                                            onTriggered: {
-                                                var p = productCard.productData
-                                                window.pendingImageProductId = String(p.id || p.product_id || "")
-                                                window.pendingImageProductName = productLabel(p)
-                                                productImageDialog.open()
+                                        Menu {
+                                            id: productActions
+                                            MenuItem {
+                                                text: "Adicionar ou substituir imagem"
+                                                onTriggered: {
+                                                    var p = productCard.productData
+                                                    window.pendingImageProductId = String(p.id || p.product_id || "")
+                                                    window.pendingImageProductName = productLabel(p)
+                                                    productImageDialog.open()
+                                                }
                                             }
                                         }
                                     }
-                                    }
                                 }
-                                Label { anchors.centerIn: parent; visible: productList.count === 0; text: "Importe uma planilha para carregar produtos."; width: productList.width - 30; wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter; color: "#94A3B8" }
-                            }
-
-                            Button {
-                                Layout.fillWidth: true
-                                text: "Ver mais produtos"
-                                flat: true
-                                onClicked: visibleProductLimit += 24
+                                Label {
+                                    anchors.centerIn: parent
+                                    visible: productList.count === 0
+                                    text: "Importe uma planilha para carregar produtos."
+                                    width: productList.width - 30
+                                    wrapMode: Text.WordWrap
+                                    horizontalAlignment: Text.AlignHCenter
+                                    color: "#94A3B8"
+                                }
                             }
                         }
                         ColumnLayout {
@@ -1160,7 +1308,7 @@ ApplicationWindow {
                                 width: 235
                                 spacing: 7
                                 Label { text: "Ações do projeto"; font.bold: true; color: "#263D71" }
-                                Button { text: "+ Slot Azul"; Layout.fillWidth: true; onClicked: createBlueSlot() }
+                                Button { text: "+ Slot Único"; Layout.fillWidth: true; onClicked: createBlueSlot() }
                                 Button { text: "Ajustar Smart Slots"; Layout.fillWidth: true; checkable: true; checked: smartSlotEditMode; onClicked: { smartSlotEditMode = checked; smartSlotInspectionMode = checked } }
                                 Button { text: "Copiar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"copy"}') }
                                 Button { text: "Colar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"paste"}') }
@@ -1192,7 +1340,7 @@ ApplicationWindow {
 
                             Repeater {
                                 model: [
-                                    {"key":"blue", "label":"Slot Azul", "count":0},
+                                    {"key":"blue", "label":"Slot Único", "count":0},
                                     {"key":"individual", "label":"Smart Slot Individual", "count":0},
                                     {"key":"multi5", "label":"Multi Itens — 5 produtos", "count":5},
                                     {"key":"multi6", "label":"Multi Itens — 6 produtos", "count":6}
@@ -1233,16 +1381,45 @@ ApplicationWindow {
                                         font.pixelSize: 11; color: "#64748B"
                                     }
                                     MouseArea {
+                                        id: slotPaletteMouse
                                         anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            var count = canonicalSlotPreviewCard.modelData.count
-                                            if (canonicalSlotPreviewCard.modelData.key === "blue")
+                                        cursorShape: Qt.OpenHandCursor
+                                        preventStealing: true
+                                        property real originX: 0
+                                        property real originY: 0
+                                        property bool dragging: false
+                                        onPressed: {
+                                            originX = mouse.x; originY = mouse.y
+                                            dragging = false
+                                        }
+                                        onPositionChanged: {
+                                            if (!pressed) return
+                                            var distance = Math.hypot(mouse.x-originX, mouse.y-originY)
+                                            if (!dragging && distance >= 7)
+                                                dragging = true
+                                            if (dragging) {
+                                                window.slotDragActive = true
+                                                window.slotDragKey = canonicalSlotPreviewCard.modelData.key
+                                                var point = mapToItem(window.contentItem, mouse.x, mouse.y)
+                                                window.slotDragX = point.x
+                                                window.slotDragY = point.y
+                                            }
+                                        }
+                                        onReleased: {
+                                            var key = canonicalSlotPreviewCard.modelData.key
+                                            if (dragging) {
+                                                window.placeSlotAt(key, slotPaletteMouse, mouse.x, mouse.y)
+                                            } else if (key === "blue") {
                                                 window.createBlueSlot()
-                                            else if (canonicalSlotPreviewCard.modelData.key === "individual")
+                                            } else if (key === "individual") {
                                                 window.createIndividualSlot()
-                                            else
-                                                window.createMultiSlot(count)
+                                            } else {
+                                                window.createMultiSlot(canonicalSlotPreviewCard.modelData.count)
+                                            }
+                                            dragging = false; window.slotDragActive = false
+                                        }
+                                        onCanceled: {
+                                            dragging = false; window.slotDragActive = false
                                         }
                                     }
                                 }
@@ -1477,13 +1654,14 @@ ApplicationWindow {
                                 id: studioSlotMenu
                                 MenuItem { text: "Remover Fundo"; onTriggered: removeCurrentBackground() }
                                 MenuItem { text: "Restaurar Auto"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"restore_smart_slot_auto","slot_id":selectedSlotId})) }
+                                MenuItem { text: "Duplicar Smart Slot  ·  Ctrl+D"; enabled: selectedSlotId !== ""; onTriggered: duplicateSelectedSmartSlot() }
                                 MenuItem { text: "Excluir Slot"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"delete_smart_slot","slot_id":selectedSlotId})) }
                                 MenuItem { text: "Não-produto"; enabled: selectedSlotId !== ""; onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"mark_smart_slot_non_product","slot_id":selectedSlotId})) }
                                 MenuItem { text: "Fundo automático"; checkable: true; checked: autoRemoveProductBackground; onTriggered: autoRemoveProductBackground = checked }
                             }
                         }
                         ToolButton { text: "T"; ToolTip.text: "Texto"; ToolTip.visible: hovered; onClicked: sceneBridge.dispatch('{"name":"add_text"}') }
-                        ToolButton { text: "▧"; ToolTip.text: "Imagens"; ToolTip.visible: hovered; onClicked: studioSection = 3 }
+                        ToolButton { text: "▧"; ToolTip.text: "Imagens dos produtos"; ToolTip.visible: hovered; onClicked: studioSection = 0 }
                         ToolSeparator {}
                         ToolButton { text: "↶"; enabled: !!scene.editor && scene.editor.can_undo; onClicked: sceneBridge.undo() }
                         ToolButton { text: "↷"; enabled: !!scene.editor && scene.editor.can_redo; onClicked: sceneBridge.redo() }
@@ -1714,7 +1892,11 @@ ApplicationWindow {
                                         clip: fillMode === Image.PreserveAspectCrop
                                         asynchronous: true
                                         cache: true
-                                        mipmap: true
+                                        mipmap: !(modelData.metadata && modelData.metadata.campaign_art)
+                                        sourceSize.width: modelData.metadata && modelData.metadata.campaign_art
+                                            ? Math.min(4096, Math.max(1200, Number(modelData.transform.width || 1080) * 1.5)) : -1
+                                        sourceSize.height: modelData.metadata && modelData.metadata.campaign_art
+                                            ? Math.min(4096, Math.max(1400, Number(modelData.transform.height || 1350) * 1.5)) : -1
                                         smooth: true
                                     }
                                     MouseArea {
@@ -1749,7 +1931,10 @@ ApplicationWindow {
                             }
 
                             Repeater {
-                                model: slots()
+                                model: slots().filter(function(slot) {
+                                    return !slot.metadata || !slot.metadata.multi_parent_id ||
+                                           Number(slot.metadata.multi_index || 0) === 0
+                                })
                                 delegate: Item {
                                     id: slotOverlay
                                     objectName: "smartSlotOverlay-" + String(modelData.id || "")
@@ -1921,6 +2106,8 @@ ApplicationWindow {
                                         onExited: if (hoveredSlotId === slotOverlay.modelData.id) hoveredSlotId = ""
                                         onPressed: {
                                             selectedSlotId = slotOverlay.modelData.id
+                                            window.inspectorProduct = null
+                                            Qt.callLater(window.refreshPropertyFields)
                                             if (!smartSlotEditMode)
                                                 return
                                             var point = mapToItem(sheet, mouse.x, mouse.y)
@@ -1929,7 +2116,11 @@ ApplicationWindow {
                                             startBounds = {"x":slotOverlay.bounds.x,"y":slotOverlay.bounds.y,"width":slotOverlay.bounds.width,"height":slotOverlay.bounds.height}
                                             slotOverlay.beginPreview(startBounds, "move")
                                         }
-                                        onClicked: selectedSlotId = slotOverlay.modelData.id
+                                        onClicked: {
+                                            selectedSlotId = slotOverlay.modelData.id
+                                            window.inspectorProduct = null
+                                            Qt.callLater(window.refreshPropertyFields)
+                                        }
                                         onPositionChanged: {
                                             if (!pressed || !smartSlotEditMode || !slotOverlay.previewActive)
                                                 return
@@ -2168,6 +2359,137 @@ ApplicationWindow {
                             Label { text: anchorNode ? ("ID: " + String(anchorNode.id).slice(0, 8)) : "Nenhum item"; font.pixelSize: 9; color: "#8995AC" }
                         }
                         Rectangle { Layout.fillWidth: true; height: 1; color: "#EDF0F5" }
+                        GroupBox {
+                            title: "Produto selecionado"
+                            visible: !!window.propertyProduct()
+                            Layout.fillWidth: true
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 8
+                                Label { text: "Nome do produto"; color: "#53617A"; font.pixelSize: 10 }
+                                TextField { id: inspectorProductName; Layout.fillWidth: true; placeholderText: "Nome completo"; font.pixelSize: 12 }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 6
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "Preço (R$)"; font.pixelSize: 10; color: "#53617A" }
+                                        TextField { id: inspectorPrice; Layout.fillWidth: true; placeholderText: "0,00" }
+                                    }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true
+                                        Label { text: "Clube SR / App"; font.pixelSize: 10; color: "#53617A" }
+                                        TextField { id: inspectorAppPrice; Layout.fillWidth: true; placeholderText: "0,00" }
+                                    }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Label { text: "Unidade"; color: "#53617A" }
+                                    TextField { id: inspectorUnit; Layout.fillWidth: true; placeholderText: "UN ou KG" }
+                                }
+                                Button {
+                                    text: "Salvar dados do produto"
+                                    Layout.fillWidth: true
+                                    highlighted: true
+                                    onClicked: window.saveProductProperties()
+                                }
+                            }
+                        }
+                        GroupBox {
+                            title: "Smart Slot · Formatação"
+                            Layout.fillWidth: true
+                            visible: selectedSlotId !== ""
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 9
+                                Button {
+                                    text: "Duplicar Smart Slot  ·  Ctrl + D"
+                                    Layout.fillWidth: true
+                                    onClicked: window.duplicateSelectedSmartSlot()
+                                }
+                                Label { text: "Alinhamento do nome"; color: "#53617A"; font.pixelSize: 10 }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Repeater {
+                                        model: [
+                                            {"label":"◧", "alignment":"left"},
+                                            {"label":"☷", "alignment":"center"},
+                                            {"label":"◨", "alignment":"right"}
+                                        ]
+                                        delegate: Button {
+                                            required property var modelData
+                                            Layout.fillWidth: true
+                                            text: modelData.label
+                                            onClicked: sceneBridge.dispatch(JSON.stringify({
+                                                "name":"set_slot_typography",
+                                                "slot_id":selectedSlotId,
+                                                "role":"name", "align":modelData.alignment
+                                            }))
+                                        }
+                                    }
+                                }
+                                Label { text: "Tipografia"; color: "#12295A"; font.bold: true }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    ComboBox {
+                                        id: inspectorFont
+                                        Layout.fillWidth: true
+                                        model: ["Impact", "Arial", "Poppins", "Segoe UI", "Anton"]
+                                    }
+                                    SpinBox {
+                                        id: inspectorFontSize
+                                        from: 8; to: 90; value: 22
+                                        editable: true
+                                        Layout.preferredWidth: 83
+                                    }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Label { text: "Cor"; color: "#53617A" }
+                                    TextField {
+                                        id: inspectorFontColor
+                                        Layout.fillWidth: true
+                                        text: "#B32D18"
+                                        placeholderText: "#RRGGBB"
+                                    }
+                                }
+                                Button {
+                                    text: "Aplicar tipografia"
+                                    Layout.fillWidth: true
+                                    onClicked: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_slot_typography",
+                                        "slot_id":selectedSlotId,
+                                        "role":"name",
+                                        "font_family":inspectorFont.currentText,
+                                        "font_size":inspectorFontSize.value,
+                                        "color":inspectorFontColor.text,
+                                        "font_weight":700
+                                    }))
+                                }
+                                Label { text: "Estilo do preço"; font.bold: true; color: "#12295A" }
+                                ComboBox {
+                                    id: inspectorPriceStyle
+                                    Layout.fillWidth: true
+                                    model: ["Automático", "1 preço", "2 preços"]
+                                    onActivated: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_item_price_mode",
+                                        "slot_id":selectedSlotId,
+                                        "mode":["auto","one","two"][currentIndex]
+                                    }))
+                                }
+                                Label { text: "Cores da campanha"; font.bold: true; color: "#12295A" }
+                                ComboBox {
+                                    id: inspectorTheme
+                                    Layout.fillWidth: true
+                                    model: ["Azul SR", "Verde Terça", "Marrom Café", "Vinho Filé", "Vermelho Churrasco"]
+                                    onActivated: sceneBridge.dispatch(JSON.stringify({
+                                        "name":"set_slot_theme",
+                                        "slot_id":selectedSlotId,
+                                        "theme":["azul","terca-verde","quarta-cafe","quinta-file","churrasco"][currentIndex]
+                                    }))
+                                }
+                            }
+                        }
                         Label { text: "Nome do elemento"; color: "#606C84"; font.pixelSize: 10 }
                         Label { id: inspectorName; text: "Nada selecionado"; color: "#293957"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; padding: 9; background: Rectangle { color: "#FAFBFE"; radius: 6; border.color: "#DDE4F0" } }
                         Rectangle {
@@ -2302,6 +2624,29 @@ ApplicationWindow {
                         Math.min((workspace.width - 180) / page.width, (workspace.height - 140) / page.height)))
                 }
             }
+        }
+    }
+
+    Rectangle {
+        id: slotDragGhost
+        visible: window.slotDragActive
+        x: window.slotDragX + 12
+        y: window.slotDragY + 12
+        width: 192
+        height: 46
+        z: 1000020
+        radius: 9
+        color: "#F8FAFF"
+        border.width: 2
+        border.color: "#2166EF"
+        opacity: .96
+        Label {
+            anchors.centerIn: parent
+            text: "Soltar · " + (window.slotDragKey === "blue" ? "Slot Único" :
+                  window.slotDragKey === "individual" ? "Individual" :
+                  window.slotDragKey === "multi5" ? "Multi 5" : "Multi 6")
+            color: "#164FAF"
+            font.bold: true
         }
     }
 

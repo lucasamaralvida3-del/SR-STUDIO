@@ -22,7 +22,7 @@ WHITE = "#FFFFFF"
 # O preco PRINCIPAL e o do clube, o preco SECUNDARIO e o promocional.
 LIMPEZA_PRESET: dict[str, Any] = {
     "id": PRESET_ID,
-    "name": "AZUL · 1 OU 2 PREÇOS",
+    "name": "SLOT ÚNICO · 1 OU 2 PREÇOS",
     "width": 418.0,
     "height": 320.0,
     "background": None,  # outer frame does not cover the exposed right margin
@@ -170,6 +170,12 @@ def create_limpeza_blue_slot(session: GraphicsSession, *, x: float | None = None
         slot.metadata["single_slot_contract"] = {"primary": "club", "secondary": "promotion",
                                                  "area_count": 1, "pixel_exact": False}
     upgrade_limpeza_blue_slot(page, slot)
+    # A single product keeps its blue frame and price plate, but not an opaque
+    # white rectangle over the selected promotional campaign.
+    for node_id in slot.metadata.get("limpeza_blue_nodes") or []:
+        node = page.node(node_id)
+        if node is not None and node.metadata.get("limpeza_blue_role") == "white_panel":
+            node.visible = False
     return slot
 
 
@@ -207,6 +213,8 @@ def upgrade_limpeza_blue_slot(page, slot) -> bool:
                 node.locked = True
                 node.style["fill"] = BLUE if role != "white_panel" else WHITE
                 node.style["stroke"] = node.style["fill"]
+                if role == "white_panel":
+                    node.visible = False
                 node.style["radius_ratio"] = {
                     "outer_frame": 0.19, "white_panel": 0.18,
                     "promotion_background": 0.40, "club_background": 0.25,

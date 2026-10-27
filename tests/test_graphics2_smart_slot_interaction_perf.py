@@ -70,7 +70,7 @@ def _node_snapshot(document: GraphicsDocument) -> dict:
 
 def test_qml_smart_slot_hot_path_is_preview_only() -> None:
     qml = Path("src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
-    start = qml.index("                            Repeater {\n                                model: slots()\n")
+    start = qml.index("                            Repeater {\n                                model: slots().filter(")
     end = qml.index("\n                            Item {\n                                id: selectionOverlay", start)
     block = qml[start:end]
 

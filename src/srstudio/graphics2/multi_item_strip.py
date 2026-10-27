@@ -42,6 +42,8 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
             style={"fill": "#FFFFFF", "stroke_width": 0},
             metadata={"multi_item_decoration": True, "source_reference": "multi slots(2).pptx"},
         )
+        paper.visible = False  # keep compatibility node, never cover campaign artwork
+        paper.metadata["transparent_campaign_backplate"] = True
         page.add_node(paper, parent_id=root.id)
         footer = GraphicsNode(
             kind=NodeKind.RECT,
