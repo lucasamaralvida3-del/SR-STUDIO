@@ -294,7 +294,7 @@ ApplicationWindow {
         if (!slot || !page)
             return ids
         var roots = []
-        var rootId = slot.metadata ? String(slot.metadata.root_node_id || "") : ""
+        var rootId = slot.metadata ? String(slot.metadata.multi_parent_id || slot.metadata.root_node_id || "") : ""
         if (rootId && page.nodes[rootId])
             roots.push(rootId)
         var roleMap = slot.node_by_role || {}
@@ -506,7 +506,7 @@ ApplicationWindow {
         // The previous bounding box came from old role metadata and could be
         // hundreds of pixels away from the visible card after move/resize.
         // Always anchor manual Azul slots to the ACTUAL scene root.
-        var rootId = slot.metadata ? String(slot.metadata.root_node_id || "") : ""
+        var rootId = slot.metadata ? String(slot.metadata.multi_parent_id || slot.metadata.root_node_id || "") : ""
         var root = rootId && page.nodes ? page.nodes[rootId] : null
         if (root && root.transform) {
             var t = root.transform
@@ -1833,7 +1833,11 @@ ApplicationWindow {
                                         clip: fillMode === Image.PreserveAspectCrop
                                         asynchronous: true
                                         cache: true
-                                        mipmap: true
+                                        mipmap: !(modelData.metadata && modelData.metadata.campaign_art)
+                                        sourceSize.width: modelData.metadata && modelData.metadata.campaign_art
+                                            ? Math.min(4096, Math.max(1200, Number(modelData.transform.width || 1080) * 1.5)) : -1
+                                        sourceSize.height: modelData.metadata && modelData.metadata.campaign_art
+                                            ? Math.min(4096, Math.max(1400, Number(modelData.transform.height || 1350) * 1.5)) : -1
                                         smooth: true
                                     }
                                     MouseArea {
@@ -1868,7 +1872,10 @@ ApplicationWindow {
                             }
 
                             Repeater {
-                                model: slots()
+                                model: slots().filter(function(slot) {
+                                    return !slot.metadata || !slot.metadata.multi_parent_id ||
+                                           Number(slot.metadata.multi_index || 0) === 0
+                                })
                                 delegate: Item {
                                     id: slotOverlay
                                     objectName: "smartSlotOverlay-" + String(modelData.id || "")
@@ -2040,6 +2047,8 @@ ApplicationWindow {
                                         onExited: if (hoveredSlotId === slotOverlay.modelData.id) hoveredSlotId = ""
                                         onPressed: {
                                             selectedSlotId = slotOverlay.modelData.id
+                                            window.inspectorProduct = null
+                                            Qt.callLater(window.refreshPropertyFields)
                                             if (!smartSlotEditMode)
                                                 return
                                             var point = mapToItem(sheet, mouse.x, mouse.y)
@@ -2048,7 +2057,11 @@ ApplicationWindow {
                                             startBounds = {"x":slotOverlay.bounds.x,"y":slotOverlay.bounds.y,"width":slotOverlay.bounds.width,"height":slotOverlay.bounds.height}
                                             slotOverlay.beginPreview(startBounds, "move")
                                         }
-                                        onClicked: selectedSlotId = slotOverlay.modelData.id
+                                        onClicked: {
+                                            selectedSlotId = slotOverlay.modelData.id
+                                            window.inspectorProduct = null
+                                            Qt.callLater(window.refreshPropertyFields)
+                                        }
                                         onPositionChanged: {
                                             if (!pressed || !smartSlotEditMode || !slotOverlay.previewActive)
                                                 return
