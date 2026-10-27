@@ -24,7 +24,7 @@ class _FakeService:
             result.metadata["products"] = [
                 {"id": "banana", "display_name": "BANANA PRATA",
                  "price": "3.89", "unit": "KG",
-                 "DATA_PROMOCAO": "27/10/2026"}]
+                 "validity": "27/10/2026"}]
         return SimpleNamespace(document=result)
 
 
