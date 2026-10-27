@@ -350,7 +350,13 @@ class GraphicsCommandRouter:
                 preset_id = str(command.get("preset_id") or "individual-beta44")
                 x = _optional_float(command, "x")
                 y = _optional_float(command, "y")
-                slot = create_item_slot(self.session, preset_id, x=x, y=y)
+                if preset_id == "limpeza-blue-v1":
+                    from .slot_limpeza_blue import create_limpeza_blue_slot
+                    slot = create_limpeza_blue_slot(self.session, x=x, y=y)
+                    from .campaign_tools import apply_default_slot_theme
+                    apply_default_slot_theme(self.session, [slot.id])
+                else:
+                    slot = create_item_slot(self.session, preset_id, x=x, y=y)
                 return CommandResult(True, True, "Smart Slot adicionado.", {"slot_id": slot.id})
             if name == "add_multi_item_slot":
                 from .multi_item_strip import create_multi_item_strip
