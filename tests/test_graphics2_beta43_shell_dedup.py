@@ -6,7 +6,8 @@ def test_beta43_studio_uses_only_one_control_surface():
     assert "Production Gate" not in qml
     assert "Ordem das páginas" not in qml
     assert "SplitView.preferredWidth: 230" not in qml
-    assert '{ icon:"☷", title:"Projeto" }' in qml
+    assert 'title:"Projeto", section:8' in qml
+    assert 'title:"Imagens"' not in qml
     assert 'text: "Importar PPTX / Planilha"' in qml
     assert 'text: "Salvar"' in qml
     assert 'text: "Recuperar"' in qml
