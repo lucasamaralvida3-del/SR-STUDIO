@@ -39,6 +39,23 @@ SEAL_PLACEMENTS = {
     "churrasco": (.38, .024, .60, .350),
 }
 
+# Date boxes in the supplied original campaign artwork are NOT all in
+# the same place. Keep one explicit, normalized contract per campaign.
+# These rectangles may be calibrated from the actual reference images
+# without changing any product or Smart Slot source templates.
+DATE_PLACEMENTS = {
+    "terca-verde": (.100, .270, .185, .025),
+    "quarta-cafe": (.105, .272, .184, .026),
+    "quinta-file": (.119, .270, .173, .026),
+    "churrasco": (.122, .260, .182, .026),
+}
+
+
+def _date_geometry(page, campaign_id):
+    x, y, width, height = DATE_PLACEMENTS.get(campaign_id, DATE_PLACEMENTS["terca-verde"])
+    return page.width * x, page.height * y, page.width * width, page.height * height
+
+
 def _campaign_art_bounds(page, kind, campaign_id, path):
     if kind == "background":
         return (0.0, 0.0, page.width, page.height)
@@ -219,17 +236,28 @@ def update_campaign_date(document, page, *, mode=None, manual_date=None):
     if node is None:
         node = GraphicsNode(kind=NodeKind.TEXT, name="Data da promoção",
             text="", z_index=110,
-            transform=Transform(x=page.width * .091, y=page.height * .265,
-                                width=page.width * .176, height=page.height * .0178),
-            style={"font_family": "Arial", "font_size": 15, "font_size_unit": "px",
+            transform=Transform(*_date_geometry(page, str(page.metadata.get("campaign_id") or "terca-verde"))),
+            style={"font_family": "Impact", "font_size": 19, "font_size_unit": "pt",
                    "font_weight": 700, "color": "#FFFFFF", "align": "center",
                    "v_align": "center", "fit_inside_box": True,
                    "single_line": True, "nowrap": True, "min_font_size": 9},
             metadata={"campaign_id": str(page.metadata.get("campaign_id") or "terca-verde"), "campaign_date": True})
         page.add_node(node)
         page.metadata[key] = node.id
+    campaign = str(page.metadata.get("campaign_id") or "terca-verde")
+    # Artwork switches reposition the date even when the text node already
+    # exists. Manual user resize is preserved until the campaign changes.
+    if node.metadata.get("campaign_id") != campaign or not node.metadata.get("campaign_date_calibrated"):
+        x, y, width, height = _date_geometry(page, campaign)
+        node.transform.x, node.transform.y = x, y
+        node.transform.width, node.transform.height = width, height
+    node.style.update({"font_family": "Impact", "font_size": 19,
+                       "font_size_unit": "pt", "font_weight": 700,
+                       "fit_inside_box": True, "single_line": True,
+                       "nowrap": True, "align": "center", "v_align": "center"})
+    node.metadata["campaign_date_calibrated"] = True
     node.text = displayed
-    node.metadata["campaign_id"] = str(page.metadata.get("campaign_id") or "terca-verde")
+    node.metadata["campaign_id"] = campaign
     page.metadata["campaign_date_display"] = displayed
     return displayed
 
