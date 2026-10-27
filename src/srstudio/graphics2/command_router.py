@@ -503,8 +503,56 @@ class GraphicsCommandRouter:
                     enabled=use_snap,
                     page=self.session.page,
                 )
-                applied = set_manual_slot_bounds(self.session, slot_id, **bounds)
+                selected = self.session.page.slots[slot_id]
+                multi_root_id = str(selected.metadata.get("multi_parent_id") or "")
+                if multi_root_id and self.session.page.node(multi_root_id) is not None:
+                    # A Multi strip cannot resize only one of its five/six
+                    # cells. Transform the real parent and all descendants.
+                    self.session.resize_node(multi_root_id, **bounds)
+                    applied = bounds
+                else:
+                    applied = set_manual_slot_bounds(self.session, slot_id, **bounds)
                 return CommandResult(True, True, "Área do Smart Slot ajustada.", {"slot_id": slot_id, "bounds": applied})
+            if name == "set_slot_typography":
+                from .model import BindingRole, NodeKind
+                slot_id = str(command.get("slot_id") or "")
+                slot = self.session.page.slots.get(slot_id)
+                if slot is None:
+                    return CommandResult(False, False, "Selecione um Smart Slot para editar a tipografia.")
+                role = str(command.get("role") or "name").lower()
+                bindings = {
+                    "name": (BindingRole.NAME.value,),
+                    "price": (BindingRole.CURRENCY.value, BindingRole.PRICE_REAIS.value,
+                              BindingRole.PRICE_CENTS.value, BindingRole.UNIT.value),
+                }
+                if role not in bindings:
+                    return CommandResult(False, False, "Função de texto não reconhecida.")
+                changes = {}
+                if command.get("font_family") is not None:
+                    changes["font_family"] = str(command["font_family"])[:90]
+                if command.get("font_size") is not None:
+                    changes["font_size"] = max(5, min(160, float(command["font_size"])))
+                if command.get("font_weight") is not None:
+                    changes["font_weight"] = int(command["font_weight"])
+                if command.get("align") is not None:
+                    align = str(command["align"])
+                    if align not in ("left", "center", "right"):
+                        return CommandResult(False, False, "Alinhamento inválido.")
+                    changes["align"] = align
+                if command.get("color") is not None:
+                    import re
+                    color = str(command["color"]).upper()
+                    if not re.fullmatch(r"#[0-9A-F]{6}", color):
+                        return CommandResult(False, False, "Use uma cor hexadecimal válida.")
+                    changes["color"] = color
+                if not changes:
+                    return CommandResult(True, False, "Nenhuma alteração de tipografia.")
+                with self.session.transaction("Estilo do Smart Slot"):
+                    for role_key in bindings[role]:
+                        node = self.session.page.node(str(slot.node_by_role.get(role_key) or ""))
+                        if node is not None and node.kind is NodeKind.TEXT:
+                            node.style.update(changes)
+                return CommandResult(True, True, "Tipografia atualizada.", {"slot_id":slot_id})
             if name == "restore_smart_slot_auto":
                 slot_id = str(command.get("slot_id") or "")
                 if slot_id not in self.session.page.slots:
