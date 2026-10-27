@@ -13,7 +13,7 @@ on:
       - 'src/srstudio/assets/campaigns/**'
       - 'tools/promote_g2_beta55_launcher.py'
       - 'tools/test_promote_g2_beta55_launcher.py'
-      - '.github/workflows/g2-beta55-candidate-windows.yml'
+      - '.github/workflows/g2-beta55-safe-import-windows.yml'
       - '.github/workflows/g2-beta51-legibility-windows.yml'
       - 'tests/test_graphics2_beta45_reference_fidelity.py'
       - 'tests/test_graphics2_qml_price_preview.py'
