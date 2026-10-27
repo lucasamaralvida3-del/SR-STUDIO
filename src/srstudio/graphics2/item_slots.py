@@ -117,7 +117,7 @@ def _builtins() -> dict[str, ItemSlotPreset]:
             name="INDIVIDUAL PROMOCIONAL",
             width=460,
             height=490,
-            background={"fill": "#FFFFFF", "stroke": "none", "stroke_width": 0},
+            background=None,  # transparent: the campaign artwork remains visible
             roles={
                 "image": {"bounds": [.005, .005, .41, .985],
                           "style": {"fit": "contain"}},
@@ -155,8 +155,8 @@ def _builtins() -> dict[str, ItemSlotPreset]:
                 "price": {"bounds": [.01, .715, .98, .28]},
                 "currency": _ppt_role(.035, .27, .20, .54, size=14.8, color="#FFFFFF"),
                 "integer": _ppt_role(.245, .045, .47, .90, size=35.6, color="#FFFFFF"),
-                "decimal": _ppt_role(.695, .17, .29, .33, size=12.6, color="#FFFFFF"),
-                "unit": _ppt_role(.75, .944, .215, .052, size=12.2, color="#FFFFFF"),
+                "decimal": _ppt_role(.625, .17, .255, .33, size=12.6, color="#FFFFFF"),
+                "unit": _ppt_role(.77, .916, .19, .070, size=12.2, color="#FFFFFF"),
                 "secondary_price": _ppt_role(.05, .729, .48, .035,
                                              size=9, color="#FFFFFF"),
                 "club_label": _ppt_role(.55, .729, .43, .035,
