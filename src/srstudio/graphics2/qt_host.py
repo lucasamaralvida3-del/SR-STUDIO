@@ -214,7 +214,7 @@ def launch_qt_quick_editor(
     launch_context: GraphicsLaunchContext | None = None,
 ) -> int:
     try:
-        from PySide6.QtCore import QObject, Property, QTimer, Signal, Slot, QUrl
+        from PySide6.QtCore import QObject, Property, QTimer, QSettings, Signal, Slot, QUrl
         from PySide6.QtGui import QGuiApplication
         from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
         from PySide6.QtQuick import QQuickItem, QQuickWindow, QSGRendererInterface
@@ -271,6 +271,43 @@ def launch_qt_quick_editor(
             self.historicalImageBankDone.connect(self._finish_historical_bank_import)
             self._bg_running = False
             self._slot_previews_json: str | None = None
+
+        @Property(int, constant=True)
+        def productSidebarWidth(self) -> int:
+            settings = QSettings("SRStudio", "GraphicsEditor")
+            try:
+                return max(340, min(565, int(settings.value("productsSidebarWidth", 440))))
+            except (ValueError, TypeError):
+                return 440
+
+        @Slot(int)
+        def saveProductSidebarWidth(self, width: int) -> None:
+            settings = QSettings("SRStudio", "GraphicsEditor")
+            settings.setValue("productsSidebarWidth", max(340, min(565, width)))
+
+        @Slot()
+        def refreshProductImages(self) -> None:
+            """Resolve photos only for spreadsheet items, never load full bank into UI."""
+            from .legacy_image_bank_bridge import hydrate_legacy_bank, image_bank_root
+            from .product_image_library import apply_stored_product_links
+            manual = apply_stored_product_links(session.document)
+            approved = hydrate_legacy_bank(session.document)
+            products = [p for p in (session.document.metadata.get("products") or [])
+                        if isinstance(p, dict)]
+            linked = sum(bool(p.get("image_path") or p.get("image")) for p in products)
+            if linked:
+                self._status = (f"Fotos: {linked}/{len(products)} produtos; "
+                                f"{manual + approved} vínculos atualizados.")
+            elif not (image_bank_root() / "index.json").is_file():
+                self._status = ("Nenhuma foto encontrada. O banco histórico não está "
+                                "instalado neste computador; adicione imagens aos "
+                                "produtos ou importe o banco para revisão.")
+            else:
+                self._status = ("Nenhuma foto compatível e aprovada no banco. "
+                                "Confira os códigos/EAN ou aprove as fotos "
+                                "pendentes antes de aplicá-las.")
+            self.statusChanged.emit()
+            self.sceneChanged.emit()
 
         @Property(str, constant=True)
         def slotPreviewsJson(self) -> str:
