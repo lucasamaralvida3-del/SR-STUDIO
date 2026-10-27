@@ -74,7 +74,7 @@ def test_qml_images_has_independent_real_bank_gallery():
     assert "sceneBridge.imageBankJson()" in qml
     assert "filteredBankImages()" in qml
     assert "sceneBridge.openImageBankFolder()" in qml
-    assert 'text: "Usar neste produto"' in qml
+    assert 'text: "Conferir e vincular"' in qml
     # Beta59 explicitly allows manual review of a pending photograph, but
     # never binds it without the per-product confirmation dialog.
     assert 'enabled: !!imageBankTargetProductId' in qml
