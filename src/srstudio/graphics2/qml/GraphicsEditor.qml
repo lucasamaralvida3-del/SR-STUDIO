@@ -125,9 +125,15 @@ ApplicationWindow {
         }
     }
     FileDialog {
-        id: sourceImportDialog
-        title: "Importar planilha ou apresentação"
-        nameFilters: ["Planilhas e apresentações (*.xlsx *.xls *.csv *.pptx)"]
+        id: spreadsheetImportDialog
+        title: "Importar produtos — mantém o encarte atual"
+        nameFilters: ["Produtos Excel (*.xlsx *.xlsm)"]
+        onAccepted: sceneBridge.importSource(selectedFile.toString())
+    }
+    FileDialog {
+        id: templateImportDialog
+        title: "Abrir modelo PPTX — substitui o layout atual"
+        nameFilters: ["Modelos PowerPoint/Canva (*.pptx)"]
         onAccepted: sceneBridge.importSource(selectedFile.toString())
     }
     function moveActivePage(step) {
@@ -1166,7 +1172,16 @@ ApplicationWindow {
                                 Button { text: "Colar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"paste"}') }
                                 Button { text: "Salvar"; Layout.fillWidth: true; onClicked: saveProjectDialog.open() }
                                 Button { text: "Recuperar"; Layout.fillWidth: true; onClicked: sceneBridge.recoverLatest() }
-                                Button { text: "Importar PPTX / Planilha"; Layout.fillWidth: true; onClicked: sourceImportDialog.open() }
+                                Button {
+                                    text: "Importar produtos Excel (manter encarte)"
+                                    Layout.fillWidth: true
+                                    onClicked: spreadsheetImportDialog.open()
+                                }
+                                Button {
+                                    text: "Abrir modelo PPTX (trocar layout)"
+                                    Layout.fillWidth: true
+                                    onClicked: templateImportDialog.open()
+                                }
                                 Button { text: "PDF"; Layout.fillWidth: true; onClicked: exportPdfDialog.open() }
                                 Button { text: "PNG"; Layout.fillWidth: true; onClicked: exportPngDialog.open() }
                                 Button { text: "Duplicar página"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}') }
