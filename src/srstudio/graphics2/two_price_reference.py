@@ -186,7 +186,7 @@ def _split_promotional_price(page, slot, geometry, enabled: bool) -> None:
         node.style["font_size"] = size
         node.style["align"] = "right" if key == "promo_integer" else (
             "left" if key == "promo_cents" else "center")
-        node.visible = bool(enabled and value)
+        node.visible = bool(enabled and whole and cents and value)
         node.z_index = 86
     slot.metadata["promotion_amount_nodes"] = nodes
     # The whole-value binding still receives spreadsheet updates, but
