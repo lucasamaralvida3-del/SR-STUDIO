@@ -163,11 +163,26 @@ def _install_session_methods(session_type: Any) -> None:
         if not products:
             raise ValueError("A planilha não produziu nenhum produto reconhecido.")
 
+        # Resolve only SKU records from this import, BEFORE notifying the UI.
+        # A matching accepted photo is safe; pending or ambiguous packshots
+        # must stay blank instead of showing the wrong package/weight.
+        from .legacy_image_bank_bridge import complete_product_image
+        from .product_image_library import read_product_links
+        manual_links = read_product_links()
+        linked = 0
+        for index, product in enumerate(products):
+            resolved = complete_product_image(product, manual_links=manual_links)
+            products[index] = resolved
+            if resolved.get("image_path") or resolved.get("image"):
+                linked += 1
+
         previous = deepcopy(self.document.metadata.get("products") or [])
         with self.transaction("Importar planilha de produtos"):
             self.document.metadata["products"] = products
             self.document.metadata["product_catalog_source"] = str(path)
             self.document.metadata["product_catalog_count"] = len(products)
+            self.document.metadata["product_catalog_images_linked"] = linked
+            self.document.metadata["product_catalog_images_missing"] = len(products) - linked
             self.document.metadata["product_catalog_import_mode"] = "spreadsheet-overlay"
             # Existing promotional artwork/date stays on the page. Refresh
             # automatic validity only after catalog replacement, within the
@@ -181,6 +196,8 @@ def _install_session_methods(session_type: Any) -> None:
         return {
             "changed": previous != products,
             "products": len(products),
+            "images_linked": linked,
+            "images_missing": len(products) - linked,
             "source": str(path),
             "pages_preserved": len(self.document.pages),
             "template_preserved": True,
