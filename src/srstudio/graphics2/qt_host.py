@@ -188,6 +188,25 @@ def _autosave_root(source: str | Path | None) -> Path:
     return root
 
 
+
+def import_into_open_editor(session: GraphicsSession, router: GraphicsCommandRouter,
+                            source: str | Path):
+    """Load a spreadsheet without replacing artwork or canonical Smart Slots.
+
+    Template replacement remains explicit, preserving a preloaded catalog.
+    Routes through the existing product-data runtime to keep scene operations
+    and command responses identical to other editor callers.
+    """
+    path = Path(source).expanduser().resolve()
+    if not path.is_file():
+        raise FileNotFoundError(f"Arquivo de importação não encontrado: {path}")
+    suffix = path.suffix.lower()
+    if suffix not in {".xlsx", ".xlsm", ".pptx"}:
+        raise ValueError("Use uma planilha XLSX/XLSM ou um modelo PPTX.")
+    action = "import_template_source" if suffix == ".pptx" else "import_product_catalog"
+    return router.dispatch({"name": action, "path": str(path)})
+
+
 def launch_qt_quick_editor(
     document: GraphicsDocument | None = None,
     *,
@@ -657,29 +676,32 @@ def launch_qt_quick_editor(
 
         @Slot(str)
         def importSource(self, raw_source: str) -> None:
-            """Import a new source document through the existing graphics import service."""
+            """Import a catalog into this flyer, never replace it with a spreadsheet."""
             from PySide6.QtCore import QUrl
             path = _qml_file_path(raw_source, "", QUrl)
             if path is None or not path.is_file():
                 self._status = "Arquivo de importação não encontrado."
                 self.statusChanged.emit()
                 return
-            if path.suffix.lower() not in {".xlsx", ".xls", ".csv", ".pptx"}:
-                self._status = "Selecione uma planilha ou PPTX compatível."
-                self.statusChanged.emit()
-                return
             try:
-                from .import_bridge import GraphicsImportService
-                imported = GraphicsImportService().import_file(path, project_name=path.stem)
-                session.document = imported.document
+                result = import_into_open_editor(session, router, path)
+                if not result.ok:
+                    self._status = result.message or "Falha ao importar arquivo."
+                    self.statusChanged.emit()
+                    return
                 apply_stored_product_links(session.document)
                 hydrate_legacy_bank(session.document)
-                session.history.clear()
-                session.clear_selection()
-                context.document = session.document
-                context.source = path
-                self._reset_autosave_manager(path)
-                self._status = f"Importado: {path.name}"
+                if path.suffix.lower() == ".pptx":
+                    # PPTX is an explicit new layout. The product catalog is
+                    # retained by import_template_source; the session changed.
+                    context.document = session.document
+                    context.source = path
+                    self._reset_autosave_manager(path)
+                else:
+                    # XLSX updates only products: preserve artwork, slot IDs,
+                    # selection, project identity and existing autosave path.
+                    self._schedule_autosave()
+                self._status = result.message or f"Importado: {path.name}"
                 self.statusChanged.emit()
                 self.sceneChanged.emit()
             except Exception as exc:

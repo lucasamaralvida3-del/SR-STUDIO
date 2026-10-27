@@ -74,7 +74,7 @@ def parse_promo_date(value):
 def detect_sheet_date(document):
     """Only use a unique, explicitly named validity/promotion date."""
     keys = {"data_promocao", "data_da_promocao", "data_da_oferta",
-            "data_oferta", "validade", "data_validade", "promo_date",
+            "data_oferta", "validade", "validity", "data_validade", "promo_date",
             "promotion_date", "valid_on", "data_inicio", "data_inicial"}
     values = []
     objects = [document.metadata]

@@ -169,6 +169,14 @@ def _install_session_methods(session_type: Any) -> None:
             self.document.metadata["product_catalog_source"] = str(path)
             self.document.metadata["product_catalog_count"] = len(products)
             self.document.metadata["product_catalog_import_mode"] = "spreadsheet-overlay"
+            # Existing promotional artwork/date stays on the page. Refresh
+            # automatic validity only after catalog replacement, within the
+            # same transaction so Undo restores both together.
+            from .campaign_tools import update_campaign_date
+            for page in self.document.pages:
+                if (page.metadata.get("campaign_date_node")
+                        or page.metadata.get("campaign_background_node")):
+                    update_campaign_date(self.document, page)
 
         return {
             "changed": previous != products,

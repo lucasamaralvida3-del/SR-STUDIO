@@ -126,8 +126,8 @@ ApplicationWindow {
     }
     FileDialog {
         id: sourceImportDialog
-        title: "Importar planilha ou apresentação"
-        nameFilters: ["Planilhas e apresentações (*.xlsx *.xls *.csv *.pptx)"]
+        title: "Excel mantém o encarte · PPTX substitui o layout"
+        nameFilters: ["Excel/Canva (*.xlsx *.xlsm *.pptx)", "Produtos Excel (*.xlsx *.xlsm)", "Modelos PPTX (*.pptx)"]
         onAccepted: sceneBridge.importSource(selectedFile.toString())
     }
     function moveActivePage(step) {
@@ -1166,7 +1166,13 @@ ApplicationWindow {
                                 Button { text: "Colar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"paste"}') }
                                 Button { text: "Salvar"; Layout.fillWidth: true; onClicked: saveProjectDialog.open() }
                                 Button { text: "Recuperar"; Layout.fillWidth: true; onClicked: sceneBridge.recoverLatest() }
-                                Button { text: "Importar PPTX / Planilha"; Layout.fillWidth: true; onClicked: sourceImportDialog.open() }
+                                Button {
+                                    text: "Importar PPTX / Planilha"
+                                    Layout.fillWidth: true
+                                    onClicked: sourceImportDialog.open()
+                                    ToolTip.visible: hovered
+                                    ToolTip.text: "XLSX/XLSM adiciona produtos sem apagar o encarte; PPTX troca o layout."
+                                }
                                 Button { text: "PDF"; Layout.fillWidth: true; onClicked: exportPdfDialog.open() }
                                 Button { text: "PNG"; Layout.fillWidth: true; onClicked: exportPngDialog.open() }
                                 Button { text: "Duplicar página"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"duplicate_page"}') }
