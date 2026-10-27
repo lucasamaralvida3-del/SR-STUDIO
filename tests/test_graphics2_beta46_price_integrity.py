@@ -26,7 +26,12 @@ def read(session: GraphicsSession, sid: str):
     badge = page.node(slot.node_by_role[BindingRole.RETAIL_PRICE.value])
     club = page.node(slot.metadata["club_label_node_id"])
     promotion = page.node(slot.metadata["promotion_label_node_id"])
-    return price, cents, badge.text, badge.visible, club.visible, promotion.visible
+    # RETAIL_PRICE remains editable in the product data model, but its single
+    # text render is replaced with the visible 3-part promotional typography.
+    assert not badge.visible
+    pieces = slot.metadata.get("promotion_amount_nodes") or {}
+    displayed = bool(pieces) and all(page.node(nid).visible for nid in pieces.values())
+    return price, cents, badge.text, displayed, club.visible, promotion.visible
 
 
 @pytest.mark.parametrize("preset", ["individual-beta44", "multi-cell-beta44"])
