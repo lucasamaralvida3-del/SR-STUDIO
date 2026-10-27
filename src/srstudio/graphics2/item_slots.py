@@ -681,6 +681,15 @@ def _reset_clone_content(page, slot: SmartSlot) -> None:
                 node = page.node(str(node_id))
                 if node is not None and node.kind is NodeKind.TEXT:
                     node.text = value
+    # Removing bound product data must clear the split promotional text too.
+    for node_id in dict(slot.metadata.get("promotion_amount_nodes") or {}).values():
+        node = page.node(str(node_id))
+        if node is not None:
+            node.text = ""
+            node.visible = False
+    promotion_unit = page.node(str(slot.metadata.get("promotion_unit_node_id") or ""))
+    if promotion_unit is not None:
+        promotion_unit.visible = False
     badge = page.node(str(slot.metadata.get("two_price_badge_node_id") or ""))
     if badge is not None:
         badge.visible = False
