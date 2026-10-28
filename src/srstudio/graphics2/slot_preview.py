@@ -14,7 +14,9 @@ from tempfile import gettempdir
 
 PREVIEW_TYPES = ("blue", "individual", "individual-two", "multi5", "multi5-two",
                  "multi6", "multi6-two", "layout-individual", "layout-six",
-                 "layout-seven", "layout-nine", "layout-eleven")
+                 "layout-seven", "layout-nine", "layout-eleven", "layout-custom",
+                 "layout-auto-2", "layout-auto-3", "layout-auto-4", "layout-auto-5",
+                 "layout-nine-8", "layout-eleven-10")
 
 
 def _sample_product(path: Path, index: int) -> dict:
@@ -146,7 +148,11 @@ def build_slot_preview_catalog(directory: str | Path | None = None) -> dict[str,
             rendered_root = page.node(result["root_node_id"])
         else:
             mode = kind.split("-", 1)[1]
-            result = apply_slot_composition(session, plan_promotion(mode),
+            count = None
+            if mode.startswith(("auto-", "nine-", "eleven-")):
+                mode, raw_count = mode.rsplit("-", 1)
+                count = int(raw_count)
+            result = apply_slot_composition(session, plan_promotion(mode, count=count),
                                              reuse_existing=False)
             for index, sid in enumerate(result.slot_ids):
                 bind_product_to_item_slot(session, sid, product(index))

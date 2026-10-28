@@ -10,6 +10,7 @@ pytest.importorskip("PySide6")
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PySide6.QtCore import QObject, Property, QUrl, Signal, Slot
+from PySide6.QtCore import QMetaObject
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -120,4 +121,33 @@ def test_graphics_editor_qml_loads_offscreen_without_component_errors():
     assert window.property("studioSection") == 3
     inventory = window.property("imageBankInventory")
     assert inventory is not None
+
+
+def test_slot_selection_survives_its_own_root_but_date_clears_product_inspector():
+    from srstudio.graphics2.item_slots import create_item_slot
+    from srstudio.graphics2.model import GraphicsNode, NodeKind, Transform
+    app = QGuiApplication.instance() or QGuiApplication([])
+    bridge = _Bridge()
+    engine = QQmlApplicationEngine()
+    engine.rootContext().setContextProperty("sceneBridge", bridge)
+    qml = Path(qt_host.__file__).with_name("qml") / "GraphicsEditor.qml"
+    engine.load(QUrl.fromLocalFile(str(qml.resolve())))
+    app.processEvents()
+    window = engine.rootObjects()[0]
+    slot = create_item_slot(bridge.router.session, "individual-beta44")
+    bridge.sceneChanged.emit()
+    app.processEvents()
+    window.setProperty("selectedSlotId", slot.id)
+    QMetaObject.invokeMethod(window, "syncInspector")
+    assert window.property("selectedSlotId") == slot.id
+    date = GraphicsNode(kind=NodeKind.TEXT, name="Data da promoção",
+                        transform=Transform(x=10, y=10, width=100, height=20),
+                        metadata={"campaign_date": True})
+    bridge.router.session.page.add_node(date)
+    bridge.router.dispatch({"name": "select", "node_id": date.id})
+    bridge.sceneChanged.emit()
+    app.processEvents()
+    QMetaObject.invokeMethod(window, "syncInspector")
+    assert window.property("selectedSlotId") == ""
+    assert window.property("inspectorProduct") is None
 

@@ -24,6 +24,130 @@ ApplicationWindow {
     property int autoLayoutVariation: 0
     property string productQuery: ""
     property string productFilter: "Todos os produtos"
+    property var autoProposal: null
+    property string lastInspectorNodeId: ""
+    property var geometryNode: selectedSmartSlot() && page && page.nodes
+        ? (page.nodes[String(selectedSmartSlot().metadata.multi_parent_id ||
+                              selectedSmartSlot().metadata.root_node_id || "")] || anchorNode)
+        : anchorNode
+
+    function refreshGeometryFields() {
+        var node = geometryNode
+        if (!node || !node.transform)
+            return
+        geometryX.text = String(Math.round(Number(node.transform.x)))
+        geometryY.text = String(Math.round(Number(node.transform.y)))
+        geometryWidth.text = String(Math.round(Number(node.transform.width)))
+        geometryHeight.text = String(Math.round(Number(node.transform.height)))
+    }
+
+    function applyGeometry() {
+        if (!geometryNode)
+            return
+        var values = [Number(geometryX.text), Number(geometryY.text),
+                      Number(geometryWidth.text), Number(geometryHeight.text)]
+        if (values.some(function(v) { return !isFinite(v) }) || values[2] <= 0 || values[3] <= 0)
+            return
+        sceneBridge.dispatch(JSON.stringify({"name":"resize", "node_id":geometryNode.id,
+            "x":values[0], "y":values[1], "width":values[2], "height":values[3]}))
+    }
+
+    function previewAutoPromotion() {
+        var result = JSON.parse(sceneBridge.dispatch(JSON.stringify({"name":"preview_auto_promotion"})))
+        if (result.ok) {
+            autoProposal = result.payload
+            autoPromotionDialog.open()
+        }
+    }
+
+    function highlightedProduct(product) {
+        var code = String(product.code || product.ean || product.id || product.product_id || "")
+        return scene.editor && scene.editor.highlighted_product_ids
+            && scene.editor.highlighted_product_ids.indexOf(code) >= 0
+    }
+
+    function campaignPreview(assetId) {
+        var assets = scene.editor && scene.editor.campaign_assets ? scene.editor.campaign_assets : []
+        for (var i = 0; i < assets.length; ++i)
+            if (assets[i].id === assetId)
+                return assets[i].preview_url || ""
+        return ""
+    }
+
+    function layoutPreviewKey(mode, count) {
+        var standard = {"individual":1, "six":6, "seven":7,
+                        "nine":9, "eleven":11, "custom":10}
+        var suffix = (mode === "auto" || standard[mode] !== count) ? ("-" + count) : ""
+        return "layout-" + mode + suffix
+    }
+
+    Dialog {
+        id: autoPromotionDialog
+        title: "Prévia · Montar automaticamente"
+        modal: true
+        anchors.centerIn: parent
+        width: 560
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: sceneBridge.dispatch(JSON.stringify({"name":"apply_auto_promotion"}))
+        ColumnLayout {
+            width: parent.width
+            spacing: 10
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: autoProposal ? (autoProposal.total + " produtos · " + autoProposal.pages.length
+                      + " páginas em retrato · campanha sugerida: " + autoProposal.campaign_id) : ""
+                color: "#243B64"
+            }
+            RowLayout {
+                Layout.fillWidth: true
+                visible: !!(autoProposal && autoProposal.background_id)
+                Image {
+                    Layout.preferredWidth: 45
+                    Layout.preferredHeight: 58
+                    source: autoProposal ? window.campaignPreview(autoProposal.background_id) : ""
+                    fillMode: Image.PreserveAspectFit
+                }
+                Label { text: "Fundo e logo sugeridos para páginas verticais"; color: "#475569" }
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(450, autoProposal ? autoProposal.pages.length * 112 : 0)
+                clip: true
+                ColumnLayout {
+                    width: 515
+                    Repeater {
+                        model: autoProposal ? autoProposal.pages : []
+                        delegate: RowLayout {
+                            required property var modelData
+                            required property int index
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 106
+                            Image {
+                                Layout.preferredWidth: 68
+                                Layout.preferredHeight: 100
+                                source: window.slotPreviewCatalog[window.layoutPreviewKey(modelData.mode, modelData.count)] || ""
+                                fillMode: Image.PreserveAspectFit
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: "Página " + (index + 1) + " · "
+                                      + (modelData.featured ? "Destaque exclusivo" : "Layout coletivo")
+                                      + " · " + modelData.count + " produto" + (modelData.count === 1 ? "" : "s")
+                                color: "#475569"
+                            }
+                        }
+                    }
+                }
+            }
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "A confirmação cria páginas novas editáveis. O encarte atual é preservado e a ação pode ser desfeita."
+                color: "#64748B"
+            }
+        }
+    }
     // ListView virtualizes delegates, so all spreadsheet products remain scrollable.
     property var imageBankInventory: ({"images":[],"counts":{}})
     property var imageReviewStates: ({})
@@ -838,7 +962,23 @@ ApplicationWindow {
         return null
     }
 
+    function nodeBelongsToSelectedSlot(node) {
+        var slot = selectedSmartSlot()
+        if (!node || !slot || !page || !page.nodes)
+            return false
+        var rootId = String(slot.metadata.root_node_id || "")
+        var current = node
+        for (var depth = 0; current && depth < 30; ++depth) {
+            if (String(current.id) === rootId)
+                return true
+            current = page.nodes[String(current.parent_id || "")]
+        }
+        return false
+    }
+
     function propertyProduct() {
+        if (anchorNode && !selectedSlotId)
+            return null
         if (inspectorProduct)
             return inspectorProduct
         var slot = selectedSmartSlot()
@@ -887,11 +1027,22 @@ ApplicationWindow {
     }
 
     onInspectorProductChanged: Qt.callLater(refreshPropertyFields)
-    onSelectedSlotIdChanged: Qt.callLater(refreshPropertyFields)
+    onSelectedSlotIdChanged: {
+        inspectorProduct = null
+        Qt.callLater(refreshPropertyFields)
+    }
+    onGeometryNodeChanged: Qt.callLater(refreshGeometryFields)
 
     function syncInspector() {
         var node = selectedNode()
         anchorNode = node
+        var nodeId = node ? String(node.id) : ""
+        if (nodeId !== lastInspectorNodeId) {
+            inspectorProduct = null
+            if (nodeId && !nodeBelongsToSelectedSlot(node))
+                selectedSlotId = ""
+            lastInspectorNodeId = nodeId
+        }
         if (!node) {
             inspectorName.text = "Nada selecionado"
             textEditor.text = ""
@@ -1047,6 +1198,13 @@ ApplicationWindow {
                             Layout.fillWidth: true
                             visible: studioSection === 0 && !showProductImageReview
                             spacing: 11
+                            Button {
+                                Layout.fillWidth: true
+                                text: "✦  Montar automaticamente"
+                                highlighted: true
+                                enabled: window.products().length > 0
+                                onClicked: window.previewAutoPromotion()
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 TextField { Layout.fillWidth: true; placeholderText: "⌕  Buscar produtos..."; text: productQuery; onTextChanged: productQuery = text; font.pixelSize: 11 }
@@ -1188,6 +1346,19 @@ ApplicationWindow {
                                             ToolTip.visible: hovered
                                             ToolTip.text: selectedSlotId ? "Aplicar ao Smart Slot selecionado" : "Selecione um slot antes de aplicar"
                                         }
+                                        ToolButton {
+                                            text: window.highlightedProduct(productCard.productData) ? "★" : "☆"
+                                            font.pixelSize: 19
+                                            z: 4
+                                            Layout.preferredWidth: 27
+                                            Layout.preferredHeight: 32
+                                            ToolTip.visible: hovered
+                                            ToolTip.text: "Criar um encarte exclusivo com este produto"
+                                            onClicked: sceneBridge.dispatch(JSON.stringify({
+                                                "name":"toggle_product_highlight",
+                                                "product_id":String(productCard.productData.id || productCard.productData.product_id || "")
+                                            }))
+                                        }
                                     }
                                     MouseArea {
                                         id: productMouse
@@ -1223,8 +1394,14 @@ ApplicationWindow {
                                         onReleased: {
                                             if (dragging)
                                                 finishProductDrag(productMouse, mouse.x, mouse.y, productCard.productData)
-                                            else
+                                            else {
                                                 cancelProductDrag()
+                                                if (window.selectedNode() && !window.selectedSlotId) {
+                                                    var inspectedProduct = productCard.productData
+                                                    sceneBridge.dispatch(JSON.stringify({"name":"clear_selection"}))
+                                                    Qt.callLater(function() { window.inspectorProduct = inspectedProduct })
+                                                }
+                                            }
                                             dragging = false
                                         }
                                         onCanceled: {
@@ -1531,7 +1708,8 @@ ApplicationWindow {
                                         {"label":"11 · 6 Únicos + Multi-5", "mode":"eleven"},
                                         {"label":"9 · Únicos + Multi-5", "mode":"nine"},
                                         {"label":"7 · Individual + 2 Únicos + Multi-4", "mode":"seven"},
-                                        {"label":"6 · Slots Únicos", "mode":"six"}
+                                        {"label":"6 · Slots Únicos", "mode":"six"},
+                                        {"label":"10 · Destaque + 3 Únicos + Multi-6", "mode":"custom"}
                                     ]
                                     delegate: Rectangle {
                                         id: previewLayoutCard
@@ -1875,7 +2053,7 @@ ApplicationWindow {
                                                 anchors.top: parent.top; anchors.margins: 5
                                                 height: 125; asynchronous: true
                                                 source: modelData.preview_url || ""
-                                                fillMode: Image.PreserveAspectCrop
+                                                fillMode: Image.PreserveAspectFit
                                                 sourceSize.width: 148
                                             }
                                             Label {
@@ -2711,6 +2889,7 @@ ApplicationWindow {
                             title: "Produto selecionado"
                             visible: !!window.propertyProduct()
                             Layout.fillWidth: true
+                            background: Rectangle { color: "#F8FAFE"; radius: 12; border.color: "#DCE6F4" }
                             ColumnLayout {
                                 anchors.fill: parent
                                 spacing: 8
@@ -2747,6 +2926,7 @@ ApplicationWindow {
                             title: "Smart Slot · Formatação"
                             Layout.fillWidth: true
                             visible: selectedSlotId !== ""
+                            background: Rectangle { color: "#F8FAFE"; radius: 12; border.color: "#DCE6F4" }
                             ColumnLayout {
                                 anchors.fill: parent
                                 spacing: 9
@@ -2840,6 +3020,31 @@ ApplicationWindow {
                         }
                         Label { text: "Nome do elemento"; color: "#606C84"; font.pixelSize: 10 }
                         Label { id: inspectorName; text: "Nada selecionado"; color: "#293957"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; padding: 9; background: Rectangle { color: "#FAFBFE"; radius: 6; border.color: "#DDE4F0" } }
+                        GroupBox {
+                            title: "Posição e dimensões"
+                            visible: !!geometryNode
+                            Layout.fillWidth: true
+                            background: Rectangle { color: "#F8FAFE"; radius: 12; border.color: "#DCE6F4" }
+                            ColumnLayout {
+                                anchors.fill: parent
+                                spacing: 7
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Label { text: "X"; color: "#53617A" }
+                                    TextField { id: geometryX; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                                    Label { text: "Y"; color: "#53617A" }
+                                    TextField { id: geometryY; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                                }
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Label { text: "L"; color: "#53617A" }
+                                    TextField { id: geometryWidth; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                                    Label { text: "A"; color: "#53617A" }
+                                    TextField { id: geometryHeight; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
+                                }
+                                Button { text: "Aplicar posição e tamanho"; Layout.fillWidth: true; onClicked: window.applyGeometry() }
+                            }
+                        }
                         Rectangle {
                             Layout.fillWidth: true
                             height: 1
