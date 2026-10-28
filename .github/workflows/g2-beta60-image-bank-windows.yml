@@ -322,4 +322,3 @@ jobs:
           current="$(gh api "repos/$GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main" \
             --jq .content | base64 -d | python -c 'import json,sys;print(json.load(sys.stdin)["version"])')"
           test "$current" = "5.0.0-hybrid.g2beta.60"
-
