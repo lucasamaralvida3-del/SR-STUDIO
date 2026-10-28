@@ -40,6 +40,17 @@ class GraphicsCommandRouter:
         self.session = session
         # Open-time migration is deliberately outside the undo stack.
         self.integrity_repair = repair_legacy_cross_page_ids(self.session.document)
+        # Non-destructive Beta63 -> Beta64 compatibility: old Individual
+        # sheets kept a visible repeated PNG without any explicit user choice.
+        # Keep the node/asset for the context-menu toggle, just hide the copy.
+        for old_page in self.session.document.pages:
+            for slot in old_page.slots.values():
+                if slot.metadata.get("preset_id") != "individual-beta44" or "image_count" in slot.metadata:
+                    continue
+                slot.metadata["image_count"] = 1
+                duplicate = old_page.node(str(slot.metadata.get("image_repeat_node_id") or ""))
+                if duplicate is not None:
+                    duplicate.visible = False
         self.snap = SnapSettings()
         self._clipboard: dict[str, Any] | None = None
         self._campaign_assets_cache: list[dict] | None = None
