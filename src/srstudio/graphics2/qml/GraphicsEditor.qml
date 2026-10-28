@@ -392,10 +392,13 @@ ApplicationWindow {
     }
 
     function removeCurrentBackground() {
-        if (selectedSlotId !== "")
-            sceneBridge.removeSlotBackground(selectedSlotId)
-        else if (selectedPicture())
+        // Product photo takes precedence over the Smart Slot selection.
+        // Otherwise the command silently changes the slot backplate
+        // instead of the white background inside the imported photo.
+        if (selectedPicture())
             sceneBridge.removeBackground(selectedPicture().id)
+        else if (selectedSlotId !== "")
+            sceneBridge.removeSlotBackground(selectedSlotId)
     }
 
     FileDialog {
@@ -2565,6 +2568,10 @@ ApplicationWindow {
                                             MenuItem {
                                                 text: "Autoajustar imagem"
                                                 onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"auto_fit_product_image", "node_id":modelData.id}))
+                                            }
+                                            MenuItem {
+                                                text: "Remover fundo branco da foto (withoutBG)"
+                                                onTriggered: sceneBridge.removeBackground(modelData.id)
                                             }
                                             MenuItem {
                                                 text: "Restaurar zoom"
