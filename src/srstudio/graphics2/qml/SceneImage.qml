@@ -6,6 +6,7 @@ Item {
     property url sourceUrl: ""
     property string fit: "contain"
     property real imageZoom: 1.0
+    property bool zoomFromContain: false
     property real focusX: 0.5
     property real focusY: 0.5
     property real cropLeft: 0.0
@@ -32,13 +33,13 @@ Item {
     readonly property real sourceNaturalHeight: Math.max(1, Number(probeImage.implicitHeight || 1))
     readonly property real naturalWidth: Math.max(1, sourceNaturalWidth * (1.0 - safeCropLeft - safeCropRight))
     readonly property real naturalHeight: Math.max(1, sourceNaturalHeight * (1.0 - safeCropTop - safeCropBottom))
-    readonly property bool cropMode: fit === "cover" || imageZoom > 1.0001
+    readonly property bool cropMode: fit === "cover" || (imageZoom > 1.0001 && !zoomFromContain)
     readonly property real baseScale: fit === "fill"
         ? 1.0
         : (cropMode
             ? Math.max(width / naturalWidth, height / naturalHeight)
             : Math.min(width / naturalWidth, height / naturalHeight))
-    readonly property real scaleValue: fit === "fill" ? 1.0 : baseScale * (cropMode ? Math.max(0.05, imageZoom) : 1.0)
+    readonly property real scaleValue: fit === "fill" ? 1.0 : baseScale * (zoomFromContain ? Math.max(0.05, imageZoom) : (cropMode ? Math.max(0.05, imageZoom) : 1.0))
     readonly property real visualFocusX: flipX ? 1.0 - Math.max(0, Math.min(1, focusX)) : Math.max(0, Math.min(1, focusX))
     readonly property real visualFocusY: flipY ? 1.0 - Math.max(0, Math.min(1, focusY)) : Math.max(0, Math.min(1, focusY))
 
