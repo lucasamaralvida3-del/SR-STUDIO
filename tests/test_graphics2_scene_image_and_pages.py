@@ -18,7 +18,9 @@ def _qml(name: str) -> str:
 
 def test_scene_image_encodes_renderer_fit_zoom_focus_contract():
     source = _qml("SceneImage.qml")
-    assert 'fit === "cover" || imageZoom > 1.0001' in source
+    assert "property bool zoomFromContain: false" in source
+    assert 'fit === "cover" || (imageZoom > 1.0001 && !zoomFromContain)' in source
+    assert "zoomFromContain ? Math.max(0.05, imageZoom)" in source
     assert "Math.max(width / naturalWidth, height / naturalHeight)" in source
     assert "Math.min(width / naturalWidth, height / naturalHeight)" in source
     assert "visualFocusX: flipX ? 1.0 -" in source

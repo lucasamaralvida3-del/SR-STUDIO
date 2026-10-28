@@ -416,6 +416,14 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
                     if isinstance(value, str) and value.upper() in palette:
                         node.style[key] = target
                         recolored.add(nid)
+            # The Multi label sits directly on the dark photographic backdrop,
+            # unlike price badges. Using the dark footer swatch as its font
+            # makes product names nearly invisible on meat/café/green artwork.
+            if theme in CAMPAIGNS and slot.metadata.get("preset_id") == "multi-cell-beta44":
+                name_node = page.node(str(slot.node_by_role.get("name") or ""))
+                if name_node is not None:
+                    name_node.style["color"] = "#FFFFFF"
+                    recolored.add(name_node.id)
         # Continuous Multi ribbon and separators live above their child cells.
         parent_ids = {str(s.metadata.get("multi_parent_id") or "") for s in slots}
         for parent_id in parent_ids:

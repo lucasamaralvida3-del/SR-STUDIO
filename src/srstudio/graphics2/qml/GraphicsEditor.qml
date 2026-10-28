@@ -60,6 +60,25 @@ ApplicationWindow {
         }
     }
 
+    function productIdentity(p) {
+        return String(p.code || p.ean || p.id || p.product_id || "")
+    }
+    function inactiveProduct(p) {
+        return !!(scene.editor && scene.editor.inactive_product_codes &&
+            scene.editor.inactive_product_codes.indexOf(productIdentity(p)) >= 0)
+    }
+    function individualSlotForImage(nodeId) {
+        var entries = slots()
+        for (var i = 0; i < entries.length; i++) {
+            var slot = entries[i]
+            if (!slot.metadata || slot.metadata.preset_id !== "individual-beta44")
+                continue
+            if (String(slot.node_by_role.image || "") === String(nodeId) ||
+                String(slot.metadata.image_repeat_node_id || "") === String(nodeId))
+                return slot
+        }
+        return null
+    }
     function highlightedProduct(product) {
         var code = String(product.code || product.ean || product.id || product.product_id || "")
         return scene.editor && scene.editor.highlighted_product_ids
@@ -95,7 +114,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: autoProposal ? (autoProposal.total + " produtos · " + autoProposal.pages.length
+                text: autoProposal ? (autoProposal.total + " produtos ativos · " + autoProposal.pages.length
                       + " páginas em retrato · campanha sugerida: " + autoProposal.campaign_id) : ""
                 color: "#243B64"
             }
@@ -1205,6 +1224,17 @@ ApplicationWindow {
                                 enabled: window.products().length > 0
                                 onClicked: window.previewAutoPromotion()
                             }
+                            Label {
+                                Layout.fillWidth: true
+                                text: {
+                                    var all = window.products()
+                                    var inactive = all.filter(function(p) { return window.inactiveProduct(p) }).length
+                                    var stars = all.filter(function(p) { return !window.inactiveProduct(p) && window.highlightedProduct(p) }).length
+                                    return (all.length - inactive) + " ativos · " + inactive + " inativos · ★ " + stars + " exclusivos"
+                                }
+                                color: "#556783"
+                                font.pixelSize: 10
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 TextField { Layout.fillWidth: true; placeholderText: "⌕  Buscar produtos..."; text: productQuery; onTextChanged: productQuery = text; font.pixelSize: 11 }
@@ -1260,19 +1290,21 @@ ApplicationWindow {
                                     id: productCard
                                     required property var modelData
                                     width: productList.width - 4
-                                    height: Math.max(122, productInformation.implicitHeight + 28)
+                                    height: Math.max(136, productInformation.implicitHeight + 28)
                                     radius: 11
-                                    color: productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF"
+                                    property bool inactive: window.inactiveProduct(productData)
+                                    color: inactive ? "#F1F3F7" : (productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF")
                                     border.color: productMouse.dragging ? "#2869EF" : "#DCE5F1"
                                     border.width: productMouse.dragging ? 2 : 1
                                     property var productData: modelData
                                     RowLayout {
+                                        z: 1 // Keep +, − and ★ clickable above the row drag target.
                                         anchors.fill: parent
-                                        anchors.margins: 11
-                                        spacing: 10
+                                        anchors.margins: 8
+                                        spacing: 6
                                         Rectangle {
-                                            Layout.preferredWidth: 84
-                                            Layout.preferredHeight: 96
+                                            Layout.preferredWidth: 76
+                                            Layout.preferredHeight: 92
                                             Layout.alignment: Qt.AlignVCenter
                                             radius: 8
                                             color: "#F8FAFE"
@@ -1291,6 +1323,7 @@ ApplicationWindow {
                                             id: productInformation
                                             Layout.fillWidth: true
                                             Layout.alignment: Qt.AlignVCenter
+                                            opacity: productCard.inactive ? 0.53 : 1.0
                                             spacing: 3
                                             Label {
                                                 Layout.fillWidth: true
@@ -1332,26 +1365,54 @@ ApplicationWindow {
                                                 color: "#B32D18"; font.bold: true; font.pixelSize: 13
                                             }
                                         }
-                                        ToolButton {
-                                            text: "+"
-                                            font.pixelSize: 18
+                                        ColumnLayout {
+                                            spacing: 4
                                             z: 3
-                                            Layout.preferredWidth: 26
-                                            Layout.preferredHeight: 32
-                                            onClicked: {
-                                                window.inspectorProduct = productCard.productData
-                                                if (selectedSlotId)
-                                                    bindProduct(modelData)
+                                            Layout.preferredWidth: 28
+                                            Layout.alignment: Qt.AlignVCenter
+                                            ToolButton {
+                                                text: "+"
+                                                font.pixelSize: 17
+                                                Layout.preferredWidth: 28
+                                                Layout.preferredHeight: 31
+                                                ToolTip.visible: hovered
+                                                ToolTip.text: productCard.inactive ? "Reativar produto" : "Adicionar ao Smart Slot selecionado"
+                                                onClicked: {
+                                                    window.inspectorProduct = productCard.productData
+                                                    if (productCard.inactive)
+                                                        sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":true,
+                                                            "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
+                                                    else if (selectedSlotId)
+                                                        bindProduct(productCard.productData)
+                                                }
                                             }
-                                            ToolTip.visible: hovered
-                                            ToolTip.text: selectedSlotId ? "Aplicar ao Smart Slot selecionado" : "Selecione um slot antes de aplicar"
+                                            ToolButton {
+                                                text: "−"
+                                                font.pixelSize: 18
+                                                enabled: !productCard.inactive
+                                                Layout.preferredWidth: 28
+                                                Layout.preferredHeight: 31
+                                                ToolTip.visible: hovered
+                                                ToolTip.text: "Inativar para esta montagem, inclusive automática"
+                                                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":false,
+                                                    "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
+                                            }
                                         }
                                         ToolButton {
                                             text: window.highlightedProduct(productCard.productData) ? "★" : "☆"
-                                            font.pixelSize: 19
                                             z: 4
-                                            Layout.preferredWidth: 27
-                                            Layout.preferredHeight: 32
+                                            enabled: !productCard.inactive
+                                            Layout.alignment: Qt.AlignVCenter
+                                            Layout.preferredWidth: 28
+                                            Layout.preferredHeight: 35
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: window.highlightedProduct(productCard.productData) ? "#E6A500" : "#566785"
+                                                font.pixelSize: 22
+                                                font.bold: true
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Criar um encarte exclusivo com este produto"
                                             onClicked: sceneBridge.dispatch(JSON.stringify({
@@ -1380,7 +1441,7 @@ ApplicationWindow {
                                             dragging = false
                                         }
                                         onPositionChanged: {
-                                            if (!pressed)
+                                            if (!pressed || productCard.inactive)
                                                 return
                                             var dx = mouse.x - pressX
                                             var dy = mouse.y - pressY
@@ -1408,7 +1469,7 @@ ApplicationWindow {
                                             dragging = false
                                             cancelProductDrag()
                                         }
-                                        onDoubleClicked: if (selectedSlotId) bindProduct(productCard.productData)
+                                        onDoubleClicked: if (selectedSlotId && !productCard.inactive) bindProduct(productCard.productData)
                                         Menu {
                                             id: productActions
                                             MenuItem {
@@ -2408,7 +2469,7 @@ ApplicationWindow {
                                     Image {
                                         id: nodeImage
                                         anchors.fill: parent
-                                        visible: modelData.kind === "image" || modelData.kind === "background"
+                                        visible: (modelData.kind === "image" || modelData.kind === "background") && !(modelData.kind === "image" && modelData.metadata && modelData.metadata.manual_item_slot_child)
                                         source: imageSource(modelData)
                                         fillMode: modelData.style.fit === "cover" ? Image.PreserveAspectCrop : modelData.style.fit === "fill" ? Image.Stretch : Image.PreserveAspectFit
                                         horizontalAlignment: Image.AlignHCenter
@@ -2425,9 +2486,25 @@ ApplicationWindow {
                                             ? Math.min(4096, Math.max(1400, Number(modelData.transform.height || 1350) * 1.5)) : -1
                                         smooth: true
                                     }
+                                    SceneImage {
+                                        anchors.fill: parent
+                                        visible: modelData.kind === "image" && !!(modelData.metadata && modelData.metadata.manual_item_slot_child)
+                                        sourceUrl: imageSource(modelData)
+                                        fit: String(modelData.style.fit || "contain")
+                                        imageZoom: Number(modelData.style.zoom || 1)
+                                        zoomFromContain: true
+                                        focusX: Number(modelData.style.focus_x === undefined ? 0.5 : modelData.style.focus_x)
+                                        focusY: Number(modelData.style.focus_y === undefined ? 0.5 : modelData.style.focus_y)
+                                        cropLeft: Number((modelData.style.crop || {}).l || 0)
+                                        cropTop: Number((modelData.style.crop || {}).t || 0)
+                                        cropRight: Number((modelData.style.crop || {}).r || 0)
+                                        cropBottom: Number((modelData.style.crop || {}).b || 0)
+                                        flipX: !!modelData.style.flip_x
+                                        flipY: !!modelData.style.flip_y
+                                    }
                                     MouseArea {
                                         anchors.fill: parent
-                                        acceptedButtons: Qt.LeftButton
+                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                                         drag.target: parent
                                         // The selection rectangle owns pointer gestures
                                         // only in slot edit mode. In normal mode images
@@ -2437,7 +2514,52 @@ ApplicationWindow {
                                         // Selecting on press emitted sceneChanged and rebuilt the
                                         // delegate while Qt still held the drag. This detached
                                         // drag.target and made moving images feel frozen.
+                                        Menu {
+                                            id: imageContext
+                                            MenuItem {
+                                                property var imageSlot: window.individualSlotForImage(modelData.id)
+                                                visible: !!imageSlot
+                                                text: imageSlot && Number(imageSlot.metadata.image_count || 1) === 2 ? "Uma imagem" : "Duas imagens"
+                                                onTriggered: {
+                                                    if (imageSlot)
+                                                        sceneBridge.dispatch(JSON.stringify({
+                                                            "name":"set_product_image_count", "slot_id":imageSlot.id,
+                                                            "count":Number(imageSlot.metadata.image_count || 1) === 2 ? 1 : 2}))
+                                                }
+                                            }
+                                            MenuItem {
+                                                text: "Autoajustar imagem"
+                                                onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"auto_fit_product_image", "node_id":modelData.id}))
+                                            }
+                                            MenuItem {
+                                                text: "Restaurar zoom"
+                                                onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"crop", "node_id":modelData.id,
+                                                    "fit":"contain", "zoom":1.0, "focus_x":0.5, "focus_y":0.5}))
+                                            }
+                                        }
+                                        onPressed: {
+                                            if (mouse.button === Qt.RightButton && modelData.kind === "image" &&
+                                                    modelData.metadata && modelData.metadata.manual_item_slot_child)
+                                                imageContext.popup()
+                                        }
+                                        onWheel: function(wheel) {
+                                            if (modelData.kind !== "image" || !modelData.metadata ||
+                                                    !modelData.metadata.manual_item_slot_child ||
+                                                    !anchorNode || anchorNode.id !== modelData.id) {
+                                                wheel.accepted = false
+                                                return
+                                            }
+                                            var factor = wheel.angleDelta.y > 0 ? 1.10 : (1 / 1.10)
+                                            var current = Math.max(1, Number(modelData.style.zoom || 1))
+                                            var next = Math.max(1, Math.min(4, current * factor))
+                                            if (Math.abs(next - current) > 0.0001)
+                                                sceneBridge.dispatch(JSON.stringify({"name":"crop", "node_id":modelData.id,
+                                                    "fit":"contain", "zoom":next}))
+                                            wheel.accepted = true
+                                        }
                                         onReleased: {
+                                            if (mouse.button === Qt.RightButton)
+                                                return
                                             var dx = (parent.x / zoom) - Number(modelData.transform.x)
                                             var dy = (parent.y / zoom) - Number(modelData.transform.y)
                                             var id = String(modelData.id)
@@ -3130,7 +3252,10 @@ ApplicationWindow {
                             }
                             Label {
                                 text: modelData.name || ("Página " + (index + 1))
+                                Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignHCenter
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
                                 font.pixelSize: 9
                                 color: modelData.id === scene.active_page_id ? "#2954F9" : "#79849D"
                             }

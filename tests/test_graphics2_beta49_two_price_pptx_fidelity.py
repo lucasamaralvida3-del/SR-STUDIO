@@ -79,7 +79,10 @@ def test_two_price_pptx_has_separate_badge_with_both_labels(preset, tmp_path):
     assert not badge.visible and not club.visible and not retail.visible
     assert promo.visible
     if preset == "individual-beta44":
-        assert s.page.node(slot.metadata["image_repeat_node_id"]).visible
+        # Beta64: the second product image requires an explicit user choice,
+        # regardless of the selected 1-price or 2-price layout.
+        assert not s.page.node(slot.metadata["image_repeat_node_id"]).visible
+        assert slot.metadata["image_count"] == 1
     assert slot.product_id == "789012"
     assert s.page.node(slot.metadata["role_area_nodes"]["price"]).rect == one_main
     assert set_reference_price_mode(s, [slot.id], "two") == [slot.id]

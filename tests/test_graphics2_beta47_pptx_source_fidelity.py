@@ -48,7 +48,8 @@ def test_individual_source_geometry_has_two_linked_product_cutouts(tmp_path):
     assert slot.product_id == "OLEO-ABC"
     assert original.asset_id == repeated.asset_id
     assert original.metadata.get("bound_image_source") == repeated.metadata.get("bound_image_source")
-    assert original.visible == repeated.visible
+    # Beta64 retains the editable secondary cutout, but hides it by default.
+    assert original.visible and not repeated.visible
 
     # A price-only edit keeps both pictures; a different empty-SKU clears both.
     assert bind_product_to_item_slot(s, slot.id, {"id": "OLEO-ABC", "name": "OLEO ABC", "price": "7,99"})
