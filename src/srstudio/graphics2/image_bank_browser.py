@@ -48,6 +48,11 @@ def image_bank_inventory(*, legacy_root: Path | None = None,
                                   or asset.metadata.get("official_active", True))),
                 "product_id": "",
                 "kind": str(asset.kind),
+                "metadata": {key: asset.metadata[key] for key in
+                             ("ean", "gtin", "barcode", "cod_barras", "code",
+                              "sku", "product_code", "product_id", "brand", "marca")
+                             if key in asset.metadata},
+                "brand": str(asset.metadata.get("brand") or asset.metadata.get("marca") or ""),
             })
 
     # Product-specific local links are already manually associated by SKU.

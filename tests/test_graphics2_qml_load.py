@@ -77,6 +77,18 @@ class _Bridge(QObject):
                                        "product_id": ""}],
                            "counts": {"pending": 1, "approved": 0, "manual": 0}})
 
+    @Slot(result=str)
+    def imageReviewStatesJson(self) -> str:
+        return "{}"
+
+    @Slot(str, result=str)
+    def imageSuggestionsJson(self, _product_id: str) -> str:
+        return "[]"
+
+    @Slot(str)
+    def attachProductImagesBatch(self, _payload: str) -> None:
+        pass
+
     @Slot()
     def openImageBankFolder(self) -> None:
         pass

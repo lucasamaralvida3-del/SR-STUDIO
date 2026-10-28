@@ -245,6 +245,7 @@ def launch_qt_quick_editor(
         autosaveDone = Signal(bool, str, str)
         backgroundRemovalDone = Signal(bool, str, str, str)
         productImageDone = Signal(bool, str, str, str)
+        productImagesBatchDone = Signal(bool, str, str)
         historicalImageBankDone = Signal(bool, str)
 
         def __init__(self) -> None:
@@ -268,9 +269,12 @@ def launch_qt_quick_editor(
             self.autosaveDone.connect(self._finish_autosave)
             self.backgroundRemovalDone.connect(self._finish_background_removal)
             self.productImageDone.connect(self._finish_product_image)
+            self.productImagesBatchDone.connect(self._finish_product_images_batch)
             self.historicalImageBankDone.connect(self._finish_historical_bank_import)
             self._bg_running = False
             self._slot_previews_json: str | None = None
+            self._image_bank_cache_key = None
+            self._image_bank_cache = None
 
         @Property(int, constant=True)
         def productSidebarWidth(self) -> int:
@@ -559,15 +563,48 @@ def launch_qt_quick_editor(
             self.sceneChanged.emit()
             return result_raw
 
+        def _image_bank_inventory(self):
+            from .image_bank_browser import image_bank_inventory
+            from .legacy_image_bank_bridge import image_bank_root
+            from .product_image_library import library_root
+
+            paths = (image_bank_root() / "index.json", library_root() / "products.json")
+            key = tuple((str(path), path.stat().st_mtime_ns, path.stat().st_size)
+                        if path.is_file() else (str(path), 0, 0) for path in paths)
+            if key != self._image_bank_cache_key:
+                self._image_bank_cache = image_bank_inventory()
+                self._image_bank_cache_key = key
+            return self._image_bank_cache
+
         @Slot(result=str)
         def imageBankJson(self) -> str:
-            """Inventory for the Imagens sidebar; no silent pending approvals."""
+            """Cached inventory for Produtos; no silent pending approvals."""
             try:
-                from .image_bank_browser import image_bank_inventory
-                return json.dumps(image_bank_inventory(), ensure_ascii=False)
+                return json.dumps(self._image_bank_inventory(), ensure_ascii=False)
             except Exception as exc:
                 return json.dumps({"images": [], "counts": {}, "error":
                                    f"{type(exc).__name__}: {exc}"}, ensure_ascii=False)
+
+        @Slot(str, result=str)
+        def imageSuggestionsJson(self, product_id: str) -> str:
+            """Rank candidates for one spreadsheet item without changing any link."""
+            from .image_suggestions import suggest_product_images
+
+            product = next((item for item in session.document.metadata.get("products") or []
+                            if isinstance(item, dict) and str(item.get("id") or item.get("product_id") or "")
+                            == product_id), None)
+            if product is None:
+                return "[]"
+            return json.dumps(suggest_product_images(product, self._image_bank_inventory()["images"]),
+                              ensure_ascii=False)
+
+        @Slot(result=str)
+        def imageReviewStatesJson(self) -> str:
+            from .image_suggestions import image_review_states
+
+            products = [item for item in session.document.metadata.get("products") or []
+                        if isinstance(item, dict)]
+            return json.dumps(image_review_states(products, self._image_bank_inventory()["images"]))
 
         @Slot()
         def openImageBankFolder(self) -> None:
@@ -674,6 +711,46 @@ def launch_qt_quick_editor(
                     self._status = "Imagem salva pelo código; o produto não está no catálogo atual."
             else:
                 self._status = "Não foi possível vincular a imagem: " + error
+            self.statusChanged.emit()
+
+        @Slot(str)
+        def attachProductImagesBatch(self, payload: str) -> None:
+            """Save only the product/photo pairs explicitly confirmed in Qt."""
+            try:
+                requests = json.loads(payload)
+                if not isinstance(requests, list):
+                    raise ValueError("Lista de imagens inválida.")
+                catalog = {str(item.get("id") or item.get("product_id") or "")
+                           for item in session.document.metadata.get("products") or []
+                           if isinstance(item, dict)}
+                if any(str(item.get("product_id") or "") not in catalog for item in requests):
+                    raise ValueError("A revisão inclui um produto fora da planilha atual.")
+            except (ValueError, TypeError, AttributeError) as exc:
+                self._status = f"Revisão em lote inválida: {exc}"
+                self.statusChanged.emit()
+                return
+
+            def worker():
+                try:
+                    from .product_image_library import store_product_images_batch
+                    entries = store_product_images_batch(requests)
+                    self.productImagesBatchDone.emit(True, json.dumps(entries), "")
+                except Exception as exc:
+                    self.productImagesBatchDone.emit(False, "", f"{type(exc).__name__}: {exc}")
+
+            threading.Thread(target=worker, name="sr-product-image-batch", daemon=True).start()
+
+        def _finish_product_images_batch(self, ok: bool, payload: str, error: str) -> None:
+            if ok:
+                from .product_image_library import attach_image_to_document
+                entries = json.loads(payload)
+                for entry in entries:
+                    attach_image_to_document(session.document, entry["product_id"], entry)
+                self._status = f"{len(entries)} imagens confirmadas e salvas para futuras planilhas."
+                self._schedule_autosave()
+                self.sceneChanged.emit()
+            else:
+                self._status = "Não foi possível confirmar o lote: " + error
             self.statusChanged.emit()
 
         @Slot(str)
