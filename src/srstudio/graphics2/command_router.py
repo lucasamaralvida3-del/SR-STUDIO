@@ -474,6 +474,54 @@ class GraphicsCommandRouter:
                 store.set(code, selected)
                 return CommandResult(True, False, "Destaque atualizado.",
                                      {"product_id": product_id, "code": code, "highlighted": selected})
+            if name == "set_product_image_count":
+                slot_id = str(command.get("slot_id") or "")
+                slot = self.session.page.slots.get(slot_id)
+                if slot is None or str(slot.metadata.get("preset_id") or "") != "individual-beta44":
+                    return CommandResult(False, False, "Selecione um Slot Individual válido.")
+                count = int(command.get("count", 1))
+                if count not in {1, 2}:
+                    return CommandResult(False, False, "Escolha uma ou duas imagens.")
+                from .model import BindingRole
+                primary_id = str(slot.node_by_role.get(BindingRole.IMAGE.value) or "")
+                primary = self.session.page.node(primary_id)
+                repeated = self.session.page.node(str(slot.metadata.get("image_repeat_node_id") or ""))
+                if primary is None or repeated is None:
+                    return CommandResult(False, False, "As imagens deste slot não estão disponíveis.")
+                with self.session.transaction("Uma imagem" if count == 1 else "Duas imagens"):
+                    slot.metadata["image_count"] = count
+                    repeated.visible = bool(count == 2 and primary.visible and
+                                            (primary.asset_id or primary.metadata.get("bound_image_source")))
+                    repeated.style["fit"] = primary.style.get("fit", "contain")
+                    repeated.style["zoom"] = primary.style.get("zoom", 1.0)
+                    repeated.style["focus_x"] = primary.style.get("focus_x", 0.5)
+                    repeated.style["focus_y"] = primary.style.get("focus_y", 0.5)
+                    if primary.style.get("crop"):
+                        repeated.style["crop"] = copy.deepcopy(primary.style["crop"])
+                    else:
+                        repeated.style.pop("crop", None)
+                return CommandResult(True, True, "Quantidade de imagens atualizada.",
+                                     {"slot_id": slot_id, "count": count})
+            if name == "auto_fit_product_image":
+                from .image_autofit import fitted_product_source, visible_product_crop
+                node_id = str(command.get("node_id") or self.session.anchor_id or "")
+                node = self.session.page.node(node_id)
+                if node is None or node.kind is not NodeKind.IMAGE or not node.metadata.get("manual_item_slot_child"):
+                    return CommandResult(False, False, "Selecione a imagem de um produto.")
+                if self.session.effective_locked(node_id):
+                    return CommandResult(False, False, "A imagem está bloqueada.")
+                crop = visible_product_crop(fitted_product_source(self.session.document, node))
+                with self.session.transaction("Autoajustar imagem do produto"):
+                    if crop:
+                        node.style["crop"] = crop
+                    else:
+                        node.style.pop("crop", None)
+                    node.style["fit"] = "contain"
+                    node.style["zoom"] = 1.0
+                    node.style["focus_x"] = 0.5
+                    node.style["focus_y"] = 0.5
+                return CommandResult(True, True, "Enquadramento calculado pela transparência.",
+                                     {"node_id": node_id, "crop": crop})
             if name == "set_slot_theme":
                 from .campaign_tools import apply_slot_theme
                 all_slots = bool(command.get("entire_page", False))
