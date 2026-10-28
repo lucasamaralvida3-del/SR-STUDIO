@@ -1353,7 +1353,7 @@ ApplicationWindow {
                                             Layout.preferredWidth: 27
                                             Layout.preferredHeight: 32
                                             ToolTip.visible: hovered
-                                            ToolTip.text: "Priorizar nos Smart Slots individuais"
+                                            ToolTip.text: "Criar um encarte exclusivo com este produto"
                                             onClicked: sceneBridge.dispatch(JSON.stringify({
                                                 "name":"toggle_product_highlight",
                                                 "product_id":String(productCard.productData.id || productCard.productData.product_id || "")
