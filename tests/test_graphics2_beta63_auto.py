@@ -212,3 +212,55 @@ def test_preview_catalog_covers_all_variable_page_sizes():
     from srstudio.graphics2.slot_preview import PREVIEW_TYPES
     assert {"layout-auto-2", "layout-auto-3", "layout-auto-4", "layout-auto-5",
             "layout-nine-8", "layout-eleven-10"}.issubset(PREVIEW_TYPES)
+
+
+@pytest.mark.parametrize("name,products,expected", [
+    ("ofertas.xlsx", [
+        {"id": "1", "name": "COXA SOBRECOXA 1KG", "category": "CARNES"},
+        {"id": "2", "name": "ACÉM BOVINO KG"},
+        {"id": "3", "name": "COSTELINHA SUÍNA KG"}], "quinta-file"),
+    ("ofertas.xlsx", [
+        {"id": "1", "name": "MAÇÃ NACIONAL GALA"},
+        {"id": "2", "name": "MANGA PALMER"},
+        {"id": "3", "name": "CENOURA KG"}], "terca-verde"),
+    ("catalogo.xlsx", [
+        {"id": "1", "name": "CAFÉ TORRADO 500G"},
+        {"id": "2", "name": "CAFÉ EXTRA FORTE 500G"}], "quarta-cafe"),
+    ("ofertas.xlsx", [
+        {"id": "1", "name": "DETERGENTE 500ML"},
+        {"id": "2", "name": "ARROZ BRANCO 5KG"}], "terca-verde"),
+])
+def test_campaign_is_selected_from_sheet_products_not_a_generic_filename(name, products, expected):
+    from srstudio.graphics2.auto_promotion import propose_promotion
+    proposal = propose_promotion(products, set(), source=name)
+    assert proposal.campaign_id == expected
+    assert proposal.background_id
+    assert proposal.logo_id
+
+
+def test_campaign_respects_previous_choice_when_products_are_ambiguous():
+    from srstudio.graphics2.auto_promotion import propose_promotion
+    sheet = [{"id": "1", "name": "COXA SOBRECOXA"},
+             {"id": "2", "name": "MANGA PALMER"}]
+    proposal = propose_promotion(sheet, set(), source="ofertas.xlsx",
+                                 existing_campaign="churrasco")
+    assert proposal.campaign_id == "churrasco"
+
+
+def test_explicit_campaign_filename_overrides_mix_and_path_names():
+    from srstudio.graphics2.auto_promotion import propose_promotion
+    sheet = [{"id": "1", "name": "COXA SOBRECOXA"}]
+    named = propose_promotion(sheet, set(),
+                              source=r"C:\\Arquivos\\Quarta Café.xlsx")
+    assert named.campaign_id == "quarta-cafe"
+    generic = propose_promotion(sheet, set(),
+                                source=r"C:\\Users\\lucas.cafe\\ofertas.xlsx")
+    assert generic.campaign_id == "quinta-file"
+
+
+def test_highlight_button_identifies_full_page_exclusive_flyer():
+    from pathlib import Path
+    qml = (Path(__file__).resolve().parents[1] /
+           "src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
+    assert 'ToolTip.text: "Criar um encarte exclusivo com este produto"' in qml
+    assert "Priorizar nos Smart Slots individuais" not in qml
