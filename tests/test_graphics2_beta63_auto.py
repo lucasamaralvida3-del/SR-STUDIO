@@ -48,20 +48,56 @@ def test_preview_is_read_only_and_confirmation_assigns_every_product(count):
     assert len(session.document.pages) == 1 + len(proposal.payload["pages"])
 
 
-def test_starred_products_take_first_single_positions():
+def test_starred_products_get_one_exclusive_page_each():
     proposal = propose_promotion(products(11), {"SKU-8", "SKU-9"})
-    assert proposal.pages[0].product_ids[:2] == ("SKU-8", "SKU-9")
-    assert proposal.pages[0].mode == "eleven"
+    assert [(page.mode, page.product_ids, page.featured) for page in proposal.pages[:2]] == [
+        ("individual", ("SKU-8",), True), ("individual", ("SKU-9",), True)]
+    assert proposal.pages[2].count == 9
+    assert not proposal.pages[2].featured
 
 
-def test_highlights_use_single_slots_across_pages_before_multi_cells():
-    featured = {f"SKU-{i}" for i in range(8)}
+def test_24_products_with_three_stars_produce_three_exclusive_and_collective_pages():
+    featured = {"SKU-1", "SKU-8", "SKU-19"}
     proposal = propose_promotion(products(24), featured)
-    for page in proposal.pages:
-        kinds = [placement.kind for placement in plan_promotion(page.mode, count=page.count).placements]
-        for code, kind in zip(page.product_ids, kinds):
-            if kind == "multi":
-                assert code not in featured
+    assert len(proposal.pages) == 5
+    assert [page.product_ids for page in proposal.pages[:3]] == [
+        ("SKU-1",), ("SKU-8",), ("SKU-19",)]
+    assert all(page.featured for page in proposal.pages[:3])
+    assert sum(page.count for page in proposal.pages[3:]) == 21
+    assert not any(code in featured for page in proposal.pages[3:] for code in page.product_ids)
+    assert len({code for page in proposal.pages for code in page.product_ids}) == 24
+
+
+def test_confirmed_highlights_have_own_editable_pages_and_no_duplicates(tmp_path, monkeypatch):
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    for code in ("SKU-1", "SKU-8", "SKU-19"):
+        HighlightStore().set(code, True)
+    session = GraphicsSession(GraphicsDocument())
+    session.document.metadata["products"] = products(24)
+    router = GraphicsCommandRouter(session)
+    before = session.document.to_dict()
+    preview = router.dispatch({"name": "preview_auto_promotion"})
+    assert preview.ok
+    assert session.document.to_dict() == before
+    assert [p["featured"] for p in preview.payload["pages"]] == [True, True, True, False, False]
+    applied = router.dispatch({"name": "apply_auto_promotion"})
+    assert applied.ok, applied.message
+    pages = session.document.pages[1:]
+    assert len(pages) == 5
+    for page, code in zip(pages[:3], ("SKU-1", "SKU-8", "SKU-19")):
+        filled = [slot for slot in page.slots.values() if slot.product_id]
+        assert len(filled) == 1
+        assert filled[0].product_id == code
+        assert filled[0].metadata["preset_id"] == "individual-beta44"
+        assert page.metadata["auto_promotion"]["featured"] is True
+        assert page.height > page.width
+        assert page.metadata.get("campaign_background_node")
+        assert page.metadata.get("campaign_seal_node")
+    collective = [slot.product_id for page in pages[3:] for slot in page.slots.values() if slot.product_id]
+    assert len(collective) == 21
+    assert not {"SKU-1", "SKU-8", "SKU-19"}.intersection(collective)
+    assert router.dispatch({"name": "undo"}).ok
+    assert session.document.to_dict() == before
 
 
 def test_six_and_nine_match_expected_slot_families():
@@ -169,3 +205,9 @@ def test_auto_promotion_renders_png_and_pdf(tmp_path):
     pdf = render_pdf(session.document, tmp_path / "montagem.pdf", dpi=96)
     assert png.ok and png.width == 540 and png.output.stat().st_size > 1000
     assert pdf.ok and len(PdfReader(str(pdf.output)).pages) == 2
+
+
+def test_preview_catalog_covers_all_variable_page_sizes():
+    from srstudio.graphics2.slot_preview import PREVIEW_TYPES
+    assert {"layout-auto-2", "layout-auto-3", "layout-auto-4", "layout-auto-5",
+            "layout-nine-8", "layout-eleven-10"}.issubset(PREVIEW_TYPES)

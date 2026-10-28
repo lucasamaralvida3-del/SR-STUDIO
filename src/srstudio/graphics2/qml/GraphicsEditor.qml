@@ -74,6 +74,13 @@ ApplicationWindow {
         return ""
     }
 
+    function layoutPreviewKey(mode, count) {
+        var standard = {"individual":1, "six":6, "seven":7,
+                        "nine":9, "eleven":11, "custom":10}
+        var suffix = (mode === "auto" || standard[mode] !== count) ? ("-" + count) : ""
+        return "layout-" + mode + suffix
+    }
+
     Dialog {
         id: autoPromotionDialog
         title: "Prévia · Montar automaticamente"
@@ -119,13 +126,14 @@ ApplicationWindow {
                             Image {
                                 Layout.preferredWidth: 68
                                 Layout.preferredHeight: 100
-                                source: window.slotPreviewCatalog["layout-" + modelData.mode] || ""
+                                source: window.slotPreviewCatalog[window.layoutPreviewKey(modelData.mode, modelData.count)] || ""
                                 fillMode: Image.PreserveAspectFit
                             }
                             Label {
                                 Layout.fillWidth: true
-                                text: "Página " + (index + 1) + " · " + modelData.count
-                                      + " produtos · " + modelData.mode
+                                text: "Página " + (index + 1) + " · "
+                                      + (modelData.featured ? "Destaque exclusivo" : "Layout coletivo")
+                                      + " · " + modelData.count + " produto" + (modelData.count === 1 ? "" : "s")
                                 color: "#475569"
                             }
                         }

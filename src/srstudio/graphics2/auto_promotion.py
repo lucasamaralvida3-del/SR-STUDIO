@@ -53,13 +53,15 @@ class HighlightStore:
 class ProposedPage:
     mode: str
     product_ids: tuple[str, ...]
+    featured: bool = False
 
     @property
     def count(self) -> int:
         return len(self.product_ids)
 
     def as_dict(self) -> dict:
-        return {"mode": self.mode, "count": self.count, "product_ids": list(self.product_ids)}
+        return {"mode": self.mode, "count": self.count,
+                "product_ids": list(self.product_ids), "featured": self.featured}
 
 
 @dataclass(frozen=True)
@@ -119,25 +121,13 @@ def propose_promotion(products: list[dict], highlights: set[str], *,
     ids = [str(p.get("id") or p.get("product_id") or "").strip() for p in products]
     if any(not code for code in ids) or len(set(ids)) != len(ids):
         raise ValueError("A planilha precisa ter códigos de produto únicos e não vazios.")
-    from .promotion_layouts import plan_promotion
     featured = [code for code, product in zip(ids, products) if product_code(product) in highlights]
     ordinary = [code for code, product in zip(ids, products) if product_code(product) not in highlights]
-    sizes = _page_sizes(len(ids))
-    modes = [_layout(size) for size in sizes]
-    positions = [(page_index, placement.index, placement.kind)
-                 for page_index, (size, mode) in enumerate(zip(sizes, modes))
-                 for placement in plan_promotion(mode, count=size).placements]
-    assignments = [[""] * size for size in sizes]
-    primary = [position for position in positions if position[2] != "multi"]
-    for page_index, index, _ in primary:
-        pool = featured if featured else ordinary
-        assignments[page_index][index] = pool.pop(0)
-    for page_index, index, kind in positions:
-        if assignments[page_index][index]:
-            continue
-        pool = ordinary if ordinary else featured
-        assignments[page_index][index] = pool.pop(0)
-    pages = [ProposedPage(mode, tuple(codes)) for mode, codes in zip(modes, assignments)]
+    pages = [ProposedPage("individual", (code,), True) for code in featured]
+    offset = 0
+    for size in _page_sizes(len(ordinary)):
+        pages.append(ProposedPage(_layout(size), tuple(ordinary[offset:offset + size])))
+        offset += size
     campaign = _campaign_hint(source, existing_campaign)
     background_id = ""
     logo_id = ""
@@ -178,6 +168,7 @@ def apply_promotion(session, proposal: PromotionProposal, products: list[dict]) 
                 if not bind_product_to_item_slot(session, sid, by_id[code]):
                     raise ValueError(f"Não foi possível preencher o produto {code}.")
             new_page.metadata["auto_promotion"] = {"campaign_id": proposal.campaign_id,
-                                                    "product_ids": list(planned.product_ids)}
+                                                    "product_ids": list(planned.product_ids),
+                                                    "featured": planned.featured}
             created.append(new_page.id)
     return created
