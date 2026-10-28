@@ -3,7 +3,7 @@ name: G2 Beta64 Product Images and Exclusions Windows Candidate
 on:
   push:
     branches:
-      - feature/g2-beta64-complete
+      - feature/g2-beta64-image-controls-product-exclusion
     paths:
       - 'src/srstudio/graphics2/**'
       - 'src/srstudio/app/**'
@@ -19,7 +19,7 @@ on:
       - 'src/srstudio/assets/campaigns/**'
       - 'tools/promote_g2_beta64_launcher.py'
       - 'tools/test_promote_g2_beta64_launcher.py'
-      - '.github/workflows/g2-beta64-automatic-flyers-windows.yml'
+      - '.github/workflows/g2-beta64-product-images-windows.yml'
       - '.github/workflows/g2-beta51-legibility-windows.yml'
       - 'tests/test_graphics2_beta45_reference_fidelity.py'
       - 'tests/test_graphics2_qml_price_preview.py'
@@ -64,7 +64,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          python -m pytest -q tests/test_graphics2_beta51_legibility_and_image_links.py tests/test_graphics2_beta50_slot_visual_fidelity.py tests/test_graphics2_beta49_two_price_pptx_fidelity.py tests/test_graphics2_beta47_pptx_source_fidelity.py tests/test_graphics2_beta48_image_bank_browser.py tests/test_graphics2_beta46_legacy_image_bank.py tests/test_graphics2_beta46_flyer_quality.py tests/test_graphics2_beta46_real_slot_layouts.py tests/test_graphics2_beta46_recovery_resize.py tests/test_graphics2_beta46_price_integrity.py tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_promotion_layouts.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_beta42_shell_layout.py tests/test_graphics2_item_slots.py tests/test_graphics2_slot_limpeza_blue.py tests/test_graphics2_quinta3_studio_manual_build.py tests/test_graphics2_qml_load.py tests/test_graphics2_qml_price_preview.py tests/test_graphics2_beta53_campaign.py tests/test_graphics2_beta54_campaign_commands.py tests/test_graphics2_beta54_campaign_asset_library.py tests/test_graphics2_beta54_builtin_campaigns.py tests/test_graphics2_beta55_safe_flyer_import.py tests/test_graphics2_beta56_flyer_contracts.py tests/test_graphics2_beta57_slot_fidelity.py tests/test_graphics2_beta58_user_fixes.py tests/test_graphics2_beta59_image_bank_recovery.py tests/test_graphics2_beta60_image_suggestions.py tests/test_graphics2_beta61_reference_layouts.py tests/test_graphics2_beta62_logo_footer.py tests/test_graphics2_beta64_auto.py
+          python -m pytest -q tests/test_graphics2_beta51_legibility_and_image_links.py tests/test_graphics2_beta50_slot_visual_fidelity.py tests/test_graphics2_beta49_two_price_pptx_fidelity.py tests/test_graphics2_beta47_pptx_source_fidelity.py tests/test_graphics2_beta48_image_bank_browser.py tests/test_graphics2_beta46_legacy_image_bank.py tests/test_graphics2_beta46_flyer_quality.py tests/test_graphics2_beta46_real_slot_layouts.py tests/test_graphics2_beta46_recovery_resize.py tests/test_graphics2_beta46_price_integrity.py tests/test_graphics2_beta45_reference_fidelity.py tests/test_graphics2_beta44_promotion_layouts.py tests/test_graphics2_beta44_multi_slots.py tests/test_graphics2_beta42_shell_layout.py tests/test_graphics2_item_slots.py tests/test_graphics2_slot_limpeza_blue.py tests/test_graphics2_quinta3_studio_manual_build.py tests/test_graphics2_qml_load.py tests/test_graphics2_qml_price_preview.py tests/test_graphics2_beta53_campaign.py tests/test_graphics2_beta54_campaign_commands.py tests/test_graphics2_beta54_campaign_asset_library.py tests/test_graphics2_beta54_builtin_campaigns.py tests/test_graphics2_beta55_safe_flyer_import.py tests/test_graphics2_beta56_flyer_contracts.py tests/test_graphics2_beta57_slot_fidelity.py tests/test_graphics2_beta58_user_fixes.py tests/test_graphics2_beta59_image_bank_recovery.py tests/test_graphics2_beta60_image_suggestions.py tests/test_graphics2_beta61_reference_layouts.py tests/test_graphics2_beta62_logo_footer.py tests/test_graphics2_beta63_auto.py tests/test_graphics2_beta64_product_images.py
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Prove Qt Quick runtime
         shell: pwsh
@@ -149,7 +149,7 @@ jobs:
   publish:
     # This runs only after the tested, packaged Windows artifact exists.
     # Stable branches and existing releases are never modified.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/g2-beta64-complete'
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feature/g2-beta64-image-controls-product-exclusion' && contains(github.event.head_commit.message, '[publish-beta64]')
     needs: [validate, package]
     runs-on: ubuntu-latest
     timeout-minutes: 30
