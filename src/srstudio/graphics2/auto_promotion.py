@@ -130,7 +130,9 @@ def _campaign_hint(source: str, existing: str, products: list[dict] | None = Non
             return campaign
     explicit = {
         "churrasco": "churrasco", "acougue": "churrasco",
-        "cafe": "quarta-cafe", "file": "quinta-file",
+        "terca": "terca-verde", "quarta": "quarta-cafe",
+        "quinta": "quinta-file", "cafe": "quarta-cafe",
+        "file": "quinta-file",
     }
     for token, campaign in explicit.items():
         if token in filename_tokens:
