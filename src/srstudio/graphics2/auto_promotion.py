@@ -178,9 +178,15 @@ def _campaign_hint(source: str, existing: str, products: list[dict] | None = Non
 
 
 def propose_promotion(products: list[dict], highlights: set[str], *,
-                      source: str = "", existing_campaign: str = "") -> PromotionProposal:
+                      source: str = "", existing_campaign: str = "",
+                      excluded_codes: set[str] | None = None) -> PromotionProposal:
     if not products:
         raise ValueError("Importe uma planilha antes de montar o encarte.")
+    # Product exclusions belong to the current project, not the original XLSX.
+    # Filter BEFORE choosing layouts so inactive products never occupy a slot.
+    products = [p for p in products if product_code(p) not in (excluded_codes or set())]
+    if not products:
+        raise ValueError("Nenhum produto ativo para a montagem automática.")
     ids = [str(p.get("id") or p.get("product_id") or "").strip() for p in products]
     if any(not code for code in ids) or len(set(ids)) != len(ids):
         raise ValueError("A planilha precisa ter códigos de produto únicos e não vazios.")
