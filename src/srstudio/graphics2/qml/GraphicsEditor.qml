@@ -2457,7 +2457,7 @@ ApplicationWindow {
                                     Image {
                                         id: nodeImage
                                         anchors.fill: parent
-                                        visible: modelData.kind === "image" || modelData.kind === "background"
+                                        visible: (modelData.kind === "image" || modelData.kind === "background") && !(modelData.kind === "image" && modelData.metadata && modelData.metadata.manual_item_slot_child)
                                         source: imageSource(modelData)
                                         fillMode: modelData.style.fit === "cover" ? Image.PreserveAspectCrop : modelData.style.fit === "fill" ? Image.Stretch : Image.PreserveAspectFit
                                         horizontalAlignment: Image.AlignHCenter
