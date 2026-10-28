@@ -16,10 +16,16 @@ import unicodedata
 from .model import AssetRef, GraphicsNode, NodeKind, Transform
 
 BLUE = "#105594"
-GREEN = "#075D08"
-COFFEE = "#78441F"
-MEAT = "#851B22"
-BARBECUE = "#B32D18"
+# Exact median swatches sampled from the COLORED validity-city footer of
+# each original 1080x1350 SR artwork. Ignore the yellow/white city text.
+GREEN = "#0A6005"
+COFFEE = "#704A33"
+MEAT = "#460000"
+BARBECUE = "#460000"
+LEGACY_THEME_COLORS = frozenset({
+    "#075D08", "#78441F", "#851B22", "#B32D18",
+    "#105594", "#24518E", "#265398",
+})
 # Keep campaigns and color variants separate from Smart Slot families.
 CAMPAIGNS = {
     "terca-verde": {"label": "Terça Verde", "theme": GREEN},
@@ -51,6 +57,77 @@ DATE_PLACEMENTS = {
     "quinta-file": (.125, .282, .146, .016),
     "churrasco": (.130, .269, .146, .016),
 }
+
+
+def logo_safe_reserve(page, requested: float, *, gap: float = .028) -> float:
+    """Return a campaign-aware reserved region ABOVE all layout Smart Slots.
+
+    Derive the live seal's bottom edge from its real edited geometry; respect
+    manual logo scaling/dragging. If the seal isn't in the scene yet but a
+    campaign background is active, reserve the catalogue's seal placement.
+    This helper never moves/resizes any logo, image, product or date.
+    """
+    required = float(requested)
+    seal_id = str(page.metadata.get("campaign_seal_node") or "")
+    seal = page.node(seal_id) if seal_id else None
+    if seal is not None and seal.visible and seal.metadata.get("campaign_art") == "seal":
+        required = max(required, seal.rect.normalized().bottom / page.height + gap)
+    elif page.metadata.get("campaign_background_node"):
+        campaign = str(page.metadata.get("campaign_id") or "")
+        if campaign in SEAL_PLACEMENTS:
+            _, y, _, h = SEAL_PLACEMENTS[campaign]
+            required = max(required, y + h + gap)
+    if required > .50:
+        raise ValueError(
+            "A logo ocupa mais da metade do encarte. Reduza ou reposicione "
+            "a logo antes de aplicar o layout; nenhum elemento foi movido."
+        )
+    return required
+
+
+def _footer_color_from_image(path) -> str | None:
+    """Sample the actual footer BAR, away from the city/promotion lettering.
+
+    The original template has a flat colored footer at 97.9–98.9% of page
+    height. Two side patches exclude the typically centered city label.
+    """
+    try:
+        from PIL import Image, ImageStat
+        with Image.open(local_campaign_path(path)) as image:
+            img = image.convert("RGB")
+            width, height = img.size
+            if min(width, height) < 40:
+                return None
+            y0, y1 = int(.979 * height), max(int(.989 * height), int(.979 * height) + 1)
+            patches = (
+                img.crop((int(.06 * width), y0, int(.22 * width), y1)),
+                img.crop((int(.78 * width), y0, int(.94 * width), y1)),
+            )
+            sample = Image.new("RGB", (patches[0].width + patches[1].width, patches[0].height))
+            sample.paste(patches[0], (0, 0))
+            sample.paste(patches[1], (patches[0].width, 0))
+            rgb = ImageStat.Stat(sample).median
+            # Don't infer theme from posters with no solid footer (photos,
+            # gradients, or out-of-template crops); use certified fallback.
+            spread = ImageStat.Stat(sample).stddev
+            if max(spread) > 17:
+                return None
+            return "#" + "".join(f"{round(v):02X}" for v in rgb)
+    except (OSError, ValueError, TypeError):
+        return None
+
+
+def campaign_footer_theme(document, page, campaign_id: str) -> str:
+    """Swatch the active background for its city footer, not the text."""
+    fallback = THEMES[campaign_id]
+    image_id = str(page.metadata.get("campaign_background_node") or "")
+    background = page.node(image_id)
+    if background is None or background.metadata.get("campaign_id") != campaign_id:
+        return fallback
+    asset = document.assets.get(str(background.asset_id or ""))
+    if asset is None:
+        return fallback
+    return _footer_color_from_image(asset.source) or fallback
 
 
 def _date_geometry(page, campaign_id):
@@ -163,8 +240,13 @@ def apply_campaign_art(session, kind, path, *, campaign_id=None):
             page.metadata[key] = node.id
         # Re-selecting a new campaign resets dimensions/position to its own
         # reference, preventing old placements from leaking into new campaigns.
-        node.transform.x, node.transform.y = rect[0], rect[1]
-        node.transform.width, node.transform.height = rect[2], rect[3]
+        keep_manual_seal_geometry = (
+            kind == "seal" and node.metadata.get("campaign_id") == campaign_id
+            and node.asset_id == asset_id and node.visible
+        )
+        if not keep_manual_seal_geometry:
+            node.transform.x, node.transform.y = rect[0], rect[1]
+            node.transform.width, node.transform.height = rect[2], rect[3]
         node.style.update(style)
         node.z_index = z
         node.asset_id = asset_id
@@ -276,7 +358,8 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
     """Recolor existing art only; never replace slots or their products."""
     theme = str(theme).strip().lower()
     if theme in THEMES:
-        target = THEMES[theme]
+        target = (campaign_footer_theme(session.document, session.page, theme)
+                  if theme in CAMPAIGNS else THEMES[theme])
     elif re.fullmatch(r"#[0-9a-f]{6}", theme):
         target = theme.upper()
     else:
@@ -284,7 +367,10 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
     page = session.page
     # Slot Único uses its certified older royal blue, unlike Multi/Individual.
     palette = {value.upper() for value in THEMES.values()}
-    palette.update({"#24518E", "#265398"})
+    palette.update(LEGACY_THEME_COLORS)
+    page_color = str(page.metadata.get("slot_theme_color") or "").upper()
+    if re.fullmatch(r"#[0-9A-F]{6}", page_color):
+        palette.add(page_color)
     for existing in page.slots.values():
         previous = str(existing.metadata.get("color_hex") or "").upper()
         if re.fullmatch(r"#[0-9A-F]{6}", previous):
@@ -298,6 +384,7 @@ def apply_slot_theme(session, theme, slot_ids=None, *, entire_page=False):
     with session.transaction("Alterar cores dos Smart Slots"):
         if entire_page:
             page.metadata["slot_theme"] = theme
+            page.metadata["slot_theme_color"] = target
         recolored = set()
         for slot in slots:
             # Only the generic page-sized backing is transparent. Source
