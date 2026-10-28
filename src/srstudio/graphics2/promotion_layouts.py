@@ -59,7 +59,9 @@ def plan_promotion(mode: LayoutKind, *, count: int | None = None,
         raise ValueError("Product count must be between 1 and 24")
     if not .15 <= logo_reserved <= .50:
         raise ValueError("Logo reserve must be between 15 and 50 percent")
-    top, bottom = logo_reserved + .025, .975
+    # Reserve the bottom campaign validity pill as shown in both real photos.
+    # The Multi price ribbon must end ABOVE “OFERTAS VÁLIDAS ...”.
+    top, bottom = logo_reserved + .025, .93
     height = bottom - top
     items: list[SlotPlacement] = []
     if mode == "individual":
