@@ -264,3 +264,11 @@ def test_highlight_button_identifies_full_page_exclusive_flyer():
            "src/srstudio/graphics2/qml/GraphicsEditor.qml").read_text(encoding="utf-8")
     assert 'ToolTip.text: "Criar um encarte exclusivo com este produto"' in qml
     assert "Priorizar nos Smart Slots individuais" not in qml
+
+
+def test_explicit_terca_campaign_filename_wins_over_coffee_in_spreadsheet():
+    from srstudio.graphics2.auto_promotion import propose_promotion
+    sheet = [{"id": "1", "name": "CAFÉ TORRADO 500G"},
+             {"id": "2", "name": "CAFÉ MOÍDO 500G"}]
+    proposal = propose_promotion(sheet, set(), source="terca-ofertas.xlsx")
+    assert proposal.campaign_id == "terca-verde"
