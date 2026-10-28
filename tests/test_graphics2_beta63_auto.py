@@ -1,0 +1,171 @@
+from __future__ import annotations
+
+import pytest
+
+from srstudio.graphics2.model import GraphicsDocument
+from srstudio.graphics2.operations import GraphicsSession
+from srstudio.graphics2.command_router import GraphicsCommandRouter
+from srstudio.graphics2.promotion_layouts import plan_promotion
+from srstudio.graphics2.item_slots import create_item_slot, bind_product_to_item_slot
+from srstudio.graphics2.promotion_composition import apply_slot_composition
+from srstudio.graphics2.auto_promotion import HighlightStore, propose_promotion
+
+
+def products(count):
+    return [{"id": f"SKU-{i}", "name": f"PRODUTO {i}", "price": f"{i+2},99", "unit": "UN"}
+            for i in range(count)]
+
+
+def test_highlights_follow_code_not_import_order(tmp_path):
+    path = tmp_path / "highlights.json"
+    store = HighlightStore(path)
+    store.set("SKU-7", True)
+    assert HighlightStore(path).contains("SKU-7")
+    assert not HighlightStore(path).contains("SKU-8")
+    store.set("SKU-7", False)
+    assert not HighlightStore(path).contains("SKU-7")
+
+
+@pytest.mark.parametrize("count", [24, 52])
+def test_preview_is_read_only_and_confirmation_assigns_every_product(count):
+    session = GraphicsSession(GraphicsDocument())
+    session.document.metadata["products"] = products(count)
+    router = GraphicsCommandRouter(session)
+    before = session.document.to_dict()
+    proposal = router.dispatch({"name": "preview_auto_promotion"})
+    assert proposal.ok, proposal.message
+    assert session.document.to_dict() == before
+    assert sum(p["count"] for p in proposal.payload["pages"]) == count
+    applied = router.dispatch({"name": "apply_auto_promotion"})
+    assert applied.ok, applied.message
+    assert len(session.document.pages) == 1 + len(proposal.payload["pages"])
+    assigned = [s.product_id for p in session.document.pages[1:] for s in p.slots.values() if s.product_id]
+    assert len(assigned) == count
+    assert set(assigned) == {p["id"] for p in products(count)}
+    assert router.dispatch({"name": "undo"}).ok
+    assert session.document.to_dict() == before
+    assert router.dispatch({"name": "redo"}).ok
+    assert len(session.document.pages) == 1 + len(proposal.payload["pages"])
+
+
+def test_starred_products_take_first_single_positions():
+    proposal = propose_promotion(products(11), {"SKU-8", "SKU-9"})
+    assert proposal.pages[0].product_ids[:2] == ("SKU-8", "SKU-9")
+    assert proposal.pages[0].mode == "eleven"
+
+
+def test_highlights_use_single_slots_across_pages_before_multi_cells():
+    featured = {f"SKU-{i}" for i in range(8)}
+    proposal = propose_promotion(products(24), featured)
+    for page in proposal.pages:
+        kinds = [placement.kind for placement in plan_promotion(page.mode, count=page.count).placements]
+        for code, kind in zip(page.product_ids, kinds):
+            if kind == "multi":
+                assert code not in featured
+
+
+def test_six_and_nine_match_expected_slot_families():
+    assert [p.kind for p in plan_promotion("six").placements] == ["single"] * 6
+    assert [p.kind for p in plan_promotion("nine").placements] == ["single"] * 4 + ["multi"] * 5
+
+
+def test_six_migrates_filled_individual_into_real_single_and_hides_old_art():
+    session = GraphicsSession(GraphicsDocument())
+    old = create_item_slot(session, "individual-beta44")
+    bind_product_to_item_slot(session, old.id, products(1)[0])
+    result = apply_slot_composition(session, plan_promotion("six"))
+    assert old.id not in result.slot_ids
+    assert session.page.node(old.metadata["root_node_id"]).visible is False
+    assert [session.page.slots[sid].metadata.get("limpeza_blue_profile") for sid in result.slot_ids] == ["limpeza-blue-v1"] * 6
+    assert session.page.slots[result.slot_ids[0]].product_id == "SKU-0"
+
+
+def test_custom_layout_is_editable_real_slot_topology():
+    session = GraphicsSession(GraphicsDocument())
+    plan = plan_promotion("custom")
+    assert [p.kind for p in plan.placements] == ["individual"] + ["single"] * 3 + ["multi"] * 6
+    result = apply_slot_composition(session, plan, reuse_existing=False)
+    assert len(result.slot_ids) == 10
+    assert all(session.page.slots[sid].metadata.get("root_node_id") for sid in result.slot_ids)
+    assert max(p.y + p.height for p in plan.placements) <= .93
+
+
+def test_nine_layout_moves_legacy_individuals_into_four_singles_and_real_multi():
+    session = GraphicsSession(GraphicsDocument())
+    old_roots = []
+    for product in products(9):
+        slot = create_item_slot(session, "individual-beta44")
+        bind_product_to_item_slot(session, slot.id, product)
+        old_roots.append(slot.metadata["root_node_id"])
+    result = apply_slot_composition(session, plan_promotion("nine"))
+    assert len(result.slot_ids) == 9
+    assert [session.page.slots[sid].metadata.get("limpeza_blue_profile") for sid in result.slot_ids[:4]] == ["limpeza-blue-v1"] * 4
+    assert [session.page.slots[sid].metadata.get("preset_id") for sid in result.slot_ids[4:]] == ["multi-cell-beta44"] * 5
+    assert {session.page.slots[sid].product_id for sid in result.slot_ids} == {p["id"] for p in products(9)}
+    assert all(not session.page.node(root).visible for root in old_roots)
+
+
+def test_custom_layout_reapplication_keeps_real_mixed_families_with_filled_products():
+    session = GraphicsSession(GraphicsDocument())
+    old_roots = []
+    for product in products(10):
+        slot = create_item_slot(session, "individual-beta44")
+        bind_product_to_item_slot(session, slot.id, product)
+        old_roots.append(slot.metadata["root_node_id"])
+    result = apply_slot_composition(session, plan_promotion("custom"))
+    families = [session.page.slots[sid].metadata.get("preset_id") for sid in result.slot_ids]
+    assert families[0] == "individual-beta44"
+    assert families[4:] == ["multi-cell-beta44"] * 6
+    assert {session.page.slots[sid].product_id for sid in result.slot_ids} == {p["id"] for p in products(10)}
+    assert sum(session.page.node(root).visible for root in old_roots) == 1
+
+
+def test_excel_reimport_keeps_highlights_by_product_code(tmp_path, monkeypatch):
+    from openpyxl import Workbook
+    monkeypatch.setenv("APPDATA", str(tmp_path))
+    store = HighlightStore()
+    store.set("1002", True)
+    source = tmp_path / "terca-ofertas.xlsx"
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.append(["CÓDIGO", "PRODUTO", "PREÇO", "UNIDADE"])
+    sheet.append(["1001", "ARROZ 5KG", 19.9, "UN"])
+    sheet.append(["1002", "CAFÉ 500G", 12.99, "UN"])
+    workbook.save(source)
+    session = GraphicsSession(GraphicsDocument())
+    session.import_product_catalog(str(source))
+    proposal = GraphicsCommandRouter(session).dispatch({"name": "preview_auto_promotion"})
+    assert proposal.ok, proposal.message
+    first_id = proposal.payload["pages"][0]["product_ids"][0]
+    assert next(p for p in session.document.metadata["products"] if p["id"] == first_id)["code"] == "1002"
+    assert proposal.payload["campaign_id"] == "terca-verde"
+    session.import_product_catalog(str(source))
+    assert GraphicsCommandRouter(session).payload()["editor"]["highlighted_product_ids"] == ["1002"]
+
+
+def test_auto_pages_remain_portrait_and_old_project_roundtrips():
+    document = GraphicsDocument()
+    document.active_page.width = 1350
+    document.active_page.height = 1080
+    document.metadata["products"] = products(24)
+    session = GraphicsSession(GraphicsDocument.from_dict(document.to_dict()))
+    result = GraphicsCommandRouter(session).dispatch({"name": "apply_auto_promotion"})
+    assert result.ok, result.message
+    restored = GraphicsDocument.from_dict(session.document.to_dict())
+    assert len(restored.pages) == 4
+    assert all(page.height > page.width for page in restored.pages[1:])
+    assert restored.pages[0].width == 1350
+    assert restored.pages[0].height == 1080
+
+
+def test_auto_promotion_renders_png_and_pdf(tmp_path):
+    from srstudio.graphics2.qt_renderer import render_pdf, render_png
+    from pypdf import PdfReader
+    session = GraphicsSession(GraphicsDocument())
+    session.document.metadata["products"] = products(7)
+    result = GraphicsCommandRouter(session).dispatch({"name": "apply_auto_promotion"})
+    assert result.ok, result.message
+    png = render_png(session.document, tmp_path / "montagem.png", page_index=1, target_width=540)
+    pdf = render_pdf(session.document, tmp_path / "montagem.pdf", dpi=96)
+    assert png.ok and png.width == 540 and png.output.stat().st_size > 1000
+    assert pdf.ok and len(PdfReader(str(pdf.output)).pages) == 2

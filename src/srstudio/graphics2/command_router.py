@@ -45,6 +45,7 @@ class GraphicsCommandRouter:
         self._campaign_assets_cache: list[dict] | None = None
 
     def payload(self) -> dict[str, Any]:
+        from .auto_promotion import HighlightStore
         scene = self.session.document.to_dict()
         page = self.session.page
         selected = set(self.session.selection)
@@ -61,6 +62,7 @@ class GraphicsCommandRouter:
             "clipboard_available": bool(self._clipboard),
             "snap": asdict(self.snap),
             "products": list(self.session.document.metadata.get("products") or []),
+            "highlighted_product_ids": sorted(HighlightStore().codes()),
             "integrity_repair": self.integrity_repair.to_dict(),
         }
         if self._campaign_assets_cache is None:
@@ -421,6 +423,31 @@ class GraphicsCommandRouter:
                     "reused_slot_ids": list(layout.reused_slot_ids),
                     "created_slot_ids": list(layout.created_slot_ids),
                     "root_node_ids": list(layout.root_node_ids)})
+            if name in {"preview_auto_promotion", "apply_auto_promotion"}:
+                from .auto_promotion import HighlightStore, apply_promotion, propose_promotion
+                products = [p for p in self.session.document.metadata.get("products", []) if isinstance(p, dict)]
+                proposal = propose_promotion(
+                    products, HighlightStore().codes(),
+                    source=str(self.session.document.metadata.get("product_catalog_source") or ""),
+                    existing_campaign=str(self.session.page.metadata.get("campaign_id") or ""))
+                if name == "preview_auto_promotion":
+                    return CommandResult(True, False, "Prévia da montagem preparada.", proposal.as_dict())
+                page_ids = apply_promotion(self.session, proposal, products)
+                return CommandResult(True, True, "Montagem criada em páginas editáveis.",
+                                     {**proposal.as_dict(), "page_ids": page_ids})
+            if name == "toggle_product_highlight":
+                from .auto_promotion import HighlightStore, product_code
+                product_id = str(command.get("product_id") or "")
+                product = next((p for p in self.session.document.metadata.get("products", [])
+                                if isinstance(p, dict) and str(p.get("id") or p.get("product_id") or "") == product_id), None)
+                if product is None:
+                    return CommandResult(False, False, "Produto não encontrado na planilha.")
+                code = product_code(product)
+                store = HighlightStore()
+                selected = not store.contains(code)
+                store.set(code, selected)
+                return CommandResult(True, False, "Destaque atualizado.",
+                                     {"product_id": product_id, "code": code, "highlighted": selected})
             if name == "set_slot_theme":
                 from .campaign_tools import apply_slot_theme
                 all_slots = bool(command.get("entire_page", False))

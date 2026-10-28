@@ -110,7 +110,7 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
     # Preserve existing populated standalone slots. If a legacy scene has
     # 11 populated Individual cards, don't lose 5 products to make a strip.
     preserve_all_singles = (
-        multi_count > 0 and len([s for s in singles if s.product_id]) > upper_count
+        plan.mode not in {"nine", "custom"} and multi_count > 0 and len([s for s in singles if s.product_id]) > upper_count
         and not filled_multi
     )
     use_multi = multi_count > 0 and not preserve_all_singles
@@ -160,14 +160,19 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
                     slot.metadata.get("limpeza_blue_profile") == expected):
                 chosen = singles.pop(idx)
                 break
-        if chosen is None:
-            for idx, slot in enumerate(singles):
-                if slot.product_id:
-                    chosen = singles.pop(idx)
-                    break
         if chosen is not None:
             reused.append(chosen.id)
             return chosen
+        if plan.mode not in {"six", "nine", "custom"}:
+            for idx, slot in enumerate(singles):
+                if slot.product_id:
+                    chosen = singles.pop(idx)
+                    reused.append(chosen.id)
+                    return chosen
+        # A different family cannot be stretched into the thumbnail's slot.
+        # Move its product binding into a real target-family component, leaving
+        # the old artwork hidden and the previous binding empty for later reuse.
+        source = next((slot for slot in singles if slot.product_id), None)
         if expected == "limpeza-blue-v1":
             from .slot_limpeza_blue import create_limpeza_blue_slot
             chosen = create_limpeza_blue_slot(session, x=x, y=y)
@@ -175,6 +180,20 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
         else:
             chosen = create_item_slot(session, "individual-beta44", x=x, y=y)
         created.append(chosen.id)
+        if source is not None:
+            from .item_slots import bind_product_to_item_slot
+            import copy
+            product = copy.deepcopy(source.metadata.get("original_product_snapshot") or
+                                    source.metadata.get("product_snapshot") or {})
+            if not product:
+                raise ValueError("Produto existente sem dados para migrar entre famílias de Smart Slot.")
+            if not bind_product_to_item_slot(session, chosen.id, product):
+                raise ValueError("Não foi possível migrar produto para o Smart Slot correto.")
+            with session.transaction("Migrar produto para Smart Slot correto"):
+                source.product_id = ""
+                source.metadata.pop("product_snapshot", None)
+                source.metadata.pop("original_product_snapshot", None)
+            singles.remove(source)
         return chosen
 
     for position in positions:
@@ -207,6 +226,24 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
             fx, fy, fw, fh = _fit_component(x, y, w, h, ratio)
             session.resize_node(multi_root.id, x=fx, y=fy, width=fw, height=fh)
             set_reference_price_mode(session, ids, price_mode)
+            if plan.mode in {"nine", "custom"}:
+                from .item_slots import bind_product_to_item_slot
+                import copy
+                for target_id in ids:
+                    if page.slots[target_id].product_id:
+                        continue
+                    source = next((slot for slot in singles if slot.product_id), None)
+                    if source is None:
+                        break
+                    product = copy.deepcopy(source.metadata.get("original_product_snapshot") or
+                                            source.metadata.get("product_snapshot") or {})
+                    if not product or not bind_product_to_item_slot(session, target_id, product):
+                        raise ValueError("Não foi possível migrar produto para a faixa Multi real.")
+                    with session.transaction("Migrar produto para faixa Multi"):
+                        source.product_id = ""
+                        source.metadata.pop("product_snapshot", None)
+                        source.metadata.pop("original_product_snapshot", None)
+                    singles.remove(source)
             arranged.extend(ids)
             root_ids.append(multi_root.id)
             continue

@@ -40,14 +40,13 @@ def test_every_promotion_position_uses_real_editable_slot(mode, count):
     assert session.page.metadata["promotion_composition"]["slot_ids"] == result.payload["slot_ids"]
 
 
-def test_layout_reuses_existing_product_instead_of_making_a_blank_copy():
+def test_layout_moves_existing_product_to_matching_slot_family():
     session = make_session()
     original = create_item_slot(session, "individual-beta44", x=22, y=20)
     bind_product_to_item_slot(session, original.id, {
         "id": "SKU-998", "name": "Cafe Forte 500g", "price": "23,99", "club_price": "21,99"
     })
     before_page = session.page.id
-    before_price = session.page.node(original.node_by_role[BindingRole.PRICE_REAIS.value]).text
     original_root = original.metadata["root_node_id"]
     result = ItemSlotCommandRouter(session).dispatch({
         "name": "apply_promotion_layout", "mode": "six",
@@ -55,15 +54,16 @@ def test_layout_reuses_existing_product_instead_of_making_a_blank_copy():
     })
     assert result.ok
     assert session.page.id == before_page
-    assert original.id in result.payload["reused_slot_ids"]
-    assert original.id not in result.payload["created_slot_ids"]
-    assert len(result.payload["created_slot_ids"]) == 5
-    assert session.page.slots[original.id].product_id == "SKU-998"
-    assert session.page.node(original.node_by_role[BindingRole.PRICE_REAIS.value]).text == before_price
+    assert original.id not in result.payload["slot_ids"]
+    assert len(result.payload["created_slot_ids"]) == 6
+    first = session.page.slots[result.payload["slot_ids"][0]]
+    assert first.metadata["limpeza_blue_profile"] == "limpeza-blue-v1"
+    assert first.product_id == "SKU-998"
+    assert session.page.node(original_root).visible is False
     plan = plan_promotion("six")
-    root = session.page.node(original_root).rect
-    assert root.x == pytest.approx(plan.placements[0].x * session.page.width)
-    assert root.width == pytest.approx(plan.placements[0].width * session.page.width)
+    root = session.page.node(first.metadata["root_node_id"]).rect
+    assert root.x >= plan.placements[0].x * session.page.width
+    assert root.width <= plan.placements[0].width * session.page.width
 
 
 def test_eleven_item_layout_reuses_the_actual_multi5_parent_with_saved_products():
@@ -242,10 +242,11 @@ def test_reorganizing_slots_changes_positions_not_visual_preset_styles():
         "name": "apply_promotion_layout", "mode": "six", "reuse_existing": True
     })
     assert result.ok
-    assert individual.id in result.payload["reused_slot_ids"]
+    assert individual.id not in result.payload["slot_ids"]
     for node_id, expected_style in child_styles.items():
         assert page.node(node_id).style == expected_style
-    assert page.slots[individual.id].product_id == "A1"
+    assert page.node(root_id).visible is False
+    assert page.slots[result.payload["slot_ids"][0]].product_id == "A1"
 
 
 def test_auto_layout_24_products_does_not_drop_ids_or_leave_logo_region():

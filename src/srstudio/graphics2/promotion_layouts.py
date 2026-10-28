@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass
 from math import ceil
 from typing import Literal
 
-LayoutKind = Literal["individual", "six", "seven", "nine", "eleven", "auto"]
+LayoutKind = Literal["individual", "six", "seven", "nine", "eleven", "custom", "auto"]
 
 
 @dataclass(frozen=True)
@@ -51,10 +51,16 @@ def plan_promotion(mode: LayoutKind, *, count: int | None = None,
     A Multi ribbon is represented as N adjacent positions of kind 'multi'.
     The compositor groups them into exactly ONE resizable Multi-N parent.
     """
-    presets = {"individual": 1, "six": 6, "seven": 7, "nine": 9, "eleven": 11}
+    presets = {"individual": 1, "six": 6, "seven": 7, "nine": 9, "eleven": 11, "custom": 10}
     if mode not in (*presets, "auto"):
         raise ValueError("Unknown promotion layout")
-    n = presets[mode] if mode != "auto" else (count if count is not None else 6)
+    n = (count if count is not None else presets.get(mode, 6))
+    if mode in ("individual", "six", "seven", "custom") and n != presets[mode]:
+        raise ValueError("Contagem incompatível com o layout selecionado")
+    if mode == "nine" and n not in range(6, 10):
+        raise ValueError("Layout de nove aceita de 6 a 9 produtos")
+    if mode == "eleven" and n not in range(8, 12):
+        raise ValueError("Layout de onze aceita de 8 a 11 produtos")
     if not isinstance(n, int) or not 1 <= n <= 24:
         raise ValueError("Product count must be between 1 and 24")
     if not .15 <= logo_reserved <= .50:
@@ -67,6 +73,13 @@ def plan_promotion(mode: LayoutKind, *, count: int | None = None,
     if mode == "individual":
         items = [SlotPlacement(0, .19, top + .03 * height, .62,
                                .92 * height, "individual")]
+    elif mode == "custom":
+        items = [SlotPlacement(0, .045, top, .42, .64 * height, "individual")]
+        for index in range(3):
+            items.append(SlotPlacement(index + 1, .50,
+                                       top + index * .22 * height,
+                                       .455, .20 * height, "single"))
+        items.extend(_row(4, 6, top + .72 * height, .28 * height, kind="multi"))
     elif mode == "seven":
         # Reference image 1: Individual grande + 2 Únicos à direita
         # + one CONTINUOUS genuine 4-product ribbon below.
@@ -94,7 +107,7 @@ def plan_promotion(mode: LayoutKind, *, count: int | None = None,
                           split1 - top - .045 * height, "single"),
         ])
         items.extend(_row(3, 3, split1, split2 - split1 - .012))
-        items.extend(_row(6, 5, split2, bottom - split2, kind="multi"))
+        items.extend(_row(6, n - 6, split2, bottom - split2, kind="multi"))
     elif mode == "nine":
         # Primary Único and three medium Únicos above one Multi-5.
         split = top + .705 * height
@@ -105,7 +118,7 @@ def plan_promotion(mode: LayoutKind, *, count: int | None = None,
             SlotPlacement(3, .557, top + (split-top) * .49, .32,
                           (split-top) * .49, "single"),
         ])
-        items.extend(_row(4, 5, split, bottom - split, kind="multi"))
+        items.extend(_row(4, n - 4, split, bottom - split, kind="multi"))
     elif mode == "six":
         # Six Únicos, not the six Individual cards from the old Beta44 mock.
         gap = .014

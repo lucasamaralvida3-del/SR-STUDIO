@@ -14,7 +14,7 @@ from tempfile import gettempdir
 
 PREVIEW_TYPES = ("blue", "individual", "individual-two", "multi5", "multi5-two",
                  "multi6", "multi6-two", "layout-individual", "layout-six",
-                 "layout-seven", "layout-nine", "layout-eleven")
+                 "layout-seven", "layout-nine", "layout-eleven", "layout-custom")
 
 
 def _sample_product(path: Path, index: int) -> dict:
