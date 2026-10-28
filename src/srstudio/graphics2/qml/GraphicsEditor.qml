@@ -118,6 +118,23 @@ ApplicationWindow {
                       + " páginas em retrato · campanha sugerida: " + autoProposal.campaign_id) : ""
                 color: "#243B64"
             }
+            Label {
+                Layout.fillWidth: true
+                visible: !!autoProposal
+                wrapMode: Text.WordWrap
+                text: {
+                    var active = window.products().filter(function(p) { return !window.inactiveProduct(p) })
+                    var missing = active.filter(function(p) { return window.productImageState(p) !== "linked" })
+                    return missing.length
+                        ? ("ATENÇÃO: " + missing.length + " produto(s) sem foto confirmada. " +
+                           "A montagem deixará espaços vazios nesses Smart Slots. " +
+                           "Use Banco SR ou adicione fotos antes de confirmar.")
+                        : "Todas as fotos dos produtos ativos estão vinculadas."
+                }
+                color: "#A52C19"
+                font.bold: true
+                font.pixelSize: 12
+            }
             RowLayout {
                 Layout.fillWidth: true
                 visible: !!(autoProposal && autoProposal.background_id)
@@ -3256,7 +3273,9 @@ ApplicationWindow {
                                 clip: true
                                 // Miniature representation uses actual document node colors.
                                 Repeater {
-                                    model: Object.values(modelData.nodes || {}).slice(0, 28)
+                                    model: Object.values(modelData.nodes || {})
+                                        .filter(function(n) { return n && n.visible !== false && n.transform && n.kind !== "group" })
+                                        .slice(0, 260)
                                     delegate: Rectangle {
                                         required property var modelData
                                         visible: modelData.visible !== false
@@ -3269,7 +3288,10 @@ ApplicationWindow {
                                 }
                             }
                             Label {
-                                text: modelData.name || ("Página " + (index + 1))
+                                text: modelData.name && modelData.name.indexOf("Montagem automática") === 0
+                                    ? ((modelData.metadata && modelData.metadata.auto_promotion && modelData.metadata.auto_promotion.featured)
+                                        ? ("★ Pág. " + (index + 1)) : ("Pág. " + (index + 1)))
+                                    : (modelData.name || ("Página " + (index + 1)))
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignHCenter
                                 horizontalAlignment: Text.AlignHCenter
