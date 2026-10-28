@@ -148,14 +148,14 @@ def _builtins() -> dict[str, ItemSlotPreset]:
             height=300,
             background=None,  # the parent owns the continuous blue footer
             roles={
-                "name": _ppt_role(.015, .025, .97, .15, size=13.2,
+                "name": _ppt_role(.015, .025, .97, .15, size=16.8,
                                   color="#105594"),
                 "image": {"bounds": [.045, .185, .91, .545],
                           "style": {"fit": "contain"}},
                 "price": {"bounds": [.01, .715, .98, .28]},
                 "currency": _ppt_role(.035, .27, .20, .54, size=14.8, color="#FFFFFF"),
-                "integer": _ppt_role(.245, .045, .47, .90, size=35.6, color="#FFFFFF"),
-                "decimal": _ppt_role(.625, .17, .255, .33, size=12.6, color="#FFFFFF"),
+                "integer": _ppt_role(.23, .045, .47, .90, size=35.6, color="#FFFFFF"),
+                "decimal": _ppt_role(.74, .17, .23, .33, size=12.6, color="#FFFFFF"),
                 "unit": _ppt_role(.77, .916, .19, .070, size=12.2, color="#FFFFFF"),
                 "secondary_price": _ppt_role(.05, .729, .48, .035,
                                              size=9, color="#FFFFFF"),
