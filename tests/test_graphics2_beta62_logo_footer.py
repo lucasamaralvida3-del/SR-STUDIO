@@ -44,7 +44,11 @@ def test_original_poster_city_footer_swatch_is_real_image_color(campaign, expect
     artwork = next(
         a for a in builtin_campaign_assets()
         if a["kind"] == "background" and a["campaign_id"] == campaign)
-    assert _footer_color_from_image(artwork["path"]) == expected
+    extracted = _footer_color_from_image(artwork["path"])
+    assert extracted is not None
+    # The built-in WebP is encoded from the measured reference JPEG.
+    assert max(abs(int(extracted[i:i + 2], 16) - int(expected[i:i + 2], 16))
+               for i in (1, 3, 5)) <= 3
 
 
 @pytest.mark.parametrize("campaign,expected", POSTER_FOOTER_COLORS.items())
