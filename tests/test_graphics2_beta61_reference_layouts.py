@@ -180,3 +180,14 @@ def test_multi_cannot_resize_a_non_multi_root():
     s = session()
     with pytest.raises(ValueError, match="faixa Multi real"):
         set_multi_item_count(s, "not-a-real-root", 3)
+
+
+@pytest.mark.parametrize("mode", ["seven", "eleven", "nine", "six", "auto"])
+def test_layout_reserves_real_campaign_validity_footer(mode):
+    plan = plan_promotion(mode, count=8 if mode == "auto" else None)
+    assert max(p.y + p.height for p in plan.placements) <= .93000001
+    s = session()
+    result = apply_slot_composition(s, plan, reuse_existing=False)
+    for root_id in result.root_node_ids:
+        rect = s.page.node(root_id).rect
+        assert rect.bottom <= s.page.height * .93 + .001
