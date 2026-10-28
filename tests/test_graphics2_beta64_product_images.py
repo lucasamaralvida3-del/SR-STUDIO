@@ -97,6 +97,8 @@ def test_qml_exposes_product_interactions():
     assert "auto_fit_product_image" in qml
     assert "onWheel: function(wheel)" in qml
     assert "zoomFromContain: true" in qml
+    # Card controls must remain clickable above the drag hit area.
+    assert "z: 1 // Keep +, − and ★ clickable above the row drag target." in qml
 
 
 def test_legacy_duplicate_automatically_hides_without_losing_its_photo(tmp_path):
