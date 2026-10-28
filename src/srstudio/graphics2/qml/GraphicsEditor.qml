@@ -230,7 +230,10 @@ ApplicationWindow {
         id: sourceImportDialog
         title: "Excel mantém o encarte · PPTX substitui o layout"
         nameFilters: ["Excel/Canva (*.xlsx *.xlsm *.pptx)", "Produtos Excel (*.xlsx *.xlsm)", "Modelos PPTX (*.pptx)"]
-        onAccepted: sceneBridge.importSource(selectedFile.toString())
+        onAccepted: {
+            sceneBridge.importSource(selectedFile.toString())
+            refreshImageBank()
+        }
     }
     function moveActivePage(step) {
         var pages = scene.pages || []
