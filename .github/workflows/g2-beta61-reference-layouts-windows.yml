@@ -227,11 +227,12 @@ jobs:
           cat > /tmp/beta61-notes.md <<'EOF'
           # SR Studio G2 Beta 61 — Layouts de referência com Slots Únicos e Multi 2–8
 
-          - Sugestões por EAN/GTIN, código interno, marca, descrição e medida, sem vínculo automático incerto.
-          - Fila de revisão e confirmação em lote dentro da aba Produtos.
-          - Estados com imagem, aguardando confirmação e sem imagem disponível.
-          - Índice do banco reaproveitado durante a sessão e vínculos aprovados persistentes.
-          - Build Windows, interface Qt e renderização PNG/PDF verificados antes do release.
+          - Layout de 7 ofertas: um Individual grande, dois Slots Únicos e um Multi-4 verdadeiro.
+          - Layout de 11 ofertas: seis Slots Únicos (um maior, dois menores, três intermediários) e Multi-5.
+          - Demais pré-definidos passam a privilegiar os Slots Únicos canônicos, sem cartões falsos.
+          - Multi Itens editável de 2 até 8 produtos, com bloqueio de exclusão de produtos preenchidos.
+          - Reserva a faixa inferior de validade, mantendo preços, fotos e layouts da campanha.
+          - Testes Windows, interface Qt, renderização e SHA-256 aprovados antes da publicação.
           - Canal Stable preservado sem alterações.
           EOF
           gh release create g2-beta-61 \
@@ -240,7 +241,7 @@ jobs:
             release/beta61-provenance.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "SR Studio G2 Beta 61 — Banco SR: fotos da planilha e revisão" \
+            --title "SR Studio G2 Beta 61 — Layouts fiéis e Multi Itens 2–8" \
             --notes-file /tmp/beta61-notes.md \
             --prerelease \
             --latest=false
