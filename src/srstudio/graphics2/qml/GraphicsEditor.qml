@@ -1224,6 +1224,17 @@ ApplicationWindow {
                                 enabled: window.products().length > 0
                                 onClicked: window.previewAutoPromotion()
                             }
+                            Label {
+                                Layout.fillWidth: true
+                                text: {
+                                    var all = window.products()
+                                    var inactive = all.filter(function(p) { return window.inactiveProduct(p) }).length
+                                    var stars = all.filter(function(p) { return !window.inactiveProduct(p) && window.highlightedProduct(p) }).length
+                                    return (all.length - inactive) + " ativos · " + inactive + " inativos · ★ " + stars + " exclusivos"
+                                }
+                                color: "#556783"
+                                font.pixelSize: 10
+                            }
                             RowLayout {
                                 Layout.fillWidth: true
                                 TextField { Layout.fillWidth: true; placeholderText: "⌕  Buscar produtos..."; text: productQuery; onTextChanged: productQuery = text; font.pixelSize: 11 }
@@ -1429,7 +1440,7 @@ ApplicationWindow {
                                             dragging = false
                                         }
                                         onPositionChanged: {
-                                            if (!pressed)
+                                            if (!pressed || productCard.inactive)
                                                 return
                                             var dx = mouse.x - pressX
                                             var dy = mouse.y - pressY
@@ -1457,7 +1468,7 @@ ApplicationWindow {
                                             dragging = false
                                             cancelProductDrag()
                                         }
-                                        onDoubleClicked: if (selectedSlotId) bindProduct(productCard.productData)
+                                        onDoubleClicked: if (selectedSlotId && !productCard.inactive) bindProduct(productCard.productData)
                                         Menu {
                                             id: productActions
                                             MenuItem {
