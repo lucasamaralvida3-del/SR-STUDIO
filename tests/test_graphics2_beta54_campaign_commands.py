@@ -11,7 +11,9 @@ import srstudio.graphics2.qt_host as qt_host
 def test_accepted_campaigns_and_palettes_are_existing_slot_variants():
     assert set(CAMPAIGNS) == {"terca-verde", "quarta-cafe", "quinta-file", "churrasco"}
     assert all(name in THEMES for name in CAMPAIGNS)
-    assert len({THEMES[name] for name in CAMPAIGNS}) == 4
+    # Quinta Filé and Churrasco share the same dark wine city-footer bar.
+    assert THEMES["quinta-file"] == THEMES["churrasco"] == "#460000"
+    assert len({THEMES[name] for name in CAMPAIGNS}) == 3
 
 
 def test_campaign_art_dispatch_accepts_qt_file_url_and_reuses_nodes(tmp_path: Path):
