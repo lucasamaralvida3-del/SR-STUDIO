@@ -2474,6 +2474,22 @@ ApplicationWindow {
                                             ? Math.min(4096, Math.max(1400, Number(modelData.transform.height || 1350) * 1.5)) : -1
                                         smooth: true
                                     }
+                                    SceneImage {
+                                        anchors.fill: parent
+                                        visible: modelData.kind === "image" && !!(modelData.metadata && modelData.metadata.manual_item_slot_child)
+                                        sourceUrl: imageSource(modelData)
+                                        fit: String(modelData.style.fit || "contain")
+                                        imageZoom: Number(modelData.style.zoom || 1)
+                                        zoomFromContain: true
+                                        focusX: Number(modelData.style.focus_x === undefined ? 0.5 : modelData.style.focus_x)
+                                        focusY: Number(modelData.style.focus_y === undefined ? 0.5 : modelData.style.focus_y)
+                                        cropLeft: Number((modelData.style.crop || {}).l || 0)
+                                        cropTop: Number((modelData.style.crop || {}).t || 0)
+                                        cropRight: Number((modelData.style.crop || {}).r || 0)
+                                        cropBottom: Number((modelData.style.crop || {}).b || 0)
+                                        flipX: !!modelData.style.flip_x
+                                        flipY: !!modelData.style.flip_y
+                                    }
                                     MouseArea {
                                         anchors.fill: parent
                                         acceptedButtons: Qt.LeftButton
