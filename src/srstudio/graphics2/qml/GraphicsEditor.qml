@@ -118,6 +118,23 @@ ApplicationWindow {
                       + " páginas em retrato · campanha sugerida: " + autoProposal.campaign_id) : ""
                 color: "#243B64"
             }
+            Label {
+                Layout.fillWidth: true
+                visible: !!autoProposal
+                wrapMode: Text.WordWrap
+                text: {
+                    var active = window.products().filter(function(p) { return !window.inactiveProduct(p) })
+                    var missing = active.filter(function(p) { return window.productImageState(p) !== "linked" })
+                    return missing.length
+                        ? ("ATENÇÃO: " + missing.length + " produto(s) sem foto confirmada. " +
+                           "A montagem deixará espaços vazios nesses Smart Slots. " +
+                           "Use Banco SR ou adicione fotos antes de confirmar.")
+                        : "Todas as fotos dos produtos ativos estão vinculadas."
+                }
+                color: "#A52C19"
+                font.bold: true
+                font.pixelSize: 12
+            }
             RowLayout {
                 Layout.fillWidth: true
                 visible: !!(autoProposal && autoProposal.background_id)
@@ -375,10 +392,13 @@ ApplicationWindow {
     }
 
     function removeCurrentBackground() {
-        if (selectedSlotId !== "")
-            sceneBridge.removeSlotBackground(selectedSlotId)
-        else if (selectedPicture())
+        // Product photo takes precedence over the Smart Slot selection.
+        // Otherwise the command silently changes the slot backplate
+        // instead of the white background inside the imported photo.
+        if (selectedPicture())
             sceneBridge.removeBackground(selectedPicture().id)
+        else if (selectedSlotId !== "")
+            sceneBridge.removeSlotBackground(selectedSlotId)
     }
 
     FileDialog {
@@ -1290,135 +1310,153 @@ ApplicationWindow {
                                     id: productCard
                                     required property var modelData
                                     width: productList.width - 4
-                                    height: Math.max(136, productInformation.implicitHeight + 28)
+                                    height: Math.max(184, productInformation.implicitHeight + 80)
                                     radius: 11
                                     property bool inactive: window.inactiveProduct(productData)
                                     color: inactive ? "#F1F3F7" : (productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF")
                                     border.color: productMouse.dragging ? "#2869EF" : "#DCE5F1"
                                     border.width: productMouse.dragging ? 2 : 1
                                     property var productData: modelData
-                                    RowLayout {
+                                    ColumnLayout {
                                         z: 1 // Keep +, − and ★ clickable above the row drag target.
                                         anchors.fill: parent
                                         anchors.margins: 8
-                                        spacing: 6
-                                        Rectangle {
-                                            Layout.preferredWidth: 76
-                                            Layout.preferredHeight: 92
-                                            Layout.alignment: Qt.AlignVCenter
-                                            radius: 8
-                                            color: "#F8FAFE"
-                                            border.color: "#E8EEF6"
-                                            Image {
-                                                anchors.fill: parent
-                                                anchors.margins: 3
-                                                source: localSource(modelData.image_path || modelData.image || "")
-                                                fillMode: Image.PreserveAspectFit
-                                                asynchronous: true
-                                                cache: true
-                                                smooth: true
-                                            }
-                                        }
-                                        ColumnLayout {
-                                            id: productInformation
+                                        spacing: 5
+                                        RowLayout {
                                             Layout.fillWidth: true
-                                            Layout.alignment: Qt.AlignVCenter
-                                            opacity: productCard.inactive ? 0.53 : 1.0
-                                            spacing: 3
+                                            Layout.fillHeight: true
+                                            spacing: 7
+                                            Rectangle {
+                                                Layout.preferredWidth: productCard.width < 285 ? 60 : 76
+                                                Layout.preferredHeight: 92
+                                                Layout.alignment: Qt.AlignVCenter
+                                                radius: 8
+                                                color: "#F8FAFE"
+                                                border.color: "#E8EEF6"
+                                                Image {
+                                                    anchors.fill: parent
+                                                    anchors.margins: 3
+                                                    source: localSource(modelData.image_path || modelData.image || "")
+                                                    fillMode: Image.PreserveAspectFit
+                                                    asynchronous: true
+                                                    cache: true
+                                                    smooth: true
+                                                }
+                                            }
+                                            ColumnLayout {
+                                                id: productInformation
+                                                Layout.fillWidth: true
+                                                Layout.alignment: Qt.AlignVCenter
+                                                opacity: productCard.inactive ? 0.53 : 1.0
+                                                spacing: 3
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.display_name || modelData.name || modelData.original_name || "Produto"
+                                                    color: "#11234A"
+                                                    font.bold: true
+                                                    font.pixelSize: 12
+                                                    wrapMode: Text.WordWrap
+                                                    maximumLineCount: 3
+                                                    elide: Text.ElideRight
+                                                }
+                                                Label {
+                                                    text: String(modelData.unit || "UN").toUpperCase()
+                                                    color: "#7886A0"; font.pixelSize: 10
+                                                }
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    text: productImageState(modelData) === "linked" ? "Com imagem" :
+                                                          productImageState(modelData) === "pending" ? "Aguardando confirmação" :
+                                                          "Sem imagem disponível"
+                                                    elide: Text.ElideRight
+                                                    color: productImageState(modelData) === "linked" ? "#12805C" :
+                                                           productImageState(modelData) === "pending" ? "#9A6700" : "#64748B"
+                                                    font.pixelSize: 10
+                                                }
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.price ? ("Oferta R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"
+                                                    elide: Text.ElideRight
+                                                    color: "#1154D8"; font.bold: true; font.pixelSize: 12
+                                                }
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    visible: !!(modelData.app_price || modelData.club_price ||
+                                                                modelData.wholesale_price || modelData.retail_price)
+                                                    text: {
+                                                        var extra = modelData.app_price || modelData.club_price ||
+                                                                    modelData.wholesale_price || modelData.retail_price
+                                                        var label = (modelData.app_price || modelData.club_price) ? "Clube SR " :
+                                                                    (modelData.wholesale_price ? "Atacado " : "Varejo ")
+                                                        return label + "R$ " + String(extra || "").replace(".", ",")
+                                                    }
+                                                    elide: Text.ElideRight
+                                                    color: "#B32D18"; font.bold: true; font.pixelSize: 12
+                                                }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 6
                                             Label {
                                                 Layout.fillWidth: true
-                                                text: modelData.display_name || modelData.name || modelData.original_name || "Produto"
-                                                color: "#11234A"
-                                                font.bold: true
-                                                font.pixelSize: 13
-                                                wrapMode: Text.WordWrap
-                                                elide: Text.ElideNone
-                                            }
-                                            Label {
-                                                text: String(modelData.unit || "UN").toUpperCase()
-                                                color: "#7886A0"; font.pixelSize: 11
-                                            }
-                                            Label {
-                                                text: productImageState(modelData) === "linked" ? "Com imagem" :
-                                                      productImageState(modelData) === "pending" ? "Aguardando confirmação" :
-                                                      "Sem imagem disponível"
-                                                color: productImageState(modelData) === "linked" ? "#12805C" :
-                                                       productImageState(modelData) === "pending" ? "#9A6700" : "#64748B"
+                                                text: productCard.inactive ? "Inativo neste encarte" : "Disponível no encarte"
+                                                color: productCard.inactive ? "#9D3140" : "#64748B"
                                                 font.pixelSize: 10
+                                                elide: Text.ElideRight
                                             }
-                                            Label {
-                                                Layout.fillWidth: true
-                                                text: modelData.price ? ("Oferta  R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"
-                                                color: "#1154D8"; font.bold: true; font.pixelSize: 14
-                                            }
-                                            Label {
-                                                Layout.fillWidth: true
-                                                visible: !!(modelData.app_price || modelData.club_price ||
-                                                            modelData.wholesale_price || modelData.retail_price)
-                                                text: {
-                                                    var extra = modelData.app_price || modelData.club_price ||
-                                                                modelData.wholesale_price || modelData.retail_price
-                                                    var label = (modelData.app_price || modelData.club_price) ? "Clube SR  " :
-                                                                (modelData.wholesale_price ? "Atacado  " : "Varejo  ")
-                                                    return label + "R$ " + String(extra || "").replace(".", ",")
+                                            ColumnLayout {
+                                                spacing: 1
+                                                Layout.preferredWidth: 29
+                                                ToolButton {
+                                                    text: "+"
+                                                    font.pixelSize: 17
+                                                    Layout.preferredWidth: 29
+                                                    Layout.preferredHeight: 27
+                                                    ToolTip.visible: hovered
+                                                    ToolTip.text: productCard.inactive ? "Reativar produto" : "Adicionar ao Smart Slot selecionado"
+                                                    onClicked: {
+                                                        window.inspectorProduct = productCard.productData
+                                                        if (productCard.inactive)
+                                                            sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":true,
+                                                                "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
+                                                        else if (selectedSlotId)
+                                                            bindProduct(productCard.productData)
+                                                    }
                                                 }
-                                                color: "#B32D18"; font.bold: true; font.pixelSize: 13
-                                            }
-                                        }
-                                        ColumnLayout {
-                                            spacing: 4
-                                            z: 3
-                                            Layout.preferredWidth: 28
-                                            Layout.alignment: Qt.AlignVCenter
-                                            ToolButton {
-                                                text: "+"
-                                                font.pixelSize: 17
-                                                Layout.preferredWidth: 28
-                                                Layout.preferredHeight: 31
-                                                ToolTip.visible: hovered
-                                                ToolTip.text: productCard.inactive ? "Reativar produto" : "Adicionar ao Smart Slot selecionado"
-                                                onClicked: {
-                                                    window.inspectorProduct = productCard.productData
-                                                    if (productCard.inactive)
-                                                        sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":true,
-                                                            "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
-                                                    else if (selectedSlotId)
-                                                        bindProduct(productCard.productData)
+                                                ToolButton {
+                                                    text: "−"
+                                                    font.pixelSize: 18
+                                                    enabled: !productCard.inactive
+                                                    Layout.preferredWidth: 29
+                                                    Layout.preferredHeight: 27
+                                                    ToolTip.visible: hovered
+                                                    ToolTip.text: "Inativar para esta montagem, inclusive automática"
+                                                    onClicked: sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":false,
+                                                        "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
                                                 }
                                             }
                                             ToolButton {
-                                                text: "−"
-                                                font.pixelSize: 18
+                                                text: window.highlightedProduct(productCard.productData) ? "★" : "☆"
+                                                z: 4
                                                 enabled: !productCard.inactive
-                                                Layout.preferredWidth: 28
-                                                Layout.preferredHeight: 31
+                                                Layout.preferredWidth: 35
+                                                Layout.preferredHeight: 35
+                                                contentItem: Text {
+                                                    text: parent.text
+                                                    color: window.highlightedProduct(productCard.productData) ? "#E6A500" : "#566785"
+                                                    font.pixelSize: 24
+                                                    font.bold: true
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    verticalAlignment: Text.AlignVCenter
+                                                }
                                                 ToolTip.visible: hovered
-                                                ToolTip.text: "Inativar para esta montagem, inclusive automática"
-                                                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":false,
-                                                    "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
+                                                ToolTip.text: "Criar um encarte exclusivo com este produto"
+                                                onClicked: sceneBridge.dispatch(JSON.stringify({
+                                                    "name":"toggle_product_highlight",
+                                                    "product_id":String(productCard.productData.id || productCard.productData.product_id || "")
+                                                }))
                                             }
-                                        }
-                                        ToolButton {
-                                            text: window.highlightedProduct(productCard.productData) ? "★" : "☆"
-                                            z: 4
-                                            enabled: !productCard.inactive
-                                            Layout.alignment: Qt.AlignVCenter
-                                            Layout.preferredWidth: 28
-                                            Layout.preferredHeight: 35
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: window.highlightedProduct(productCard.productData) ? "#E6A500" : "#566785"
-                                                font.pixelSize: 22
-                                                font.bold: true
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
-                                            ToolTip.visible: hovered
-                                            ToolTip.text: "Criar um encarte exclusivo com este produto"
-                                            onClicked: sceneBridge.dispatch(JSON.stringify({
-                                                "name":"toggle_product_highlight",
-                                                "product_id":String(productCard.productData.id || productCard.productData.product_id || "")
-                                            }))
                                         }
                                     }
                                     MouseArea {
@@ -2532,6 +2570,10 @@ ApplicationWindow {
                                                 onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"auto_fit_product_image", "node_id":modelData.id}))
                                             }
                                             MenuItem {
+                                                text: "Remover fundo branco da foto (withoutBG)"
+                                                onTriggered: sceneBridge.removeBackground(modelData.id)
+                                            }
+                                            MenuItem {
                                                 text: "Restaurar zoom"
                                                 onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"crop", "node_id":modelData.id,
                                                     "fit":"contain", "zoom":1.0, "focus_x":0.5, "focus_y":0.5}))
@@ -3238,7 +3280,9 @@ ApplicationWindow {
                                 clip: true
                                 // Miniature representation uses actual document node colors.
                                 Repeater {
-                                    model: Object.values(modelData.nodes || {}).slice(0, 28)
+                                    model: Object.values(modelData.nodes || {})
+                                        .filter(function(n) { return n && n.visible !== false && n.transform && n.kind !== "group" })
+                                        .slice(0, 260)
                                     delegate: Rectangle {
                                         required property var modelData
                                         visible: modelData.visible !== false
@@ -3251,7 +3295,10 @@ ApplicationWindow {
                                 }
                             }
                             Label {
-                                text: modelData.name || ("Página " + (index + 1))
+                                text: modelData.name && modelData.name.indexOf("Montagem automática") === 0
+                                    ? ((modelData.metadata && modelData.metadata.auto_promotion && modelData.metadata.auto_promotion.featured)
+                                        ? ("★ Pág. " + (index + 1)) : ("Pág. " + (index + 1)))
+                                    : (modelData.name || ("Página " + (index + 1)))
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignHCenter
                                 horizontalAlignment: Text.AlignHCenter

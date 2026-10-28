@@ -229,7 +229,7 @@ def apply_promotion(session, proposal: PromotionProposal, products: list[dict]) 
             session.document.add_page(new_page)
             if proposal.background_id:
                 apply_campaign_preset(session, proposal.background_id)
-            reserve = logo_safe_reserve(new_page, .24)
+            reserve = logo_safe_reserve(new_page, .24, document=session.document)
             layout = plan_promotion(planned.mode, count=planned.count,
                                     logo_reserved=reserve)
             result = apply_slot_composition(session, layout, reuse_existing=False)
