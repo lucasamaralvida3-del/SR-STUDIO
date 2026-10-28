@@ -1,7 +1,11 @@
 from srstudio.graphics2.image_suggestions import (
     score_image_candidate, suggest_product_images, image_review_states,
+    approved_link_compatible,
 )
 from srstudio.graphics2.product_image_library import store_product_images_batch, read_product_links
+from srstudio.graphics2.product_image_library import store_product_image, apply_stored_product_links
+from srstudio.graphics2.legacy_image_bank_bridge import complete_product_image
+from srstudio.graphics2.model import GraphicsDocument
 from PIL import Image
 import pytest
 
@@ -50,3 +54,22 @@ def test_review_states_distinguish_linked_pending_and_unavailable():
     assert image_review_states(products, images) == {
         "A": "linked", "B": "pending", "C": "missing",
     }
+
+
+def test_reused_sku_requires_compatible_product_description_and_pack():
+    link = {"name": "CAFÉ BOM 500G"}
+    assert approved_link_compatible({"name": "CAFÉ BOM 500G EXTRA FORTE"}, link)
+    assert not approved_link_compatible({"name": "CAFÉ BOM 1KG"}, link)
+    assert not approved_link_compatible({"name": "ARROZ BRANCO 500G"}, link)
+
+
+def test_wrong_pack_with_reused_sku_does_not_auto_link(tmp_path):
+    photo = tmp_path / "cafe.png"
+    Image.new("RGB", (20, 20), "brown").save(photo)
+    link = store_product_image("SKU-1", "CAFÉ BOM 500G", str(photo), root=tmp_path / "bank")
+    changed = {"id": "SKU-1", "name": "CAFÉ BOM 1KG"}
+    assert "image_path" not in complete_product_image(changed, manual_links={"SKU-1": link},
+                                                       root=tmp_path / "missing-legacy")
+    document = GraphicsDocument()
+    document.metadata["products"] = [changed]
+    assert apply_stored_product_links(document, root=tmp_path / "bank") == 0

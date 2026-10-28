@@ -119,3 +119,21 @@ def image_review_states(products: list[dict[str, Any]],
         states[key] = ("pending" if any(score_image_candidate(product, images[i])["score"]
                                        for i in choices) else "missing")
     return states
+
+
+def approved_link_compatible(product: dict[str, Any], link: dict[str, Any]) -> bool:
+    """Do not reuse a confirmed SKU image for a plainly different package."""
+    old = _plain(link.get("name"))
+    new = _plain(product.get("name") or product.get("display_name") or product.get("original_name"))
+    if not old or not new:
+        return True  # Historical links may predate descriptive names.
+    old_measure, new_measure = _measure(old), _measure(new)
+    if old_measure and old_measure != new_measure:
+        return False
+    old_words = {word for word in re.findall(r"[A-Z0-9]+", old)
+                 if len(word) >= 3 and not word.isdigit()}
+    new_words = {word for word in re.findall(r"[A-Z0-9]+", new)
+                 if len(word) >= 3 and not word.isdigit()}
+    if not old_words or not new_words:
+        return True
+    return len(old_words & new_words) >= min(2, len(old_words)) and len(old_words & new_words) * 4 >= len(old_words) * 3

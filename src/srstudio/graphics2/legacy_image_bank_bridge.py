@@ -152,7 +152,9 @@ def complete_product_image(product: dict[str, Any], *,
         manual_links = read_product_links()
     key = str(payload.get("id") or payload.get("product_id") or "").strip()
     manual = manual_links.get(key)
-    if manual and Path(str(manual.get("image_path") or "")).is_file():
+    from .image_suggestions import approved_link_compatible
+    if (manual and approved_link_compatible(payload, manual)
+            and Path(str(manual.get("image_path") or "")).is_file()):
         payload.update({
             "image_path": manual["image_path"],
             "image": manual["image_path"],

@@ -142,6 +142,7 @@ def read_product_links(*, root: Path | None = None) -> dict[str, dict]:
 def apply_stored_product_links(document, *, root: Path | None = None) -> int:
     """Hydrate product thumbnails after relaunch/import; retain each item's own name."""
     records = read_product_links(root=root)
+    from .image_suggestions import approved_link_compatible
     products = document.metadata.get("products") or []
     changed = 0
     for product in products:
@@ -149,7 +150,8 @@ def apply_stored_product_links(document, *, root: Path | None = None) -> int:
             continue
         key = str(product.get("id") or product.get("product_id") or "").strip()
         entry = records.get(key)
-        if entry is not None and product.get("image_path") != entry["image_path"]:
+        if (entry is not None and approved_link_compatible(product, entry)
+                and product.get("image_path") != entry["image_path"]):
             product["image_path"] = entry["image_path"]
             product["image"] = entry["image_path"]
             product["image_linked_by"] = "product_id"
