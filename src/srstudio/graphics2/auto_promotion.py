@@ -103,15 +103,76 @@ def _layout(count: int) -> str:
     return "auto"
 
 
-def _campaign_hint(source: str, existing: str) -> str:
-    text = source.casefold()
-    for token, campaign in (("terca", "terca-verde"), ("terça", "terca-verde"),
-                            ("cafe", "quarta-cafe"), ("café", "quarta-cafe"),
-                            ("file", "quinta-file"), ("filé", "quinta-file"),
-                            ("churrasco", "churrasco"), ("acougue", "churrasco")):
-        if token in text:
+def _campaign_hint(source: str, existing: str, products: list[dict] | None = None) -> str:
+    """Prefer an explicit campaign name, then classify the ACTIVE spreadsheet.
+
+    Generic spreadsheet filenames (e.g. 'ofertas.xlsx') tell us nothing.
+    Only positive category/product evidence can select a campaign, and ties
+    defer to the user's existing choice instead of inventing a theme.
+    """
+    import re
+    import unicodedata
+
+    def words(value: object) -> set[str]:
+        lowered = unicodedata.normalize("NFKD", str(value or "").casefold())
+        ascii_text = "".join(c for c in lowered if not unicodedata.combining(c))
+        return set(re.findall(r"[a-z]+", ascii_text))
+
+    basename = re.split(r"[/\\]", str(source or ""))[-1]
+    filename_tokens = words(Path(basename).stem)
+    for tokens, campaign in (
+        ({"churrasco", "acougue"}, "churrasco"),
+        ({"terca", "verde"}, "terca-verde"),
+        ({"quarta", "cafe"}, "quarta-cafe"),
+        ({"quinta", "file"}, "quinta-file"),
+    ):
+        if tokens <= filename_tokens:
             return campaign
-    return existing if existing in {"terca-verde", "quarta-cafe", "quinta-file", "churrasco"} else "terca-verde"
+    explicit = {
+        "churrasco": "churrasco", "acougue": "churrasco",
+        "cafe": "quarta-cafe", "file": "quinta-file",
+    }
+    for token, campaign in explicit.items():
+        if token in filename_tokens:
+            return campaign
+
+    meat = {"carne", "carnes", "acem", "bife", "bifes", "bifao",
+            "coxao", "coxa", "sobrecoxa", "costela", "costelinha",
+            "frango", "pernil", "linguica", "picanha", "alcatra",
+            "patinho", "contrafile", "suina", "suino", "bovina",
+            "bovino", "mocotó", "mocoto", "paleta", "maminha"}
+    produce = {"fruta", "frutas", "verdura", "verduras", "hortifruti",
+               "hortifrutis", "legume", "legumes", "maca", "banana",
+               "tomate", "batata", "vagem", "melancia", "manga",
+               "abacaxi", "morango", "cenoura", "repolho", "alface",
+               "laranja", "limao", "cebola", "abacate", "coco",
+               "pepino", "melao", "mandioca", "beterraba"}
+    coffee = {"cafe", "cafes"}
+    votes = {"quinta-file": 0, "terca-verde": 0, "quarta-cafe": 0}
+    for product in products or []:
+        if not isinstance(product, dict):
+            continue
+        text = " ".join(str(product.get(field) or "") for field in (
+            "name", "display_name", "original_name", "category",
+            "department", "department_name", "segment", "section"))
+        tokens = words(text)
+        categories = []
+        if tokens & meat:
+            categories.append("quinta-file")
+        if tokens & produce:
+            categories.append("terca-verde")
+        if tokens & coffee:
+            categories.append("quarta-cafe")
+        # A mixed product is ambiguous; don't double-count it.
+        if len(categories) == 1:
+            votes[categories[0]] += 1
+    winning = max(votes.values())
+    leaders = [campaign for campaign, count in votes.items() if count == winning]
+    if winning and len(leaders) == 1:
+        return leaders[0]
+    return (existing if existing in
+            {"terca-verde", "quarta-cafe", "quinta-file", "churrasco"}
+            else "terca-verde")
 
 
 def propose_promotion(products: list[dict], highlights: set[str], *,
@@ -128,7 +189,7 @@ def propose_promotion(products: list[dict], highlights: set[str], *,
     for size in _page_sizes(len(ordinary)):
         pages.append(ProposedPage(_layout(size), tuple(ordinary[offset:offset + size])))
         offset += size
-    campaign = _campaign_hint(source, existing_campaign)
+    campaign = _campaign_hint(source, existing_campaign, products)
     background_id = ""
     logo_id = ""
     try:
