@@ -59,7 +59,7 @@ DATE_PLACEMENTS = {
 }
 
 
-def logo_safe_reserve(page, requested: float, *, gap: float = .028) -> float:
+def logo_safe_reserve(page, requested: float, *, gap: float = .028, document=None) -> float:
     """Return a campaign-aware reserved region ABOVE all layout Smart Slots.
 
     Derive the live seal's bottom edge from its real edited geometry; respect
@@ -71,7 +71,17 @@ def logo_safe_reserve(page, requested: float, *, gap: float = .028) -> float:
     seal_id = str(page.metadata.get("campaign_seal_node") or "")
     seal = page.node(seal_id) if seal_id else None
     if seal is not None and seal.visible and seal.metadata.get("campaign_art") == "seal":
-        required = max(required, seal.rect.normalized().bottom / page.height + gap)
+        bounds = seal.rect.normalized()
+        visible_bottom = bounds.bottom
+        if document is not None:
+            # Campaign seals often contain large transparent margins. Reserve
+            # only the real visible artwork (including anti-aliased edges),
+            # not the entire PNG canvas. This never moves or clips the logo.
+            from .image_autofit import fitted_product_source, visible_product_crop
+            crop = visible_product_crop(fitted_product_source(document, seal))
+            if crop:
+                visible_bottom -= bounds.height * float(crop.get("b", 0.0))
+        required = max(required, visible_bottom / page.height + gap)
     elif page.metadata.get("campaign_background_node"):
         campaign = str(page.metadata.get("campaign_id") or "")
         if campaign in SEAL_PLACEMENTS:
