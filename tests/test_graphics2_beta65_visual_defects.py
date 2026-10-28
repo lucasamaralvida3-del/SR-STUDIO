@@ -73,3 +73,12 @@ def test_alpha_padded_campaign_seal_does_not_push_offers_down(tmp_path):
     fixed = logo_safe_reserve(page, .24, document=document)
     assert original > .35
     assert fixed == .24
+
+
+def test_release_keeps_betachannel_guarded_and_untouched_stable():
+    # Protect the rollout from a stale Beta or a mistaken Stable promotion.
+    script = (ROOT.parents[2] / "tools" / "promote_g2_beta65_launcher.py").read_text(encoding="utf-8")
+    assert 'VERSION = "5.0.0-hybrid.g2beta.65"' in script
+    assert 'base.get("version") != "5.0.0-hybrid.g2beta.64"' in script
+    assert '"channel": "beta"' in script
+    assert '"previous_version": base["version"]' in script
