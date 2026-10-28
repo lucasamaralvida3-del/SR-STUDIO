@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-"""Editable 5/6-product horizontal promotional strips for SR Studio G2."""
+"""Editable 2–8-product horizontal promotional strips for SR Studio G2."""
 
 from .item_slots import create_item_slot
 from .model import GraphicsNode, NodeKind, Transform
@@ -14,8 +14,8 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
     complete strip. Each cell is also a normal ItemSlot with an independent
     product and optional second price; no product IDs are shared.
     """
-    if count not in (5, 6):
-        raise ValueError("O Smart Slot Multi Itens aceita 5 ou 6 produtos.")
+    if isinstance(count, bool) or not isinstance(count, int) or not 2 <= count <= 8:
+        raise ValueError("O Smart Slot Multi Itens aceita de 2 a 8 produtos.")
     if price_mode not in ("auto", "one", "two"):
         raise ValueError("Modo de preços inválido.")
     page = session.page
@@ -56,7 +56,7 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
         )
         page.add_node(footer, parent_id=root.id)
 
-    # Five equal columns in source. A single uninterrupted price ribbon.
+    # Any 2–8 equal cells use the SAME canonical Multi cell and common ribbon.
     gap = 0.0
     cell_width = width / count
     child_ids: list[str] = []
@@ -113,3 +113,90 @@ def create_multi_item_strip(session, *, count: int = 6, price_mode: str = "auto"
     session.anchor_id = root.id
     return {"root_node_id": root.id, "slot_ids": child_ids,
             "count": count, "price_mode": price_mode}
+
+
+def set_multi_item_count(session, root_id: str, count: int) -> dict:
+    """Change a real Multi ribbon to 2–8 cells without replacing bound products.
+
+    Keeps all existing cell IDs, product bindings, artwork and original ribbon.
+    Shrinking fails *before any mutation* if a discarded cell has a product.
+    """
+    if isinstance(count, bool) or not isinstance(count, int) or not 2 <= count <= 8:
+        raise ValueError("A faixa Multi aceita de 2 a 8 produtos.")
+    page = session.page
+    root = page.node(str(root_id))
+    if root is None or not root.metadata.get("multi_slot_beta44"):
+        raise ValueError("Selecione uma faixa Multi real.")
+    ids = list(root.metadata.get("child_slot_ids") or [])
+    if not ids or any(sid not in page.slots for sid in ids):
+        raise ValueError("Os componentes da faixa Multi estão incompletos.")
+    if any(page.slots[sid].product_id for sid in ids[count:]):
+        raise ValueError(
+            "Não é possível diminuir a faixa: existem produtos nos espaços "
+            "que seriam removidos. Retire ou reorganize esses produtos primeiro."
+        )
+    if count == len(ids):
+        return {"root_node_id": root.id, "slot_ids": ids, "count": count}
+    from .model import Rect
+    from .item_slots import create_item_slot
+
+    with session.transaction("Ajustar faixa Multi Itens"):
+        if count < len(ids):
+            for sid in ids[count:]:
+                child_id = str(page.slots[sid].metadata["root_node_id"])
+                page.remove_node(child_id, recursive=True)
+            ids = ids[:count]
+        while len(ids) < count:
+            slot = create_item_slot(session, "multi-cell-beta44",
+                                    x=root.rect.x, y=root.rect.y)
+            child_root_id = str(slot.metadata["root_node_id"])
+            child_root = page.node(child_root_id)
+            page.roots.remove(child_root_id)
+            child_root.parent_id = root.id
+            root.children.append(child_root_id)
+            slot.metadata["multi_parent_id"] = root.id
+            slot.metadata["price_mode"] = root.metadata.get("price_mode", "auto")
+            ids.append(slot.id)
+
+        bounds = root.rect.normalized()
+        width = bounds.width / count
+        for index, sid in enumerate(ids):
+            slot = page.slots[sid]
+            slot.metadata["multi_parent_id"] = root.id
+            slot.metadata["multi_index"] = index
+            slot.metadata["multi_count"] = count
+            child_id = str(slot.metadata["root_node_id"])
+            child = page.node(child_id)
+            current = child.rect.normalized()
+            session._scale_tree(child_id, current, Rect(
+                bounds.x + index * width, bounds.y, width, bounds.height))
+
+        # Rebuild ONLY dividers; do not touch the common rounded ribbon.
+        for nid in list(root.children):
+            item = page.node(nid)
+            if item is not None and item.name.startswith("Divisor "):
+                page.remove_node(nid)
+        for index in range(1, count):
+            divider = GraphicsNode(
+                kind=NodeKind.RECT,
+                name=f"Divisor {index}",
+                transform=Transform(
+                    x=bounds.x + index * width - 1.2,
+                    y=bounds.y + bounds.height * .14,
+                    width=2.4, height=bounds.height * .47),
+                z_index=8,
+                style={"fill": "#105594", "stroke_width": 0},
+                metadata={"multi_item_decoration": True},
+            )
+            # Keep the currently selected campaign theme.
+            footer = next((page.node(nid) for nid in root.children
+                           if page.node(nid).name == "Faixa azul contínua"), None)
+            if footer is not None:
+                divider.style["fill"] = footer.style.get("fill", "#105594")
+            page.add_node(divider, parent_id=root.id)
+        root.metadata["multi_count"] = count
+        root.metadata["child_slot_ids"] = ids
+        root.name = f"Smart Slot Multi Itens — {count} produtos"
+    session.selection = {root.id}
+    session.anchor_id = root.id
+    return {"root_node_id": root.id, "slot_ids": ids, "count": count}
