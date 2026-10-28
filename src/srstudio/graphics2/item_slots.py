@@ -1043,7 +1043,12 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
             # New catalog photo: fit inside its existing product rectangle
             # without changing the artwork, title or price transforms.
             image_node.style["fit"] = "contain"
-            image_node.style.pop("crop", None)
+            from .image_autofit import fitted_product_source, visible_product_crop
+            crop = visible_product_crop(fitted_product_source(session.document, image_node))
+            if crop:
+                image_node.style["crop"] = crop
+            else:
+                image_node.style.pop("crop", None)
             image_node.style.pop("fill_rect", None)
             image_node.style["zoom"] = 1.0
             image_node.style["focus_x"] = 0.5
@@ -1071,9 +1076,15 @@ def bind_product_to_item_slot(session: GraphicsSession, slot_id: str, product: d
         if image_node.metadata.get("bound_image_source"):
             repeated_image.metadata["bound_image_source"] = image_node.metadata["bound_image_source"]
         repeated_image.metadata["placeholder"] = image_node.metadata.get("placeholder", True)
-        # The new two-price Individual PPTX has one large product; only
-        # the one-price variant uses the overlapping repeated copy.
-        repeated_image.visible = (image_node.visible and
-                                  slot.metadata.get("price_variant") != "two")
+        repeated_image.style["fit"] = image_node.style.get("fit", "contain")
+        repeated_image.style["zoom"] = image_node.style.get("zoom", 1.0)
+        if image_node.style.get("crop"):
+            repeated_image.style["crop"] = copy.deepcopy(image_node.style["crop"])
+        else:
+            repeated_image.style.pop("crop", None)
+        # One product picture is the default in every Individual price variant.
+        # A second cutout appears ONLY by explicit user choice in the editor.
+        slot.metadata.setdefault("image_count", 1)
+        repeated_image.visible = bool(image_node.visible and slot.metadata["image_count"] == 2)
     refresh_item_slot_metadata(session.page, slot)
     return True
