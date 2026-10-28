@@ -221,11 +221,14 @@ class ItemSlotCommandRouter(GraphicsCommandRouter):
         if name == "apply_promotion_layout":
             from .promotion_layouts import plan_promotion
             from .promotion_composition import apply_slot_composition
+            from .campaign_tools import logo_safe_reserve
             try:
+                effective_reserve = logo_safe_reserve(
+                    self.session.page, float(command.get("logo_reserved", 0.24)))
                 plan = plan_promotion(
                     str(command.get("mode") or "auto"),
                     count=command.get("count"),
-                    logo_reserved=float(command.get("logo_reserved", 0.24)),
+                    logo_reserved=effective_reserve,
                     variation=int(command.get("variation", 0)),
                 )
                 with self.session.transaction("Organizar layout com Smart Slots"):
