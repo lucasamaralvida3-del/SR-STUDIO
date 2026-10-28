@@ -1029,7 +1029,7 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 TextField { Layout.fillWidth: true; placeholderText: "⌕  Buscar produtos..."; text: productQuery; onTextChanged: productQuery = text; font.pixelSize: 11 }
-                                ToolButton { text: "▽"; onClicked: productFilter = productFilter === "Sem imagem" ? "Todos os produtos" : "Sem imagem" }
+                                ToolButton { text: "▽"; onClicked: productFilter = productFilter === "Sem imagem disponível" ? "Todos os produtos" : "Sem imagem disponível" }
                             }
                             ComboBox {
                                 Layout.fillWidth: true
@@ -1042,7 +1042,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: {
                                         var all = products()
-                                        var count = all.filter(function(p) { return !!(p.image_path || p.image) }).length
+                                        var count = all.filter(function(p) { return productImageState(p) === "linked" }).length
                                         return "Fotos encontradas: " + count + " / " + all.length
                                     }
                                     color: "#536783"; font.pixelSize: 11
