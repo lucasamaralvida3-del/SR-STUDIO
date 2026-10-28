@@ -154,3 +154,29 @@ def test_multi_count_command_validates_user_input_without_mutation():
                       "count": 9})
     assert not bad.ok
     assert s.document.to_dict() == original
+
+
+def test_multi_variations_and_layout_labels_are_exposed_in_editor():
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[1] / "src/srstudio/graphics2"
+    qml = (root / "qml/GraphicsEditor.qml").read_text("utf-8")
+    assert 'from: 2; to: 8; value: 5; editable: true' in qml
+    assert 'name":"set_multi_item_count"' in qml
+    assert 'name":"apply_promotion_layout"' in qml
+    assert '7 · Individual + 2 Únicos + Multi-4' in qml
+    assert '11 · 6 Únicos + Multi-5' in qml
+
+
+def test_multi_resize_is_idempotent_at_same_size():
+    s = session()
+    multi = create_multi_item_strip(s, count=8, price_mode="two")
+    before = s.document.to_dict()
+    updated = set_multi_item_count(s, multi["root_node_id"], 8)
+    assert updated["slot_ids"] == multi["slot_ids"]
+    assert s.document.to_dict() == before
+
+
+def test_multi_cannot_resize_a_non_multi_root():
+    s = session()
+    with pytest.raises(ValueError, match="faixa Multi real"):
+        set_multi_item_count(s, "not-a-real-root", 3)
