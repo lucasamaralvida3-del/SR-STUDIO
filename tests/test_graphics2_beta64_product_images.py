@@ -97,3 +97,27 @@ def test_qml_exposes_product_interactions():
     assert "auto_fit_product_image" in qml
     assert "onWheel: function(wheel)" in qml
     assert "zoomFromContain: true" in qml
+
+
+def test_legacy_duplicate_automatically_hides_without_losing_its_photo(tmp_path):
+    path = tmp_path / "legacy.png"
+    Image.new("RGBA", (80, 80), (42, 150, 200, 255)).save(path)
+    session = GraphicsSession(GraphicsDocument())
+    slot = create_item_slot(session, "individual-beta44")
+    bind_product_to_item_slot(session, slot.id, product("LEGACY", str(path)))
+    duplicate = session.page.node(slot.metadata["image_repeat_node_id"])
+    # Simulates a saved Beta63 project with two visible images and no count flag.
+    duplicate.visible = True
+    slot.metadata.pop("image_count", None)
+    reopened = GraphicsSession(GraphicsDocument.from_dict(session.document.to_dict()))
+    router = GraphicsCommandRouter(reopened)
+    old = reopened.page.slots[slot.id]
+    repeated = reopened.page.node(old.metadata["image_repeat_node_id"])
+    assert not repeated.visible and repeated.asset_id
+    assert old.metadata["image_count"] == 1
+    assert router.dispatch({"name": "set_product_image_count", "slot_id":slot.id, "count":2}).ok
+    assert repeated.visible
+    assert router.dispatch({"name":"set_item_price_mode", "slot_id":slot.id, "mode":"one"}).ok
+    assert repeated.visible
+    assert router.dispatch({"name":"set_item_price_mode", "slot_id":slot.id, "mode":"two"}).ok
+    assert repeated.visible
