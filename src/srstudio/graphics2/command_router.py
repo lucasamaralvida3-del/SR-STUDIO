@@ -63,6 +63,7 @@ class GraphicsCommandRouter:
             "snap": asdict(self.snap),
             "products": list(self.session.document.metadata.get("products") or []),
             "highlighted_product_ids": sorted(HighlightStore().codes()),
+            "inactive_product_codes": sorted(set(self.session.document.metadata.get("inactive_product_codes") or [])),
             "integrity_repair": self.integrity_repair.to_dict(),
         }
         if self._campaign_assets_cache is None:
@@ -429,12 +430,37 @@ class GraphicsCommandRouter:
                 proposal = propose_promotion(
                     products, HighlightStore().codes(),
                     source=str(self.session.document.metadata.get("product_catalog_source") or ""),
-                    existing_campaign=str(self.session.page.metadata.get("campaign_id") or ""))
+                    existing_campaign=str(self.session.page.metadata.get("campaign_id") or ""),
+                    excluded_codes=set(self.session.document.metadata.get("inactive_product_codes") or []))
                 if name == "preview_auto_promotion":
                     return CommandResult(True, False, "Prévia da montagem preparada.", proposal.as_dict())
                 page_ids = apply_promotion(self.session, proposal, products)
                 return CommandResult(True, True, "Montagem criada em páginas editáveis.",
                                      {**proposal.as_dict(), "page_ids": page_ids})
+            if name == "set_product_active":
+                from .auto_promotion import product_code
+                product_id = str(command.get("product_id") or "")
+                product = next((p for p in self.session.document.metadata.get("products", [])
+                                if isinstance(p, dict) and str(p.get("id") or p.get("product_id") or "") == product_id), None)
+                if product is None:
+                    return CommandResult(False, False, "Produto não encontrado na planilha.")
+                code = product_code(product)
+                if not code:
+                    return CommandResult(False, False, "Produto sem código estável.")
+                active = bool(command.get("active", True))
+                disabled = set(self.session.document.metadata.get("inactive_product_codes") or [])
+                already_active = code not in disabled
+                if already_active == active:
+                    return CommandResult(True, False, "Estado do produto preservado.",
+                                         {"product_id": product_id, "code": code, "active": active})
+                with self.session.transaction("Ativar produto" if active else "Inativar produto neste encarte"):
+                    if active:
+                        disabled.discard(code)
+                    else:
+                        disabled.add(code)
+                    self.session.document.metadata["inactive_product_codes"] = sorted(disabled)
+                return CommandResult(True, True, "Produto reativado." if active else "Produto inativado neste encarte.",
+                                     {"product_id": product_id, "code": code, "active": active})
             if name == "toggle_product_highlight":
                 from .auto_promotion import HighlightStore, product_code
                 product_id = str(command.get("product_id") or "")
