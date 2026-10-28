@@ -62,7 +62,8 @@ def test_unico_created_after_campaign_has_colored_shapes_and_white_text():
     assert added.ok
     shapes = [n for n in r.session.page.nodes.values() if n.metadata.get("limpeza_blue_role") in ("outer_frame", "promotion_background", "club_background")]
     assert len(shapes) == 3
-    assert all(n.style["fill"] == "#78441F" for n in shapes)
+    # Beta62 authentic Quarta Café bar is #704A33, not the old preset #78441F.
+    assert all(n.style["fill"] == "#704A33" for n in shapes)
 
 def ink_bounds(node):
     n = deepcopy(node)
