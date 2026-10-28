@@ -195,6 +195,7 @@ def test_auto_pages_remain_portrait_and_old_project_roundtrips():
 
 
 def test_auto_promotion_renders_png_and_pdf(tmp_path):
+    pytest.importorskip("PySide6")
     from srstudio.graphics2.qt_renderer import render_pdf, render_png
     from pypdf import PdfReader
     session = GraphicsSession(GraphicsDocument())
