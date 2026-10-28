@@ -1298,6 +1298,7 @@ ApplicationWindow {
                                     border.width: productMouse.dragging ? 2 : 1
                                     property var productData: modelData
                                     RowLayout {
+                                        z: 1 // Keep +, − and ★ clickable above the row drag target.
                                         anchors.fill: parent
                                         anchors.margins: 8
                                         spacing: 6
