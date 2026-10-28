@@ -127,7 +127,14 @@ def campaign_footer_theme(document, page, campaign_id: str) -> str:
     asset = document.assets.get(str(background.asset_id or ""))
     if asset is None:
         return fallback
-    return _footer_color_from_image(asset.source) or fallback
+    measured = _footer_color_from_image(asset.source)
+    if not measured:
+        return fallback
+    # JPEG→WebP poster packing may change RGB by 1–3 levels. Retain the
+    # certified original swatch if measured and source differ only by codec.
+    distance = max(abs(int(measured[i:i + 2], 16) - int(fallback[i:i + 2], 16))
+                   for i in (1, 3, 5))
+    return fallback if distance <= 3 else measured
 
 
 def _date_geometry(page, campaign_id):
