@@ -46,3 +46,30 @@ def test_image_replacement_stays_manual_for_unavailable_photos():
     # Distinguish missing photos in the UI, avoid choosing a random product.
     assert '"Sem imagem disponível"' in QML
     assert '"Banco SR"' in QML
+
+
+def test_alpha_padded_campaign_seal_does_not_push_offers_down(tmp_path):
+    from types import SimpleNamespace
+    from PIL import Image, ImageDraw
+    from srstudio.graphics2.model import Rect
+    from srstudio.graphics2.campaign_tools import logo_safe_reserve
+    path = tmp_path / "padded-logo.png"
+    image = Image.new("RGBA", (400, 400), (0, 0, 0, 0))
+    ImageDraw.Draw(image).rectangle((40, 20, 360, 100), fill=(200, 20, 20, 255))
+    image.save(path)
+    seal = SimpleNamespace(
+        visible=True,
+        metadata={"campaign_art": "seal", "bound_image_source": str(path)},
+        rect=Rect(380, 30, 620, 475),
+        asset_id="",
+    )
+    page = SimpleNamespace(
+        height=1350,
+        metadata={"campaign_seal_node": "seal"},
+        node=lambda _id: seal,
+    )
+    document = SimpleNamespace(assets={})
+    original = logo_safe_reserve(page, .24)
+    fixed = logo_safe_reserve(page, .24, document=document)
+    assert original > .35
+    assert fixed == .24
