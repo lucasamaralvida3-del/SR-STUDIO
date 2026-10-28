@@ -365,6 +365,17 @@ class GraphicsCommandRouter:
                     price_mode=str(command.get("price_mode") or "auto"),
                     x=_optional_float(command, "x"), y=_optional_float(command, "y"))
                 return CommandResult(True, True, "Faixa Multi adicionada.", result)
+            if name == "set_multi_item_count":
+                from .multi_item_strip import set_multi_item_count
+                root_id = str(command.get("root_node_id") or "")
+                requested = command.get("count")
+                if isinstance(requested, bool) or not isinstance(requested, int):
+                    raise ValueError("Informe um número inteiro entre 2 e 8.")
+                updated = set_multi_item_count(self.session, root_id, requested)
+                return CommandResult(
+                    True, True, f"Faixa Multi ajustada para {requested} produtos.",
+                    updated,
+                )
             if name == "duplicate_slot":
                 slot_id = str(command.get("slot_id") or "")
                 slot = self.session.page.slots.get(slot_id)
