@@ -124,8 +124,9 @@ def test_products_panel_is_wider_but_remains_resizable_and_remembers_size():
     host = (root / "qt_host.py").read_text("utf-8")
     assert "SplitView.maximumWidth: 565" in qml
     assert "productSidebarWidth: sceneBridge.productSidebarWidth" in qml
-    assert "Layout.preferredWidth: 84" in qml
-    assert "Layout.preferredHeight: 96" in qml
+    # Beta64 frees room for +, − and ★ in the product row.
+    assert "Layout.preferredWidth: 76" in qml
+    assert "Layout.preferredHeight: 92" in qml
     assert "saveProductSidebarWidth" in qml and "QSettings" in host
     assert "refreshProductImages()" in qml
     assert "Fotos encontradas:" in qml
