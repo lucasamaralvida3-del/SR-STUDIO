@@ -912,6 +912,21 @@ def _draw_image(painter, document: GraphicsDocument, page: GraphicsPage, node: G
             return
         iw, ih = float(image.width()), float(image.height())
         tw, th = max(0.1, target.width()), max(0.1, target.height())
+        if node.metadata.get("manual_item_slot_child") and fit == "contain" and zoom > 1.0001:
+            # Smooth product-only zoom: start from 'contain', not the abrupt
+            # legacy jump to 'cover'. Clip to the product rectangle so price
+            # badges and neighboring Smart Slots cannot be covered.
+            factor = min(tw / iw, th / ih) * zoom
+            dw, dh = iw * factor, ih * factor
+            painter.save()
+            try:
+                painter.setClipRect(target)
+                painter.drawImage(QtCore.QRectF(
+                    target.x() + (tw - dw) * focus_x,
+                    target.y() + (th - dh) * focus_y, dw, dh), image)
+            finally:
+                painter.restore()
+            return
         if fit == "cover" or zoom > 1.0001:
             scale = max(tw / iw, th / ih) * zoom
             source_w = min(iw, tw / scale)
