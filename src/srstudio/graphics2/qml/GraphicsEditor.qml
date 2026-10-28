@@ -26,6 +26,10 @@ ApplicationWindow {
     property string productFilter: "Todos os produtos"
     // ListView virtualizes delegates, so all spreadsheet products remain scrollable.
     property var imageBankInventory: ({"images":[],"counts":{}})
+    property var imageReviewStates: ({})
+    property int reviewProductCount: 0
+    property var imageBankSuggestions: []
+    property var imageBankScores: ({})
     property string imageBankQuery: ""
     property string imageBankStatus: "Todos"
     property string imageBankTargetProductId: ""
@@ -33,6 +37,7 @@ ApplicationWindow {
     property bool showProductImageReview: false
     property bool imageBankShowAll: false
     property var bankSelectedImage: null
+    property var bankReviewQueue: []
     property bool bankDownloadStarted: false
 
     function openImageReviewFor(product) {
@@ -63,32 +68,7 @@ ApplicationWindow {
     }
 
     function bankSuggestionScore(entry) {
-        if (!imageBankTargetProductId)
-            return 0
-        var id = String(imageBankTargetProductId || "").toLocaleUpperCase().trim()
-        var product = plainBankName(imageBankTargetProductName)
-        var title = plainBankName(entry.name)
-        var code = String(entry.product_id || "").toLocaleUpperCase().trim()
-        if (code && code === id)
-            return 100
-        if (!title || title === "IMAGEM SEM IDENTIFICAÇÃO")
-            return 0
-        if (title === product)
-            return 90
-        // Display suggestions only. Actual linkage requires a preview and
-        // explicit confirmation. Do not assign by fuzzy name alone.
-        var relevant = product.replace(/[^A-Z0-9 ]/g, " ").split(/\s+/)
-            .filter(function(word) { return word.length >= 4 })
-        var hits = relevant.filter(function(word) { return title.indexOf(word) >= 0 }).length
-        if (hits < 2)
-            return 0
-        // If both names expose package measures, mismatches are rejected.
-        var sizesProduct = product.match(/\b\d+(?:[.,]\d+)?\s*(?:KG|G|ML|L|UN)\b/g) || []
-        var sizesImage = title.match(/\b\d+(?:[.,]\d+)?\s*(?:KG|G|ML|L|UN)\b/g) || []
-        if (sizesProduct.length && sizesImage.length &&
-            sizesProduct[0].replace(/\s/g, "") !== sizesImage[0].replace(/\s/g, ""))
-            return 0
-        return hits * 10
+        return Number(imageBankScores[String(entry.id || "")] || 0)
     }
 
     // The bank is internal; only linked spreadsheet products are shown in Produtos.
@@ -96,14 +76,26 @@ ApplicationWindow {
     function refreshImageBank() {
         try {
             imageBankInventory = JSON.parse(sceneBridge.imageBankJson())
+            imageReviewStates = JSON.parse(sceneBridge.imageReviewStatesJson())
+            reviewProductCount = products().length
+            refreshImageSuggestions()
         } catch (error) {
             imageBankInventory = {"images":[], "counts":{}, "error":String(error)}
         }
     }
 
+    function refreshImageSuggestions() {
+        imageBankSuggestions = imageBankTargetProductId ?
+            JSON.parse(sceneBridge.imageSuggestionsJson(imageBankTargetProductId)) : []
+        var scores = ({})
+        for (var i = 0; i < imageBankSuggestions.length; ++i)
+            scores[String(imageBankSuggestions[i].id || "")] = imageBankSuggestions[i].score
+        imageBankScores = scores
+    }
+
     function filteredBankImages() {
         var text = imageBankQuery.toLocaleLowerCase().trim()
-        var entries = imageBankInventory.images || []
+        var entries = imageBankShowAll ? (imageBankInventory.images || []) : imageBankSuggestions
         if (!imageBankTargetProductId)
             return []
         return entries.filter(function(entry) {
@@ -122,15 +114,21 @@ ApplicationWindow {
     property bool showProductionGate: false
     property bool showAdvancedSlotActions: false
 
+    function productImageState(p) {
+        return imageReviewStates[String(p.id || p.product_id || "")] ||
+            ((p.image_path || p.image) ? "linked" : "missing")
+    }
+
     function filteredProducts() {
         var query = productQuery.toLocaleLowerCase().trim()
         return products().filter(function(p) {
             var searchable = (productLabel(p) + " " + String(p.id || p.product_id || "")).toLocaleLowerCase()
-            var hasImage = !!(p.image_path || p.image)
+            var state = productImageState(p)
             return (!query || searchable.indexOf(query) !== -1)
                 && (productFilter === "Todos os produtos"
-                    || (productFilter === "Com imagem" && hasImage)
-                    || (productFilter === "Sem imagem" && !hasImage))
+                    || (productFilter === "Com imagem" && state === "linked")
+                    || (productFilter === "Aguardando confirmação" && state === "pending")
+                    || (productFilter === "Sem imagem disponível" && state === "missing"))
         })
     }
 
@@ -232,7 +230,10 @@ ApplicationWindow {
         id: sourceImportDialog
         title: "Excel mantém o encarte · PPTX substitui o layout"
         nameFilters: ["Excel/Canva (*.xlsx *.xlsm *.pptx)", "Produtos Excel (*.xlsx *.xlsm)", "Modelos PPTX (*.pptx)"]
-        onAccepted: sceneBridge.importSource(selectedFile.toString())
+        onAccepted: {
+            sceneBridge.importSource(selectedFile.toString())
+            refreshImageBank()
+        }
     }
     function moveActivePage(step) {
         var pages = scene.pages || []
@@ -376,6 +377,54 @@ ApplicationWindow {
             }
         }
     }
+    Dialog {
+        id: bankBatchConfirm
+        modal: true
+        title: "Revisar e confirmar imagens em lote"
+        width: 530
+        height: 510
+        x: Math.max(0, (window.width - width) / 2)
+        y: Math.max(0, (window.height - height) / 2)
+        standardButtons: Dialog.Ok | Dialog.Cancel
+        onAccepted: {
+            sceneBridge.attachProductImagesBatch(JSON.stringify(bankReviewQueue))
+            bankReviewQueue = []
+        }
+        ColumnLayout {
+            anchors.fill: parent
+            Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                text: "Confira visualmente cada embalagem, variação e código antes de confirmar."
+            }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                Column {
+                    width: 480
+                    spacing: 5
+                    Repeater {
+                        model: bankReviewQueue
+                        delegate: Row {
+                            required property var modelData
+                            spacing: 8
+                            Image {
+                                width: 65; height: 70
+                                source: localSource(modelData.image_path)
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                            }
+                            Label {
+                                width: 390
+                                wrapMode: Text.WordWrap
+                                text: String(modelData.name) + "\nCódigo: " + String(modelData.product_id)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
     Connections {
         target: sceneBridge
         function onHistoricalImageBankDone(ok, detail) {
@@ -385,6 +434,10 @@ ApplicationWindow {
         }
         function onProductImageDone(ok, productId, payload, error) {
             if (studioSection === 0 && showProductImageReview)
+                refreshImageBank()
+        }
+        function onProductImagesBatchDone(ok, payload, error) {
+            if (studioSection === 0)
                 refreshImageBank()
         }
     }
@@ -845,12 +898,17 @@ ApplicationWindow {
 
     Connections {
         target: sceneBridge
-        function onSceneChanged() { window.refreshScene() }
+        function onSceneChanged() {
+            window.refreshScene()
+            if (window.products().length !== reviewProductCount)
+                Qt.callLater(window.refreshImageBank)
+        }
     }
 
     Component.onCompleted: {
         refreshScene()
         syncInspector()
+        Qt.callLater(refreshImageBank)
     }
 
     Shortcut { sequence: StandardKey.Undo; onActivated: sceneBridge.undo() }
@@ -971,11 +1029,11 @@ ApplicationWindow {
                             RowLayout {
                                 Layout.fillWidth: true
                                 TextField { Layout.fillWidth: true; placeholderText: "⌕  Buscar produtos..."; text: productQuery; onTextChanged: productQuery = text; font.pixelSize: 11 }
-                                ToolButton { text: "▽"; onClicked: productFilter = productFilter === "Sem imagem" ? "Todos os produtos" : "Sem imagem" }
+                                ToolButton { text: "▽"; onClicked: productFilter = productFilter === "Sem imagem disponível" ? "Todos os produtos" : "Sem imagem disponível" }
                             }
                             ComboBox {
                                 Layout.fillWidth: true
-                                model: ["Todos os produtos","Com imagem","Sem imagem"]
+                                model: ["Todos os produtos","Com imagem","Aguardando confirmação","Sem imagem disponível"]
                                 onActivated: productFilter = currentText
                             }
                             RowLayout {
@@ -984,7 +1042,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     text: {
                                         var all = products()
-                                        var count = all.filter(function(p) { return !!(p.image_path || p.image) }).length
+                                        var count = all.filter(function(p) { return productImageState(p) === "linked" }).length
                                         return "Fotos encontradas: " + count + " / " + all.length
                                     }
                                     color: "#536783"; font.pixelSize: 11
@@ -1067,6 +1125,14 @@ ApplicationWindow {
                                             Label {
                                                 text: String(modelData.unit || "UN").toUpperCase()
                                                 color: "#7886A0"; font.pixelSize: 11
+                                            }
+                                            Label {
+                                                text: productImageState(modelData) === "linked" ? "Com imagem" :
+                                                      productImageState(modelData) === "pending" ? "Aguardando confirmação" :
+                                                      "Sem imagem disponível"
+                                                color: productImageState(modelData) === "linked" ? "#12805C" :
+                                                       productImageState(modelData) === "pending" ? "#9A6700" : "#64748B"
+                                                font.pixelSize: 10
                                             }
                                             Label {
                                                 Layout.fillWidth: true
@@ -1239,6 +1305,7 @@ ApplicationWindow {
                                     var data = model[currentIndex] || {}
                                     imageBankTargetProductId = String(data.id || "")
                                     imageBankTargetProductName = String(data.name || data.label || "")
+                                    refreshImageSuggestions()
                                 }
                             }
                             Label {
@@ -1246,6 +1313,12 @@ ApplicationWindow {
                                 wrapMode: Text.WordWrap
                                 color: "#64748B"; font.pixelSize: 10
                                 text: "Somente fotos do produto selecionado são sugeridas. As pendentes exigem sua confirmação após conferir a embalagem."
+                            }
+                            Button {
+                                Layout.fillWidth: true
+                                text: "Revisar lote (" + bankReviewQueue.length + ")"
+                                enabled: bankReviewQueue.length > 0
+                                onClicked: bankBatchConfirm.open()
                             }
                             CheckBox {
                                 Layout.fillWidth: true
@@ -1265,7 +1338,7 @@ ApplicationWindow {
                                 delegate: Rectangle {
                                     required property var modelData
                                     width: imageBankList.width - 4
-                                    height: 108
+                                    height: 158
                                     radius: 8
                                     color: "#FFFFFF"
                                     border.color: "#D9E4F2"
@@ -1275,7 +1348,7 @@ ApplicationWindow {
                                         spacing: 7
                                         Rectangle {
                                             Layout.preferredWidth: 73
-                                            Layout.preferredHeight: 85
+                                            Layout.preferredHeight: 135
                                             radius: 5; color: "#F8FAFC"
                                             border.color: "#E5EAF1"
                                             Image {
@@ -1306,6 +1379,11 @@ ApplicationWindow {
                                                 text: String(modelData.source || "")
                                                 color: "#64748B"; font.pixelSize: 9
                                             }
+                                            Label {
+                                                visible: !!modelData.reason
+                                                text: String(modelData.reason || "")
+                                                color: "#284F8F"; font.pixelSize: 9
+                                            }
                                             Button {
                                                 text: "Conferir e vincular"
                                                 Layout.fillWidth: true
@@ -1314,6 +1392,21 @@ ApplicationWindow {
                                                 onClicked: {
                                                     bankSelectedImage = modelData
                                                     bankReviewConfirm.open()
+                                                }
+                                            }
+                                            Button {
+                                                text: "Adicionar ao lote"
+                                                Layout.fillWidth: true
+                                                font.pixelSize: 10
+                                                enabled: !!imageBankTargetProductId
+                                                onClicked: {
+                                                    var next = bankReviewQueue.filter(function(item) {
+                                                        return item.product_id !== imageBankTargetProductId
+                                                    })
+                                                    next.push({"product_id":imageBankTargetProductId,
+                                                               "name":imageBankTargetProductName,
+                                                               "image_path":modelData.image_path})
+                                                    bankReviewQueue = next
                                                 }
                                             }
                                         }

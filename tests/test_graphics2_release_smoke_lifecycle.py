@@ -25,7 +25,9 @@ def test_smoke_closes_even_if_startup_processes_the_first_quit_timer(tmp_path):
             watchdog = QTimer()
             watchdog.setSingleShot(True)
             watchdog.timeout.connect(lambda: QGuiApplication.instance().exit(9))
-            watchdog.start(5000)
+            # Hosted Windows runners may spend several seconds compiling QML.
+            # This watchdog detects a hung event loop, not a startup budget.
+            watchdog.start(15000)
             watchdogs.append(watchdog)
             return launch(*args, **kwargs)
         smoke.launch_qt_quick_editor = slow_launch
@@ -35,5 +37,5 @@ def test_smoke_closes_even_if_startup_processes_the_first_quit_timer(tmp_path):
     env = dict(os.environ)
     env.setdefault("QT_QPA_PLATFORM", "windows" if os.name == "nt" else "offscreen")
     completed = subprocess.run([sys.executable, "-c", script, str(tmp_path)],
-                               env=env, text=True, capture_output=True, timeout=30)
+                               env=env, text=True, capture_output=True, timeout=45)
     assert completed.returncode == 0, completed.stdout + completed.stderr

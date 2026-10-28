@@ -107,6 +107,29 @@ def store_product_image(
     return entry
 
 
+def store_product_images_batch(requests: list[dict], *, root: Path | None = None) -> list[dict]:
+    """Persist an explicitly confirmed batch after validating every source."""
+    from PIL import Image
+
+    if not requests or len(requests) > 100:
+        raise ValueError("Selecione entre 1 e 100 imagens para revisão em lote.")
+    seen: set[str] = set()
+    prepared = []
+    for request in requests:
+        product_id = _product_id(request.get("product_id"))
+        if product_id in seen:
+            raise ValueError("O mesmo código aparece duas vezes na revisão em lote.")
+        seen.add(product_id)
+        source = normalize_local_image_source(str(request.get("image_path") or ""))
+        if source.stat().st_size > MAX_IMAGE_BYTES:
+            raise ValueError("Imagem muito grande (limite 50 MB).")
+        with Image.open(source) as image:
+            image.verify()
+        prepared.append((product_id, str(request.get("name") or ""), str(source)))
+    return [store_product_image(product_id, name, source, root=root)
+            for product_id, name, source in prepared]
+
+
 def read_product_links(*, root: Path | None = None) -> dict[str, dict]:
     root = Path(root) if root is not None else library_root()
     with _LOCK:
@@ -119,6 +142,7 @@ def read_product_links(*, root: Path | None = None) -> dict[str, dict]:
 def apply_stored_product_links(document, *, root: Path | None = None) -> int:
     """Hydrate product thumbnails after relaunch/import; retain each item's own name."""
     records = read_product_links(root=root)
+    from .image_suggestions import approved_link_compatible
     products = document.metadata.get("products") or []
     changed = 0
     for product in products:
@@ -126,7 +150,8 @@ def apply_stored_product_links(document, *, root: Path | None = None) -> int:
             continue
         key = str(product.get("id") or product.get("product_id") or "").strip()
         entry = records.get(key)
-        if entry is not None and product.get("image_path") != entry["image_path"]:
+        if (entry is not None and approved_link_compatible(product, entry)
+                and product.get("image_path") != entry["image_path"]):
             product["image_path"] = entry["image_path"]
             product["image"] = entry["image_path"]
             product["image_linked_by"] = "product_id"
