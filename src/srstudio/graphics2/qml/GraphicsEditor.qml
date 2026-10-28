@@ -158,6 +158,27 @@ ApplicationWindow {
         }
     }
 
+    function selectedMultiRootId() {
+        if (!page)
+            return ""
+        var slot = (page.slots || {})[selectedSlotId] || null
+        var fromSlot = slot && slot.metadata ? String(slot.metadata.multi_parent_id || "") : ""
+        if (fromSlot && page.nodes[fromSlot])
+            return fromSlot
+        var node = selectedNode()
+        return node && node.metadata && node.metadata.multi_slot_beta44 ? node.id : ""
+    }
+
+    function changeMultiSlotCount() {
+        var rootId = selectedMultiRootId()
+        if (!rootId)
+            return
+        sceneBridge.dispatch(JSON.stringify({
+            "name":"set_multi_item_count", "root_node_id":rootId,
+            "count":existingMultiCount.value
+        }))
+    }
+
     function createMultiSlot(count, dropX, dropY) {
         var modes = ["auto", "one", "two"]
         var mode = modes[slotPriceMode.currentIndex] || "auto"
@@ -1507,10 +1528,10 @@ ApplicationWindow {
                                 Repeater {
                                     model: [
                                         {"label":"Destaque individual", "mode":"individual"},
-                                        {"label":"11 produtos", "mode":"eleven"},
-                                        {"label":"9 produtos · Terça Verde", "mode":"nine"},
-                                        {"label":"7 produtos", "mode":"seven"},
-                                        {"label":"6 produtos", "mode":"six"}
+                                        {"label":"11 · 6 Únicos + Multi-5", "mode":"eleven"},
+                                        {"label":"9 · Únicos + Multi-5", "mode":"nine"},
+                                        {"label":"7 · Individual + 2 Únicos + Multi-4", "mode":"seven"},
+                                        {"label":"6 · Slots Únicos", "mode":"six"}
                                     ]
                                     delegate: Rectangle {
                                         id: previewLayoutCard
@@ -1701,6 +1722,55 @@ ApplicationWindow {
                                         }
                                     }
                                 }
+                            }
+                            Label {
+                                visible: studioSection === 1
+                                text: "Multi Itens flexível (2 a 8 produtos)"
+                                color: "#284F8F"; font.bold: true
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                visible: studioSection === 1
+                                SpinBox {
+                                    id: multiSlotItemCount
+                                    Layout.fillWidth: true
+                                    from: 2; to: 8; value: 5; editable: true
+                                }
+                                Button {
+                                    text: "Criar Multi"
+                                    onClicked: window.createMultiSlot(multiSlotItemCount.value)
+                                }
+                            }
+                            Label {
+                                visible: studioSection === 1
+                                text: "Ajustar a faixa Multi selecionada"
+                                font.pixelSize: 11; color: "#64748B"
+                            }
+                            RowLayout {
+                                Layout.fillWidth: true
+                                visible: studioSection === 1
+                                SpinBox {
+                                    id: existingMultiCount
+                                    from: 2; to: 8; editable: true
+                                    Layout.fillWidth: true
+                                    value: {
+                                        var root = page && page.nodes ? page.nodes[window.selectedMultiRootId()] : null
+                                        return root && root.metadata ? Number(root.metadata.multi_count || 5) : 5
+                                    }
+                                }
+                                Button {
+                                    text: "Aplicar"
+                                    enabled: !!window.selectedMultiRootId()
+                                    onClicked: window.changeMultiSlotCount()
+                                }
+                            }
+                            Label {
+                                visible: studioSection === 1
+                                Layout.fillWidth: true
+                                font.pixelSize: 10
+                                color: "#7C5A21"
+                                wrapMode: Text.WordWrap
+                                text: "Para reduzir a faixa, os espaços que serão removidos precisam estar vazios. Os demais produtos e preços são preservados."
                             }
                             Label {
                                 visible: studioSection === 1

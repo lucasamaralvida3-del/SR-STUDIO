@@ -34,7 +34,7 @@ def test_every_promotion_position_uses_real_editable_slot(mode, count):
     for sid in result.payload["slot_ids"]:
         slot = session.page.slots[sid]
         assert slot.metadata["source"] == "manual-item-slot"
-        assert slot.metadata["preset_id"] in {"individual-beta44", "multi-cell-beta44"}
+        assert slot.metadata["preset_id"] in {"individual-beta44", "multi-cell-beta44", "limpeza-blue-v1"}
         assert BindingRole.IMAGE.value in slot.node_by_role
         assert BindingRole.PRICE_REAIS.value in slot.node_by_role
     assert session.page.metadata["promotion_composition"]["slot_ids"] == result.payload["slot_ids"]
@@ -198,9 +198,14 @@ def test_empty_unused_slot_is_hidden_not_deleted_and_can_be_reused_later():
     large = router.dispatch({"name": "apply_promotion_layout",
                              "mode": "six", "reuse_existing": True})
     assert large.ok
-    assert second.id in large.payload["reused_slot_ids"]
-    assert session.page.node(second.metadata["root_node_id"]).visible
-    assert len(session.page.slots) == 6
+    # Predefined six now uses certified Slot Único, so it must NOT
+    # silently repurpose an empty Individual card as a different design.
+    assert second.id in large.payload["unused_slot_ids"]
+    assert not session.page.node(second.metadata["root_node_id"]).visible
+    assert len(session.page.slots) == 8
+    assert len(large.payload["slot_ids"]) == 6
+    assert all(session.page.slots[sid].metadata.get("limpeza_blue_profile")
+               == "limpeza-blue-v1" for sid in large.payload["slot_ids"])
 
 
 def test_filled_multi_cannot_be_silently_split_by_incompatible_layout():

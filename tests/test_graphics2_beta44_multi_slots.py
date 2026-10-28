@@ -139,14 +139,21 @@ def test_switching_promotion_layout_preserves_existing_page():
     page_count = len(session.document.pages)
     next_layout = router.dispatch({"name": "apply_promotion_layout", "mode": "seven"})
     assert next_layout.ok
-    # The preset is only a positioning map: it must reuse the same page
-    # and the same six product slots, creating only the missing seventh.
+    # Beta61 cannot turn four old Únicos into fake Multi cells, or silently
+    # change a Slot Único into an Individual hero. It keeps all old IDs on
+    # the same page, reuses two matching Únicos, creates one real Individual
+    # and one real Multi-4, and hides unused EMPTY groups without deleting.
     assert len(session.document.pages) == page_count
     assert session.page.id == original_page_id
     assert set(original_page.slots).issuperset(original_slot_ids)
-    assert set(next_layout.payload["reused_slot_ids"]) == original_slot_ids
-    assert len(next_layout.payload["created_slot_ids"]) == 1
-    assert len(session.page.slots) == 7
+    assert len(next_layout.payload["slot_ids"]) == 7
+    assert len(set(next_layout.payload["reused_slot_ids"]) & original_slot_ids) == 2
+    assert len(next_layout.payload["created_slot_ids"]) == 5
+    assert len(session.page.slots) == 11
+    groups = [node for node in session.page.nodes.values()
+              if node.metadata.get("multi_slot_beta44")]
+    assert len(groups) == 1 and groups[0].metadata["multi_count"] == 4
+    assert all(not session.page.slots[sid].product_id for sid in original_slot_ids)
     assert session.page.width == original_page.width
     assert session.page.height == original_page.height
 
