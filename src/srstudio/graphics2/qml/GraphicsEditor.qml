@@ -60,6 +60,25 @@ ApplicationWindow {
         }
     }
 
+    function productIdentity(p) {
+        return String(p.code || p.ean || p.id || p.product_id || "")
+    }
+    function inactiveProduct(p) {
+        return !!(scene.editor && scene.editor.inactive_product_codes &&
+            scene.editor.inactive_product_codes.indexOf(productIdentity(p)) >= 0)
+    }
+    function individualSlotForImage(nodeId) {
+        var entries = slots()
+        for (var i = 0; i < entries.length; i++) {
+            var slot = entries[i]
+            if (!slot.metadata || slot.metadata.preset_id !== "individual-beta44")
+                continue
+            if (String(slot.node_by_role.image || "") === String(nodeId) ||
+                String(slot.metadata.image_repeat_node_id || "") === String(nodeId))
+                return slot
+        }
+        return null
+    }
     function highlightedProduct(product) {
         var code = String(product.code || product.ean || product.id || product.product_id || "")
         return scene.editor && scene.editor.highlighted_product_ids
@@ -95,7 +114,7 @@ ApplicationWindow {
             Label {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
-                text: autoProposal ? (autoProposal.total + " produtos · " + autoProposal.pages.length
+                text: autoProposal ? (autoProposal.total + " produtos ativos · " + autoProposal.pages.length
                       + " páginas em retrato · campanha sugerida: " + autoProposal.campaign_id) : ""
                 color: "#243B64"
             }
@@ -1260,19 +1279,20 @@ ApplicationWindow {
                                     id: productCard
                                     required property var modelData
                                     width: productList.width - 4
-                                    height: Math.max(122, productInformation.implicitHeight + 28)
+                                    height: Math.max(136, productInformation.implicitHeight + 28)
                                     radius: 11
-                                    color: productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF"
+                                    property bool inactive: window.inactiveProduct(productData)
+                                    color: inactive ? "#F1F3F7" : (productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF")
                                     border.color: productMouse.dragging ? "#2869EF" : "#DCE5F1"
                                     border.width: productMouse.dragging ? 2 : 1
                                     property var productData: modelData
                                     RowLayout {
                                         anchors.fill: parent
-                                        anchors.margins: 11
-                                        spacing: 10
+                                        anchors.margins: 8
+                                        spacing: 6
                                         Rectangle {
-                                            Layout.preferredWidth: 84
-                                            Layout.preferredHeight: 96
+                                            Layout.preferredWidth: 76
+                                            Layout.preferredHeight: 92
                                             Layout.alignment: Qt.AlignVCenter
                                             radius: 8
                                             color: "#F8FAFE"
@@ -1291,6 +1311,7 @@ ApplicationWindow {
                                             id: productInformation
                                             Layout.fillWidth: true
                                             Layout.alignment: Qt.AlignVCenter
+                                            opacity: productCard.inactive ? 0.53 : 1.0
                                             spacing: 3
                                             Label {
                                                 Layout.fillWidth: true
@@ -1332,26 +1353,54 @@ ApplicationWindow {
                                                 color: "#B32D18"; font.bold: true; font.pixelSize: 13
                                             }
                                         }
-                                        ToolButton {
-                                            text: "+"
-                                            font.pixelSize: 18
+                                        ColumnLayout {
+                                            spacing: 4
                                             z: 3
-                                            Layout.preferredWidth: 26
-                                            Layout.preferredHeight: 32
-                                            onClicked: {
-                                                window.inspectorProduct = productCard.productData
-                                                if (selectedSlotId)
-                                                    bindProduct(modelData)
+                                            Layout.preferredWidth: 28
+                                            Layout.alignment: Qt.AlignVCenter
+                                            ToolButton {
+                                                text: "+"
+                                                font.pixelSize: 17
+                                                Layout.preferredWidth: 28
+                                                Layout.preferredHeight: 31
+                                                ToolTip.visible: hovered
+                                                ToolTip.text: productCard.inactive ? "Reativar produto" : "Adicionar ao Smart Slot selecionado"
+                                                onClicked: {
+                                                    window.inspectorProduct = productCard.productData
+                                                    if (productCard.inactive)
+                                                        sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":true,
+                                                            "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
+                                                    else if (selectedSlotId)
+                                                        bindProduct(productCard.productData)
+                                                }
                                             }
-                                            ToolTip.visible: hovered
-                                            ToolTip.text: selectedSlotId ? "Aplicar ao Smart Slot selecionado" : "Selecione um slot antes de aplicar"
+                                            ToolButton {
+                                                text: "−"
+                                                font.pixelSize: 18
+                                                enabled: !productCard.inactive
+                                                Layout.preferredWidth: 28
+                                                Layout.preferredHeight: 31
+                                                ToolTip.visible: hovered
+                                                ToolTip.text: "Inativar para esta montagem, inclusive automática"
+                                                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":false,
+                                                    "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
+                                            }
                                         }
                                         ToolButton {
                                             text: window.highlightedProduct(productCard.productData) ? "★" : "☆"
-                                            font.pixelSize: 19
                                             z: 4
-                                            Layout.preferredWidth: 27
-                                            Layout.preferredHeight: 32
+                                            enabled: !productCard.inactive
+                                            Layout.alignment: Qt.AlignVCenter
+                                            Layout.preferredWidth: 28
+                                            Layout.preferredHeight: 35
+                                            contentItem: Text {
+                                                text: parent.text
+                                                color: window.highlightedProduct(productCard.productData) ? "#E6A500" : "#566785"
+                                                font.pixelSize: 22
+                                                font.bold: true
+                                                horizontalAlignment: Text.AlignHCenter
+                                                verticalAlignment: Text.AlignVCenter
+                                            }
                                             ToolTip.visible: hovered
                                             ToolTip.text: "Criar um encarte exclusivo com este produto"
                                             onClicked: sceneBridge.dispatch(JSON.stringify({
@@ -3130,7 +3179,10 @@ ApplicationWindow {
                             }
                             Label {
                                 text: modelData.name || ("Página " + (index + 1))
+                                Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignHCenter
+                                horizontalAlignment: Text.AlignHCenter
+                                elide: Text.ElideRight
                                 font.pixelSize: 9
                                 color: modelData.id === scene.active_page_id ? "#2954F9" : "#79849D"
                             }
