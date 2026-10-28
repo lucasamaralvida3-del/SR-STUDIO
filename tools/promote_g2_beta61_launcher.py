@@ -104,7 +104,7 @@ def prepare(source: Path, target: Path, existing_manifest: Path, result_manifest
         "channel": "beta",
         "version": VERSION,
         "product_version": "5.0.0",
-        "release_label": "G2 Beta 61 - Banco de Imagens Inteligente",
+        "release_label": "G2 Beta 61 - Layouts fiéis às referências e Multi Itens 2–8",
         "published_at": datetime.now(timezone.utc).isoformat(),
         "min_launcher": base.get("min_launcher", "4.0.1-hybrid.base2.6"),
         "min_launcher_version": base.get("min_launcher_version", "4.0.1-hybrid.base2.6"),
@@ -123,7 +123,7 @@ def prepare(source: Path, target: Path, existing_manifest: Path, result_manifest
         "public_asset_verified": True,
         "tag": "g2-beta-61",
         "asset": ASSET,
-        "notes": "Beta 61: sugestões por EAN/GTIN, código, marca, descrição e medida; revisão em lote no painel Produtos; vínculos confirmados persistentes.",
+        "notes": "Beta 61: layouts de 7 e 11 ofertas fiéis às fotos, Slots Únicos e Individual real, Multi de 2 a 8, preços e artes preservados; Stable intacta.",
     }
     result_manifest.parent.mkdir(parents=True, exist_ok=True)
     result_manifest.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
