@@ -197,6 +197,10 @@ def set_multi_item_count(session, root_id: str, count: int) -> dict:
         root.metadata["multi_count"] = count
         root.metadata["child_slot_ids"] = ids
         root.name = f"Smart Slot Multi Itens — {count} produtos"
+    # Newly added cells must follow the parent's one/two-price setting too.
+    from .item_slots import set_reference_price_mode
+    set_reference_price_mode(
+        session, ids, str(root.metadata.get("price_mode") or "auto"))
     session.selection = {root.id}
     session.anchor_id = root.id
     return {"root_node_id": root.id, "slot_ids": ids, "count": count}
