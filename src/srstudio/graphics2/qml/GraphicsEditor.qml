@@ -2502,6 +2502,34 @@ ApplicationWindow {
                                         // Selecting on press emitted sceneChanged and rebuilt the
                                         // delegate while Qt still held the drag. This detached
                                         // drag.target and made moving images feel frozen.
+                                        Menu {
+                                            id: imageContext
+                                            MenuItem {
+                                                property var imageSlot: window.individualSlotForImage(modelData.id)
+                                                visible: !!imageSlot
+                                                text: imageSlot && Number(imageSlot.metadata.image_count || 1) === 2 ? "Uma imagem" : "Duas imagens"
+                                                onTriggered: {
+                                                    if (imageSlot)
+                                                        sceneBridge.dispatch(JSON.stringify({
+                                                            "name":"set_product_image_count", "slot_id":imageSlot.id,
+                                                            "count":Number(imageSlot.metadata.image_count || 1) === 2 ? 1 : 2}))
+                                                }
+                                            }
+                                            MenuItem {
+                                                text: "Autoajustar imagem"
+                                                onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"auto_fit_product_image", "node_id":modelData.id}))
+                                            }
+                                            MenuItem {
+                                                text: "Restaurar zoom"
+                                                onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"crop", "node_id":modelData.id,
+                                                    "fit":"contain", "zoom":1.0, "focus_x":0.5, "focus_y":0.5}))
+                                            }
+                                        }
+                                        onPressed: {
+                                            if (mouse.button === Qt.RightButton && modelData.kind === "image" &&
+                                                    modelData.metadata && modelData.metadata.manual_item_slot_child)
+                                                imageContext.popup()
+                                        }
                                         onWheel: function(wheel) {
                                             if (modelData.kind !== "image" || !modelData.metadata ||
                                                     !modelData.metadata.manual_item_slot_child ||
