@@ -2492,7 +2492,7 @@ ApplicationWindow {
                                     }
                                     MouseArea {
                                         anchors.fill: parent
-                                        acceptedButtons: Qt.LeftButton
+                                        acceptedButtons: Qt.LeftButton | Qt.RightButton
                                         drag.target: parent
                                         // The selection rectangle owns pointer gestures
                                         // only in slot edit mode. In normal mode images
@@ -2502,7 +2502,24 @@ ApplicationWindow {
                                         // Selecting on press emitted sceneChanged and rebuilt the
                                         // delegate while Qt still held the drag. This detached
                                         // drag.target and made moving images feel frozen.
+                                        onWheel: function(wheel) {
+                                            if (modelData.kind !== "image" || !modelData.metadata ||
+                                                    !modelData.metadata.manual_item_slot_child ||
+                                                    !anchorNode || anchorNode.id !== modelData.id) {
+                                                wheel.accepted = false
+                                                return
+                                            }
+                                            var factor = wheel.angleDelta.y > 0 ? 1.10 : (1 / 1.10)
+                                            var current = Math.max(1, Number(modelData.style.zoom || 1))
+                                            var next = Math.max(1, Math.min(4, current * factor))
+                                            if (Math.abs(next - current) > 0.0001)
+                                                sceneBridge.dispatch(JSON.stringify({"name":"crop", "node_id":modelData.id,
+                                                    "fit":"contain", "zoom":next}))
+                                            wheel.accepted = true
+                                        }
                                         onReleased: {
+                                            if (mouse.button === Qt.RightButton)
+                                                return
                                             var dx = (parent.x / zoom) - Number(modelData.transform.x)
                                             var dy = (parent.y / zoom) - Number(modelData.transform.y)
                                             var id = String(modelData.id)
