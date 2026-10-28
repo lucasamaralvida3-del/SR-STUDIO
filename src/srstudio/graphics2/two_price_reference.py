@@ -272,8 +272,10 @@ def apply_two_price_layout(page, slot, enabled: bool) -> bool:
                       geometry["name"] if enabled else base_name))
     if repeated is not None:
         _position(repeated, _absolute(root_rect, (.236, .005, .41, .985)))
-        repeated.visible = (not enabled) and bool(
-            repeated.asset_id or repeated.metadata.get("bound_image_source"))
+        # The image count is a user choice independent of 1/2-price mode.
+        # Changing the price variant must never resurrect a duplicate photo.
+        repeated.visible = bool(slot.metadata.get("image_count", 1) == 2 and
+                                (repeated.asset_id or repeated.metadata.get("bound_image_source")))
 
     # All three text pieces remain editable text nodes in their original slot.
     promo = page.node(str(slot.metadata.get("promotion_label_node_id") or ""))
