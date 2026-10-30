@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -97,7 +98,10 @@ class UnifiedImportPipeline:
 
     def _pptx(self, path: Path, project: StudioProject) -> ImportSummary:
         digest = hashlib.sha256(f"{path.resolve()}:{path.stat().st_mtime_ns}".encode()).hexdigest()[:16]
-        media_dir = Path.home() / ".srstudio5" / "imports" / digest
+        configured_root = os.environ.get("SR_STUDIO_IMPORTS_ROOT", "").strip()
+        imports_root = (Path(configured_root).expanduser() if configured_root
+                        else Path.home() / ".srstudio5" / "imports")
+        media_dir = imports_root / digest
         parsed = self.pptx_importer.import_file(path, media_dir=media_dir)
         summary = ImportSummary(str(path), warnings=list(parsed.warnings))
         learned_profiles: list[str] = []

@@ -40,6 +40,8 @@ def inject_preview_image_urls(scene: dict[str, Any], document: GraphicsDocument)
 
     assets = scene.get("assets") if isinstance(scene.get("assets"), dict) else {}
     for page in scene.get("pages") or []:
+        signature = _page_signature(page, assets)
+        page["thumbnail_url"] = f"image://{PREVIEW_PROVIDER_NAME}/page/{page.get('id')}/{signature}"
         nodes = page.get("nodes") if isinstance(page, dict) else None
         if not isinstance(nodes, dict):
             continue
@@ -57,6 +59,11 @@ def inject_preview_image_urls(scene: dict[str, Any], document: GraphicsDocument)
             signature = _preview_signature(node, original)
             metadata["bound_image_source"] = f"image://{PREVIEW_PROVIDER_NAME}/{node.get('id')}/{signature}"
     return scene
+
+
+def _page_signature(page, assets):
+    payload = {k: v for k, v in page.items() if k != "thumbnail_url"}
+    return sha256(json.dumps([payload, assets], sort_keys=True, default=str).encode()).hexdigest()[:20]
 
 
 def create_live_scene_image_provider():
@@ -80,8 +87,16 @@ def create_live_scene_image_provider():
             super().__init__(image_type)
             self._lock = RLock()
             self._nodes: dict[str, dict[str, Any]] = {}
+            self._pages = {}
+            self._page_cache = {}
 
         def sync_document(self, document: GraphicsDocument) -> None:
+            serialized = document.to_dict()
+            pages = {}
+            for page in serialized["pages"]:
+                signature = _page_signature(page, serialized.get("assets", {}))
+                single = dict(serialized, pages=[page], active_page_id=page["id"])
+                pages[page["id"]] = (signature, deepcopy(single))
             snapshot: dict[str, dict[str, Any]] = {}
             for page in document.pages:
                 for node in page.nodes.values():
@@ -99,8 +114,38 @@ def create_live_scene_image_provider():
                     }
             with self._lock:
                 self._nodes = snapshot
+                self._pages = pages
+                valid = {(pid, value[0]) for pid, value in pages.items()}
+                self._page_cache = {key: value for key, value in self._page_cache.items() if key in valid}
 
         def requestImage(self, image_id, size, requested_size):  # noqa: N802 - contrato Qt
+            if str(image_id).startswith("page/"):
+                page_id = str(image_id).split("/")[1]
+                with self._lock:
+                    entry = self._pages.get(page_id)
+                    if entry is None:
+                        return _transparent_image(QtGui, 1, 1)
+                    signature, snapshot = entry
+                    cached = self._page_cache.get((page_id, signature))
+                if cached is not None:
+                    return cached
+                from .qt_renderer import _configure_painter, _render_page
+                doc = GraphicsDocument.from_dict(deepcopy(snapshot))
+                page = doc.pages[0]
+                scale = 152 / max(page.width, 1)
+                result = QtGui.QImage(152, max(1, round(page.height * scale)), QtGui.QImage.Format_ARGB32_Premultiplied)
+                result.fill(QtGui.QColor(page.background))
+                painter = QtGui.QPainter(result)
+                try:
+                    _configure_painter(painter, QtGui)
+                    painter.scale(scale, scale)
+                    _render_page(painter, doc, page, [], QtCore, QtGui, paint_background=False)
+                finally:
+                    painter.end()
+                with self._lock:
+                    if self._pages.get(page_id, (None,))[0] == signature:
+                        self._page_cache[(page_id, signature)] = result
+                return result
             node_id = str(image_id or "").split("/", 1)[0]
             with self._lock:
                 raw = self._nodes.get(node_id)

@@ -16,6 +16,21 @@ from .promotion_layouts import PromotionPlan
 from .campaign_tools import apply_default_slot_theme
 
 
+def _readable_multi_prices(page, slot_ids):
+    """Compensate for the small text boxes after the canonical strip is fitted.
+
+    Keep the source preset untouched. The override belongs to the automatic
+    composition and is absolute, so arranging the page twice cannot grow text.
+    """
+    sizes = {"currency": 18.0, "price_reais": 46.0, "price_cents": 16.0, "unit": 15.0}
+    for slot_id in slot_ids:
+        slot = page.slots[slot_id]
+        for role, size in sizes.items():
+            node = page.node(str(slot.node_by_role.get(role) or ""))
+            if node is not None:
+                node.style["font_size"] = size
+
+
 @dataclass(frozen=True)
 class CompositionResult:
     slot_ids: tuple[str, ...]
@@ -226,6 +241,7 @@ def apply_slot_composition(session, plan: PromotionPlan, *, price_mode: str = "a
             fx, fy, fw, fh = _fit_component(x, y, w, h, ratio)
             session.resize_node(multi_root.id, x=fx, y=fy, width=fw, height=fh)
             set_reference_price_mode(session, ids, price_mode)
+            _readable_multi_prices(page, ids)
             if plan.mode in {"nine", "custom"}:
                 from .item_slots import bind_product_to_item_slot
                 import copy

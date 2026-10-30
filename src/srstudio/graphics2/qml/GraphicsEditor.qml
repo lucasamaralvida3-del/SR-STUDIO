@@ -11,7 +11,7 @@ ApplicationWindow {
     minimumWidth: 1430
     minimumHeight: 760
     visible: true
-    title: "SR Graphics Engine 2.0"
+    title: "SR Graphics Engine 2.0 · " + sceneBridge.runtimeIdentity
 
     property var scene: JSON.parse(sceneBridge.sceneJson)
     property var page: activePage()
@@ -3278,20 +3278,12 @@ ApplicationWindow {
                                 color: modelData.background || "#FFFFFF"
                                 border.color: "#DCE3EF"
                                 clip: true
-                                // Miniature representation uses actual document node colors.
-                                Repeater {
-                                    model: Object.values(modelData.nodes || {})
-                                        .filter(function(n) { return n && n.visible !== false && n.transform && n.kind !== "group" })
-                                        .slice(0, 260)
-                                    delegate: Rectangle {
-                                        required property var modelData
-                                        visible: modelData.visible !== false
-                                        x: Math.max(0, Number(modelData.transform.x) / Math.max(1, page ? page.width : 1080) * parent.width)
-                                        y: Math.max(0, Number(modelData.transform.y) / Math.max(1, page ? page.height : 1350) * parent.height)
-                                        width: Math.max(1, Number(modelData.transform.width) / Math.max(1, page ? page.width : 1080) * parent.width)
-                                        height: Math.max(1, Number(modelData.transform.height) / Math.max(1, page ? page.height : 1350) * parent.height)
-                                        color: modelData.kind === "image" ? "#E1EAF8" : (modelData.style ? modelData.style.fill || "#EBEFF7" : "#EBEFF7")
-                                    }
+                                Image {
+                                    anchors.fill: parent
+                                    source: modelData.thumbnail_url || ""
+                                    asynchronous: true
+                                    cache: true
+                                    fillMode: Image.PreserveAspectFit
                                 }
                             }
                             Label {

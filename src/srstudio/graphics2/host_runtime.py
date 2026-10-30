@@ -39,6 +39,7 @@ class RuntimeHostManifest:
     executable_size: int
     executable_sha256: str
     files: tuple[RuntimeFileEntry, ...]
+    source_commit: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -63,6 +64,7 @@ def build_runtime_manifest(
     *,
     engine_version: str,
     executable: str = DEFAULT_HOST_EXE,
+    source_commit: str = "",
 ) -> RuntimeHostManifest:
     root = Path(bundle_dir).resolve()
     exe = (root / executable).resolve()
@@ -89,6 +91,7 @@ def build_runtime_manifest(
         executable_size=exe_entry.size,
         executable_sha256=exe_entry.sha256,
         files=tuple(entries),
+        source_commit=source_commit,
     )
 
 
@@ -97,9 +100,10 @@ def write_runtime_manifest(
     *,
     engine_version: str,
     executable: str = DEFAULT_HOST_EXE,
+    source_commit: str = "",
 ) -> Path:
     root = Path(bundle_dir).resolve()
-    manifest = build_runtime_manifest(root, engine_version=engine_version, executable=executable)
+    manifest = build_runtime_manifest(root, engine_version=engine_version, executable=executable, source_commit=source_commit)
     path = root / RUNTIME_MANIFEST_NAME
     _write_json_atomic(path, manifest.to_dict())
     return path
@@ -130,6 +134,7 @@ def load_runtime_manifest(bundle_dir: str | Path) -> RuntimeHostManifest:
         executable_size=int(raw.get("executable_size") or 0),
         executable_sha256=str(raw.get("executable_sha256") or "").lower(),
         files=files,
+        source_commit=str(raw.get("source_commit") or ""),
     )
 
 
