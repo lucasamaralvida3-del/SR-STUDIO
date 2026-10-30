@@ -37,6 +37,8 @@ class Graphics2HostComponent:
     member_prefix: str
     bundle_filename: str
     runtime_files: int
+    runtime_manifest_sha256: str = ""
+    source_commit: str = ""
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -110,6 +112,8 @@ def package_component(
         member_prefix=DEFAULT_BUNDLE_NAME,
         bundle_filename=zip_path.name,
         runtime_files=validation.total_files,
+        runtime_manifest_sha256=_sha256_file(bundle / "graphics2-host-runtime.json"),
+        source_commit=str(build_manifest.get("source_commit") or ""),
     )
     descriptor.write_text(json.dumps(component.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
     print(f"Graphics2Host ZIP: {zip_path}")

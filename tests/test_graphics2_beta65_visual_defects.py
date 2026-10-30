@@ -25,8 +25,8 @@ def test_narrow_product_sidebar_puts_actions_on_second_row():
 
 def test_thumbnails_consider_more_than_first_28_document_nodes():
     assert ".slice(0, 28)" not in QML
-    assert ".slice(0, 260)" in QML
-    assert "n.kind !== \"group\"" in QML
+    assert ".slice(0, 260)" not in QML
+    assert 'source: modelData.thumbnail_url || ""' in QML
     assert '("Pág. " + (index + 1))' in QML
 
 

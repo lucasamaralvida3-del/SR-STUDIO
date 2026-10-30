@@ -50,6 +50,7 @@ def test_load_launch_context_without_source_creates_clean_document():
 
 def test_load_launch_context_opens_srscene_and_extracts_portable_resources(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
     document = GraphicsDocument(name="Pacote real")
     package = save_package(document, tmp_path / "real.srscene")
 

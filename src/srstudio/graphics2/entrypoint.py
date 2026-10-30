@@ -65,6 +65,14 @@ def version_string() -> str:
         details.append(release_label)
     if distribution:
         details.append(distribution)
+    if getattr(sys, "frozen", False):
+        try:
+            from .host_runtime import load_runtime_manifest
+            commit = load_runtime_manifest(Path(sys.executable).resolve().parent).source_commit
+            if commit:
+                details.append(f"commit {commit[:12]}")
+        except (OSError, ValueError, KeyError):
+            pass
     return " | ".join(details)
 
 

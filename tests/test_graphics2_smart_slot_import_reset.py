@@ -345,7 +345,9 @@ def test_import_a_fill_then_import_b_starts_with_empty_product_state() -> None:
                     assert node.visible is False
 
 
-def test_import_b_fill_save_close_reopen_preserves_b_content(tmp_path) -> None:
+def test_import_b_fill_save_close_reopen_preserves_b_content(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("USERPROFILE", str(tmp_path / "home"))
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
     imported_b = GraphicsImportService().import_file(IMPORT_B, project_name="Import B")
     page = imported_b.document.active_page
     slot = next(iter(page.slots.values()))

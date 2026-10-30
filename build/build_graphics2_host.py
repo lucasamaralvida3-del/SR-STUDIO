@@ -16,6 +16,7 @@ import json
 import os
 import platform
 import shutil
+import subprocess
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -55,6 +56,7 @@ class HostBuildManifest:
     pyinstaller: str
     runtime_manifest: str
     runtime_manifest_sha256: str
+    source_commit: str = ""
 
 
 def pyinstaller_args(
@@ -224,6 +226,9 @@ def build(
         sys.path.insert(0, str(SRC))
     from srstudio.graphics2 import ENGINE_VERSION
     from srstudio.graphics2.host_runtime import write_runtime_manifest
+    source_commit = os.environ.get("GITHUB_SHA", "").strip()
+    if not source_commit:
+        source_commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
 
     output_root = Path(output).resolve()
     dist_root = output_root
@@ -260,12 +265,31 @@ def build(
         print(f"Qt WebEngine não utilizado removido: {len(unused_components)} item(ns)")
     reject_unexpected_qt_payload(bundle)
 
+    # A successful COLLECT does not prove that Windows can load Qt's DLLs.
+    # Run the frozen host before issuing any integrity/distribution manifest.
+    smoke_dir = output_root / "frozen-startup-check"
+    smoke_dir.mkdir(parents=True, exist_ok=True)
+    smoke_report = smoke_dir / "release-smoke.json"
+    smoke_report.unlink(missing_ok=True)
+    completed = subprocess.run(
+        [str(executable), "--release-smoke", "--output-dir", str(smoke_dir)],
+        capture_output=True, text=True, timeout=180,
+    )
+    (smoke_dir / "stdout.log").write_text(completed.stdout or "", encoding="utf-8")
+    (smoke_dir / "stderr.log").write_text(completed.stderr or "", encoding="utf-8")
+    if completed.returncode != 0 or not smoke_report.is_file():
+        raise RuntimeError(f"Host congelado não iniciou: exit={completed.returncode}; diagnóstico em {smoke_dir}")
+    smoke = json.loads(smoke_report.read_text(encoding="utf-8"))
+    if not (smoke.get("ok") and smoke.get("frozen") and smoke.get("editor_qml_startup")):
+        raise RuntimeError("Host congelado não comprovou carregamento do editor QML.")
+
     # O manifesto de runtime vive dentro do próprio bundle e cataloga todas as
     # DLLs/plugins/QML APÓS a poda. O manifesto externo referencia esse catálogo.
     runtime_manifest_path = write_runtime_manifest(
         bundle,
         engine_version=ENGINE_VERSION,
         executable=executable.name,
+        source_commit=source_commit,
     )
     files = [item for item in bundle.rglob("*") if item.is_file()]
     total_bytes = sum(item.stat().st_size for item in files)
@@ -281,6 +305,7 @@ def build(
         pyinstaller=str(getattr(PyInstaller, "__version__", "unknown")),
         runtime_manifest=str(runtime_manifest_path.relative_to(dist_root)).replace("\\", "/"),
         runtime_manifest_sha256=_sha256_file(runtime_manifest_path),
+        source_commit=source_commit,
     )
     manifest_path = dist_root / "graphics2-host-manifest.json"
     manifest_path.write_text(json.dumps(asdict(manifest), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")

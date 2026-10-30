@@ -248,6 +248,11 @@ def launch_qt_quick_editor(
         productImagesBatchDone = Signal(bool, str, str)
         historicalImageBankDone = Signal(bool, str)
 
+        @Property(str, constant=True)
+        def runtimeIdentity(self) -> str:
+            from .entrypoint import version_string
+            return version_string()
+
         def __init__(self) -> None:
             super().__init__()
             self._status = _startup_status(context, gate, requested_api)

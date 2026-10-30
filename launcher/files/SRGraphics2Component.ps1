@@ -223,11 +223,15 @@ function Install-G2Component($Resolved) {
   $component = $Resolved.component
   $required = [bool](Get-G2Property $component 'required' $false)
   $expectedVersion = [string](Get-G2Property $component 'engine_version' '')
+  $expectedRuntimeHash = ([string](Get-G2Property $component 'runtime_manifest_sha256' '')).ToLowerInvariant()
   if(-not $expectedVersion) { throw 'Manifesto Graphics2Host não informou engine_version.' }
 
   if(Test-Path -LiteralPath $InstallDir -PathType Container) {
     try {
       $current = Assert-G2Runtime $InstallDir $expectedVersion ([bool]$FullRepair)
+      if($expectedRuntimeHash -and $current.runtime_manifest_sha256 -ne $expectedRuntimeHash) {
+        throw 'Manifesto do host instalado diverge do pacote anunciado.'
+      }
       Write-G2Log ('runtime atual validado · ' + [string]$current.version + ' · ' + [string]$current.files + ' arquivo(s).')
       return
     } catch {
@@ -258,6 +262,9 @@ function Install-G2Component($Resolved) {
     Expand-Archive -LiteralPath $zip -DestinationPath $extract -Force
     $sourceRoot = Find-G2ExtractedRoot $extract ([string](Get-G2Property $component 'member_prefix' ''))
     $sourceReport = Assert-G2Runtime $sourceRoot $expectedVersion $true
+    if($expectedRuntimeHash -and $sourceReport.runtime_manifest_sha256 -ne $expectedRuntimeHash) {
+      throw 'Manifesto do bundle diverge do componente anunciado.'
+    }
     Write-G2Log ('bundle validado · ' + [string]$sourceReport.version + ' · ' + [string]$sourceReport.files + ' arquivo(s).')
 
     Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue
