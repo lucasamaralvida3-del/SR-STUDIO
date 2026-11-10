@@ -17,16 +17,32 @@ from PySide6.QtQml import QQmlApplicationEngine
 from srstudio.graphics2.command_router import GraphicsCommandRouter
 from srstudio.graphics2.model import GraphicsDocument
 from srstudio.graphics2.operations import GraphicsSession
+from srstudio.app.ui_theme import color_for_theme
 import srstudio.graphics2.qt_host as qt_host
 
 
 class _Bridge(QObject):
     sceneChanged = Signal()
     statusChanged = Signal()
+    uiThemeChanged = Signal()
 
     def __init__(self) -> None:
         super().__init__()
         self.router = GraphicsCommandRouter(GraphicsSession(GraphicsDocument(name="QML Smoke")))
+        self._ui_theme = "light"
+
+    @Property(str, notify=uiThemeChanged)
+    def uiTheme(self) -> str:
+        return self._ui_theme
+
+    @Slot(str)
+    def setUiTheme(self, value: str) -> None:
+        self._ui_theme = value
+        self.uiThemeChanged.emit()
+
+    @Slot(str, str, result=str)
+    def themeColor(self, value: str, role: str) -> str:
+        return color_for_theme(value, role, self._ui_theme)
 
     @Property(str, notify=sceneChanged)
     def sceneJson(self) -> str:
@@ -121,6 +137,27 @@ def test_graphics_editor_qml_loads_offscreen_without_component_errors():
     assert window.property("studioSection") == 3
     inventory = window.property("imageBankInventory")
     assert inventory is not None
+
+
+def test_dark_mode_recolors_editor_chrome_without_changing_page_art():
+    app = QGuiApplication.instance() or QGuiApplication([])
+    engine = QQmlApplicationEngine()
+    bridge = _Bridge()
+    engine.rootContext().setContextProperty("sceneBridge", bridge)
+    qml = Path(qt_host.__file__).with_name("qml") / "GraphicsEditor.qml"
+    engine.load(QUrl.fromLocalFile(str(qml.resolve())))
+    app.processEvents()
+    window = engine.rootObjects()[0]
+    sidebar = window.findChild(QObject, "catalogSidebar")
+    sheet = window.findChild(QObject, "sheet")
+    assert sidebar is not None and sheet is not None
+    light_sheet_color = sheet.property("color")
+
+    bridge.setUiTheme("dark")
+    app.processEvents()
+    assert window.property("darkMode") is True
+    assert sidebar.property("color").name().upper() == "#111A28"
+    assert sheet.property("color") == light_sheet_color
 
 
 def test_slot_selection_survives_its_own_root_but_date_clears_product_inspector():

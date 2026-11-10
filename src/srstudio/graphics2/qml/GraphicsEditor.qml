@@ -12,6 +12,21 @@ ApplicationWindow {
     minimumHeight: 760
     visible: true
     title: "SR Graphics Engine 2.0"
+    property bool darkMode: sceneBridge.uiTheme === "dark"
+    function uiColor(value, role) {
+        // Reading darkMode keeps every chrome color bound to the shared setting.
+        var currentMode = darkMode
+        return currentMode ? sceneBridge.themeColor(value, role || "auto") : value
+    }
+    palette.window: darkMode ? "#111A28" : "#FFFFFF"
+    palette.windowText: darkMode ? "#E8EFFA" : "#152033"
+    palette.base: darkMode ? "#172235" : "#FFFFFF"
+    palette.text: darkMode ? "#E8EFFA" : "#152033"
+    palette.button: darkMode ? "#26364D" : "#F8FAFD"
+    palette.buttonText: darkMode ? "#E8EFFA" : "#152033"
+    palette.highlight: "#3478D4"
+    palette.highlightedText: "#FFFFFF"
+    palette.placeholderText: darkMode ? "#9EADC3" : "#8C98AA"
 
     property var scene: JSON.parse(sceneBridge.sceneJson)
     property var page: activePage()
@@ -116,7 +131,24 @@ ApplicationWindow {
                 wrapMode: Text.WordWrap
                 text: autoProposal ? (autoProposal.total + " produtos ativos · " + autoProposal.pages.length
                       + " páginas em retrato · campanha sugerida: " + autoProposal.campaign_id) : ""
-                color: "#243B64"
+                color: window.uiColor("#243B64", "auto")
+            }
+            Label {
+                Layout.fillWidth: true
+                visible: !!autoProposal
+                wrapMode: Text.WordWrap
+                text: {
+                    var active = window.products().filter(function(p) { return !window.inactiveProduct(p) })
+                    var missing = active.filter(function(p) { return window.productImageState(p) !== "linked" })
+                    return missing.length
+                        ? ("ATENÇÃO: " + missing.length + " produto(s) sem foto confirmada. " +
+                           "A montagem deixará espaços vazios nesses Smart Slots. " +
+                           "Use Banco SR ou adicione fotos antes de confirmar.")
+                        : "Todas as fotos dos produtos ativos estão vinculadas."
+                }
+                color: window.uiColor("#A52C19", "auto")
+                font.bold: true
+                font.pixelSize: 12
             }
             RowLayout {
                 Layout.fillWidth: true
@@ -127,7 +159,7 @@ ApplicationWindow {
                     source: autoProposal ? window.campaignPreview(autoProposal.background_id) : ""
                     fillMode: Image.PreserveAspectFit
                 }
-                Label { text: "Fundo e logo sugeridos para páginas verticais"; color: "#475569" }
+                Label { text: "Fundo e logo sugeridos para páginas verticais"; color: window.uiColor("#475569", "auto") }
             }
             ScrollView {
                 Layout.fillWidth: true
@@ -153,7 +185,7 @@ ApplicationWindow {
                                 text: "Página " + (index + 1) + " · "
                                       + (modelData.featured ? "Destaque exclusivo" : "Layout coletivo")
                                       + " · " + modelData.count + " produto" + (modelData.count === 1 ? "" : "s")
-                                color: "#475569"
+                                color: window.uiColor("#475569", "auto")
                             }
                         }
                     }
@@ -163,7 +195,7 @@ ApplicationWindow {
                 Layout.fillWidth: true
                 wrapMode: Text.WordWrap
                 text: "A confirmação cria páginas novas editáveis. O encarte atual é preservado e a ação pode ser desfeita."
-                color: "#64748B"
+                color: window.uiColor("#64748B", "auto")
             }
         }
     }
@@ -375,10 +407,13 @@ ApplicationWindow {
     }
 
     function removeCurrentBackground() {
-        if (selectedSlotId !== "")
-            sceneBridge.removeSlotBackground(selectedSlotId)
-        else if (selectedPicture())
+        // Product photo takes precedence over the Smart Slot selection.
+        // Otherwise the command silently changes the slot backplate
+        // instead of the white background inside the imported photo.
+        if (selectedPicture())
             sceneBridge.removeBackground(selectedPicture().id)
+        else if (selectedSlotId !== "")
+            sceneBridge.removeSlotBackground(selectedSlotId)
     }
 
     FileDialog {
@@ -523,7 +558,7 @@ ApplicationWindow {
                 text: "Produto: " + imageBankTargetProductName
                 wrapMode: Text.WordWrap
                 font.bold: true
-                color: "#142D5B"
+                color: window.uiColor("#142D5B", "auto")
             }
             Image {
                 Layout.fillWidth: true
@@ -537,7 +572,7 @@ ApplicationWindow {
                 wrapMode: Text.WordWrap
                 font.pixelSize: 11
                 text: "Confira marca, sabor e tamanho. Ao confirmar, esta foto será salva para este código de produto e reutilizada nas próximas planilhas. Nenhuma outra foto será aprovada."
-                color: "#7A4D0A"
+                color: window.uiColor("#7A4D0A", "auto")
             }
         }
     }
@@ -1136,6 +1171,7 @@ ApplicationWindow {
             orientation: Qt.Horizontal
             Rectangle {
                 id: catalogSidebar
+                objectName: "catalogSidebar"
                 SplitView.preferredWidth: studioSection === 0 ? window.productSidebarWidth : 332
                 SplitView.minimumWidth: 340
                 SplitView.maximumWidth: 565
@@ -1146,16 +1182,16 @@ ApplicationWindow {
                         saveProductSidebarWidth.restart()
                     }
                 }
-                color: "#FFFFFF"
-                border.color: "#E5EAF4"
+                color: window.uiColor("#FFFFFF", "auto")
+                border.color: window.uiColor("#E5EAF4", "border")
                 RowLayout {
                     anchors.fill: parent
                     spacing: 0
                     Rectangle {
                         Layout.preferredWidth: 67
                         Layout.fillHeight: true
-                        color: "#FBFCFF"
-                        border.color: "#EEF1F8"
+                        color: window.uiColor("#FBFCFF", "auto")
+                        border.color: window.uiColor("#EEF1F8", "border")
                         ColumnLayout {
                             anchors.fill: parent
                             anchors.topMargin: 11
@@ -1176,12 +1212,12 @@ ApplicationWindow {
                                     Layout.leftMargin: 5
                                     Layout.rightMargin: 5
                                     radius: 9
-                                    color: studioSection === modelData.section ? "#EFF3FF" : "transparent"
+                                    color: studioSection === modelData.section ? window.uiColor("#EFF3FF", "auto") : "transparent"
                                     ColumnLayout {
                                         anchors.centerIn: parent
                                         spacing: 5
-                                        Label { text: modelData.icon; Layout.alignment: Qt.AlignHCenter; color: studioSection === modelData.section ? "#2C4BFA" : "#4C577F"; font.pixelSize: 24 }
-                                        Label { text: modelData.title; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? "#284DFF" : "#425072"; font.pixelSize: 9; font.bold: studioSection === modelData.section }
+                                        Label { text: modelData.icon; Layout.alignment: Qt.AlignHCenter; color: studioSection === modelData.section ? window.uiColor("#2C4BFA", "auto") : window.uiColor("#4C577F", "auto"); font.pixelSize: 24 }
+                                        Label { text: modelData.title; Layout.alignment: Qt.AlignHCenter; color: studioSection === index ? window.uiColor("#284DFF", "auto") : window.uiColor("#425072", "auto"); font.pixelSize: 9; font.bold: studioSection === modelData.section }
                                     }
                                     MouseArea { anchors.fill: parent; onClicked: studioSection = modelData.section }
                                 }
@@ -1199,7 +1235,7 @@ ApplicationWindow {
                             Label {
                                 text: (studioSection === 0 && showProductImageReview) ? "Banco SR · Produtos" :
                                       ["Produtos","Slots","Layouts de Promoção","","Texto","Formas","Fundos","Camadas","Projeto"][studioSection]
-                                color: "#111B38"; font.pixelSize: 15; font.bold: true
+                                color: window.uiColor("#111B38", "auto"); font.pixelSize: 15; font.bold: true
                             }
                             Item { Layout.fillWidth: true }
                             ToolButton {
@@ -1232,7 +1268,7 @@ ApplicationWindow {
                                     var stars = all.filter(function(p) { return !window.inactiveProduct(p) && window.highlightedProduct(p) }).length
                                     return (all.length - inactive) + " ativos · " + inactive + " inativos · ★ " + stars + " exclusivos"
                                 }
-                                color: "#556783"
+                                color: window.uiColor("#556783", "auto")
                                 font.pixelSize: 10
                             }
                             RowLayout {
@@ -1254,7 +1290,7 @@ ApplicationWindow {
                                         var count = all.filter(function(p) { return productImageState(p) === "linked" }).length
                                         return "Fotos encontradas: " + count + " / " + all.length
                                     }
-                                    color: "#536783"; font.pixelSize: 11
+                                    color: window.uiColor("#536783", "auto"); font.pixelSize: 11
                                 }
                                 ToolButton {
                                     text: "↻ Fotos"
@@ -1269,7 +1305,7 @@ ApplicationWindow {
                                     onClicked: window.openImageReviewFor(window.inspectorProduct)
                                 }
                             }
-                            Label { text: "Destino do produto"; font.pixelSize: 10; color: "#79849A" }
+                            Label { text: "Destino do produto"; font.pixelSize: 10; color: window.uiColor("#79849A", "auto") }
                             ComboBox {
                                 id: slotCombo
                                 Layout.fillWidth: true
@@ -1290,135 +1326,153 @@ ApplicationWindow {
                                     id: productCard
                                     required property var modelData
                                     width: productList.width - 4
-                                    height: Math.max(136, productInformation.implicitHeight + 28)
+                                    height: Math.max(184, productInformation.implicitHeight + 80)
                                     radius: 11
                                     property bool inactive: window.inactiveProduct(productData)
-                                    color: inactive ? "#F1F3F7" : (productMouse.containsMouse ? "#F1F6FF" : "#FFFFFF")
-                                    border.color: productMouse.dragging ? "#2869EF" : "#DCE5F1"
+                                    color: inactive ? window.uiColor("#F1F3F7", "auto") : (productMouse.containsMouse ? window.uiColor("#F1F6FF", "auto") : window.uiColor("#FFFFFF", "auto"))
+                                    border.color: productMouse.dragging ? window.uiColor("#2869EF", "border") : window.uiColor("#DCE5F1", "border")
                                     border.width: productMouse.dragging ? 2 : 1
                                     property var productData: modelData
-                                    RowLayout {
+                                    ColumnLayout {
                                         z: 1 // Keep +, − and ★ clickable above the row drag target.
                                         anchors.fill: parent
                                         anchors.margins: 8
-                                        spacing: 6
-                                        Rectangle {
-                                            Layout.preferredWidth: 76
-                                            Layout.preferredHeight: 92
-                                            Layout.alignment: Qt.AlignVCenter
-                                            radius: 8
-                                            color: "#F8FAFE"
-                                            border.color: "#E8EEF6"
-                                            Image {
-                                                anchors.fill: parent
-                                                anchors.margins: 3
-                                                source: localSource(modelData.image_path || modelData.image || "")
-                                                fillMode: Image.PreserveAspectFit
-                                                asynchronous: true
-                                                cache: true
-                                                smooth: true
-                                            }
-                                        }
-                                        ColumnLayout {
-                                            id: productInformation
+                                        spacing: 5
+                                        RowLayout {
                                             Layout.fillWidth: true
-                                            Layout.alignment: Qt.AlignVCenter
-                                            opacity: productCard.inactive ? 0.53 : 1.0
-                                            spacing: 3
+                                            Layout.fillHeight: true
+                                            spacing: 7
+                                            Rectangle {
+                                                Layout.preferredWidth: productCard.width < 285 ? 60 : 76
+                                                Layout.preferredHeight: 92
+                                                Layout.alignment: Qt.AlignVCenter
+                                                radius: 8
+                                                color: window.uiColor("#F8FAFE", "auto")
+                                                border.color: window.uiColor("#E8EEF6", "border")
+                                                Image {
+                                                    anchors.fill: parent
+                                                    anchors.margins: 3
+                                                    source: localSource(modelData.image_path || modelData.image || "")
+                                                    fillMode: Image.PreserveAspectFit
+                                                    asynchronous: true
+                                                    cache: true
+                                                    smooth: true
+                                                }
+                                            }
+                                            ColumnLayout {
+                                                id: productInformation
+                                                Layout.fillWidth: true
+                                                Layout.alignment: Qt.AlignVCenter
+                                                opacity: productCard.inactive ? 0.53 : 1.0
+                                                spacing: 3
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.display_name || modelData.name || modelData.original_name || "Produto"
+                                                    color: window.uiColor("#11234A", "auto")
+                                                    font.bold: true
+                                                    font.pixelSize: 12
+                                                    wrapMode: Text.WordWrap
+                                                    maximumLineCount: 3
+                                                    elide: Text.ElideRight
+                                                }
+                                                Label {
+                                                    text: String(modelData.unit || "UN").toUpperCase()
+                                                    color: window.uiColor("#7886A0", "auto"); font.pixelSize: 10
+                                                }
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    text: productImageState(modelData) === "linked" ? "Com imagem" :
+                                                          productImageState(modelData) === "pending" ? "Aguardando confirmação" :
+                                                          "Sem imagem disponível"
+                                                    elide: Text.ElideRight
+                                                    color: productImageState(modelData) === "linked" ? window.uiColor("#12805C", "auto") :
+                                                           productImageState(modelData) === "pending" ? window.uiColor("#9A6700", "auto") : window.uiColor("#64748B", "auto")
+                                                    font.pixelSize: 10
+                                                }
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    text: modelData.price ? ("Oferta R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"
+                                                    elide: Text.ElideRight
+                                                    color: window.uiColor("#1154D8", "auto"); font.bold: true; font.pixelSize: 12
+                                                }
+                                                Label {
+                                                    Layout.fillWidth: true
+                                                    visible: !!(modelData.app_price || modelData.club_price ||
+                                                                modelData.wholesale_price || modelData.retail_price)
+                                                    text: {
+                                                        var extra = modelData.app_price || modelData.club_price ||
+                                                                    modelData.wholesale_price || modelData.retail_price
+                                                        var label = (modelData.app_price || modelData.club_price) ? "Clube SR " :
+                                                                    (modelData.wholesale_price ? "Atacado " : "Varejo ")
+                                                        return label + "R$ " + String(extra || "").replace(".", ",")
+                                                    }
+                                                    elide: Text.ElideRight
+                                                    color: window.uiColor("#B32D18", "auto"); font.bold: true; font.pixelSize: 12
+                                                }
+                                            }
+                                        }
+                                        RowLayout {
+                                            Layout.fillWidth: true
+                                            spacing: 6
                                             Label {
                                                 Layout.fillWidth: true
-                                                text: modelData.display_name || modelData.name || modelData.original_name || "Produto"
-                                                color: "#11234A"
-                                                font.bold: true
-                                                font.pixelSize: 13
-                                                wrapMode: Text.WordWrap
-                                                elide: Text.ElideNone
-                                            }
-                                            Label {
-                                                text: String(modelData.unit || "UN").toUpperCase()
-                                                color: "#7886A0"; font.pixelSize: 11
-                                            }
-                                            Label {
-                                                text: productImageState(modelData) === "linked" ? "Com imagem" :
-                                                      productImageState(modelData) === "pending" ? "Aguardando confirmação" :
-                                                      "Sem imagem disponível"
-                                                color: productImageState(modelData) === "linked" ? "#12805C" :
-                                                       productImageState(modelData) === "pending" ? "#9A6700" : "#64748B"
+                                                text: productCard.inactive ? "Inativo neste encarte" : "Disponível no encarte"
+                                                color: productCard.inactive ? window.uiColor("#9D3140", "auto") : window.uiColor("#64748B", "auto")
                                                 font.pixelSize: 10
+                                                elide: Text.ElideRight
                                             }
-                                            Label {
-                                                Layout.fillWidth: true
-                                                text: modelData.price ? ("Oferta  R$ " + String(modelData.price).replace(".", ",")) : "Sem preço"
-                                                color: "#1154D8"; font.bold: true; font.pixelSize: 14
-                                            }
-                                            Label {
-                                                Layout.fillWidth: true
-                                                visible: !!(modelData.app_price || modelData.club_price ||
-                                                            modelData.wholesale_price || modelData.retail_price)
-                                                text: {
-                                                    var extra = modelData.app_price || modelData.club_price ||
-                                                                modelData.wholesale_price || modelData.retail_price
-                                                    var label = (modelData.app_price || modelData.club_price) ? "Clube SR  " :
-                                                                (modelData.wholesale_price ? "Atacado  " : "Varejo  ")
-                                                    return label + "R$ " + String(extra || "").replace(".", ",")
+                                            ColumnLayout {
+                                                spacing: 1
+                                                Layout.preferredWidth: 29
+                                                ToolButton {
+                                                    text: "+"
+                                                    font.pixelSize: 17
+                                                    Layout.preferredWidth: 29
+                                                    Layout.preferredHeight: 27
+                                                    ToolTip.visible: hovered
+                                                    ToolTip.text: productCard.inactive ? "Reativar produto" : "Adicionar ao Smart Slot selecionado"
+                                                    onClicked: {
+                                                        window.inspectorProduct = productCard.productData
+                                                        if (productCard.inactive)
+                                                            sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":true,
+                                                                "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
+                                                        else if (selectedSlotId)
+                                                            bindProduct(productCard.productData)
+                                                    }
                                                 }
-                                                color: "#B32D18"; font.bold: true; font.pixelSize: 13
-                                            }
-                                        }
-                                        ColumnLayout {
-                                            spacing: 4
-                                            z: 3
-                                            Layout.preferredWidth: 28
-                                            Layout.alignment: Qt.AlignVCenter
-                                            ToolButton {
-                                                text: "+"
-                                                font.pixelSize: 17
-                                                Layout.preferredWidth: 28
-                                                Layout.preferredHeight: 31
-                                                ToolTip.visible: hovered
-                                                ToolTip.text: productCard.inactive ? "Reativar produto" : "Adicionar ao Smart Slot selecionado"
-                                                onClicked: {
-                                                    window.inspectorProduct = productCard.productData
-                                                    if (productCard.inactive)
-                                                        sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":true,
-                                                            "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
-                                                    else if (selectedSlotId)
-                                                        bindProduct(productCard.productData)
+                                                ToolButton {
+                                                    text: "−"
+                                                    font.pixelSize: 18
+                                                    enabled: !productCard.inactive
+                                                    Layout.preferredWidth: 29
+                                                    Layout.preferredHeight: 27
+                                                    ToolTip.visible: hovered
+                                                    ToolTip.text: "Inativar para esta montagem, inclusive automática"
+                                                    onClicked: sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":false,
+                                                        "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
                                                 }
                                             }
                                             ToolButton {
-                                                text: "−"
-                                                font.pixelSize: 18
+                                                text: window.highlightedProduct(productCard.productData) ? "★" : "☆"
+                                                z: 4
                                                 enabled: !productCard.inactive
-                                                Layout.preferredWidth: 28
-                                                Layout.preferredHeight: 31
+                                                Layout.preferredWidth: 35
+                                                Layout.preferredHeight: 35
+                                                contentItem: Text {
+                                                    text: parent.text
+                                                    color: window.highlightedProduct(productCard.productData) ? "#E6A500" : window.uiColor("#566785", "auto")
+                                                    font.pixelSize: 24
+                                                    font.bold: true
+                                                    horizontalAlignment: Text.AlignHCenter
+                                                    verticalAlignment: Text.AlignVCenter
+                                                }
                                                 ToolTip.visible: hovered
-                                                ToolTip.text: "Inativar para esta montagem, inclusive automática"
-                                                onClicked: sceneBridge.dispatch(JSON.stringify({"name":"set_product_active", "active":false,
-                                                    "product_id":String(productCard.productData.id || productCard.productData.product_id || "")}))
+                                                ToolTip.text: "Criar um encarte exclusivo com este produto"
+                                                onClicked: sceneBridge.dispatch(JSON.stringify({
+                                                    "name":"toggle_product_highlight",
+                                                    "product_id":String(productCard.productData.id || productCard.productData.product_id || "")
+                                                }))
                                             }
-                                        }
-                                        ToolButton {
-                                            text: window.highlightedProduct(productCard.productData) ? "★" : "☆"
-                                            z: 4
-                                            enabled: !productCard.inactive
-                                            Layout.alignment: Qt.AlignVCenter
-                                            Layout.preferredWidth: 28
-                                            Layout.preferredHeight: 35
-                                            contentItem: Text {
-                                                text: parent.text
-                                                color: window.highlightedProduct(productCard.productData) ? "#E6A500" : "#566785"
-                                                font.pixelSize: 22
-                                                font.bold: true
-                                                horizontalAlignment: Text.AlignHCenter
-                                                verticalAlignment: Text.AlignVCenter
-                                            }
-                                            ToolTip.visible: hovered
-                                            ToolTip.text: "Criar um encarte exclusivo com este produto"
-                                            onClicked: sceneBridge.dispatch(JSON.stringify({
-                                                "name":"toggle_product_highlight",
-                                                "product_id":String(productCard.productData.id || productCard.productData.product_id || "")
-                                            }))
                                         }
                                     }
                                     MouseArea {
@@ -1495,7 +1549,7 @@ ApplicationWindow {
                                     width: productList.width - 30
                                     wrapMode: Text.WordWrap
                                     horizontalAlignment: Text.AlignHCenter
-                                    color: "#94A3B8"
+                                    color: window.uiColor("#94A3B8", "auto")
                                 }
                             }
                         }
@@ -1507,12 +1561,12 @@ ApplicationWindow {
                             Label {
                                 Layout.fillWidth: true
                                 text: "Banco de Imagens SR"
-                                color: "#173D72"; font.bold: true; font.pixelSize: 14
+                                color: window.uiColor("#173D72", "auto"); font.bold: true; font.pixelSize: 14
                             }
                             Label {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                color: "#64748B"; font.pixelSize: 10
+                                color: window.uiColor("#64748B", "auto"); font.pixelSize: 10
                                 text: "Aprovadas: " + Number(imageBankInventory.counts.approved || 0)
                                     + "  ·  Pendentes: " + Number(imageBankInventory.counts.pending || 0)
                                     + "  ·  Vinculadas: " + Number(imageBankInventory.counts.manual || 0)
@@ -1521,7 +1575,7 @@ ApplicationWindow {
                                 visible: !!imageBankInventory.error
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                color: "#B91C1C"; font.pixelSize: 10
+                                color: window.uiColor("#B91C1C", "auto"); font.pixelSize: 10
                                 text: String(imageBankInventory.error || "")
                             }
                             RowLayout {
@@ -1548,7 +1602,7 @@ ApplicationWindow {
                             Label {
                                 Layout.fillWidth: true
                                 text: "Escolha um produto da planilha para revisar as fotos:"
-                                font.pixelSize: 10; color: "#64748B"
+                                font.pixelSize: 10; color: window.uiColor("#64748B", "auto")
                             }
                             ComboBox {
                                 id: imageBankTargetCombo
@@ -1570,7 +1624,7 @@ ApplicationWindow {
                             Label {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
-                                color: "#64748B"; font.pixelSize: 10
+                                color: window.uiColor("#64748B", "auto"); font.pixelSize: 10
                                 text: "Somente fotos do produto selecionado são sugeridas. As pendentes exigem sua confirmação após conferir a embalagem."
                             }
                             Button {
@@ -1599,8 +1653,8 @@ ApplicationWindow {
                                     width: imageBankList.width - 4
                                     height: 158
                                     radius: 8
-                                    color: "#FFFFFF"
-                                    border.color: "#D9E4F2"
+                                    color: window.uiColor("#FFFFFF", "auto")
+                                    border.color: window.uiColor("#D9E4F2", "border")
                                     RowLayout {
                                         anchors.fill: parent
                                         anchors.margins: 7
@@ -1608,8 +1662,8 @@ ApplicationWindow {
                                         Rectangle {
                                             Layout.preferredWidth: 73
                                             Layout.preferredHeight: 135
-                                            radius: 5; color: "#F8FAFC"
-                                            border.color: "#E5EAF1"
+                                            radius: 5; color: window.uiColor("#F8FAFC", "auto")
+                                            border.color: window.uiColor("#E5EAF1", "border")
                                             Image {
                                                 anchors.fill: parent
                                                 anchors.margins: 3
@@ -1626,22 +1680,22 @@ ApplicationWindow {
                                                 text: String(modelData.name || "Imagem")
                                                 font.pixelSize: 11; font.bold: true
                                                 elide: Text.ElideRight
-                                                color: "#17213E"
+                                                color: window.uiColor("#17213E", "auto")
                                             }
                                             Label {
                                                 text: modelData.status === "pending" ? "PENDENTE · Confirmar embalagem" :
                                                       modelData.status === "approved" ? "APROVADA" : "VINCULADA"
-                                                color: modelData.status === "pending" ? "#9A6700" : "#12805C"
+                                                color: modelData.status === "pending" ? window.uiColor("#9A6700", "auto") : window.uiColor("#12805C", "auto")
                                                 font.pixelSize: 9
                                             }
                                             Label {
                                                 text: String(modelData.source || "")
-                                                color: "#64748B"; font.pixelSize: 9
+                                                color: window.uiColor("#64748B", "auto"); font.pixelSize: 9
                                             }
                                             Label {
                                                 visible: !!modelData.reason
                                                 text: String(modelData.reason || "")
-                                                color: "#284F8F"; font.pixelSize: 9
+                                                color: window.uiColor("#284F8F", "auto"); font.pixelSize: 9
                                             }
                                             Button {
                                                 text: "Conferir e vincular"
@@ -1677,7 +1731,7 @@ ApplicationWindow {
                                     width: imageBankList.width - 20
                                     horizontalAlignment: Text.AlignHCenter
                                     wrapMode: Text.WordWrap
-                                    font.pixelSize: 11; color: "#64748B"
+                                    font.pixelSize: 11; color: window.uiColor("#64748B", "auto")
                                     text: !imageBankTargetProductId ?
                                           "Selecione um produto da planilha acima." :
                                           !imageBankShowAll ?
@@ -1721,9 +1775,9 @@ ApplicationWindow {
                             spacing: 6
                             RowLayout {
                                 Layout.fillWidth: true
-                                Label { text: "Camadas"; font.bold: true; color: "#334155" }
+                                Label { text: "Camadas"; font.bold: true; color: window.uiColor("#334155", "auto") }
                                 Item { Layout.fillWidth: true }
-                                Label { text: nodes().length; color: "#64748B" }
+                                Label { text: nodes().length; color: window.uiColor("#64748B", "auto") }
                             }
                             ListView {
                                 id: layerList
@@ -1751,11 +1805,11 @@ ApplicationWindow {
                             ColumnLayout {
                                 width: 235
                                 spacing: 9
-                                Label { text: "Layouts promocionais"; color: "#284F8F"; font.bold: true }
-                                Label { text: "Organiza Smart Slots reais da página, sem apagar produtos."; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Label { text: "Layouts promocionais"; color: window.uiColor("#284F8F", "auto"); font.bold: true }
+                                Label { text: "Organiza Smart Slots reais da página, sem apagar produtos."; color: window.uiColor("#64748B", "auto"); wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Label { text: "Logo (%)"; color: "#425072" }
+                                    Label { text: "Logo (%)"; color: window.uiColor("#425072", "auto") }
                                     SpinBox { id: logoReservePercent; from: 15; to: 50; value: 24; editable: true; Layout.fillWidth: true }
                                 }
                                 ComboBox {
@@ -1777,20 +1831,20 @@ ApplicationWindow {
                                         required property var modelData
                                         Layout.fillWidth: true
                                         Layout.preferredHeight: 153
-                                        color: "#FFFFFF"
-                                        border.color: "#CFD9EA"
+                                        color: window.uiColor("#FFFFFF", "auto")
+                                        border.color: window.uiColor("#CFD9EA", "border")
                                         radius: 9
                                         Label {
                                             x: 8; y: 5
                                             font.bold: true
-                                            color: "#284F8F"
+                                            color: window.uiColor("#284F8F", "auto")
                                             text: previewLayoutCard.modelData.label
                                         }
                                         Rectangle {
                                             id: previewPoster
                                             x: 38; y: 29; width: parent.width - 76; height: 119
-                                            color: "#F8FAFC"
-                                            border.color: "#DFE7F2"
+                                            color: window.uiColor("#F8FAFC", "auto")
+                                            border.color: window.uiColor("#DFE7F2", "border")
 
                                             Image {
                                                 anchors.fill: parent
@@ -1813,15 +1867,15 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                                Label { text: "Tema para os layouts"; color: "#284F8F"; font.bold: true }
-                                Label { text: "O layout reutiliza os Smart Slots reais, sem criar novas famílias."; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                                Label { text: "Tema para os layouts"; color: window.uiColor("#284F8F", "auto"); font.bold: true }
+                                Label { text: "O layout reutiliza os Smart Slots reais, sem criar novas famílias."; color: window.uiColor("#64748B", "auto"); wrapMode: Text.WordWrap; Layout.fillWidth: true }
                                 Button {
                                     Layout.fillWidth: true; text: "Cor da campanha selecionada · página inteira"
                                     onClicked: sceneBridge.dispatch(JSON.stringify({
                                         "name":"set_slot_theme", "theme":window.campaignIds[campaignCampaignChoice.currentIndex], "entire_page":true
                                     }))
                                 }
-                                Label { text: "Auto Layout"; color: "#284F8F"; font.bold: true }
+                                Label { text: "Auto Layout"; color: window.uiColor("#284F8F", "auto"); font.bold: true }
                                 SpinBox { id: autoLayoutCount; from: 1; to: 24; value: 6; editable: true; Layout.fillWidth: true }
                                 Button {
                                     Layout.fillWidth: true
@@ -1845,7 +1899,7 @@ ApplicationWindow {
                             ColumnLayout {
                                 width: 235
                                 spacing: 7
-                                Label { text: "Ações do projeto"; font.bold: true; color: "#263D71" }
+                                Label { text: "Ações do projeto"; font.bold: true; color: window.uiColor("#263D71", "auto") }
                                 Button { text: "+ Slot Único"; Layout.fillWidth: true; onClicked: createBlueSlot() }
                                 Button { text: "Ajustar Smart Slots"; Layout.fillWidth: true; checkable: true; checked: smartSlotEditMode; onClicked: { smartSlotEditMode = checked; smartSlotInspectionMode = checked } }
                                 Button { text: "Copiar"; Layout.fillWidth: true; onClicked: sceneBridge.dispatch('{"name":"copy"}') }
@@ -1888,13 +1942,13 @@ ApplicationWindow {
                                     required property var modelData
                                     Layout.fillWidth: true
                                     Layout.preferredHeight: modelData.key === "individual" ? 177 : 130
-                                    color: "#FFFFFF"
-                                    border.color: "#CFD9EA"
+                                    color: window.uiColor("#FFFFFF", "auto")
+                                    border.color: window.uiColor("#CFD9EA", "border")
                                     radius: 10
                                     Label {
                                         x: 10; y: 6; width: parent.width - 20; height: 22
                                         text: canonicalSlotPreviewCard.modelData.label
-                                        font.bold: true; color: "#284F8F"
+                                        font.bold: true; color: window.uiColor("#284F8F", "auto")
                                     }
                                     Image {
                                         id: realSlotThumbnail
@@ -1916,7 +1970,7 @@ ApplicationWindow {
                                         visible: realSlotThumbnail.status === Image.Error ||
                                                  realSlotThumbnail.source.toString() === ""
                                         text: "Prévia não disponível"
-                                        font.pixelSize: 11; color: "#64748B"
+                                        font.pixelSize: 11; color: window.uiColor("#64748B", "auto")
                                     }
                                     MouseArea {
                                         id: slotPaletteMouse
@@ -1965,7 +2019,7 @@ ApplicationWindow {
                             Label {
                                 visible: studioSection === 1
                                 text: "Multi Itens flexível (2 a 8 produtos)"
-                                color: "#284F8F"; font.bold: true
+                                color: window.uiColor("#284F8F", "auto"); font.bold: true
                             }
                             RowLayout {
                                 Layout.fillWidth: true
@@ -1983,7 +2037,7 @@ ApplicationWindow {
                             Label {
                                 visible: studioSection === 1
                                 text: "Ajustar a faixa Multi selecionada"
-                                font.pixelSize: 11; color: "#64748B"
+                                font.pixelSize: 11; color: window.uiColor("#64748B", "auto")
                             }
                             RowLayout {
                                 Layout.fillWidth: true
@@ -2007,14 +2061,14 @@ ApplicationWindow {
                                 visible: studioSection === 1
                                 Layout.fillWidth: true
                                 font.pixelSize: 10
-                                color: "#7C5A21"
+                                color: window.uiColor("#7C5A21", "auto")
                                 wrapMode: Text.WordWrap
                                 text: "Para reduzir a faixa, os espaços que serão removidos precisam estar vazios. Os demais produtos e preços são preservados."
                             }
                             Label {
                                 visible: studioSection === 1
                                 text: "Preços dos novos slots"
-                                color: "#284F8F"; font.bold: true
+                                color: window.uiColor("#284F8F", "auto"); font.bold: true
                             }
                             ComboBox {
                                 id: slotPriceMode
@@ -2023,7 +2077,7 @@ ApplicationWindow {
                                 model: ["Automático", "1 preço", "2 preços"]
                                 currentIndex: 0
                             }
-                            Label { visible: studioSection === 1; text: "Cores e Estilos"; color: "#284F8F"; font.bold: true }
+                            Label { visible: studioSection === 1; text: "Cores e Estilos"; color: window.uiColor("#284F8F", "auto"); font.bold: true }
                             ComboBox {
                                 id: slotThemeChoice
                                 visible: studioSection === 1; Layout.fillWidth: true
@@ -2082,7 +2136,7 @@ ApplicationWindow {
                             visible: studioSection === 6; clip: true
                             ColumnLayout {
                                 width: 235; spacing: 12
-                                Label { text: "Campanha"; color: "#284F8F"; font.bold: true }
+                                Label { text: "Campanha"; color: window.uiColor("#284F8F", "auto"); font.bold: true }
                                 ComboBox {
                                     id: campaignCampaignChoice
                                     Layout.fillWidth: true
@@ -2090,10 +2144,10 @@ ApplicationWindow {
                                 }
                                 Label {
                                     Layout.fillWidth: true; wrapMode: Text.WordWrap
-                                    color: "#64748B"
+                                    color: window.uiColor("#64748B", "auto")
                                     text: "Escolha uma miniatura. O fundo ocupa toda a página e o selo correspondente é colocado automaticamente. Sem importar arquivos."
                                 }
-                                Label { text: "Fundos Promocionais"; color: "#284F8F"; font.bold: true }
+                                Label { text: "Fundos Promocionais"; color: window.uiColor("#284F8F", "auto"); font.bold: true }
                                 GridLayout {
                                     Layout.fillWidth: true
                                     columns: 2
@@ -2105,10 +2159,10 @@ ApplicationWindow {
                                             required property int index
                                             Layout.preferredWidth: 109
                                             Layout.preferredHeight: 158
-                                            color: "#F8FAFC"
+                                            color: window.uiColor("#F8FAFC", "auto")
                                             radius: 7; border.width: 1
                                             border.color: page && page.metadata && page.metadata.campaign_background_asset === modelData.id
-                                                ? "#1673C5" : "#DDE5F0"
+                                                ? window.uiColor("#1673C5", "auto") : window.uiColor("#DDE5F0", "auto")
                                             Image {
                                                 anchors.left: parent.left; anchors.right: parent.right
                                                 anchors.top: parent.top; anchors.margins: 5
@@ -2131,10 +2185,10 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                                Label { text: "Logos e Selos Promocionais"; color: "#284F8F"; font.bold: true }
+                                Label { text: "Logos e Selos Promocionais"; color: window.uiColor("#284F8F", "auto"); font.bold: true }
                                 Label {
                                     Layout.fillWidth: true; wrapMode: Text.WordWrap
-                                    color: "#64748B"
+                                    color: window.uiColor("#64748B", "auto")
                                     text: "O logo padrão acompanha o fundo; toque em outra miniatura para trocar somente o logo."
                                 }
                                 GridLayout {
@@ -2148,9 +2202,9 @@ ApplicationWindow {
                                             required property int index
                                             Layout.preferredWidth: 109
                                             Layout.preferredHeight: 112
-                                            color: "#F8FAFC"; radius: 7; border.width: 1
+                                            color: window.uiColor("#F8FAFC", "auto"); radius: 7; border.width: 1
                                             border.color: page && page.metadata && page.metadata.campaign_seal_asset === modelData.id
-                                                ? "#1673C5" : "#DDE5F0"
+                                                ? window.uiColor("#1673C5", "auto") : window.uiColor("#DDE5F0", "auto")
                                             Image {
                                                 anchors.left: parent.left; anchors.right: parent.right
                                                 anchors.top: parent.top; anchors.margins: 4
@@ -2173,8 +2227,8 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                                Rectangle { Layout.fillWidth: true; height: 1; color: "#E5EAF4" }
-                                Label { text: "Data da Promoção"; color: "#284F8F"; font.bold: true }
+                                Rectangle { Layout.fillWidth: true; height: 1; color: window.uiColor("#E5EAF4", "auto") }
+                                Label { text: "Data da Promoção"; color: window.uiColor("#284F8F", "auto"); font.bold: true }
                                 ComboBox {
                                     id: campaignDateMode
                                     Layout.fillWidth: true
@@ -2182,7 +2236,7 @@ ApplicationWindow {
                                 }
                                 Label {
                                     text: "Uma data única e válida na planilha é necessária para preenchimento automático."
-                                    Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#64748B"
+                                    Layout.fillWidth: true; wrapMode: Text.WordWrap; color: window.uiColor("#64748B", "auto")
                                 }
                                 TextField {
                                     id: campaignManualDate
@@ -2200,7 +2254,7 @@ ApplicationWindow {
                                 }
                                 Label {
                                     text: "Exibida: " + String((page && page.metadata && page.metadata.campaign_date_display) || "não definida")
-                                    Layout.fillWidth: true; wrapMode: Text.WordWrap; color: "#425072"
+                                    Layout.fillWidth: true; wrapMode: Text.WordWrap; color: window.uiColor("#425072", "auto")
                                 }
                                 CheckBox { text: "Mostrar grade"; checked: showGrid; onToggled: showGrid = checked }
                                 CheckBox { text: "Mostrar réguas"; checked: showRulers; onToggled: showRulers = checked }
@@ -2214,16 +2268,16 @@ ApplicationWindow {
                 id: workspace
                 SplitView.fillWidth: true
                 SplitView.fillHeight: true
-                color: "#F4F7FD"
+                color: window.uiColor("#F4F7FD", "auto")
 
                 Rectangle {
                     height: 49
                     anchors.left: parent.left
                     anchors.right: parent.right
                     anchors.top: parent.top
-                    color: "white"
+                    color: window.uiColor("white", "auto")
                     radius: 8
-                    border.color: "#E8EBF4"
+                    border.color: window.uiColor("#E8EBF4", "border")
                     z: 20000
                     RowLayout {
                         anchors.fill: parent
@@ -2254,9 +2308,15 @@ ApplicationWindow {
                         ToolButton { text: "↷"; enabled: !!scene.editor && scene.editor.can_redo; onClicked: sceneBridge.redo() }
                         Item { Layout.fillWidth: true }
                         ToolButton { text: "−"; onClicked: zoom = Math.max(0.12, zoom - 0.1) }
-                        Label { text: Math.round(zoom * 100) + "%"; color: "#1C2B4D"; font.bold: true; font.pixelSize: 12 }
+                        Label { text: Math.round(zoom * 100) + "%"; color: window.uiColor("#1C2B4D", "auto"); font.bold: true; font.pixelSize: 12 }
                         ToolButton { text: "+"; onClicked: zoom = Math.min(3.5, zoom + 0.1) }
                         ToolButton { text: "✥"; onClicked: showRulers = !showRulers }
+                        ToolButton {
+                            text: window.darkMode ? "☀" : "☾"
+                            ToolTip.text: window.darkMode ? "Desativar modo noturno" : "Ativar modo noturno"
+                            ToolTip.visible: hovered
+                            onClicked: sceneBridge.setUiTheme(window.darkMode ? "light" : "dark")
+                        }
                     }
                 }
 
@@ -2330,6 +2390,7 @@ ApplicationWindow {
 
                         Rectangle {
                             id: sheet
+                            objectName: "sheet"
                             x: 140
                             y: 90
                             width: (page ? page.width : 1080) * zoom
@@ -2530,6 +2591,10 @@ ApplicationWindow {
                                             MenuItem {
                                                 text: "Autoajustar imagem"
                                                 onTriggered: sceneBridge.dispatch(JSON.stringify({"name":"auto_fit_product_image", "node_id":modelData.id}))
+                                            }
+                                            MenuItem {
+                                                text: "Remover fundo branco da foto (withoutBG)"
+                                                onTriggered: sceneBridge.removeBackground(modelData.id)
                                             }
                                             MenuItem {
                                                 text: "Restaurar zoom"
@@ -2989,8 +3054,8 @@ ApplicationWindow {
             Rectangle {
                 SplitView.preferredWidth: 300
                 SplitView.minimumWidth: 265
-                color: "#FFFFFF"
-                border.color: "#D9E2EF"
+                color: window.uiColor("#FFFFFF", "auto")
+                border.color: window.uiColor("#D9E2EF", "border")
 
                 ScrollView {
                     anchors.fill: parent
@@ -3002,38 +3067,38 @@ ApplicationWindow {
 
                         RowLayout {
                             Layout.fillWidth: true
-                            Label { text: "Propriedades"; font.bold: true; font.pixelSize: 14; color: "#16213C" }
+                            Label { text: "Propriedades"; font.bold: true; font.pixelSize: 14; color: window.uiColor("#16213C", "auto") }
                             Item { Layout.fillWidth: true }
-                            Label { text: anchorNode ? ("ID: " + String(anchorNode.id).slice(0, 8)) : "Nenhum item"; font.pixelSize: 9; color: "#8995AC" }
+                            Label { text: anchorNode ? ("ID: " + String(anchorNode.id).slice(0, 8)) : "Nenhum item"; font.pixelSize: 9; color: window.uiColor("#8995AC", "auto") }
                         }
-                        Rectangle { Layout.fillWidth: true; height: 1; color: "#EDF0F5" }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: window.uiColor("#EDF0F5", "auto") }
                         GroupBox {
                             title: "Produto selecionado"
                             visible: !!window.propertyProduct()
                             Layout.fillWidth: true
-                            background: Rectangle { color: "#F8FAFE"; radius: 12; border.color: "#DCE6F4" }
+                            background: Rectangle { color: window.uiColor("#F8FAFE", "auto"); radius: 12; border.color: window.uiColor("#DCE6F4", "auto") }
                             ColumnLayout {
                                 anchors.fill: parent
                                 spacing: 8
-                                Label { text: "Nome do produto"; color: "#53617A"; font.pixelSize: 10 }
+                                Label { text: "Nome do produto"; color: window.uiColor("#53617A", "auto"); font.pixelSize: 10 }
                                 TextField { id: inspectorProductName; Layout.fillWidth: true; placeholderText: "Nome completo"; font.pixelSize: 12 }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     spacing: 6
                                     ColumnLayout {
                                         Layout.fillWidth: true
-                                        Label { text: "Preço (R$)"; font.pixelSize: 10; color: "#53617A" }
+                                        Label { text: "Preço (R$)"; font.pixelSize: 10; color: window.uiColor("#53617A", "auto") }
                                         TextField { id: inspectorPrice; Layout.fillWidth: true; placeholderText: "0,00" }
                                     }
                                     ColumnLayout {
                                         Layout.fillWidth: true
-                                        Label { text: "Clube SR / App"; font.pixelSize: 10; color: "#53617A" }
+                                        Label { text: "Clube SR / App"; font.pixelSize: 10; color: window.uiColor("#53617A", "auto") }
                                         TextField { id: inspectorAppPrice; Layout.fillWidth: true; placeholderText: "0,00" }
                                     }
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Label { text: "Unidade"; color: "#53617A" }
+                                    Label { text: "Unidade"; color: window.uiColor("#53617A", "auto") }
                                     TextField { id: inspectorUnit; Layout.fillWidth: true; placeholderText: "UN ou KG" }
                                 }
                                 Button {
@@ -3048,7 +3113,7 @@ ApplicationWindow {
                             title: "Smart Slot · Formatação"
                             Layout.fillWidth: true
                             visible: selectedSlotId !== ""
-                            background: Rectangle { color: "#F8FAFE"; radius: 12; border.color: "#DCE6F4" }
+                            background: Rectangle { color: window.uiColor("#F8FAFE", "auto"); radius: 12; border.color: window.uiColor("#DCE6F4", "auto") }
                             ColumnLayout {
                                 anchors.fill: parent
                                 spacing: 9
@@ -3057,7 +3122,7 @@ ApplicationWindow {
                                     Layout.fillWidth: true
                                     onClicked: window.duplicateSelectedSmartSlot()
                                 }
-                                Label { text: "Alinhamento do nome"; color: "#53617A"; font.pixelSize: 10 }
+                                Label { text: "Alinhamento do nome"; color: window.uiColor("#53617A", "auto"); font.pixelSize: 10 }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     Repeater {
@@ -3078,7 +3143,7 @@ ApplicationWindow {
                                         }
                                     }
                                 }
-                                Label { text: "Tipografia"; color: "#12295A"; font.bold: true }
+                                Label { text: "Tipografia"; color: window.uiColor("#12295A", "auto"); font.bold: true }
                                 RowLayout {
                                     Layout.fillWidth: true
                                     ComboBox {
@@ -3095,7 +3160,7 @@ ApplicationWindow {
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Label { text: "Cor"; color: "#53617A" }
+                                    Label { text: "Cor"; color: window.uiColor("#53617A", "auto") }
                                     TextField {
                                         id: inspectorFontColor
                                         Layout.fillWidth: true
@@ -3116,7 +3181,7 @@ ApplicationWindow {
                                         "font_weight":700
                                     }))
                                 }
-                                Label { text: "Estilo do preço"; font.bold: true; color: "#12295A" }
+                                Label { text: "Estilo do preço"; font.bold: true; color: window.uiColor("#12295A", "auto") }
                                 ComboBox {
                                     id: inspectorPriceStyle
                                     Layout.fillWidth: true
@@ -3127,7 +3192,7 @@ ApplicationWindow {
                                         "mode":["auto","one","two"][currentIndex]
                                     }))
                                 }
-                                Label { text: "Cores da campanha"; font.bold: true; color: "#12295A" }
+                                Label { text: "Cores da campanha"; font.bold: true; color: window.uiColor("#12295A", "auto") }
                                 ComboBox {
                                     id: inspectorTheme
                                     Layout.fillWidth: true
@@ -3140,28 +3205,28 @@ ApplicationWindow {
                                 }
                             }
                         }
-                        Label { text: "Nome do elemento"; color: "#606C84"; font.pixelSize: 10 }
-                        Label { id: inspectorName; text: "Nada selecionado"; color: "#293957"; font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; padding: 9; background: Rectangle { color: "#FAFBFE"; radius: 6; border.color: "#DDE4F0" } }
+                        Label { text: "Nome do elemento"; color: window.uiColor("#606C84", "auto"); font.pixelSize: 10 }
+                        Label { id: inspectorName; text: "Nada selecionado"; color: window.uiColor("#293957", "auto"); font.bold: true; Layout.fillWidth: true; elide: Text.ElideRight; padding: 9; background: Rectangle { color: window.uiColor("#FAFBFE", "auto"); radius: 6; border.color: window.uiColor("#DDE4F0", "auto") } }
                         GroupBox {
                             title: "Posição e dimensões"
                             visible: !!geometryNode
                             Layout.fillWidth: true
-                            background: Rectangle { color: "#F8FAFE"; radius: 12; border.color: "#DCE6F4" }
+                            background: Rectangle { color: window.uiColor("#F8FAFE", "auto"); radius: 12; border.color: window.uiColor("#DCE6F4", "auto") }
                             ColumnLayout {
                                 anchors.fill: parent
                                 spacing: 7
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Label { text: "X"; color: "#53617A" }
+                                    Label { text: "X"; color: window.uiColor("#53617A", "auto") }
                                     TextField { id: geometryX; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                                    Label { text: "Y"; color: "#53617A" }
+                                    Label { text: "Y"; color: window.uiColor("#53617A", "auto") }
                                     TextField { id: geometryY; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
                                 }
                                 RowLayout {
                                     Layout.fillWidth: true
-                                    Label { text: "L"; color: "#53617A" }
+                                    Label { text: "L"; color: window.uiColor("#53617A", "auto") }
                                     TextField { id: geometryWidth; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
-                                    Label { text: "A"; color: "#53617A" }
+                                    Label { text: "A"; color: window.uiColor("#53617A", "auto") }
                                     TextField { id: geometryHeight; Layout.fillWidth: true; inputMethodHints: Qt.ImhFormattedNumbersOnly }
                                 }
                                 Button { text: "Aplicar posição e tamanho"; Layout.fillWidth: true; onClicked: window.applyGeometry() }
@@ -3170,20 +3235,20 @@ ApplicationWindow {
                         Rectangle {
                             Layout.fillWidth: true
                             height: 1
-                            color: "#E6EAF2"
+                            color: window.uiColor("#E6EAF2", "auto")
                         }
-                        Label { text: sceneBridge.status; color: "#64748B"; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-                        Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
+                        Label { text: sceneBridge.status; color: window.uiColor("#64748B", "auto"); wrapMode: Text.WordWrap; Layout.fillWidth: true }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: window.uiColor("#E6ECF4", "auto") }
 
                         ColumnLayout {
                             visible: anchorNode && (anchorNode.kind === "image" || anchorNode.kind === "background")
                             Layout.fillWidth: true
                             spacing: 7
-                            Label { text: "Imagem selecionada"; font.bold: true; color: "#334155" }
+                            Label { text: "Imagem selecionada"; font.bold: true; color: window.uiColor("#334155", "auto") }
                             Button { text: "Substituir imagem"; Layout.fillWidth: true; onClicked: replaceSelectedImageDialog.open() }
                             Button { text: "Remover fundo"; Layout.fillWidth: true; onClicked: removeCurrentBackground() }
                             RowLayout {
-                                Label { text: "Ajuste"; color: "#475569" }
+                                Label { text: "Ajuste"; color: window.uiColor("#475569", "auto") }
                                 ComboBox {
                                     Layout.fillWidth: true
                                     model: ["contain","cover","fill"]
@@ -3194,12 +3259,12 @@ ApplicationWindow {
                         ColumnLayout {
                             visible: anchorNode && anchorNode.kind === "text"
                             Layout.fillWidth: true
-                            Label { text: "Texto"; color: "#475569"; font.bold: true }
+                            Label { text: "Texto"; color: window.uiColor("#475569", "auto"); font.bold: true }
                             TextArea { id: textEditor; Layout.fillWidth: true; Layout.preferredHeight: 90; wrapMode: TextEdit.Wrap }
                             Button { text: "Aplicar texto"; Layout.fillWidth: true; onClicked: if (anchorNode) sceneBridge.editText(anchorNode.id, textEditor.text) }
                         }
 
-                        Rectangle { Layout.fillWidth: true; height: 1; color: "#E6ECF4" }
+                        Rectangle { Layout.fillWidth: true; height: 1; color: window.uiColor("#E6ECF4", "auto") }
                     }
                 }
             }
@@ -3209,8 +3274,8 @@ ApplicationWindow {
             Layout.fillWidth: true
             Layout.preferredHeight: 116
             radius: 12
-            color: "#FFFFFF"
-            border.color: "#E4E9F4"
+            color: window.uiColor("#FFFFFF", "auto")
+            border.color: window.uiColor("#E4E9F4", "border")
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 13
@@ -3223,8 +3288,8 @@ ApplicationWindow {
                         Layout.preferredWidth: 76
                         Layout.preferredHeight: 92
                         radius: 8
-                        color: "#FDFEFF"
-                        border.color: modelData.id === scene.active_page_id ? "#365CFF" : "#E2E7F2"
+                        color: window.uiColor("#FDFEFF", "auto")
+                        border.color: modelData.id === scene.active_page_id ? window.uiColor("#365CFF", "border") : window.uiColor("#E2E7F2", "border")
                         border.width: modelData.id === scene.active_page_id ? 2 : 1
                         ColumnLayout {
                             anchors.fill: parent
@@ -3233,12 +3298,14 @@ ApplicationWindow {
                             Rectangle {
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                color: modelData.background || "#FFFFFF"
-                                border.color: "#DCE3EF"
+                                color: modelData.background || window.uiColor("#FFFFFF", "auto")
+                                border.color: window.uiColor("#DCE3EF", "border")
                                 clip: true
                                 // Miniature representation uses actual document node colors.
                                 Repeater {
-                                    model: Object.values(modelData.nodes || {}).slice(0, 28)
+                                    model: Object.values(modelData.nodes || {})
+                                        .filter(function(n) { return n && n.visible !== false && n.transform && n.kind !== "group" })
+                                        .slice(0, 260)
                                     delegate: Rectangle {
                                         required property var modelData
                                         visible: modelData.visible !== false
@@ -3246,18 +3313,21 @@ ApplicationWindow {
                                         y: Math.max(0, Number(modelData.transform.y) / Math.max(1, page ? page.height : 1350) * parent.height)
                                         width: Math.max(1, Number(modelData.transform.width) / Math.max(1, page ? page.width : 1080) * parent.width)
                                         height: Math.max(1, Number(modelData.transform.height) / Math.max(1, page ? page.height : 1350) * parent.height)
-                                        color: modelData.kind === "image" ? "#E1EAF8" : (modelData.style ? modelData.style.fill || "#EBEFF7" : "#EBEFF7")
+                                        color: modelData.kind === "image" ? window.uiColor("#E1EAF8", "auto") : (modelData.style ? modelData.style.fill || window.uiColor("#EBEFF7", "auto") : window.uiColor("#EBEFF7", "auto"))
                                     }
                                 }
                             }
                             Label {
-                                text: modelData.name || ("Página " + (index + 1))
+                                text: modelData.name && modelData.name.indexOf("Montagem automática") === 0
+                                    ? ((modelData.metadata && modelData.metadata.auto_promotion && modelData.metadata.auto_promotion.featured)
+                                        ? ("★ Pág. " + (index + 1)) : ("Pág. " + (index + 1)))
+                                    : (modelData.name || ("Página " + (index + 1)))
                                 Layout.fillWidth: true
                                 Layout.alignment: Qt.AlignHCenter
                                 horizontalAlignment: Text.AlignHCenter
                                 elide: Text.ElideRight
                                 font.pixelSize: 9
-                                color: modelData.id === scene.active_page_id ? "#2954F9" : "#79849D"
+                                color: modelData.id === scene.active_page_id ? window.uiColor("#2954F9", "auto") : window.uiColor("#79849D", "auto")
                             }
                         }
                         MouseArea { anchors.fill: parent; onClicked: sceneBridge.dispatch(JSON.stringify({"name":"select_page","page_id":modelData.id})) }
@@ -3267,13 +3337,13 @@ ApplicationWindow {
                     Layout.preferredWidth: 77
                     Layout.preferredHeight: 92
                     radius: 8
-                    color: "#FBFCFF"
-                    border.color: "#CBD7EB"
+                    color: window.uiColor("#FBFCFF", "auto")
+                    border.color: window.uiColor("#CBD7EB", "border")
                     border.width: 1
                     ColumnLayout {
                         anchors.centerIn: parent
-                        Label { text: "+"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 25; color: "#425276" }
-                        Label { text: "Adicionar página"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 9; color: "#71809E" }
+                        Label { text: "+"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 25; color: window.uiColor("#425276", "auto") }
+                        Label { text: "Adicionar página"; Layout.alignment: Qt.AlignHCenter; font.pixelSize: 9; color: window.uiColor("#71809E", "auto") }
                     }
                     MouseArea { anchors.fill: parent; onClicked: sceneBridge.dispatch('{"name":"add_page"}') }
                 }
@@ -3282,7 +3352,7 @@ ApplicationWindow {
                 Label {
                     visible: productDragActive
                     text: dragHoverSlotId ? "Solte para aplicar o produto" : "Arraste sobre um card"
-                    color: dragHoverSlotId ? "#16A34A" : "#2954F9"
+                    color: dragHoverSlotId ? window.uiColor("#16A34A", "auto") : window.uiColor("#2954F9", "auto")
                     font.pixelSize: 10
                     font.bold: true
                 }
@@ -3294,7 +3364,7 @@ ApplicationWindow {
                     Layout.preferredWidth: 120
                     onMoved: window.zoom = value
                 }
-                Label { text: Math.round(window.zoom * 100) + "%"; Layout.preferredWidth: 44; color: "#17213E"; font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignRight }
+                Label { text: Math.round(window.zoom * 100) + "%"; Layout.preferredWidth: 44; color: window.uiColor("#17213E", "auto"); font.bold: true; font.pixelSize: 12; horizontalAlignment: Text.AlignRight }
                 ToolButton {
                     text: "⛶"
                     ToolTip.text: "Ajustar zoom à página"; ToolTip.visible: hovered
@@ -3314,16 +3384,16 @@ ApplicationWindow {
         height: 46
         z: 1000020
         radius: 9
-        color: "#F8FAFF"
+        color: window.uiColor("#F8FAFF", "auto")
         border.width: 2
-        border.color: "#2166EF"
+        border.color: window.uiColor("#2166EF", "border")
         opacity: .96
         Label {
             anchors.centerIn: parent
             text: "Soltar · " + (window.slotDragKey === "blue" ? "Slot Único" :
                   window.slotDragKey === "individual" ? "Individual" :
                   window.slotDragKey === "multi5" ? "Multi 5" : "Multi 6")
-            color: "#164FAF"
+            color: window.uiColor("#164FAF", "auto")
             font.bold: true
         }
     }
@@ -3337,9 +3407,9 @@ ApplicationWindow {
         height: 74
         z: 1000000
         radius: 8
-        color: "#FFFFFFF4"
+        color: window.uiColor("#FFFFFFF4", "auto")
         border.width: 2
-        border.color: dragHoverSlotId ? "#16A34A" : "#0F5BD8"
+        border.color: dragHoverSlotId ? window.uiColor("#16A34A", "border") : window.uiColor("#0F5BD8", "border")
         opacity: 0.94
 
         RowLayout {
@@ -3350,8 +3420,8 @@ ApplicationWindow {
                 Layout.preferredWidth: 54
                 Layout.preferredHeight: 54
                 radius: 5
-                color: "#F8FAFC"
-                border.color: "#E5EAF1"
+                color: window.uiColor("#F8FAFC", "auto")
+                border.color: window.uiColor("#E5EAF1", "border")
                 clip: true
                 Image {
                     anchors.fill: parent
@@ -3364,8 +3434,8 @@ ApplicationWindow {
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 2
-                Label { Layout.fillWidth: true; text: productLabel(draggedProduct); color: "#111827"; font.bold: true; font.pixelSize: 11; elide: Text.ElideRight }
-                Label { text: dragHoverSlotId ? "Soltar no card" : "Arraste até um Smart Slot"; color: dragHoverSlotId ? "#16A34A" : "#0F5BD8"; font.bold: true; font.pixelSize: 10 }
+                Label { Layout.fillWidth: true; text: productLabel(draggedProduct); color: window.uiColor("#111827", "auto"); font.bold: true; font.pixelSize: 11; elide: Text.ElideRight }
+                Label { text: dragHoverSlotId ? "Soltar no card" : "Arraste até um Smart Slot"; color: dragHoverSlotId ? window.uiColor("#16A34A", "auto") : window.uiColor("#0F5BD8", "auto"); font.bold: true; font.pixelSize: 10 }
             }
         }
     }

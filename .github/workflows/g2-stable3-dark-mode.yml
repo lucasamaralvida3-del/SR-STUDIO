@@ -1,0 +1,219 @@
+name: G2 Stable 3 Dark Mode Promotion
+
+on:
+  pull_request:
+    branches: [feature/g2-beta65-visual-repair]
+    paths:
+      - 'src/srstudio/app/**'
+      - 'src/srstudio/graphics2/**'
+      - 'tests/**'
+      - 'tools/stable3_release.py'
+      - 'tools/test_stable3_release.py'
+      - '.github/workflows/g2-stable3-dark-mode.yml'
+  push:
+    branches: [feature/g2-beta65-visual-repair]
+    paths:
+      - 'src/srstudio/app/**'
+      - 'src/srstudio/graphics2/**'
+      - 'tests/**'
+      - 'tools/stable3_release.py'
+      - 'tools/test_stable3_release.py'
+      - '.github/workflows/g2-stable3-dark-mode.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Verify Beta65 source lineage
+        shell: pwsh
+        run: |
+          git merge-base --is-ancestor 9557b83e9a1a141967f77dfe7340e5c1c4ca8b46 HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Source no longer descends from published Beta65' }
+      - name: Install test dependencies
+        run: python -m pip install -e ".[dev,graphics2]"
+      - name: Compile and lint
+        shell: pwsh
+        run: |
+          python -m compileall -q src tests tools/stable3_release.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m ruff check src tests tools/stable3_release.py tools/test_stable3_release.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Test full Studio and release packaging
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m pytest -q
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tools -p test_stable3_release.py -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Smoke Qt editor and document export
+        shell: pwsh
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          python -m srstudio.graphics2.release_smoke --output-dir review/stable3-smoke
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Stable3-Smoke
+          path: review/stable3-smoke/release-smoke.json
+          if-no-files-found: error
+
+  package:
+    if: github.event_name == 'push' && contains(github.event.head_commit.message, '[promote-stable3]')
+    needs: validate
+    runs-on: windows-latest
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+      - name: Confirm channel state and install build dependencies
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $betaSource = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main"
+          $stableSource = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/contents/stable/manifest.json?ref=main"
+          [IO.File]::WriteAllBytes('release/current-beta.json', [Convert]::FromBase64String($betaSource.content))
+          [IO.File]::WriteAllBytes('release/current-stable.json', [Convert]::FromBase64String($stableSource.content))
+          $beta = Get-Content -Raw release/current-beta.json | ConvertFrom-Json
+          $stable = Get-Content -Raw release/current-stable.json | ConvertFrom-Json
+          if ($beta.version -ne '5.0.0-hybrid.g2beta.65') { throw 'Published Beta is not Beta65' }
+          if ($beta.source_commit -ne '9557b83e9a1a141967f77dfe7340e5c1c4ca8b46') { throw 'Published Beta source changed' }
+          if ($stable.version -ne '5.0.0-hybrid.stable2') { throw 'Stable already advanced' }
+          python -m pip install -e ".[dev,graphics2-build,background-removal]" pyinstaller
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Apply Stable 3 identity to build only
+        shell: pwsh
+        run: |
+          @'
+          """SR Studio 5.0 Professional core package."""
+          __version__ = "5.0.0"
+          __channel__ = "stable"
+          __release_label__ = "Stable 3 Professional"
+          __distribution_version__ = "5.0.0-hybrid.stable3"
+          '@ | Set-Content -LiteralPath src/srstudio/__init__.py -Encoding utf8
+          python -c "import srstudio; assert srstudio.__channel__ == 'stable' and srstudio.__distribution_version__ == '5.0.0-hybrid.stable3'"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build shell and Graphics2 host
+        shell: pwsh
+        run: |
+          pyinstaller --noconfirm --clean --windowed --name "SR Studio 5" --paths src --collect-all pypdfium2 --collect-all pypdfium2_raw --icon "src/srstudio/assets/brand/SR_Studio.ico" --add-data "src/srstudio/assets/brand;srstudio/assets/brand" --add-data "src/srstudio/assets/poster_templates;srstudio/assets/poster_templates" src/srstudio/app/turbo_posters.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python build/build_graphics2_host.py --output "dist/graphics2-host"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          New-Item -ItemType Directory -Force -Path "dist/SR Studio 5/Graphics2Host" | Out-Null
+          Copy-Item "dist/graphics2-host/SRGraphicsEngine2Host/*" "dist/SR Studio 5/Graphics2Host" -Recurse -Force
+          python -c "from pathlib import Path; from srstudio.graphics2.host_runtime import validate_runtime_host; r=validate_runtime_host(Path('dist/SR Studio 5/Graphics2Host').resolve(), full=True); assert r.ok, r"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Create and verify Stable bundle
+        shell: pwsh
+        run: |
+          python tools/stable3_release.py --program "dist/SR Studio 5" --archive "release/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip" --previous release/current-stable.json --output release/stable3-manifest.json --source-commit $env:GITHUB_SHA
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $manifest = Get-Content -Raw release/stable3-manifest.json | ConvertFrom-Json
+          $actual = (Get-FileHash "release/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($actual -ne $manifest.sha256) { throw 'Stable ZIP SHA-256 mismatch' }
+          if ($manifest.size -lt 100000000) { throw 'Stable ZIP unexpectedly small' }
+          "commit=$env:GITHUB_SHA" | Set-Content -LiteralPath release/stable3-provenance.txt -Encoding ascii
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Stable3-Candidate
+          path: |
+            release/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip
+            release/stable3-manifest.json
+            release/stable3-provenance.txt
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: Stable3-Candidate
+          path: release
+      - name: Verify exact build and current Stable channel
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(sed -n 's/^commit=//p' release/stable3-provenance.txt | tr -d '\r\n')" = "$GITHUB_SHA"
+          python - <<'PY'
+          import hashlib, json, os, pathlib
+          manifest = json.loads(pathlib.Path('release/stable3-manifest.json').read_text())
+          archive = pathlib.Path('release/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip')
+          assert manifest['source_commit'] == os.environ['GITHUB_SHA']
+          assert manifest['version'] == '5.0.0-hybrid.stable3'
+          assert archive.stat().st_size == manifest['size']
+          assert hashlib.sha256(archive.read_bytes()).hexdigest() == manifest['sha256']
+          PY
+          gh api "repos/$GITHUB_REPOSITORY/contents/stable/manifest.json?ref=main" --jq .content | base64 -d > release/current-stable.json
+          test "$(python -c 'import json; print(json.load(open("release/current-stable.json"))["version"])')" = '5.0.0-hybrid.stable2'
+          if gh release view v5.0.0-hybrid.stable3 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo 'Stable 3 release already exists; refusing to overwrite it.' >&2
+            exit 1
+          fi
+      - name: Publish verified Stable 3 release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          cat > release/notes.md <<'EOF'
+          # SR Studio 5 Stable 3 Professional
+
+          Promovido a partir do G2 Beta 65 com modo noturno nas telas principais e no editor de encartes.
+          A preferência é compartilhada e salva. As cores da arte, do PDF e do PNG continuam independentes do tema da interface.
+          A publicação exige suíte completa Windows, smoke do editor Qt, empacotamento do host e SHA-256 do ZIP.
+          EOF
+          gh release create v5.0.0-hybrid.stable3 \
+            release/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip \
+            release/stable3-provenance.txt \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title 'SR Studio 5 Stable 3 Professional — Modo noturno' \
+            --notes-file release/notes.md
+          expected="$(python -c 'import json; print(json.load(open("release/stable3-manifest.json"))["size"])')"
+          actual="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/v5.0.0-hybrid.stable3" --jq '.assets[] | select(.name == "SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip") | .size')"
+          test "$actual" = "$expected"
+          curl -fsSIL --retry 5 --retry-delay 3 \
+            "https://github.com/$GITHUB_REPOSITORY/releases/download/v5.0.0-hybrid.stable3/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip" >/dev/null
+      - name: Activate Stable channel after release verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          sha="$(gh api "repos/$GITHUB_REPOSITORY/contents/stable/manifest.json?ref=main" --jq .sha)"
+          encoded="$(base64 -w0 release/stable3-manifest.json)"
+          gh api -X PUT "repos/$GITHUB_REPOSITORY/contents/stable/manifest.json" \
+            -f message='release: activate SR Studio Stable 3 dark mode' \
+            -f branch=main -f sha="$sha" -f content="$encoded" >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/contents/stable/manifest.json?ref=main" --jq .content | base64 -d > release/activated.json
+          python - <<'PY'
+          import json
+          expected = json.load(open('release/stable3-manifest.json'))
+          actual = json.load(open('release/activated.json'))
+          assert actual == expected, 'Stable manifest activation mismatch'
+          print('STABLE3_PROMOTION_SUCCESS', actual['version'], actual['sha256'])
+          PY

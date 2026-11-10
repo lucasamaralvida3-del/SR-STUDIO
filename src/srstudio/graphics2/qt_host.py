@@ -234,6 +234,8 @@ def launch_qt_quick_editor(
     gate = context.gate or inspect_production_gate(session.document, require_visual_fidelity=False)
     from .product_image_library import apply_stored_product_links
     from .legacy_image_bank_bridge import hydrate_legacy_bank
+    from srstudio.app.ui_theme import color_for_theme, normalized_theme
+    from srstudio.settings.store import SettingsStore
     apply_stored_product_links(session.document)
     hydrate_legacy_bank(session.document)
     preview_provider = create_live_scene_image_provider()
@@ -241,6 +243,7 @@ def launch_qt_quick_editor(
     class SceneBridge(QObject):
         sceneChanged = Signal()
         statusChanged = Signal()
+        uiThemeChanged = Signal()
         fileJobDone = Signal(bool, str, str, str)
         autosaveDone = Signal(bool, str, str)
         backgroundRemovalDone = Signal(bool, str, str, str)
@@ -250,6 +253,13 @@ def launch_qt_quick_editor(
 
         def __init__(self) -> None:
             super().__init__()
+            self._ui_theme_store = SettingsStore()
+            self._ui_theme_settings = self._ui_theme_store.load()
+            self._ui_theme = normalized_theme(self._ui_theme_settings.theme)
+            self._ui_theme_timer = QTimer(self)
+            self._ui_theme_timer.setInterval(1500)
+            self._ui_theme_timer.timeout.connect(self._sync_ui_theme)
+            self._ui_theme_timer.start()
             self._status = _startup_status(context, gate, requested_api)
             self._busy = False
             self._autosave_manager = AutosaveManager(
@@ -275,6 +285,32 @@ def launch_qt_quick_editor(
             self._slot_previews_json: str | None = None
             self._image_bank_cache_key = None
             self._image_bank_cache = None
+
+        @Property(str, notify=uiThemeChanged)
+        def uiTheme(self) -> str:
+            return self._ui_theme
+
+        @Slot(str)
+        def setUiTheme(self, value: str) -> None:
+            chosen = normalized_theme(value)
+            if chosen == self._ui_theme:
+                return
+            self._ui_theme_settings.theme = chosen
+            self._ui_theme_store.save(self._ui_theme_settings)
+            self._ui_theme = chosen
+            self.uiThemeChanged.emit()
+
+        def _sync_ui_theme(self) -> None:
+            settings = self._ui_theme_store.load()
+            chosen = normalized_theme(settings.theme)
+            if chosen != self._ui_theme:
+                self._ui_theme_settings = settings
+                self._ui_theme = chosen
+                self.uiThemeChanged.emit()
+
+        @Slot(str, str, result=str)
+        def themeColor(self, value: str, role: str) -> str:
+            return color_for_theme(value, role, self._ui_theme)
 
         @Property(int, constant=True)
         def productSidebarWidth(self) -> int:

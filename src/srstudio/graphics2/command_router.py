@@ -420,7 +420,8 @@ class GraphicsCommandRouter:
                 from .promotion_composition import apply_slot_composition
                 from .campaign_tools import logo_safe_reserve
                 effective_reserve = logo_safe_reserve(
-                    self.session.page, float(command.get("logo_reserved", .24)))
+                    self.session.page, float(command.get("logo_reserved", .24)),
+                    document=self.session.document)
                 plan = plan_promotion(
                     str(command.get("mode") or "auto"),
                     count=int(command["count"]) if command.get("count") is not None else None,
