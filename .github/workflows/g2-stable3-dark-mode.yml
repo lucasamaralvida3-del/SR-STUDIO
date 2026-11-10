@@ -84,10 +84,19 @@ jobs:
           cache: pip
       - name: Confirm channel state and install build dependencies
         shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          $beta = Get-Content -Raw beta/manifest.json | ConvertFrom-Json
-          $stable = Get-Content -Raw stable/manifest.json | ConvertFrom-Json
+          New-Item -ItemType Directory -Force -Path release | Out-Null
+          $headers = @{ Authorization = "Bearer $env:GH_TOKEN"; Accept = 'application/vnd.github+json' }
+          $betaSource = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/contents/beta/manifest.json?ref=main"
+          $stableSource = Invoke-RestMethod -Headers $headers -Uri "https://api.github.com/repos/$env:GITHUB_REPOSITORY/contents/stable/manifest.json?ref=main"
+          [IO.File]::WriteAllBytes('release/current-beta.json', [Convert]::FromBase64String($betaSource.content))
+          [IO.File]::WriteAllBytes('release/current-stable.json', [Convert]::FromBase64String($stableSource.content))
+          $beta = Get-Content -Raw release/current-beta.json | ConvertFrom-Json
+          $stable = Get-Content -Raw release/current-stable.json | ConvertFrom-Json
           if ($beta.version -ne '5.0.0-hybrid.g2beta.65') { throw 'Published Beta is not Beta65' }
+          if ($beta.source_commit -ne '9557b83e9a1a141967f77dfe7340e5c1c4ca8b46') { throw 'Published Beta source changed' }
           if ($stable.version -ne '5.0.0-hybrid.stable2') { throw 'Stable already advanced' }
           python -m pip install -e ".[dev,graphics2-build,background-removal]" pyinstaller
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -117,7 +126,7 @@ jobs:
       - name: Create and verify Stable bundle
         shell: pwsh
         run: |
-          python tools/stable3_release.py --program "dist/SR Studio 5" --archive "release/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip" --previous stable/manifest.json --output release/stable3-manifest.json --source-commit $env:GITHUB_SHA
+          python tools/stable3_release.py --program "dist/SR Studio 5" --archive "release/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip" --previous release/current-stable.json --output release/stable3-manifest.json --source-commit $env:GITHUB_SHA
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           $manifest = Get-Content -Raw release/stable3-manifest.json | ConvertFrom-Json
           $actual = (Get-FileHash "release/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip" -Algorithm SHA256).Hash.ToLowerInvariant()
