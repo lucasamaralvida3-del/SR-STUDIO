@@ -2,26 +2,29 @@
   "format": "SRSTUDIO_HYBRID_BUNDLE_1",
   "product": "SR Studio",
   "channel": "stable",
-  "version": "5.0.0-hybrid.stable2",
+  "version": "5.0.0-hybrid.stable3",
   "product_version": "5.0.0",
-  "release_label": "Stable 2 Professional",
-  "published_at": "2026-08-17T00:34:26.2770842+00:00",
+  "release_label": "Stable 3 Professional",
+  "published_at": "2026-11-10T21:27:56.429063+00:00",
   "min_launcher": "4.0.1-hybrid.base3.4",
   "min_launcher_version": "4.0.1-hybrid.base3.4",
   "bundle": {
-    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable2/SR_STUDIO_5_0_0-hybrid_stable2_PROFESSIONAL.zip",
-    "sha256": "9d8c4fd558df242c18bac9a55cf1f2ba9faf714eb69ee9178c511cd3768f1c93",
-    "size": 28626694,
+    "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable3/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip",
+    "sha256": "782790693e9ccbb70483b251559b22227876f73cf8589509c468c155729415e5",
+    "size": 493406920,
     "member_prefix": "files/"
   },
-  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable2/SR_STUDIO_5_0_0-hybrid_stable2_PROFESSIONAL.zip",
-  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable2/SR_STUDIO_5_0_0-hybrid_stable2_PROFESSIONAL.zip",
-  "sha256": "9d8c4fd558df242c18bac9a55cf1f2ba9faf714eb69ee9178c511cd3768f1c93",
-  "size": 28626694,
+  "url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable3/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip",
+  "bundle_url": "https://github.com/lucasamaralvida3-del/SR-STUDIO/releases/download/v5.0.0-hybrid.stable3/SR_STUDIO_5_0_0-hybrid_stable3_PROFESSIONAL.zip",
+  "sha256": "782790693e9ccbb70483b251559b22227876f73cf8589509c468c155729415e5",
+  "size": 493406920,
   "member_prefix": "files/",
-  "previous_version": "5.0.0-hybrid.stable1",
-  "promoted_from": "5.0.0-hybrid.beta7.29",
-  "source_commit": "c8d0c3954ce7f54717ad009d81e6a6043212ae3a",
+  "previous_version": "5.0.0-hybrid.stable2",
+  "promoted_from": "5.0.0-hybrid.g2beta.65",
+  "source_commit": "e4662ea575ddd33676b7d923c7669db2a234f2b8",
+  "entrypoint": "SR_Studio_Gerador.py",
+  "graphics2_primary": true,
+  "launcher_path_safe": true,
   "repair": {
     "mode": "local_hash_catalog",
     "full_check_every_days": 7
@@ -33,5 +36,5 @@
     "Encartes5_beta11.js",
     "Encartes6_beta12.js"
   ],
-  "notes": "SR Studio Stable 2 Professional - promoção da Beta 7.29 validada; Cartazes Pro, base profissional, Image Cloud e Encartes/Canva V2 preservados."
+  "notes": "Beta 65 e modo noturno em toda a interface; cores dos encartes e exportações preservadas."
 }
