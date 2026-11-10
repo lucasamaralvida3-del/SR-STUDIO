@@ -9,6 +9,7 @@ from srstudio.app.ai_view import SRIAView
 from srstudio.app.commands import CommandRegistry, StudioCommand
 from srstudio.app.components import action_tile, card, divider, eyebrow, metric_card, page_header, pill
 from srstudio.app.design import COLORS, FONT, LAYOUT, NAV_ICONS, NAV_SECTIONS, PAGE_META
+from srstudio.app.ui_theme import apply_ttk_theme, apply_widget_theme, normalized_theme
 from srstudio.app.encartes_view import EncartesStudioView
 from srstudio.app.export_view import ExportView
 from srstudio.app.palette import CommandPalette
@@ -25,6 +26,7 @@ from srstudio.projects.package import ProjectPackage
 from srstudio.projects.recent import RecentProjectsStore
 from srstudio.projects.session import ProjectSession
 from srstudio.projects.store import ProjectStore
+from srstudio.settings.store import SettingsStore
 from srstudio.templates.learning import LayoutLearningEngine
 from srstudio.templates.registry import TemplateRegistry
 from srstudio.workflows.professional import ProfessionalWorkflow
@@ -35,6 +37,11 @@ class SRStudioWorkspace(tk.Tk):
 
     def __init__(self) -> None:
         super().__init__()
+        self._ui_theme_store = SettingsStore()
+        self._ui_theme_settings = self._ui_theme_store.load()
+        self._ui_theme = normalized_theme(self._ui_theme_settings.theme)
+        self._ui_theme_style_original: dict = {}
+        self._ui_theme_refresh_queued = False
         self.title(f"SR Studio {__version__} Professional")
         self.geometry("1580x960")
         self.minsize(1280, 800)
@@ -60,10 +67,13 @@ class SRStudioWorkspace(tk.Tk):
 
         self._style()
         self._shell()
+        self.bind_all("<Map>", self._queue_ui_theme_refresh, add="+")
+        self.bind("<FocusIn>", self._sync_ui_theme_from_disk, add="+")
         self._register_commands()
         self._bind_shortcuts()
         self._offer_recovery()
         self.navigate("Início")
+        self.after_idle(self._apply_ui_theme)
         self.after(12000, self._maintenance_tick)
         self.protocol("WM_DELETE_WINDOW", self._close)
 
@@ -128,6 +138,55 @@ class SRStudioWorkspace(tk.Tk):
             font=(FONT["family"], FONT["small"]),
         )
         style.map("Toolbar.TButton", background=[("active", COLORS.surface_pressed)])
+
+    def _queue_ui_theme_refresh(self, _event=None) -> None:
+        if self._ui_theme != "dark" or self._ui_theme_refresh_queued:
+            return
+        self._ui_theme_refresh_queued = True
+        self.after_idle(self._apply_ui_theme)
+
+    def _apply_ui_theme(self) -> None:
+        self._ui_theme_refresh_queued = False
+        apply_widget_theme(self, self._ui_theme)
+        names = {
+            "TFrame", "TLabel", "TButton", "TEntry", "TCombobox", "TCheckbutton",
+            "TRadiobutton", "Treeview", "Treeview.Heading", "TScrollbar", "TLabelframe",
+            "TLabelframe.Label", "TNotebook", "TNotebook.Tab",
+            "Primary.TButton", "Secondary.TButton", "Ghost.TButton", "Toolbar.TButton",
+        }
+
+        def collect(widget) -> None:
+            if isinstance(widget, ttk.Widget):
+                names.add(widget.winfo_class())
+                chosen = widget.cget("style")
+                if chosen:
+                    names.add(chosen)
+            for child in widget.winfo_children():
+                collect(child)
+
+        collect(self)
+        apply_ttk_theme(ttk.Style(self), self._ui_theme, sorted(names), self._ui_theme_style_original)
+
+    def _sync_ui_theme_from_disk(self, _event=None) -> None:
+        settings = self._ui_theme_store.load()
+        chosen = normalized_theme(settings.theme)
+        if chosen != self._ui_theme:
+            self._ui_theme_settings = settings
+            self._ui_theme = chosen
+            self._apply_ui_theme()
+            self.navigate(self._active_nav)
+
+    def set_ui_theme(self, value: str) -> None:
+        chosen = normalized_theme(value)
+        if chosen == self._ui_theme:
+            return
+        self._ui_theme_settings.theme = chosen
+        self._ui_theme_store.save(self._ui_theme_settings)
+        self._ui_theme = chosen
+        if chosen == "light":
+            self._style()
+        self._apply_ui_theme()
+        self.navigate(self._active_nav)
 
     def _shell(self) -> None:
         self.columnconfigure(1, weight=1)
@@ -713,6 +772,19 @@ class SRStudioWorkspace(tk.Tk):
         page_header(root, "Configurações", "Preferências, armazenamento e infraestrutura local do SR Studio.").pack(fill="x", pady=(0, 18))
         body = card(root)
         body.pack(fill="x")
+        appearance = tk.Frame(body, bg=COLORS.surface)
+        appearance.pack(fill="x", padx=16, pady=11)
+        tk.Label(
+            appearance, text="Aparência", bg=COLORS.surface, fg=COLORS.text,
+            font=(FONT["family"], FONT["body"], "bold"),
+        ).pack(side="left")
+        tk.Button(
+            appearance,
+            text="Usar modo claro" if self._ui_theme == "dark" else "Ativar modo noturno",
+            command=lambda: self.set_ui_theme("light" if self._ui_theme == "dark" else "dark"),
+            bg=COLORS.primary_soft, fg=COLORS.primary, relief="flat", padx=12, pady=6,
+        ).pack(side="right")
+        divider(body).pack(fill="x", padx=16)
         rows = (
             ("Dados locais", str(self.data_dir), "Pasta de projetos, cache e banco local"),
             ("Autosave", "30 segundos", "Salvamento automático da sessão ativa"),
